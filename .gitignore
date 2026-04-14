@@ -1,0 +1,66 @@
+# Build outputs
+bin/
+obj/
+publish/
+
+# NuGet
+packages/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+
+# Secrets and credentials
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+secrets/
+*.csv
+*.xlsx
+
+# App settings with real values
+appsettings.*.json
+!appsettings.template.json
+!appsettings.Development.template.json
+
+# Wiz scan results (raw)
+wiz/raw/
+wiz/scans/
+
+# Patching data (real hostnames, IPs, CVEs)
+patching/data/
+patching/scans/
+
+# PowerBI cache
+powerbi/*.cache
+powerbi/*.bak
+
+# PowerShell profile and secrets
+Microsoft.PowerShell_profile.ps1
+*.credential.xml
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Logs (real data may contain PII)
+*.log
+!patching/compliance/*.log.template
+
+# Test results
+TestResults/
+coverage/
+
+# Node modules (if any frontend tooling)
+node_modules/

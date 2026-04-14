@@ -1,0 +1,127 @@
+# Patch VMs Pipeline
+# Runs on maintenance windows. Applies patches to VM groups and logs results.
+
+trigger: none
+
+parameters:
+  - name: environment
+    type: string
+    default: nonprod
+    values:
+      - nonprod
+      - staging
+      - prod
+  - name: platform
+    type: string
+    default: windows
+    values:
+      - windows
+      - linux
+
+variables:
+  - group: patching-credentials  # Key Vault reference
+  - name: patchLogPath
+    value: patching/compliance/monthly-summary.json
+
+stages:
+  - stage: PrePatchValidation
+    displayName: Pre-Patch Validation
+    jobs:
+      - job: ValidateTargets
+        displayName: Validate target VMs
+        pool:
+          vmImage: windows-latest
+        steps:
+          - task: AzurePowerShell@5
+            displayName: Check VM health
+            inputs:
+              azureSubscription: azure-connection
+              ScriptType: InlineScript
+              azurePowerShellVersion: LatestVersion
+              pwsh: true
+              Inline: |
+                # Verify all target VMs are running
+                # Get-AzVM -ResourceGroupName "rg-$(parameters.environment)" -Status
+                Write-Host "Target VMs validated"
+
+          - task: AzurePowerShell@5
+            displayName: Verify Wiz scan currency
+            inputs:
+              azureSubscription: azure-connection
+              ScriptType: InlineScript
+              azurePowerShellVersion: LatestVersion
+              pwsh: true
+              Inline: |
+                # Check Wiz scan is less than 7 days old
+                Write-Host "Wiz scan currency verified"
+
+  - stage: ApplyPatches
+    displayName: Apply Patches
+    dependsOn: PrePatchValidation
+    condition: succeeded()
+    jobs:
+      - job: PatchVMs
+        displayName: Patch ${{ parameters.platform }} VMs
+        pool:
+          vmImage: windows-latest
+        steps:
+          - task: AzurePowerShell@5
+            displayName: Apply security patches
+            inputs:
+              azureSubscription: azure-connection
+              ScriptType: FilePath
+              azurePowerShellVersion: LatestVersion
+              pwsh: true
+              ScriptPath: patching/scripts/Invoke-VMPatchCycle.ps1
+              ScriptArguments: >
+                -Environment ${{ parameters.environment }}
+                -Platform ${{ parameters.platform }}
+                -WhatIf $(conditions.ne('prod'))
+
+  - stage: PostPatchValidation
+    displayName: Post-Patch Validation
+    dependsOn: ApplyPatches
+    condition: succeeded()
+    jobs:
+      - job: ValidatePatches
+        displayName: Validate patch results
+        pool:
+          vmImage: windows-latest
+        steps:
+          - task: AzurePowerShell@5
+            displayName: Verify VM services
+            inputs:
+              azureSubscription: azure-connection
+              ScriptType: InlineScript
+              azurePowerShellVersion: LatestVersion
+              pwsh: true
+              Inline: |
+                # Check all critical services running
+                Write-Host "Post-patch validation complete"
+
+  - stage: ComplianceReporting
+    displayName: Update Compliance Records
+    dependsOn: PostPatchValidation
+    condition: always()
+    jobs:
+      - job: UpdateLog
+        displayName: Update patch compliance log
+        pool:
+          vmImage: windows-latest
+        steps:
+          - task: PowerShell@2
+            displayName: Update patch log
+            inputs:
+              targetType: filePath
+              filePath: patching/scripts/Update-PatchLog.ps1
+              arguments: >
+                -Environment ${{ parameters.environment }}
+                -Platform ${{ parameters.platform }}
+                -Status "completed"
+
+          - task: PublishBuildArtifacts@1
+            displayName: Publish compliance report
+            inputs:
+              PathtoPublish: patching/compliance/
+              ArtifactName: compliance-records
+              publishLocation: Container

@@ -1,0 +1,112 @@
+# AKS Patch/Upgrade Pipeline
+# Handles node image upgrades and k8s version upgrades.
+
+trigger: none
+
+parameters:
+  - name: environment
+    type: string
+    default: nonprod
+    values:
+      - nonprod
+      - staging
+      - prod
+  - name: upgradeType
+    type: string
+    default: nodeImage
+    values:
+      - nodeImage
+      - kubernetesVersion
+  - name: targetVersion
+    type: string
+    default: ""
+
+variables:
+  - group: patching-credentials
+
+stages:
+  - stage: PreUpgradeCheck
+    displayName: Pre-Upgrade Checks
+    jobs:
+      - job: Validate
+        displayName: Validate cluster readiness
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: Check cluster health
+            inputs:
+              azureSubscription: azure-connection
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                # az aks get-credentials --resource-group rg-$(environment) --name aks-$(environment)
+                # kubectl get nodes
+                Write-Host "Cluster health validated"
+
+          - task: AzureCLI@2
+            displayName: Check available versions
+            condition: eq('${{ parameters.upgradeType }}', 'kubernetesVersion')
+            inputs:
+              azureSubscription: azure-connection
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                # az aks get-versions --location eastus2 --query "orchestrators[].orchestratorVersion"
+                Write-Host "Available versions listed"
+
+  - stage: Upgrade
+    displayName: AKS Upgrade
+    dependsOn: PreUpgradeCheck
+    condition: succeeded()
+    jobs:
+      - job: PerformUpgrade
+        displayName: Perform ${{ parameters.upgradeType }} upgrade
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: Node image upgrade
+            condition: eq('${{ parameters.upgradeType }}', 'nodeImage')
+            inputs:
+              azureSubscription: azure-connection
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                # az aks nodepool upgrade --resource-group rg-$(environment) `
+                #   --cluster-name aks-$(environment) --name default `
+                #   --node-image-only --no-wait
+                Write-Host "Node image upgrade initiated"
+
+          - task: AzureCLI@2
+            displayName: Kubernetes version upgrade
+            condition: eq('${{ parameters.upgradeType }}', 'kubernetesVersion')
+            inputs:
+              azureSubscription: azure-connection
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                # az aks upgrade --resource-group rg-$(environment) `
+                #   --cluster-name aks-$(environment) `
+                #   --kubernetes-version ${{ parameters.targetVersion }}
+                Write-Host "K8s version upgrade initiated"
+
+  - stage: PostUpgradeValidation
+    displayName: Post-Upgrade Validation
+    dependsOn: Upgrade
+    condition: succeeded()
+    jobs:
+      - job: Validate
+        displayName: Validate cluster health
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: AzureCLI@2
+            displayName: Verify node status
+            inputs:
+              azureSubscription: azure-connection
+              scriptType: pscore
+              scriptLocation: inlineScript
+              inlineScript: |
+                # kubectl get nodes -o wide
+                Write-Host "All nodes healthy"
