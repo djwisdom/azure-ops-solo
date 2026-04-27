@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:terminal="clr-namespace:Avalonia.TerminalControl;assembly=Avalonia.TerminalControl"
+             mc:Ignorable="d"
+             x:Class="MyCrownJewelApp.Terminal.TerminalPane"
+             x:DataType="terminal:TerminalControl"
+             Height="400"
+             Width="800">
+
+    <!-- 
+      TerminalPane embeds a terminal widget that communicates with TerminalManager.
+      The code-behind wires the terminal UI to the backend PTY manager.
+    -->
+    <terminal:TerminalControl 
+        x:Name="TerminalWidget"
+        Background="Black"
+        Foreground="White"
+        FontFamily="Cascadia Code"
+        FontSize="14" />
+
+</UserControl>
