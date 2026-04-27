@@ -33,12 +33,21 @@ public partial class Form1 : Form
     private Color lightEditorBackColor = Color.White;
     private Color lightEditorForeColor = Color.Black;
 
-    // C# syntax highlighting colors (adjusted per theme in UpdateSyntaxHighlighting)
+    // Syntax highlighting colors
     private Color keywordColor;
     private Color stringColor;
     private Color commentColor;
     private Color numberColor;
     private Color preprocessorColor;
+
+    // Bookmark tracking
+    private HashSet<int> bookmarks = new();
+
+    // Change history tracking (modified lines)
+    private HashSet<int> modifiedLines = new();
+
+    // Code folding state (collapsed regions)
+    private HashSet<int> collapsedRegions = new();
 
     public Form1()
     {
@@ -46,12 +55,18 @@ public partial class Form1 : Form
         textEditor.WordWrap = wordWrapEnabled;
         textEditor.ZoomFactor = currentZoom / 100f;
 
-        // Apply dark theme by default
         ApplyTheme(true);
         UpdateSyntaxHighlightingColors();
         UpdateStatusBar();
         UpdateTitle();
     }
+
+    #region Properties
+
+    public HashSet<int> Bookmarks => bookmarks;
+    public HashSet<int> ModifiedLines => modifiedLines;
+
+    #endregion
 
     #region Menu Event Handlers
 
@@ -62,6 +77,10 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            bookmarks.Clear();
+            modifiedLines.Clear();
+            collapsedRegions.Clear();
+            gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
         }
@@ -95,7 +114,11 @@ public partial class Form1 : Form
             textEditor.Text = File.ReadAllText(filePath, encoding);
             currentFile = filePath;
             fileModified = false;
+            bookmarks.Clear();
+            modifiedLines.Clear();
+            collapsedRegions.Clear();
             ApplySyntaxHighlightingIfCSharp();
+            gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
         }
@@ -127,6 +150,8 @@ public partial class Form1 : Form
             SaveFile(dialog.FileName);
             currentFile = dialog.FileName;
             fileModified = false;
+            modifiedLines.Clear();
+            gutterPanel.RefreshGutter();
             UpdateTitle();
         }
     }
@@ -137,6 +162,8 @@ public partial class Form1 : Form
         {
             File.WriteAllText(filePath, textEditor.Text, Encoding.UTF8);
             fileModified = false;
+            modifiedLines.Clear();
+            gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
         }
@@ -161,6 +188,10 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            bookmarks.Clear();
+            modifiedLines.Clear();
+            collapsedRegions.Clear();
+            gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
         }
@@ -178,6 +209,10 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            bookmarks.Clear();
+            modifiedLines.Clear();
+            collapsedRegions.Clear();
+            gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
         }
@@ -192,7 +227,10 @@ public partial class Form1 : Form
     {
         if (textEditor.CanUndo)
         {
+            // Note: tracking changes through undo is complex; simplified tracking
             textEditor.Undo();
+            UpdateModifiedLinesFromText();
+            gutterPanel.RefreshGutter();
         }
     }
 
@@ -201,6 +239,8 @@ public partial class Form1 : Form
         if (textEditor.SelectionLength > 0)
         {
             textEditor.Cut();
+            UpdateModifiedLinesFromText();
+            gutterPanel.RefreshGutter();
         }
     }
 
@@ -217,6 +257,8 @@ public partial class Form1 : Form
         if (Clipboard.ContainsText())
         {
             textEditor.Paste();
+            UpdateModifiedLinesFromText();
+            gutterPanel.RefreshGutter();
         }
     }
 
@@ -225,6 +267,8 @@ public partial class Form1 : Form
         if (textEditor.SelectionLength > 0)
         {
             textEditor.SelectedText = "";
+            UpdateModifiedLinesFromText();
+            gutterPanel.RefreshGutter();
         }
     }
 
@@ -272,6 +316,8 @@ public partial class Form1 : Form
         var now = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         int selectionStart = textEditor.SelectionStart;
         textEditor.Text = textEditor.Text.Insert(selectionStart, now);
+        UpdateModifiedLinesFromText();
+        gutterPanel.RefreshGutter();
     }
 
     private void Font_Click(object sender, EventArgs e)
@@ -281,6 +327,7 @@ public partial class Form1 : Form
         if (dialog.ShowDialog() == DialogResult.OK)
         {
             textEditor.Font = dialog.Font;
+            gutterPanel.RefreshGutter();
         }
     }
 
@@ -319,8 +366,9 @@ public partial class Form1 : Form
         UpdateSyntaxHighlightingColors();
         if (currentFile != null)
         {
-            ApplySyntaxHighlightingIfCSharp();
+            ApplySyntaxHighlighting();
         }
+        gutterPanel.RefreshGutter();
         darkThemeMenuItem.Checked = isDarkTheme;
         lightThemeMenuItem.Checked = !isDarkTheme;
     }
@@ -332,10 +380,43 @@ public partial class Form1 : Form
         UpdateSyntaxHighlightingColors();
         if (currentFile != null)
         {
-            ApplySyntaxHighlightingIfCSharp();
+            ApplySyntaxHighlighting();
         }
+        gutterPanel.RefreshGutter();
         darkThemeMenuItem.Checked = isDarkTheme;
         lightThemeMenuItem.Checked = !isDarkTheme;
+    }
+
+    #endregion
+
+    #region Public Methods for Gutter
+
+    public void ToggleBookmark(int line)
+    {
+        if (bookmarks.Contains(line))
+        {
+            bookmarks.Remove(line);
+        }
+        else
+        {
+            bookmarks.Add(line);
+        }
+        gutterPanel.RefreshGutter();
+    }
+
+    public void ToggleFold(int regionStartLine)
+    {
+        if (collapsedRegions.Contains(regionStartLine))
+        {
+            collapsedRegions.Remove(regionStartLine);
+        }
+        else
+        {
+            collapsedRegions.Add(regionStartLine);
+        }
+        // Note: Full folding implementation requires hiding lines in RichTextBox
+        // For now, we just track state visually
+        gutterPanel.RefreshGutter();
     }
 
     #endregion
@@ -353,19 +434,15 @@ public partial class Form1 : Form
         Color editorBackColor = dark ? darkEditorBackColor : lightEditorBackColor;
         Color editorForeColor = dark ? darkEditorForeColor : lightEditorForeColor;
 
-        // Form
         BackColor = backColor;
         ForeColor = foreColor;
 
-        // Menu
         menuStrip.BackColor = menuBackColor;
         menuStrip.ForeColor = menuForeColor;
 
-        // Text Editor
         textEditor.BackColor = editorBackColor;
         textEditor.ForeColor = editorForeColor;
 
-        // Status Strip
         statusStrip.BackColor = statusBackColor;
         statusStrip.ForeColor = statusForeColor;
     }
@@ -392,6 +469,68 @@ public partial class Form1 : Form
 
     #endregion
 
+    #region Bookmark and Folding Handlers
+
+    private void ToggleBookmark_Click(object sender, EventArgs e)
+    {
+        int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+        ToggleBookmark(currentLine);
+    }
+
+    private void NextBookmark_Click(object sender, EventArgs e)
+    {
+        int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+        int? next = bookmarks.Where(b => b > currentLine).OrderBy(b => b).FirstOrDefault();
+        if (next.HasValue)
+        {
+            GoToLine(next.Value + 1);
+        }
+    }
+
+    private void PrevBookmark_Click(object sender, EventArgs e)
+    {
+        int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+        int? prev = bookmarks.Where(b => b < currentLine).OrderByDescending(b => b).FirstOrDefault();
+        if (prev.HasValue)
+        {
+            GoToLine(prev.Value + 1);
+        }
+    }
+
+    private void ClearAllBookmarks_Click(object sender, EventArgs e)
+    {
+        bookmarks.Clear();
+        gutterPanel.RefreshGutter();
+    }
+
+    private void ToggleFold_Click(object sender, EventArgs e)
+    {
+        int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+        ToggleFold(currentLine);
+    }
+
+    private void ToggleAllFolds_Click(object sender, EventArgs e)
+    {
+        bool anyExpanded = collapsedRegions.Count == 0;
+        if (anyExpanded)
+        {
+            for (int i = 0; i < textEditor.Lines.Length; i++)
+            {
+                if (textEditor.Lines[i].TrimStart().StartsWith("#region"))
+                {
+                    collapsedRegions.Add(i);
+                }
+            }
+        }
+        else
+        {
+            collapsedRegions.Clear();
+        }
+        gutterPanel.RefreshGutter();
+    }
+
+    #endregion
+
     #region C# Syntax Highlighting
 
     private void ApplySyntaxHighlightingIfCSharp()
@@ -407,11 +546,30 @@ public partial class Form1 : Form
         fileModified = true;
         UpdateStatusBar();
         UpdateTitle();
+        UpdateModifiedLinesFromText();
 
-        // Apply syntax highlighting for C# files
         if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
         {
             ApplySyntaxHighlighting();
+        }
+        gutterPanel.RefreshGutter();
+    }
+
+    private void TextEditor_VScroll(object sender, EventArgs e)
+    {
+        gutterPanel.RefreshGutter();
+    }
+
+    private void UpdateModifiedLinesFromText()
+    {
+        // Simplified: mark all non-empty lines as modified (for demo)
+        modifiedLines.Clear();
+        for (int i = 0; i < textEditor.Lines.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(textEditor.Lines[i]))
+            {
+                modifiedLines.Add(i);
+            }
         }
     }
 
@@ -421,21 +579,17 @@ public partial class Form1 : Form
         int selectionLength = textEditor.SelectionLength;
         string text = textEditor.Text;
 
-        // Save current selection
         textEditor.SuspendLayout();
 
-        // Remove all coloring (set to default)
         textEditor.SelectAll();
         textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
-        // Apply syntax highlighting
         HighlightKeywords(text);
         HighlightStrings(text);
         HighlightComments(text);
         HighlightNumbers(text);
         HighlightPreprocessor(text);
 
-        // Restore selection
         textEditor.SelectionStart = selectionStart;
         textEditor.SelectionLength = selectionLength;
         textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
@@ -465,19 +619,13 @@ public partial class Form1 : Form
 
     private void HighlightStrings(string text)
     {
-        // Regular strings "..."
         HighlightPattern(@"""([^""\\]|\\.)*""", stringColor);
-
-        // Verbatim strings @"..."
         HighlightPattern(@"@""([^""]|"""")*""", stringColor);
     }
 
     private void HighlightComments(string text)
     {
-        // Single-line comments
         HighlightPattern(@"//.*$", commentColor);
-
-        // Multi-line comments
         HighlightPattern(@"/\*.*?\*/", commentColor, RegexOptions.Singleline);
     }
 
@@ -504,10 +652,7 @@ public partial class Form1 : Form
                 textEditor.SelectionColor = color;
             }
         }
-        catch
-        {
-            // Silently ignore regex errors
-        }
+        catch { }
     }
 
     #endregion
@@ -525,21 +670,13 @@ public partial class Form1 : Form
 
     private void UpdateStatusBar()
     {
-        // Line and Column
         int line = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
         int col = textEditor.SelectionStart - textEditor.GetFirstCharIndexFromLine(line - 1) + 1;
         lineColLabel.Text = $"Ln {line}, Col {col}";
-
-        // Character count
         charCountLabel.Text = $"{textEditor.TextLength} characters";
-
-        // Zoom
         zoomLabel.Text = $"{currentZoom}%";
-
-        // Line endings
         lineEndingsLabel.Text = "Windows (CRLF)";
 
-        // Encoding and file type
         string fileType = "UTF-8";
         if (currentFile != null)
         {
@@ -581,6 +718,7 @@ public partial class Form1 : Form
         currentZoom = Math.Max(10, Math.Min(500, zoom));
         textEditor.ZoomFactor = currentZoom / 100f;
         UpdateStatusBar();
+        gutterPanel.RefreshGutter();
     }
 
     private bool CheckUnsavedChanges()
@@ -690,6 +828,7 @@ public partial class Form1 : Form
             textEditor.SelectionLength = 0;
             textEditor.ScrollToCaret();
             UpdateStatusBar();
+            gutterPanel.RefreshGutter();
         }
     }
 

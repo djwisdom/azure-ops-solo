@@ -32,6 +32,14 @@ partial class Form1
     private ToolStripMenuItem selectAllMenuItem;
     private ToolStripMenuItem timeDateMenuItem;
     private ToolStripMenuItem fontMenuItem;
+    private ToolStripMenuItem bookmarkSeparator;
+    private ToolStripMenuItem toggleBookmarkMenuItem;
+    private ToolStripMenuItem nextBookmarkMenuItem;
+    private ToolStripMenuItem prevBookmarkMenuItem;
+    private ToolStripMenuItem clearBookmarksMenuItem;
+    private ToolStripMenuItem foldingSeparator;
+    private ToolStripMenuItem toggleFoldMenuItem;
+    private ToolStripMenuItem toggleAllFoldsMenuItem;
 
     private ToolStripMenuItem viewMenu;
     private ToolStripMenuItem zoomMenu;
@@ -45,6 +53,7 @@ partial class Form1
     private ToolStripMenuItem lightThemeMenuItem;
 
     internal RichTextBox textEditor;
+    internal GutterPanel gutterPanel;
     private StatusStrip statusStrip;
     private ToolStripStatusLabel lineColLabel;
     private ToolStripStatusLabel charCountLabel;
@@ -106,12 +115,25 @@ partial class Form1
         timeDateMenuItem = new ToolStripMenuItem("&Time/Date", null, TimeDate_Click);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click);
 
+        // Bookmarks submenu items
+        toggleBookmarkMenuItem = new ToolStripMenuItem("&Toggle Bookmark", null, ToggleBookmark_Click);
+        nextBookmarkMenuItem = new ToolStripMenuItem("Next Bookmark", null, NextBookmark_Click);
+        prevBookmarkMenuItem = new ToolStripMenuItem("Previous Bookmark", null, PrevBookmark_Click);
+        clearBookmarksMenuItem = new ToolStripMenuItem("Clear All Bookmarks", null, ClearAllBookmarks_Click);
+
+        // Folding submenu items
+        toggleFoldMenuItem = new ToolStripMenuItem("&Toggle Fold", null, ToggleFold_Click);
+        toggleAllFoldsMenuItem = new ToolStripMenuItem("&Toggle All Folds", null, ToggleAllFolds_Click);
+
         editMenu.DropDownItems.AddRange(new ToolStripItem[] {
             undoMenuItem, new ToolStripSeparator(), cutMenuItem, copyMenuItem,
             pasteMenuItem, deleteMenuItem, new ToolStripSeparator(), findMenuItem,
             findNextMenuItem, findPreviousMenuItem, replaceMenuItem, gotoMenuItem,
             new ToolStripSeparator(), selectAllMenuItem, timeDateMenuItem,
-            new ToolStripSeparator(), fontMenuItem
+            new ToolStripSeparator(), fontMenuItem, new ToolStripSeparator(),
+            toggleBookmarkMenuItem, nextBookmarkMenuItem, prevBookmarkMenuItem,
+            clearBookmarksMenuItem, new ToolStripSeparator(),
+            toggleFoldMenuItem, toggleAllFoldsMenuItem
         });
 
         viewMenu = new ToolStripMenuItem("&View");
@@ -141,6 +163,10 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
+        // Gutter Panel
+        gutterPanel = new GutterPanel(this);
+        gutterPanel.Dock = DockStyle.Left;
+
         // Text Editor (RichTextBox)
         textEditor = new RichTextBox();
         textEditor.Dock = DockStyle.Fill;
@@ -149,6 +175,7 @@ partial class Form1
         textEditor.Font = new Font("Consolas", 12);
         textEditor.TextChanged += TextEditor_TextChanged;
         textEditor.SelectionChanged += TextEditor_SelectionChanged;
+        textEditor.VScroll += TextEditor_VScroll;
 
         // Status Strip
         statusStrip = new StatusStrip();
@@ -163,8 +190,9 @@ partial class Form1
             zoomLabel, lineEndingsLabel, encodingLabel
         });
 
-        // Add controls
+        // Add controls in proper z-order (docking order matters)
         Controls.Add(menuStrip);
+        Controls.Add(gutterPanel);
         Controls.Add(textEditor);
         Controls.Add(statusStrip);
 
