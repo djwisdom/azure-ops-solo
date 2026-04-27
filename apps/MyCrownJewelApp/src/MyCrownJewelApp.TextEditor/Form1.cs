@@ -114,7 +114,7 @@ public partial class Form1 : Form
         syntaxHighlightTimer.Tick += (s, e) =>
         {
             syntaxHighlightTimer.Stop();
-            ApplySyntaxHighlightingIfCSharp();
+            try { ApplySyntaxHighlightingIfCSharp(); } catch { }
         };
     }
 
