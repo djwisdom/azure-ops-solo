@@ -5,6 +5,7 @@ using System.Windows.Forms;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Linq;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -87,6 +88,10 @@ public partial class Form1 : Form
     private bool gutterVisible = true;
     private bool gutterUserOverride = false;
     private SyntaxDefinition currentSyntax;
+    
+    // Fast lookup for keywords/types (built on file open)
+    private HashSet<string> keywordSet;
+    private HashSet<string> typeSet;
 
     public Form1()
     {
@@ -444,16 +449,8 @@ public partial class Form1 : Form
         bool shouldShow = gutterUserOverride;
         if (!shouldShow && currentFile != null)
         {
-            string ext = Path.GetExtension(currentFile);
-            shouldShow = ext.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".cpp", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".c", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".bicep", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".tf", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".yml", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase) ||
-                        ext.Equals(".sh", StringComparison.OrdinalIgnoreCase);
+            string ext = Path.GetExtension(currentFile).ToLowerInvariant();
+            shouldShow = ext is ".cs" or ".cpp" or ".c" or ".bicep" or ".tf" or ".yml" or ".yaml" or ".ps1" or ".sh";
         }
         if (gutterVisible != shouldShow)
         {
@@ -645,6 +642,7 @@ public partial class Form1 : Form
         if (currentFile != null)
         {
             currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
+            BuildLookup();
             if (currentSyntax != null)
             {
                 ApplySyntaxHighlighting();
@@ -653,6 +651,21 @@ public partial class Form1 : Form
             {
                 ClearSyntaxHighlighting();
             }
+        }
+    }
+
+    private void BuildLookup()
+    {
+        keywordSet = new HashSet<string>(StringComparer.Ordinal);
+        typeSet = new HashSet<string>(StringComparer.Ordinal);
+        
+        if (currentSyntax?.Keywords != null)
+        {
+            foreach (var kw in currentSyntax.Keywords) keywordSet.Add(kw);
+        }
+        if (currentSyntax?.Types != null)
+        {
+            foreach (var t in currentSyntax.Types) typeSet.Add(t);
         }
     }
 
@@ -691,64 +704,183 @@ public partial class Form1 : Form
 
         int selectionStart = textEditor.SelectionStart;
         int selectionLength = textEditor.SelectionLength;
+        string text = textEditor.Text;
 
         suppressSelectionChanged = true;
         try
         {
             BeginUpdate(textEditor);
 
+            // Reset all to default
             textEditor.SelectAll();
             textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
-            // Keywords
-            foreach (var keyword in currentSyntax.Keywords)
-            {
-                HighlightPattern(@"\b" + keyword + @"\b", keywordColor);
-            }
+            var spans = new List<(int start, int length, Color color)>();
+            int pos = 0;
+            int linePos = 0;
+            bool inMultiLineComment = false;
 
-            // Types (if defined)
-            if (currentSyntax.Types != null)
+            while (pos < text.Length)
             {
-                foreach (var type in currentSyntax.Types)
+                char c = text[pos];
+
+                // Track line start for preprocessor detection
+                if (c == '\n')
                 {
-                    HighlightPattern(@"\b" + type + @"\b", keywordColor);
+                    linePos = pos + 1;
+                    pos++;
+                    continue;
                 }
-            }
 
-            // Strings
-            if (!string.IsNullOrEmpty(currentSyntax.StringPattern))
-            {
-                HighlightPattern(currentSyntax.StringPattern, stringColor);
-            }
-
-            // Comments
-            if (!string.IsNullOrEmpty(currentSyntax.CommentPattern))
-            {
-                HighlightPattern(currentSyntax.CommentPattern, commentColor);
-            }
-
-            // Multi-line comments
-            if (currentSyntax.MultiLineCommentPatterns != null)
-            {
-                foreach (var pattern in currentSyntax.MultiLineCommentPatterns)
+                // Exit multi-line comment if we see */
+                if (inMultiLineComment)
                 {
-                    HighlightPattern(pattern, commentColor, RegexOptions.Singleline);
+                    int end = text.IndexOf("*/", pos, StringComparison.Ordinal);
+                    if (end == -1)
+                    {
+                        spans.Add((pos, text.Length - pos, commentColor));
+                        break;
+                    }
+                    spans.Add((pos, end + 2 - pos, commentColor));
+                    pos = end + 2;
+                    inMultiLineComment = false;
+                    continue;
                 }
-            }
 
-            // Preprocessor
-            if (currentSyntax.Preprocessor != null && currentSyntax.Preprocessor.Length > 0)
-            {
-                foreach (var pp in currentSyntax.Preprocessor)
+                // Single-line comment //...
+                if (c == '/' && pos + 1 < text.Length && text[pos + 1] == '/')
                 {
-                    HighlightPattern(@"^\s*" + pp + @"\b", preprocessorColor, RegexOptions.Multiline);
+                    int eol = text.IndexOf('\n', pos);
+                    int len = (eol == -1 ? text.Length : eol) - pos;
+                    spans.Add((pos, len, commentColor));
+                    pos = (eol == -1) ? text.Length : eol;
+                    continue;
                 }
+
+                // Multi-line comment /* ... */
+                if (c == '/' && pos + 1 < text.Length && text[pos + 1] == '*')
+                {
+                    pos += 2;
+                    inMultiLineComment = true;
+                    continue;
+                }
+
+                // String literal "..."
+                if (c == '"')
+                {
+                    int start = pos++;
+                    while (pos < text.Length)
+                    {
+                        if (text[pos] == '\\' && pos + 1 < text.Length) { pos += 2; continue; }
+                        if (text[pos] == '"') { pos++; break; }
+                        pos++;
+                    }
+                    spans.Add((start, pos - start, stringColor));
+                    continue;
+                }
+
+                // Verbatim string @ "..."
+                if (c == '@' && pos + 1 < text.Length && text[pos + 1] == '"')
+                {
+                    int start = pos;
+                    pos += 2;
+                    while (pos < text.Length)
+                    {
+                        if (text[pos] == '"')
+                        {
+                            if (pos + 1 < text.Length && text[pos + 1] == '"') { pos += 2; continue; }
+                            pos++; break;
+                        }
+                        pos++;
+                    }
+                    spans.Add((start, pos - start, stringColor));
+                    continue;
+                }
+
+                // Preprocessor (at line start)
+                if ((c == '#' || c == '!') && pos == linePos)
+                {
+                    int start = pos;
+                    while (pos < text.Length && !char.IsWhiteSpace(text[pos]) && text[pos] != '\n') pos++;
+                    // include remainder of line for visibility
+                    int eol = text.IndexOf('\n', pos);
+                    if (eol != -1) { pos = eol; }
+                    spans.Add((start, pos - start, preprocessorColor));
+                    continue;
+                }
+
+                // Keyword / Identifier
+                if (char.IsLetter(c) || c == '_')
+                {
+                    int start = pos;
+                    while (pos < text.Length && (char.IsLetterOrDigit(text[pos]) || text[pos] == '_')) pos++;
+                    string word = text.Substring(start, pos - start);
+                    if (keywordSet.Contains(word) || typeSet.Contains(word))
+                        spans.Add((start, pos - start, keywordColor));
+                    continue;
+                }
+
+                // Number
+                if (char.IsDigit(c))
+                {
+                    int start = pos;
+                    while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+
+                    // Decimal point with fraction
+                    if (pos < text.Length && text[pos] == '.')
+                    {
+                        pos++;
+                        while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                    }
+
+                    // Exponent
+                    if (pos < text.Length && (text[pos] == 'e' || text[pos] == 'E'))
+                    {
+                        char after = (pos + 1 < text.Length) ? text[pos + 1] : '\0';
+                        if (after == '+' || after == '-' || char.IsDigit(after))
+                        {
+                            pos++;
+                            if (after == '+' || after == '-')
+                            {
+                                if (pos < text.Length && char.IsDigit(text[pos]))
+                                    while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                            }
+                            else while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                        }
+                    }
+
+                    // Suffixes (floating, integer, decimal)
+                    while (pos < text.Length)
+                    {
+                        char ch = text[pos];
+                        if (ch == 'f' || ch == 'F' || ch == 'd' || ch == 'D' || ch == 'm' || ch == 'M' ||
+                            ch == 'u' || ch == 'U' || ch == 'l' || ch == 'L')
+                        {
+                            pos++;
+                            // Combined ul/lu
+                            if (pos < text.Length)
+                            {
+                                char ch2 = text[pos];
+                                if ((ch == 'u' || ch == 'U') && (ch2 == 'l' || ch2 == 'L') ||
+                                    (ch == 'l' || ch == 'L') && (ch2 == 'u' || ch2 == 'U'))
+                                    pos++;
+                            }
+                        }
+                        else break;
+                    }
+
+                    spans.Add((start, pos - start, numberColor));
+                    continue;
+                }
+
+                pos++;
             }
 
-            // Numbers
-            if (!string.IsNullOrEmpty(currentSyntax.NumberPattern))
+            // Apply spans in reverse order to preserve character positions
+            foreach (var span in spans.OrderByDescending(s => s.start))
             {
-                HighlightPattern(currentSyntax.NumberPattern, numberColor);
+                textEditor.Select(span.start, span.length);
+                textEditor.SelectionColor = span.color;
             }
 
             textEditor.SelectionStart = selectionStart;
@@ -761,22 +893,6 @@ public partial class Form1 : Form
         {
             suppressSelectionChanged = false;
         }
-     }
-
-     private void HighlightPattern(string pattern, Color color, RegexOptions options = RegexOptions.None)
-    {
-        try
-        {
-            var regex = new Regex(pattern, options);
-            var matches = regex.Matches(textEditor.Text);
-
-            foreach (Match match in matches)
-            {
-                textEditor.Select(match.Index, match.Length);
-                textEditor.SelectionColor = color;
-            }
-        }
-        catch { }
     }
 
     #endregion
