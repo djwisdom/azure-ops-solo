@@ -671,6 +671,9 @@ public partial class Form1 : Form
     {
         if (currentFile != null)
         {
+            // Skip highlighting for large files (>50 KB) to keep UI responsive
+            if (textEditor.TextLength > 51200) return;
+
             var syntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
             
             if (syntax != null)
