@@ -706,17 +706,19 @@ public partial class Form1 : Form
             int selStart = textEditor.SelectionStart;
             int selLength = textEditor.SelectionLength;
             int lineIndex = textEditor.GetLineFromCharIndex(selStart);
+            
+            // Bounds check
+            if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return;
+            
             int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
             if (lineStart < 0) return;
 
             string lineText = textEditor.Lines[lineIndex];
             int lineLength = lineText.Length;
 
-            // Temporarily select the line and apply background
             textEditor.Select(lineStart, lineLength);
             textEditor.SelectionBackColor = isDarkTheme ? Color.FromArgb(60, 60, 60) : Color.FromArgb(230, 230, 230);
 
-            // Restore original selection
             textEditor.SelectionStart = selStart;
             textEditor.SelectionLength = selLength;
         }

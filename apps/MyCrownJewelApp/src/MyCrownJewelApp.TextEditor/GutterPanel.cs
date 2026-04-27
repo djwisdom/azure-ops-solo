@@ -143,11 +143,13 @@ public class GutterPanel : Panel
         // Get first visible line based on scroll position
         int firstChar = editor.GetCharIndexFromPosition(new Point(0, 0));
         firstLine = editor.GetLineFromCharIndex(firstChar);
+        if (firstLine < 0) firstLine = 0;
 
         // Calculate how many lines fit in the visible area
         int visibleHeight = editor.Height;
         int lineHeight = TextRenderer.MeasureText("A", editor.Font).Height;
         lineCount = Math.Min(editor.Lines.Length - firstLine, (visibleHeight / lineHeight) + 2);
+        if (lineCount < 0) lineCount = 0;
     }
 
     private int GetLineY(RichTextBox editor, int lineIndex)
@@ -178,7 +180,9 @@ public class GutterPanel : Panel
 
     private void DrawBookmark(Graphics g, int lineIndex, int x, int y)
     {
-        // Check if line has bookmark
+        // Defensive: ensure lineIndex is valid
+        if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
+
         bool hasBookmark = mainForm.Bookmarks.Contains(lineIndex);
         int centerX = x + BookmarkMarginWidth / 2;
         int centerY = y + 10;
@@ -191,7 +195,6 @@ public class GutterPanel : Panel
         }
         else
         {
-            // Draw faint circle outline for clickable area
             using var pen = new Pen(Color.FromArgb(80, 80, 80));
             g.DrawEllipse(pen, centerX - radius, centerY - radius, radius * 2, radius * 2);
         }
@@ -199,7 +202,8 @@ public class GutterPanel : Panel
 
     private void DrawChangeIndicator(Graphics g, int lineIndex, int x, int y)
     {
-        // Track modified lines (simplified - just show if line exists and has content)
+        if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
+
         bool hasChanges = mainForm.ModifiedLines.Contains(lineIndex);
         int barWidth = 4;
         int barX = x + (ChangeMarginWidth - barWidth) / 2;
@@ -220,7 +224,8 @@ public class GutterPanel : Panel
 
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
     {
-        // Check if line has a fold marker (region start/end)
+        if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
+
         string line = mainForm.textEditor.Lines[lineIndex];
         bool isRegionStart = line.TrimStart().StartsWith("#region");
         bool isRegionEnd = line.TrimStart().StartsWith("#endregion");
