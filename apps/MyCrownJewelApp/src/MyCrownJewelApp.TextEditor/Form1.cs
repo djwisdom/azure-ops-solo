@@ -68,6 +68,7 @@ public partial class Form1 : Form
 
     // Current line highlighting
     private bool isHighlighting = false;
+    private int lastHighlightedLine = -1;
 
     public Form1()
     {
@@ -100,6 +101,7 @@ public partial class Form1 : Form
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
+            lastHighlightedLine = -1;
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -142,6 +144,7 @@ public partial class Form1 : Form
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
+            lastHighlightedLine = -1;
             ApplySyntaxHighlightingIfCSharp();
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
@@ -216,6 +219,7 @@ public partial class Form1 : Form
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
+            lastHighlightedLine = -1;
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -237,6 +241,7 @@ public partial class Form1 : Form
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
+            lastHighlightedLine = -1;
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -685,6 +690,14 @@ public partial class Form1 : Form
         {
             ApplySyntaxHighlighting();
         }
+        
+        // Clear previous highlight as line indices may have shifted
+        if (lastHighlightedLine >= 0)
+        {
+            ClearLineHighlight(lastHighlightedLine);
+            lastHighlightedLine = -1;
+        }
+        
         gutterPanel.RefreshGutter();
     }
 
@@ -713,7 +726,14 @@ public partial class Form1 : Form
             int lineIndex = textEditor.GetLineFromCharIndex(selStart);
             
             if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return;
-            
+
+            // Clear previous highlight
+            if (lastHighlightedLine >= 0 && lastHighlightedLine != lineIndex)
+            {
+                ClearLineHighlight(lastHighlightedLine);
+            }
+
+            // Apply new highlight
             int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
             if (lineStart < 0) return;
 
@@ -726,11 +746,35 @@ public partial class Form1 : Form
             textEditor.SelectionStart = selStart;
             textEditor.SelectionLength = selLength;
             EndUpdate(textEditor);
+
+            lastHighlightedLine = lineIndex;
         }
         finally
         {
             isHighlighting = false;
         }
+    }
+
+    private void ClearLineHighlight(int lineIndex)
+    {
+        if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return;
+        
+        int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
+        if (lineStart < 0) return;
+
+        string lineText = textEditor.Lines[lineIndex];
+        int lineLength = lineText.Length;
+
+        // Save current selection
+        int selStart = textEditor.SelectionStart;
+        int selLength = textEditor.SelectionLength;
+
+        BeginUpdate(textEditor);
+        textEditor.Select(lineStart, lineLength);
+        textEditor.SelectionBackColor = textEditor.BackColor; // Reset to default
+        textEditor.SelectionStart = selStart;
+        textEditor.SelectionLength = selLength;
+        EndUpdate(textEditor);
     }
 
     #endregion
