@@ -129,15 +129,15 @@ partial class Form1
         wordWrapMenuItem = new ToolStripMenuItem("&Word Wrap", null, WordWrap_Click);
         wordWrapMenuItem.Checked = true;
 
-        viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
-            zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
-            new ToolStripSeparator(), themeMenu
-        });
-
         themeMenu = new ToolStripMenuItem("&Theme");
         darkThemeMenuItem = new ToolStripMenuItem("&Dark", null, DarkTheme_Click);
         lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
         themeMenu.DropDownItems.AddRange(new ToolStripItem[] { darkThemeMenuItem, lightThemeMenuItem });
+
+        viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
+            zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
+            new ToolStripSeparator(), themeMenu
+        });
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
