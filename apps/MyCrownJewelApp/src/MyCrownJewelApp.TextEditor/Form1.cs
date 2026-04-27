@@ -726,167 +726,150 @@ public partial class Form1 : Form
             textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
             var spans = new List<(int start, int length, Color color)>();
-            int pos = 0;
-            int linePos = 0;
+            int i = 0;
+            int len = text.Length;
             bool inMultiLineComment = false;
 
-            while (pos < text.Length)
+            while (i < len)
             {
-                char c = text[pos];
+                char c = text[i];
 
-                // Track line start for preprocessor detection
-                if (c == '\n')
-                {
-                    linePos = pos + 1;
-                    pos++;
-                    continue;
-                }
-
-                // Exit multi-line comment if we see */
+                // Multi-line comment exit: */
                 if (inMultiLineComment)
                 {
-                    int end = text.IndexOf("*/", pos, StringComparison.Ordinal);
-                    if (end == -1)
+                    if (i + 1 < len && text[i] == '*' && text[i + 1] == '/')
                     {
-                        spans.Add((pos, text.Length - pos, commentColor));
-                        break;
+                        spans.Add((i, 2, commentColor));
+                        i += 2;
+                        inMultiLineComment = false;
                     }
-                    spans.Add((pos, end + 2 - pos, commentColor));
-                    pos = end + 2;
-                    inMultiLineComment = false;
+                    else i++;
                     continue;
                 }
 
-                // Single-line comment //...
-                if (c == '/' && pos + 1 < text.Length && text[pos + 1] == '/')
+                // Single-line comment: //...\n
+                if (c == '/' && i + 1 < len && text[i + 1] == '/')
                 {
-                    int eol = text.IndexOf('\n', pos);
-                    int len = (eol == -1 ? text.Length : eol) - pos;
-                    spans.Add((pos, len, commentColor));
-                    pos = (eol == -1) ? text.Length : eol;
+                    int start = i;
+                    while (i < len && text[i] != '\n') i++;
+                    spans.Add((start, i - start, commentColor));
                     continue;
                 }
 
-                // Multi-line comment /* ... */
-                if (c == '/' && pos + 1 < text.Length && text[pos + 1] == '*')
+                // Multi-line comment start: /*
+                if (c == '/' && i + 1 < len && text[i + 1] == '*')
                 {
-                    pos += 2;
+                    i += 2;
                     inMultiLineComment = true;
                     continue;
                 }
 
-                // String literal "..."
+                // String: "..."
                 if (c == '"')
                 {
-                    int start = pos++;
-                    while (pos < text.Length)
+                    int start = i++;
+                    while (i < len)
                     {
-                        if (text[pos] == '\\' && pos + 1 < text.Length) { pos += 2; continue; }
-                        if (text[pos] == '"') { pos++; break; }
-                        pos++;
+                        char ch = text[i];
+                        if (ch == '\\' && i + 1 < len) { i += 2; continue; }
+                        if (ch == '"') { i++; break; }
+                        i++;
                     }
-                    spans.Add((start, pos - start, stringColor));
+                    spans.Add((start, i - start, stringColor));
                     continue;
                 }
 
-                // Verbatim string @ "..."
-                if (c == '@' && pos + 1 < text.Length && text[pos + 1] == '"')
+                // Verbatim string: @"..."
+                if (c == '@' && i + 1 < len && text[i + 1] == '"')
                 {
-                    int start = pos;
-                    pos += 2;
-                    while (pos < text.Length)
+                    int start = i;
+                    i += 2;
+                    while (i < len)
                     {
-                        if (text[pos] == '"')
+                        if (text[i] == '"')
                         {
-                            if (pos + 1 < text.Length && text[pos + 1] == '"') { pos += 2; continue; }
-                            pos++; break;
+                            if (i + 1 < len && text[i + 1] == '"') { i += 2; continue; }
+                            i++; break;
                         }
-                        pos++;
+                        i++;
                     }
-                    spans.Add((start, pos - start, stringColor));
+                    spans.Add((start, i - start, stringColor));
                     continue;
                 }
 
-                // Preprocessor (at line start)
-                if ((c == '#' || c == '!') && pos == linePos)
+                // Preprocessor at line start (# or !) — track line start inline
+                if ((c == '#' || c == '!') && (i == 0 || text[i - 1] == '\n'))
                 {
-                    int start = pos;
-                    while (pos < text.Length && !char.IsWhiteSpace(text[pos]) && text[pos] != '\n') pos++;
-                    // include remainder of line for visibility
-                    int eol = text.IndexOf('\n', pos);
-                    if (eol != -1) { pos = eol; }
-                    spans.Add((start, pos - start, preprocessorColor));
+                    int start = i;
+                    while (i < len && !char.IsWhiteSpace(text[i]) && text[i] != '\n') i++;
+                    spans.Add((start, i - start, preprocessorColor));
                     continue;
                 }
 
                 // Keyword / Identifier
                 if (char.IsLetter(c) || c == '_')
                 {
-                    int start = pos;
-                    while (pos < text.Length && (char.IsLetterOrDigit(text[pos]) || text[pos] == '_')) pos++;
-                    string word = text.Substring(start, pos - start);
+                    int start = i;
+                    while (i < len && (char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
+                    string word = text.Substring(start, i - start);
                     if (keywordSet.Contains(word) || typeSet.Contains(word))
-                        spans.Add((start, pos - start, keywordColor));
+                        spans.Add((start, i - start, keywordColor));
                     continue;
                 }
 
-                // Number
+                // Number literal
                 if (char.IsDigit(c))
                 {
-                    int start = pos;
-                    while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                    int start = i;
+                    while (i < len && char.IsDigit(text[i])) i++;
 
-                    // Decimal point with fraction
-                    if (pos < text.Length && text[pos] == '.')
+                    if (i < len && text[i] == '.')
                     {
-                        pos++;
-                        while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                        i++;
+                        while (i < len && char.IsDigit(text[i])) i++;
                     }
 
-                    // Exponent
-                    if (pos < text.Length && (text[pos] == 'e' || text[pos] == 'E'))
+                    if (i < len && (text[i] == 'e' || text[i] == 'E'))
                     {
-                        char after = (pos + 1 < text.Length) ? text[pos + 1] : '\0';
+                        char after = (i + 1 < len) ? text[i + 1] : '\0';
                         if (after == '+' || after == '-' || char.IsDigit(after))
                         {
-                            pos++;
+                            i++;
                             if (after == '+' || after == '-')
                             {
-                                if (pos < text.Length && char.IsDigit(text[pos]))
-                                    while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                                if (i < len && char.IsDigit(text[i]))
+                                    while (i < len && char.IsDigit(text[i])) i++;
                             }
-                            else while (pos < text.Length && char.IsDigit(text[pos])) pos++;
+                            else while (i < len && char.IsDigit(text[i])) i++;
                         }
                     }
 
-                    // Suffixes (floating, integer, decimal)
-                    while (pos < text.Length)
+                    while (i < len)
                     {
-                        char ch = text[pos];
+                        char ch = text[i];
                         if (ch == 'f' || ch == 'F' || ch == 'd' || ch == 'D' || ch == 'm' || ch == 'M' ||
                             ch == 'u' || ch == 'U' || ch == 'l' || ch == 'L')
                         {
-                            pos++;
-                            // Combined ul/lu
-                            if (pos < text.Length)
+                            i++;
+                            if (i < len)
                             {
-                                char ch2 = text[pos];
+                                char ch2 = text[i];
                                 if ((ch == 'u' || ch == 'U') && (ch2 == 'l' || ch2 == 'L') ||
                                     (ch == 'l' || ch == 'L') && (ch2 == 'u' || ch2 == 'U'))
-                                    pos++;
+                                    i++;
                             }
                         }
                         else break;
                     }
 
-                    spans.Add((start, pos - start, numberColor));
+                    spans.Add((start, i - start, numberColor));
                     continue;
                 }
 
-                pos++;
+                i++;
             }
 
-            // Apply spans in reverse order to preserve character positions
+            // Apply spans in reverse order to preserve positions
             foreach (var span in spans.OrderByDescending(s => s.start))
             {
                 textEditor.Select(span.start, span.length);
