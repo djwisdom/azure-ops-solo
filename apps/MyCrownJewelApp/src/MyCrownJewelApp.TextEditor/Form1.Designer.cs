@@ -152,6 +152,8 @@ partial class Form1
         statusBarMenuItem.Checked = true;
         wordWrapMenuItem = new ToolStripMenuItem("&Word Wrap", null, WordWrap_Click);
         wordWrapMenuItem.Checked = true;
+        gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
+        gutterMenuItem.Checked = true;
 
         themeMenu = new ToolStripMenuItem("&Theme");
         darkThemeMenuItem = new ToolStripMenuItem("&Dark", null, DarkTheme_Click);
@@ -160,7 +162,7 @@ partial class Form1
 
         viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
             zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
-            new ToolStripSeparator(), themeMenu
+            gutterMenuItem, new ToolStripSeparator(), themeMenu
         });
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });

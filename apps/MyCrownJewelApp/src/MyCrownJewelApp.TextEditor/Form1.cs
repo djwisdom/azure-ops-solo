@@ -2,7 +2,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using System.Windows.Forms;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -92,6 +91,7 @@ public partial class Form1 : Form
         UpdateSyntaxHighlightingColors();
         UpdateStatusBar();
         UpdateTitle();
+        UpdateGutterVisibility();
 
         // Initialize debounced syntax highlighting timer
         syntaxHighlightTimer = new System.Windows.Forms.Timer();
@@ -99,10 +99,7 @@ public partial class Form1 : Form
         syntaxHighlightTimer.Tick += (s, e) =>
         {
             syntaxHighlightTimer.Stop();
-            if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-            {
-                ApplySyntaxHighlighting();
-            }
+            ApplySyntaxHighlightingIfCSharp();
         };
     }
 
@@ -122,10 +119,13 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
             lastHighlightedLine = -1;
+            currentCaretLine = -1;
+            UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -165,11 +165,14 @@ public partial class Form1 : Form
             
             currentFile = filePath;
             fileModified = false;
+            currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
             lastHighlightedLine = -1;
+            currentCaretLine = -1;
             ApplySyntaxHighlightingIfCSharp();
+            UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -240,10 +243,13 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
             lastHighlightedLine = -1;
+            currentCaretLine = -1;
+            UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -262,10 +268,13 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
             collapsedRegions.Clear();
             lastHighlightedLine = -1;
+            currentCaretLine = -1;
+            UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
             UpdateTitle();
@@ -411,6 +420,37 @@ public partial class Form1 : Form
         wordWrapEnabled = !wordWrapEnabled;
         wordWrapMenuItem.Checked = wordWrapEnabled;
         textEditor.WordWrap = wordWrapEnabled;
+    }
+
+    private void GutterMenuItem_Click(object sender, EventArgs e)
+    {
+        gutterUserOverride = !gutterUserOverride;
+        gutterMenuItem.Checked = gutterUserOverride;
+        UpdateGutterVisibility();
+    }
+
+    private void UpdateGutterVisibility()
+    {
+        bool shouldShow = gutterUserOverride;
+        if (!shouldShow && currentFile != null)
+        {
+            string ext = Path.GetExtension(currentFile);
+            shouldShow = ext.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".cpp", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".c", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".bicep", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".tf", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".yml", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".sh", StringComparison.OrdinalIgnoreCase);
+        }
+        if (gutterVisible != shouldShow)
+        {
+            gutterVisible = shouldShow;
+            gutterPanel.Visible = gutterVisible;
+            mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
+        }
     }
 
     private void DarkTheme_Click(object sender, EventArgs e)
@@ -592,9 +632,33 @@ public partial class Form1 : Form
 
     private void ApplySyntaxHighlightingIfCSharp()
     {
-        if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        if (currentFile != null)
         {
-            ApplySyntaxHighlighting();
+            currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
+            if (currentSyntax != null)
+            {
+                ApplySyntaxHighlighting();
+            }
+            else
+            {
+                ClearSyntaxHighlighting();
+            }
+        }
+    }
+
+    private void ClearSyntaxHighlighting()
+    {
+        suppressSelectionChanged = true;
+        try
+        {
+            BeginUpdate(textEditor);
+            textEditor.SelectAll();
+            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            EndUpdate(textEditor);
+        }
+        finally
+        {
+            suppressSelectionChanged = false;
         }
     }
 
@@ -613,9 +677,10 @@ public partial class Form1 : Form
 
     private void ApplySyntaxHighlighting()
     {
+        if (currentSyntax == null) return;
+
         int selectionStart = textEditor.SelectionStart;
         int selectionLength = textEditor.SelectionLength;
-        string text = textEditor.Text;
 
         suppressSelectionChanged = true;
         try
@@ -625,11 +690,56 @@ public partial class Form1 : Form
             textEditor.SelectAll();
             textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
-            HighlightKeywords(text);
-            HighlightStrings(text);
-            HighlightComments(text);
-            HighlightNumbers(text);
-            HighlightPreprocessor(text);
+            // Keywords
+            foreach (var keyword in currentSyntax.Keywords)
+            {
+                HighlightPattern(@"\b" + keyword + @"\b", keywordColor);
+            }
+
+            // Types (if defined)
+            if (currentSyntax.Types != null)
+            {
+                foreach (var type in currentSyntax.Types)
+                {
+                    HighlightPattern(@"\b" + type + @"\b", keywordColor);
+                }
+            }
+
+            // Strings
+            if (!string.IsNullOrEmpty(currentSyntax.StringPattern))
+            {
+                HighlightPattern(currentSyntax.StringPattern, stringColor);
+            }
+
+            // Comments
+            if (!string.IsNullOrEmpty(currentSyntax.CommentPattern))
+            {
+                HighlightPattern(currentSyntax.CommentPattern, commentColor);
+            }
+
+            // Multi-line comments
+            if (currentSyntax.MultiLineCommentPatterns != null)
+            {
+                foreach (var pattern in currentSyntax.MultiLineCommentPatterns)
+                {
+                    HighlightPattern(pattern, commentColor, RegexOptions.Singleline);
+                }
+            }
+
+            // Preprocessor
+            if (currentSyntax.Preprocessor != null && currentSyntax.Preprocessor.Length > 0)
+            {
+                foreach (var pp in currentSyntax.Preprocessor)
+                {
+                    HighlightPattern(@"^\s*" + pp + @"\b", preprocessorColor, RegexOptions.Multiline);
+                }
+            }
+
+            // Numbers
+            if (!string.IsNullOrEmpty(currentSyntax.NumberPattern))
+            {
+                HighlightPattern(currentSyntax.NumberPattern, numberColor);
+            }
 
             textEditor.SelectionStart = selectionStart;
             textEditor.SelectionLength = selectionLength;
@@ -641,51 +751,9 @@ public partial class Form1 : Form
         {
             suppressSelectionChanged = false;
         }
-    }
+     }
 
-    private void HighlightKeywords(string text)
-    {
-        string[] keywords = {
-            "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char", "checked",
-            "class", "const", "continue", "decimal", "default", "delegate", "do", "double", "else",
-            "enum", "event", "explicit", "extern", "false", "finally", "fixed", "float", "for",
-            "foreach", "goto", "if", "implicit", "in", "int", "interface", "internal", "is", "lock",
-            "long", "namespace", "new", "null", "object", "operator", "out", "override", "params",
-            "private", "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
-            "short", "sizeof", "stackalloc", "static", "string", "struct", "switch", "this", "throw",
-            "true", "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using",
-            "virtual", "void", "volatile", "while", "async", "await", "record", "init"
-        };
-
-        foreach (var keyword in keywords)
-        {
-            HighlightPattern(@"\b" + keyword + @"\b", keywordColor);
-        }
-    }
-
-    private void HighlightStrings(string text)
-    {
-        HighlightPattern(@"""([^""\\]|\\.)*""", stringColor);
-        HighlightPattern(@"@""([^""]|"""")*""", stringColor);
-    }
-
-    private void HighlightComments(string text)
-    {
-        HighlightPattern(@"//.*$", commentColor);
-        HighlightPattern(@"/\*.*?\*/", commentColor, RegexOptions.Singleline);
-    }
-
-    private void HighlightNumbers(string text)
-    {
-        HighlightPattern(@"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b", numberColor);
-    }
-
-    private void HighlightPreprocessor(string text)
-    {
-        HighlightPattern(@"^\s*#\w+", preprocessorColor, RegexOptions.Multiline);
-    }
-
-    private void HighlightPattern(string pattern, Color color, RegexOptions options = RegexOptions.None)
+     private void HighlightPattern(string pattern, Color color, RegexOptions options = RegexOptions.None)
     {
         try
         {
