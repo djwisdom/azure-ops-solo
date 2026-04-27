@@ -452,26 +452,27 @@ public partial class Form1 : Form
 
     private void ApplyTheme(bool dark)
     {
-        Color backColor = dark ? darkBackColor : lightBackColor;
-        Color foreColor = dark ? darkForeColor : lightForeColor;
-        Color menuBackColor = dark ? darkMenuBackColor : lightMenuBackColor;
-        Color menuForeColor = dark ? darkMenuForeColor : lightMenuForeColor;
-        Color statusBackColor = dark ? darkStatusBackColor : lightStatusBackColor;
-        Color statusForeColor = dark ? darkStatusForeColor : lightStatusForeColor;
         Color editorBackColor = dark ? darkEditorBackColor : lightEditorBackColor;
         Color editorForeColor = dark ? darkEditorForeColor : lightEditorForeColor;
 
-        BackColor = backColor;
-        ForeColor = foreColor;
+        // Unified: all UI elements use editor's colors
+        BackColor = editorBackColor;
+        ForeColor = editorForeColor;
 
-        menuStrip.BackColor = menuBackColor;
-        menuStrip.ForeColor = menuForeColor;
+        menuStrip.BackColor = editorBackColor;
+        menuStrip.ForeColor = editorForeColor;
 
         textEditor.BackColor = editorBackColor;
         textEditor.ForeColor = editorForeColor;
 
-        statusStrip.BackColor = statusBackColor;
-        statusStrip.ForeColor = statusForeColor;
+        statusStrip.BackColor = editorBackColor;
+        statusStrip.ForeColor = editorForeColor;
+
+        // Gutter matches editor background
+        if (gutterPanel != null)
+        {
+            gutterPanel.BackColor = editorBackColor;
+        }
     }
 
     private void UpdateSyntaxHighlightingColors()
