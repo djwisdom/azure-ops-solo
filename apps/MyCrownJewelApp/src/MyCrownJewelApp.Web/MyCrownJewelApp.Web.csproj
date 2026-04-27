@@ -11,10 +11,11 @@
     <ProjectReference Include="..\MyCrownJewelApp.Core\MyCrownJewelApp.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Azure SDK packages -->
-    <PackageReference Include="Azure.Identity" Version="1.11.*" />
-    <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.6.*" />
-  </ItemGroup>
+   <ItemGroup>
+     <!-- Azure SDK packages -->
+     <PackageReference Include="Azure.Identity" Version="1.11.*" />
+     <PackageReference Include="Azure.Security.KeyVault.Secrets" Version="4.6.*" />
+     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="8.0.*" />
+   </ItemGroup>
 
 </Project>
