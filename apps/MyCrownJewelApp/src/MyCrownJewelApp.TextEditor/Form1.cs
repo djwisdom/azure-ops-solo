@@ -682,18 +682,27 @@ public partial class Form1 : Form
                 
                 var text = textEditor.Text;
                 var spans = ComputeSpans(text, keywords, types);
-                ApplySpans(spans, textEditor.SelectionStart, textEditor.SelectionLength);
+                int selStart = textEditor.SelectionStart;
+                int selLength = textEditor.SelectionLength;
+
+                if (textEditor.IsHandleCreated && !textEditor.IsDisposed && !textEditor.Disposing)
+                {
+                    textEditor.Invoke((Action)(() => ApplySpans(spans, selStart, selLength)));
+                }
             }
             else
             {
-                ClearSyntaxHighlighting();
+                if (textEditor.IsHandleCreated && !textEditor.IsDisposed && !textEditor.Disposing)
+                {
+                    textEditor.Invoke((Action)ClearSyntaxHighlighting);
+                }
             }
         }
     }
 
     private List<(int start, int length, Color color)> ComputeSpans(string text, HashSet<string> keywords, HashSet<string> types)
     {
-        var spans = new List<(int start, int length, Color color)>();
+        var raw = new List<(int start, int length, Color color)>();
         int i = 0;
         int len = text.Length;
         bool inMultiLineComment = false;
@@ -707,7 +716,7 @@ public partial class Form1 : Form
             {
                 if (i + 1 < len && text[i] == '*' && text[i + 1] == '/')
                 {
-                    spans.Add((i, 2, commentColor));
+                    raw.Add((i, 2, commentColor));
                     i += 2;
                     inMultiLineComment = false;
                 }
@@ -720,7 +729,7 @@ public partial class Form1 : Form
             {
                 int start = i;
                 while (i < len && text[i] != '\n') i++;
-                spans.Add((start, i - start, commentColor));
+                raw.Add((start, i - start, commentColor));
                 continue;
             }
 
@@ -743,7 +752,7 @@ public partial class Form1 : Form
                     if (ch == '"') { i++; break; }
                     i++;
                 }
-                spans.Add((start, i - start, stringColor));
+                raw.Add((start, i - start, stringColor));
                 continue;
             }
 
@@ -761,7 +770,7 @@ public partial class Form1 : Form
                     }
                     i++;
                 }
-                spans.Add((start, i - start, stringColor));
+                raw.Add((start, i - start, stringColor));
                 continue;
             }
 
@@ -770,7 +779,7 @@ public partial class Form1 : Form
             {
                 int start = i;
                 while (i < len && !char.IsWhiteSpace(text[i]) && text[i] != '\n') i++;
-                spans.Add((start, i - start, preprocessorColor));
+                raw.Add((start, i - start, preprocessorColor));
                 continue;
             }
 
@@ -781,7 +790,7 @@ public partial class Form1 : Form
                 while (i < len && (char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
                 string word = text.Substring(start, i - start);
                 if (keywords.Contains(word) || types.Contains(word))
-                    spans.Add((start, i - start, keywordColor));
+                    raw.Add((start, i - start, keywordColor));
                 continue;
             }
 
@@ -830,11 +839,27 @@ public partial class Form1 : Form
                     else break;
                 }
 
-                spans.Add((start, i - start, numberColor));
+                raw.Add((start, i - start, numberColor));
                 continue;
             }
 
             i++;
+        }
+
+        // Merge adjacent spans with same color to reduce Select() calls
+        var spans = new List<(int start, int length, Color color)>();
+        foreach (var span in raw)
+        {
+            if (span.length <= 0) continue;
+            if (spans.Count > 0 && spans[^1].color.ToArgb() == span.color.ToArgb() && spans[^1].start + spans[^1].length == span.start)
+            {
+                var last = spans[^1];
+                spans[^1] = (last.start, last.length + span.length, last.color);
+            }
+            else
+            {
+                spans.Add(span);
+            }
         }
 
         return spans;
@@ -842,32 +867,38 @@ public partial class Form1 : Form
 
     private void ApplySpans(List<(int start, int length, Color color)> spans, int selStart, int selLength)
     {
-        suppressSelectionChanged = true;
         try
         {
-            BeginUpdate(textEditor);
-
-            // Reset all to default first
-            textEditor.SelectAll();
-            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-
-            // Apply highlights in reverse order
-            foreach (var span in spans.OrderByDescending(s => s.start))
+            if (textEditor.IsDisposed || textEditor.Disposing || !textEditor.IsHandleCreated) return;
+            
+            suppressSelectionChanged = true;
+            try
             {
-                textEditor.Select(span.start, span.length);
-                textEditor.SelectionColor = span.color;
+                BeginUpdate(textEditor);
+
+                // Reset all to default first
+                textEditor.SelectAll();
+                textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+                // Apply highlights in reverse order
+                foreach (var span in spans.OrderByDescending(s => s.start))
+                {
+                    textEditor.Select(span.start, span.length);
+                    textEditor.SelectionColor = span.color;
+                }
+
+                textEditor.SelectionStart = selStart;
+                textEditor.SelectionLength = selLength;
+                textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+                EndUpdate(textEditor);
             }
-
-            textEditor.SelectionStart = selStart;
-            textEditor.SelectionLength = selLength;
-            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-
-            EndUpdate(textEditor);
+            finally
+            {
+                suppressSelectionChanged = false;
+            }
         }
-        finally
-        {
-            suppressSelectionChanged = false;
-        }
+        catch { }
     }
 
     private void ClearSyntaxHighlighting()
