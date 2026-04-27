@@ -8,4 +8,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Avalonia core packages (11.0.0) -->
+    <PackageReference Include="Avalonia.Base" Version="11.0.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.0" />
+    <PackageReference Include="Avalonia.Win32" Version="11.0.0" />
+    <!-- Terminal control -->
+    <PackageReference Include="Avalonia.Controls.Terminal" Version="11.0.0" />
+    <!-- ConPTY for Windows (only on Windows) -->
+    <PackageReference Include="Conpty.Net" Version="0.5.0" />
+  </ItemGroup>
+
+  <!-- Include terminal source files directly in this project -->
+  <ItemGroup>
+    <Compile Include="Terminal\TerminalManager.cs" />
+    <Compile Include="Terminal\TerminalPane.axaml.cs">
+      <DependentUpon>TerminalPane.axaml</DependentUpon>
+    </Compile>
+    <AvaloniaXaml Include="Terminal\TerminalPane.axaml">
+      <Generator>AvaloniaXamlGenerator</Generator>
+      <LastGenOutput>TerminalPane.axaml.cs</LastGenOutput>
+    </AvaloniaXaml>
+  </ItemGroup>
+
 </Project>

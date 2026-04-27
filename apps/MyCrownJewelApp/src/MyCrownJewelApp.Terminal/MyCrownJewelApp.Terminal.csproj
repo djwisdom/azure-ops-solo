@@ -5,19 +5,19 @@
     <OutputType>Library</OutputType>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Avalonia settings -->
-    <DefineConstants>AVALONIA</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Avalonia core + terminal control -->
     <PackageReference Include="Avalonia.Base" Version="11.0.0" />
     <PackageReference Include="Avalonia.Desktop" Version="11.0.0" />
-    <PackageReference Include="Avalonia.TerminalControl" Version="2.0.0" />
+    <PackageReference Include="Avalonia.Controls.Terminal" Version="2.0.0" />
     <PackageReference Include="Avalonia.Win32" Version="11.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <!-- ConPTY for Windows -->
     <PackageReference Include="Conpty.Net" Version="0.5.0" />
-    <!-- Unix PTY via System.Diagnostics.Process (no extra package needed) -->
   </ItemGroup>
 
 </Project>

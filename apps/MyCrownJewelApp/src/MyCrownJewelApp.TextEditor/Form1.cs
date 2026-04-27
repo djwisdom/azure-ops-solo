@@ -7,6 +7,8 @@ using System.IO;
 using System.Text.Json;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia.Win32;
+using MyCrownJewelApp.Terminal;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -92,6 +94,13 @@ public partial class Form1 : Form
     private SyntaxDefinition currentSyntax;
     private List<(int start, int length, Color color)> lastComputedSpans = null;
     private System.Windows.Forms.Timer scrollTimer;
+    private ToolStripMenuItem? terminalMenuItem;
+
+    // Embedded terminal (Avalonia host)
+    private Panel? terminalPanel;
+    private AvaloniaHost? terminalHost;
+    private TerminalPane? terminalPane;
+    private bool terminalVisible = false;
 
     public Form1()
     {
@@ -106,6 +115,20 @@ public partial class Form1 : Form
         UpdateGutterVisibility();
         LoadRecentFiles();
         PopulateRecentMenu();
+
+        // Add Terminal toggle to View menu
+        terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal);
+        terminalMenuItem.Checked = terminalVisible;
+        viewMenu.DropDownItems.Add(terminalMenuItem);
+
+        // Expand mainTable to two rows: editor on top, terminal below
+        mainTable.RowCount = 2;
+        mainTable.RowStyles.Add(new RowStyle(SizeType.Absolute, 0)); // start hidden (0 height)
+
+        // Create the terminal panel and place it in row 1, spanning both columns
+        InitTerminalPanel();
+        mainTable.Controls.Add(terminalPanel, 0, 1);
+        mainTable.SetColumnSpan(terminalPanel, 2);
 
         // Initialize debounced syntax highlighting timer
         syntaxHighlightTimer = new System.Windows.Forms.Timer();
@@ -158,7 +181,92 @@ public partial class Form1 : Form
             scrollTimer.Stop();
             ApplyVisibleSpans();
         };
+
+        // Initialize embedded terminal (hidden by default)
+        InitTerminalPanel();
+
+        // Ensure terminal resources are released on exit
+        this.FormClosed += (s, e) => terminalPane?.Dispose();
     }
+
+    #region Terminal
+
+    /// <summary>
+    /// Creates the embedded terminal panel (Avalonia host) and hides it initially.
+    /// </summary>
+    private void InitTerminalPanel()
+    {
+        // Panel that will host the Avalonia terminal control; will be placed in mainTable row 1
+        terminalPanel = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Visible = false
+        };
+
+        // AvaloniaHost is a WinForms control that hosts an Avalonia visual tree
+        terminalHost = new AvaloniaHost
+        {
+            Dock = DockStyle.Fill
+        };
+        terminalPanel.Controls.Add(terminalHost);
+    }
+
+    /// <summary>
+    /// Toggles terminal visibility via View → Terminal menu.
+    /// </summary>
+    private void ToggleTerminal(object? sender, EventArgs e)
+    {
+        if (terminalPanel == null) return;
+
+        terminalVisible = !terminalVisible;
+        terminalPanel.Visible = terminalVisible;
+        terminalMenuItem.Checked = terminalVisible;
+
+        // Adjust the terminal row height: 300 when visible, 0 when hidden
+        if (mainTable.RowCount >= 2)
+        {
+            mainTable.RowStyles[1].Height = terminalVisible ? 300 : 0;
+        }
+
+        if (terminalVisible)
+        {
+            // Lazily create the TerminalPane and assign to host
+            if (terminalPane == null)
+            {
+                terminalPane = new TerminalPane();
+                terminalHost.Content = terminalPane;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sends the current editor line (or selected text) to the terminal.
+    /// </summary>
+    private void SendLineToTerminal()
+    {
+        if (terminalPane == null || !terminalVisible) return;
+
+        string? text = null;
+        if (textEditor.SelectionLength > 0)
+        {
+            text = textEditor.SelectedText;
+        }
+        else
+        {
+            // Get current line text
+            int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+            var lines = textEditor.Lines;
+            if (lineIndex >= 0 && lineIndex < lines.Length)
+                text = lines[lineIndex];
+        }
+
+        if (!string.IsNullOrEmpty(text))
+        {
+            terminalPane.SendInput(text + "\n");
+        }
+    }
+
+    #endregion
 
     #region Properties
 
