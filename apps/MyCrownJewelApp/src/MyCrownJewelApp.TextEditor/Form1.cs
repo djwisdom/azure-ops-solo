@@ -90,6 +90,8 @@ public partial class Form1 : Form
     private bool gutterVisible = true;
     private bool gutterUserOverride = false;
     private SyntaxDefinition currentSyntax;
+    private List<(int start, int length, Color color)> lastComputedSpans = null;
+    private System.Windows.Forms.Timer scrollTimer;
 
     public Form1()
     {
@@ -129,15 +131,32 @@ public partial class Form1 : Form
                     if (syntax != null)
                     {
                         var spans = ComputeSpans(text, keywords, types);
-                        textEditor.Invoke((Action)(() => ApplySpans(spans, selStart, selLength)));
+                        textEditor.Invoke((Action)(() =>
+                        {
+                            lastComputedSpans = spans;
+                            ApplyVisibleSpans();
+                        }));
                     }
                     else
                     {
-                        textEditor.Invoke((Action)ClearSyntaxHighlighting);
+                        textEditor.Invoke((Action)(() =>
+                        {
+                            lastComputedSpans = null;
+                            ClearSyntaxHighlighting();
+                        }));
                     }
                 });
             }
             catch { }
+        };
+
+        // Initialize scroll debounce timer for visible-region highlighting
+        scrollTimer = new System.Windows.Forms.Timer();
+        scrollTimer.Interval = 100; // ms
+        scrollTimer.Tick += (s, e) =>
+        {
+            scrollTimer.Stop();
+            ApplyVisibleSpans();
         };
     }
 
@@ -158,6 +177,7 @@ public partial class Form1 : Form
             currentFile = null;
             fileModified = false;
             originalText = null;
+            lastComputedSpans = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -205,6 +225,7 @@ public partial class Form1 : Form
             currentFile = filePath;
             fileModified = false;
             originalText = fileContent;
+            lastComputedSpans = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -287,6 +308,7 @@ public partial class Form1 : Form
             currentFile = null;
             fileModified = false;
             originalText = null;
+            lastComputedSpans = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -313,6 +335,7 @@ public partial class Form1 : Form
             currentFile = null;
             fileModified = false;
             originalText = null;
+            lastComputedSpans = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -671,9 +694,6 @@ public partial class Form1 : Form
     {
         if (currentFile != null)
         {
-            // Skip highlighting for large files (>50 KB) to keep UI responsive
-            if (textEditor.TextLength > 51200) return;
-
             var syntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
             
             if (syntax != null)
@@ -690,14 +710,22 @@ public partial class Form1 : Form
 
                 if (textEditor.IsHandleCreated && !textEditor.IsDisposed && !textEditor.Disposing)
                 {
-                    textEditor.Invoke((Action)(() => ApplySpans(spans, selStart, selLength)));
+                    textEditor.Invoke((Action)(() =>
+                    {
+                        lastComputedSpans = spans;
+                        ApplyVisibleSpans();
+                    }));
                 }
             }
             else
             {
                 if (textEditor.IsHandleCreated && !textEditor.IsDisposed && !textEditor.Disposing)
                 {
-                    textEditor.Invoke((Action)ClearSyntaxHighlighting);
+                    textEditor.Invoke((Action)(() =>
+                    {
+                        lastComputedSpans = null;
+                        ClearSyntaxHighlighting();
+                    }));
                 }
             }
         }
@@ -924,6 +952,53 @@ public partial class Form1 : Form
         }
     }
 
+    private void ApplyVisibleSpans()
+    {
+        if (lastComputedSpans == null) return;
+        if (textEditor.IsDisposed || textEditor.Disposing || !textEditor.IsHandleCreated) return;
+
+        try
+        {
+            int selStart = textEditor.SelectionStart;
+            int selLength = textEditor.SelectionLength;
+
+            // Compute visible character range
+            Point topLeft = new Point(0, 0);
+            Point bottomLeft = new Point(0, Math.Max(0, textEditor.ClientSize.Height - 1));
+            int visibleStart = textEditor.GetCharIndexFromPosition(topLeft);
+            int visibleEnd = textEditor.GetCharIndexFromPosition(bottomLeft);
+            if (visibleStart < 0) visibleStart = 0;
+            if (visibleEnd < 0) visibleEnd = textEditor.TextLength - 1;
+            if (visibleStart > visibleEnd) { int tmp = visibleStart; visibleStart = visibleEnd; visibleEnd = tmp; }
+
+            suppressSelectionChanged = true;
+            BeginUpdate(textEditor);
+
+            // Reset all to default first
+            textEditor.SelectAll();
+            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+            // Apply only spans that intersect visible region
+            foreach (var span in lastComputedSpans)
+            {
+                if (span.start <= visibleEnd && span.start + span.length >= visibleStart)
+                {
+                    textEditor.Select(span.start, span.length);
+                    textEditor.SelectionColor = span.color;
+                }
+            }
+
+            textEditor.SelectionStart = selStart;
+            textEditor.SelectionLength = selLength;
+            EndUpdate(textEditor);
+        }
+        catch { }
+        finally
+        {
+            suppressSelectionChanged = false;
+        }
+    }
+
     private void UpdateModifiedLinesFromText()
     {
         // Simplified: mark all non-empty lines as modified (for demo)
@@ -965,11 +1040,14 @@ public partial class Form1 : Form
     private void TextEditor_VScroll(object sender, EventArgs e)
     {
         gutterPanel.RefreshGutter();
+        scrollTimer?.Stop();
+        scrollTimer?.Start();
     }
 
     private void TextEditor_Resize(object sender, EventArgs e)
     {
         gutterPanel.RefreshGutter();
+        ApplyVisibleSpans();
     }
 
     #endregion
