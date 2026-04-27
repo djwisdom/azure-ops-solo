@@ -2,6 +2,9 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -36,6 +39,10 @@ public partial class Form1 : Form
     private bool wordWrapEnabled = true;
     private string findText = "";
     private bool isCaseSensitive = false;
+
+    // Recent files
+    private List<string> recentFiles = new();
+    private const string RecentFilesConfig = "recentfiles.json";
 
     // Theme tracking
     private bool isDarkTheme = true;
@@ -92,6 +99,8 @@ public partial class Form1 : Form
         UpdateStatusBar();
         UpdateTitle();
         UpdateGutterVisibility();
+        LoadRecentFiles();
+        PopulateRecentMenu();
 
         // Initialize debounced syntax highlighting timer
         syntaxHighlightTimer = new System.Windows.Forms.Timer();
@@ -171,6 +180,7 @@ public partial class Form1 : Form
             collapsedRegions.Clear();
             lastHighlightedLine = -1;
             currentCaretLine = -1;
+            AddToRecentFiles(filePath);
             ApplySyntaxHighlightingIfCSharp();
             UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
@@ -944,6 +954,94 @@ public partial class Form1 : Form
         }
         return true;
     }
+
+    #region Recent Files
+
+    private void LoadRecentFiles()
+    {
+        try
+        {
+            string configPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MyCrownJewelApp",
+                RecentFilesConfig);
+            
+            if (File.Exists(configPath))
+            {
+                string json = File.ReadAllText(configPath);
+                recentFiles = JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+            }
+        }
+        catch { recentFiles = new List<string>(); }
+    }
+
+    private void SaveRecentFiles()
+    {
+        try
+        {
+            string configDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MyCrownJewelApp");
+            Directory.CreateDirectory(configDir);
+            string configPath = Path.Combine(configDir, RecentFilesConfig);
+            
+            string json = JsonSerializer.Serialize(recentFiles.Take(10).ToList());
+            File.WriteAllText(configPath, json);
+        }
+        catch { }
+    }
+
+    private void AddToRecentFiles(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return;
+        
+        recentFiles.Remove(filePath);
+        recentFiles.Insert(0, filePath);
+        if (recentFiles.Count > 10) recentFiles.RemoveRange(10, recentFiles.Count - 10);
+        
+        SaveRecentFiles();
+        PopulateRecentMenu();
+    }
+
+    private void PopulateRecentMenu()
+    {
+        recentMenuItem.DropDownItems.Clear();
+        
+        if (recentFiles.Count == 0)
+        {
+            recentMenuItem.Enabled = false;
+            recentMenuItem.DropDownItems.Add("(No recent files)", null, null);
+        }
+        else
+        {
+            recentMenuItem.Enabled = true;
+            foreach (string file in recentFiles)
+            {
+                string displayPath = file;
+                if (file.Length > 50)
+                {
+                    displayPath = "..." + file.Substring(file.Length - 47);
+                }
+                var item = new ToolStripMenuItem(displayPath, null, (s, e) => OpenRecentFile(file));
+                recentMenuItem.DropDownItems.Add(item);
+            }
+        }
+    }
+
+    private void OpenRecentFile(string filePath)
+    {
+        if (File.Exists(filePath) && CheckUnsavedChanges())
+        {
+            OpenFile(filePath);
+        }
+        else
+        {
+            recentFiles.Remove(filePath);
+            PopulateRecentMenu();
+        }
+    }
+
+    #endregion
 
     private void FindText(string text, bool backward)
     {

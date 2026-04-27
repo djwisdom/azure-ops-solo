@@ -170,7 +170,7 @@ partial class Form1
         // Main Table Layout (2 columns: gutter, editor)
         mainTable = new TableLayoutPanel();
         mainTable.ColumnCount = 2;
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
