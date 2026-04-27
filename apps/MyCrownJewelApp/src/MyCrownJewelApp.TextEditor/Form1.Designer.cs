@@ -52,8 +52,9 @@ partial class Form1
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
 
+    private GutterPanel gutterPanel;
+    private Panel mainPanel;
     internal RichTextBox textEditor;
-    internal GutterPanel gutterPanel;
     private StatusStrip statusStrip;
     private ToolStripStatusLabel lineColLabel;
     private ToolStripStatusLabel charCountLabel;
@@ -163,6 +164,10 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
+        // Main Panel (contains gutter + editor)
+        mainPanel = new Panel();
+        mainPanel.Dock = DockStyle.Fill;
+
         // Gutter Panel
         gutterPanel = new GutterPanel(this);
         gutterPanel.Dock = DockStyle.Left;
@@ -177,6 +182,10 @@ partial class Form1
         textEditor.SelectionChanged += TextEditor_SelectionChanged;
         textEditor.VScroll += TextEditor_VScroll;
 
+        // Assemble main panel
+        mainPanel.Controls.Add(gutterPanel);
+        mainPanel.Controls.Add(textEditor);
+
         // Status Strip
         statusStrip = new StatusStrip();
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
@@ -190,10 +199,9 @@ partial class Form1
             zoomLabel, lineEndingsLabel, encodingLabel
         });
 
-        // Add controls in proper z-order (docking order matters)
+        // Add controls in proper z-order
         Controls.Add(menuStrip);
-        Controls.Add(gutterPanel);
-        Controls.Add(textEditor);
+        Controls.Add(mainPanel);
         Controls.Add(statusStrip);
 
         // Set main menu strip

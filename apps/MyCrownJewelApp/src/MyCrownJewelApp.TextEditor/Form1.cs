@@ -1,10 +1,27 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 
 namespace MyCrownJewelApp.TextEditor;
 
 public partial class Form1 : Form
 {
+    // Win32 API for flicker-free updates
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    private const int WM_SETREDRAW = 0x0B;
+
+    private void BeginUpdate(RichTextBox control)
+    {
+        SendMessage(control.Handle, WM_SETREDRAW, 0, 0);
+    }
+
+    private void EndUpdate(RichTextBox control)
+    {
+        SendMessage(control.Handle, WM_SETREDRAW, 1, 0);
+        control.Invalidate();
+    }
+
     // State fields
     private string currentFile = null;
     private bool fileModified = false;
@@ -48,6 +65,9 @@ public partial class Form1 : Form
 
     // Code folding state (collapsed regions)
     private HashSet<int> collapsedRegions = new();
+
+    // Current line highlighting
+    private bool isHighlighting = false;
 
     public Form1()
     {
@@ -111,7 +131,12 @@ public partial class Form1 : Form
         try
         {
             var encoding = Encoding.UTF8;
-            textEditor.Text = File.ReadAllText(filePath, encoding);
+            string fileContent = File.ReadAllText(filePath, encoding);
+            
+            BeginUpdate(textEditor);
+            textEditor.Text = fileContent;
+            EndUpdate(textEditor);
+            
             currentFile = filePath;
             fileModified = false;
             bookmarks.Clear();
@@ -368,6 +393,7 @@ public partial class Form1 : Form
         {
             ApplySyntaxHighlighting();
         }
+        HighlightCurrentLine();
         gutterPanel.RefreshGutter();
         darkThemeMenuItem.Checked = isDarkTheme;
         lightThemeMenuItem.Checked = !isDarkTheme;
@@ -382,6 +408,7 @@ public partial class Form1 : Form
         {
             ApplySyntaxHighlighting();
         }
+        HighlightCurrentLine();
         gutterPanel.RefreshGutter();
         darkThemeMenuItem.Checked = isDarkTheme;
         lightThemeMenuItem.Checked = !isDarkTheme;
@@ -541,20 +568,6 @@ public partial class Form1 : Form
         }
     }
 
-    private void TextEditor_TextChanged(object sender, EventArgs e)
-    {
-        fileModified = true;
-        UpdateStatusBar();
-        UpdateTitle();
-        UpdateModifiedLinesFromText();
-
-        if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            ApplySyntaxHighlighting();
-        }
-        gutterPanel.RefreshGutter();
-    }
-
     private void TextEditor_VScroll(object sender, EventArgs e)
     {
         gutterPanel.RefreshGutter();
@@ -662,6 +675,55 @@ public partial class Form1 : Form
     private void TextEditor_SelectionChanged(object sender, EventArgs e)
     {
         UpdateStatusBar();
+        HighlightCurrentLine();
+    }
+
+    private void TextEditor_TextChanged(object sender, EventArgs e)
+    {
+        fileModified = true;
+        UpdateStatusBar();
+        UpdateTitle();
+        UpdateModifiedLinesFromText();
+
+        if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplySyntaxHighlighting();
+        }
+        HighlightCurrentLine();
+        gutterPanel.RefreshGutter();
+    }
+
+    #endregion
+
+    #region Current Line Highlight
+
+    private void HighlightCurrentLine()
+    {
+        if (isHighlighting) return;
+        isHighlighting = true;
+        try
+        {
+            int selStart = textEditor.SelectionStart;
+            int selLength = textEditor.SelectionLength;
+            int lineIndex = textEditor.GetLineFromCharIndex(selStart);
+            int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
+            if (lineStart < 0) return;
+
+            string lineText = textEditor.Lines[lineIndex];
+            int lineLength = lineText.Length;
+
+            // Temporarily select the line and apply background
+            textEditor.Select(lineStart, lineLength);
+            textEditor.SelectionBackColor = isDarkTheme ? Color.FromArgb(60, 60, 60) : Color.FromArgb(230, 230, 230);
+
+            // Restore original selection
+            textEditor.SelectionStart = selStart;
+            textEditor.SelectionLength = selLength;
+        }
+        finally
+        {
+            isHighlighting = false;
+        }
     }
 
     #endregion
@@ -828,6 +890,7 @@ public partial class Form1 : Form
             textEditor.SelectionLength = 0;
             textEditor.ScrollToCaret();
             UpdateStatusBar();
+            HighlightCurrentLine();
             gutterPanel.RefreshGutter();
         }
     }
