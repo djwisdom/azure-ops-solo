@@ -90,10 +90,6 @@ public partial class Form1 : Form
     private bool gutterVisible = true;
     private bool gutterUserOverride = false;
     private SyntaxDefinition currentSyntax;
-    
-    // Fast lookup for keywords/types (built on file open)
-    private HashSet<string> keywordSet;
-    private HashSet<string> typeSet;
 
     public Form1()
     {
@@ -115,10 +111,33 @@ public partial class Form1 : Form
         syntaxHighlightTimer.Tick += (s, e) =>
         {
             syntaxHighlightTimer.Stop();
-            Task.Run(() =>
+            try
             {
-                try { ApplySyntaxHighlightingIfCSharp(); } catch { }
-            });
+                // Capture everything we need on UI thread
+                string text = textEditor.Text;
+                string file = currentFile;
+                var syntax = SyntaxDefinition.GetDefinitionForFile(file);
+                var keywords = new HashSet<string>(StringComparer.Ordinal);
+                var types = new HashSet<string>(StringComparer.Ordinal);
+                if (syntax?.Keywords != null) foreach (var kw in syntax.Keywords) keywords.Add(kw);
+                if (syntax?.Types != null) foreach (var t in syntax.Types) types.Add(t);
+                int selStart = textEditor.SelectionStart;
+                int selLength = textEditor.SelectionLength;
+
+                Task.Run(() =>
+                {
+                    if (syntax != null)
+                    {
+                        var spans = ComputeSpans(text, keywords, types);
+                        textEditor.Invoke((Action)(() => ApplySpans(spans, selStart, selLength)));
+                    }
+                    else
+                    {
+                        textEditor.Invoke((Action)ClearSyntaxHighlighting);
+                    }
+                });
+            }
+            catch { }
         };
     }
 
@@ -653,50 +672,26 @@ public partial class Form1 : Form
         if (currentFile != null)
         {
             var syntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
-            BuildLookupFromSyntax(syntax);
             
             if (syntax != null)
             {
-                var text = textEditor.Text;
-                var spans = ComputeSpans(text, syntax);
+                var keywords = new HashSet<string>(StringComparer.Ordinal);
+                var types = new HashSet<string>(StringComparer.Ordinal);
+                if (syntax.Keywords != null) foreach (var kw in syntax.Keywords) keywords.Add(kw);
+                if (syntax.Types != null) foreach (var t in syntax.Types) types.Add(t);
                 
-                // Switch to UI thread to apply
-                if (textEditor.InvokeRequired)
-                {
-                    textEditor.Invoke((Action)(() => ApplySpans(spans, textEditor.SelectionStart, textEditor.SelectionLength)));
-                }
-                else
-                {
-                    ApplySpans(spans, textEditor.SelectionStart, textEditor.SelectionLength);
-                }
+                var text = textEditor.Text;
+                var spans = ComputeSpans(text, keywords, types);
+                ApplySpans(spans, textEditor.SelectionStart, textEditor.SelectionLength);
             }
             else
             {
-                // Clear on UI thread
-                if (textEditor.InvokeRequired)
-                    textEditor.Invoke((Action)ClearSyntaxHighlighting);
-                else
-                    ClearSyntaxHighlighting();
+                ClearSyntaxHighlighting();
             }
         }
     }
 
-    private void BuildLookupFromSyntax(SyntaxDefinition syntax)
-    {
-        keywordSet = new HashSet<string>(StringComparer.Ordinal);
-        typeSet = new HashSet<string>(StringComparer.Ordinal);
-        
-        if (syntax?.Keywords != null)
-        {
-            foreach (var kw in syntax.Keywords) keywordSet.Add(kw);
-        }
-        if (syntax?.Types != null)
-        {
-            foreach (var t in syntax.Types) typeSet.Add(t);
-        }
-    }
-
-    private List<(int start, int length, Color color)> ComputeSpans(string text, SyntaxDefinition syntax)
+    private List<(int start, int length, Color color)> ComputeSpans(string text, HashSet<string> keywords, HashSet<string> types)
     {
         var spans = new List<(int start, int length, Color color)>();
         int i = 0;
@@ -785,7 +780,7 @@ public partial class Form1 : Form
                 int start = i;
                 while (i < len && (char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
                 string word = text.Substring(start, i - start);
-                if (keywordSet.Contains(word) || typeSet.Contains(word))
+                if (keywords.Contains(word) || types.Contains(word))
                     spans.Add((start, i - start, keywordColor));
                 continue;
             }
