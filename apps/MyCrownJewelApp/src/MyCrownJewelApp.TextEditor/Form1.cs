@@ -190,7 +190,8 @@ public partial class Form1 : Form
             currentCaretLine = -1;
             AddToRecentFiles(filePath);
             UpdateModifiedLinesFromText();
-            ApplySyntaxHighlightingIfCSharp();
+            // Defer highlighting until UI is responsive
+            syntaxHighlightTimer.Start();
             UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
             UpdateStatusBar();
