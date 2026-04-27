@@ -36,6 +36,7 @@ public partial class Form1 : Form
     // State fields
     private string currentFile = null;
     private bool fileModified = false;
+    private string originalText = null;
     private int currentZoom = 100;
     private bool wordWrapEnabled = true;
     private string findText = "";
@@ -133,6 +134,7 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            originalText = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -179,6 +181,7 @@ public partial class Form1 : Form
             
             currentFile = filePath;
             fileModified = false;
+            originalText = fileContent;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -186,6 +189,7 @@ public partial class Form1 : Form
             lastHighlightedLine = -1;
             currentCaretLine = -1;
             AddToRecentFiles(filePath);
+            UpdateModifiedLinesFromText();
             ApplySyntaxHighlightingIfCSharp();
             UpdateGutterVisibility();
             gutterPanel.RefreshGutter();
@@ -258,6 +262,7 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            originalText = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -283,6 +288,7 @@ public partial class Form1 : Form
             textEditor.Clear();
             currentFile = null;
             fileModified = false;
+            originalText = null;
             currentSyntax = null;
             bookmarks.Clear();
             modifiedLines.Clear();
@@ -675,8 +681,12 @@ public partial class Form1 : Form
         try
         {
             BeginUpdate(textEditor);
+            int selStart = textEditor.SelectionStart;
+            int selLength = textEditor.SelectionLength;
             textEditor.SelectAll();
             textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            textEditor.SelectionStart = selStart;
+            textEditor.SelectionLength = selLength;
             EndUpdate(textEditor);
         }
         finally
