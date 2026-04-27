@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -114,7 +115,10 @@ public partial class Form1 : Form
         syntaxHighlightTimer.Tick += (s, e) =>
         {
             syntaxHighlightTimer.Stop();
-            try { ApplySyntaxHighlightingIfCSharp(); } catch { }
+            Task.Run(() =>
+            {
+                try { ApplySyntaxHighlightingIfCSharp(); } catch { }
+            });
         };
     }
 
@@ -474,7 +478,7 @@ public partial class Form1 : Form
         UpdateSyntaxHighlightingColors();
         if (currentFile != null)
         {
-            ApplySyntaxHighlighting();
+            ApplySyntaxHighlightingIfCSharp();
         }
         HighlightCurrentLine();
         gutterPanel.RefreshGutter();
@@ -489,7 +493,7 @@ public partial class Form1 : Form
         UpdateSyntaxHighlightingColors();
         if (currentFile != null)
         {
-            ApplySyntaxHighlighting();
+            ApplySyntaxHighlightingIfCSharp();
         }
         HighlightCurrentLine();
         gutterPanel.RefreshGutter();
@@ -648,31 +652,226 @@ public partial class Form1 : Form
     {
         if (currentFile != null)
         {
-            currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
-            BuildLookup();
-            if (currentSyntax != null)
+            var syntax = SyntaxDefinition.GetDefinitionForFile(currentFile);
+            BuildLookupFromSyntax(syntax);
+            
+            if (syntax != null)
             {
-                ApplySyntaxHighlighting();
+                var text = textEditor.Text;
+                var spans = ComputeSpans(text, syntax);
+                
+                // Switch to UI thread to apply
+                if (textEditor.InvokeRequired)
+                {
+                    textEditor.Invoke((Action)(() => ApplySpans(spans, textEditor.SelectionStart, textEditor.SelectionLength)));
+                }
+                else
+                {
+                    ApplySpans(spans, textEditor.SelectionStart, textEditor.SelectionLength);
+                }
             }
             else
             {
-                ClearSyntaxHighlighting();
+                // Clear on UI thread
+                if (textEditor.InvokeRequired)
+                    textEditor.Invoke((Action)ClearSyntaxHighlighting);
+                else
+                    ClearSyntaxHighlighting();
             }
         }
     }
 
-    private void BuildLookup()
+    private void BuildLookupFromSyntax(SyntaxDefinition syntax)
     {
         keywordSet = new HashSet<string>(StringComparer.Ordinal);
         typeSet = new HashSet<string>(StringComparer.Ordinal);
         
-        if (currentSyntax?.Keywords != null)
+        if (syntax?.Keywords != null)
         {
-            foreach (var kw in currentSyntax.Keywords) keywordSet.Add(kw);
+            foreach (var kw in syntax.Keywords) keywordSet.Add(kw);
         }
-        if (currentSyntax?.Types != null)
+        if (syntax?.Types != null)
         {
-            foreach (var t in currentSyntax.Types) typeSet.Add(t);
+            foreach (var t in syntax.Types) typeSet.Add(t);
+        }
+    }
+
+    private List<(int start, int length, Color color)> ComputeSpans(string text, SyntaxDefinition syntax)
+    {
+        var spans = new List<(int start, int length, Color color)>();
+        int i = 0;
+        int len = text.Length;
+        bool inMultiLineComment = false;
+
+        while (i < len)
+        {
+            char c = text[i];
+
+            // Multi-line comment exit: */
+            if (inMultiLineComment)
+            {
+                if (i + 1 < len && text[i] == '*' && text[i + 1] == '/')
+                {
+                    spans.Add((i, 2, commentColor));
+                    i += 2;
+                    inMultiLineComment = false;
+                }
+                else i++;
+                continue;
+            }
+
+            // Single-line comment: //...\n
+            if (c == '/' && i + 1 < len && text[i + 1] == '/')
+            {
+                int start = i;
+                while (i < len && text[i] != '\n') i++;
+                spans.Add((start, i - start, commentColor));
+                continue;
+            }
+
+            // Multi-line comment start: /*
+            if (c == '/' && i + 1 < len && text[i + 1] == '*')
+            {
+                i += 2;
+                inMultiLineComment = true;
+                continue;
+            }
+
+            // String: "..."
+            if (c == '"')
+            {
+                int start = i++;
+                while (i < len)
+                {
+                    char ch = text[i];
+                    if (ch == '\\' && i + 1 < len) { i += 2; continue; }
+                    if (ch == '"') { i++; break; }
+                    i++;
+                }
+                spans.Add((start, i - start, stringColor));
+                continue;
+            }
+
+            // Verbatim string: @"..."
+            if (c == '@' && i + 1 < len && text[i + 1] == '"')
+            {
+                int start = i;
+                i += 2;
+                while (i < len)
+                {
+                    if (text[i] == '"')
+                    {
+                        if (i + 1 < len && text[i + 1] == '"') { i += 2; continue; }
+                        i++; break;
+                    }
+                    i++;
+                }
+                spans.Add((start, i - start, stringColor));
+                continue;
+            }
+
+            // Preprocessor at line start (# or !)
+            if ((c == '#' || c == '!') && (i == 0 || text[i - 1] == '\n'))
+            {
+                int start = i;
+                while (i < len && !char.IsWhiteSpace(text[i]) && text[i] != '\n') i++;
+                spans.Add((start, i - start, preprocessorColor));
+                continue;
+            }
+
+            // Keyword / Identifier
+            if (char.IsLetter(c) || c == '_')
+            {
+                int start = i;
+                while (i < len && (char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
+                string word = text.Substring(start, i - start);
+                if (keywordSet.Contains(word) || typeSet.Contains(word))
+                    spans.Add((start, i - start, keywordColor));
+                continue;
+            }
+
+            // Number literal
+            if (char.IsDigit(c))
+            {
+                int start = i;
+                while (i < len && char.IsDigit(text[i])) i++;
+
+                if (i < len && text[i] == '.')
+                {
+                    i++;
+                    while (i < len && char.IsDigit(text[i])) i++;
+                }
+
+                if (i < len && (text[i] == 'e' || text[i] == 'E'))
+                {
+                    char after = (i + 1 < len) ? text[i + 1] : '\0';
+                    if (after == '+' || after == '-' || char.IsDigit(after))
+                    {
+                        i++;
+                        if (after == '+' || after == '-')
+                        {
+                            if (i < len && char.IsDigit(text[i]))
+                                while (i < len && char.IsDigit(text[i])) i++;
+                        }
+                        else while (i < len && char.IsDigit(text[i])) i++;
+                    }
+                }
+
+                while (i < len)
+                {
+                    char ch = text[i];
+                    if (ch == 'f' || ch == 'F' || ch == 'd' || ch == 'D' || ch == 'm' || ch == 'M' ||
+                        ch == 'u' || ch == 'U' || ch == 'l' || ch == 'L')
+                    {
+                        i++;
+                        if (i < len)
+                        {
+                            char ch2 = text[i];
+                            if ((ch == 'u' || ch == 'U') && (ch2 == 'l' || ch2 == 'L') ||
+                                (ch == 'l' || ch == 'L') && (ch2 == 'u' || ch2 == 'U'))
+                                i++;
+                        }
+                    }
+                    else break;
+                }
+
+                spans.Add((start, i - start, numberColor));
+                continue;
+            }
+
+            i++;
+        }
+
+        return spans;
+    }
+
+    private void ApplySpans(List<(int start, int length, Color color)> spans, int selStart, int selLength)
+    {
+        suppressSelectionChanged = true;
+        try
+        {
+            BeginUpdate(textEditor);
+
+            // Reset all to default first
+            textEditor.SelectAll();
+            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+            // Apply highlights in reverse order
+            foreach (var span in spans.OrderByDescending(s => s.start))
+            {
+                textEditor.Select(span.start, span.length);
+                textEditor.SelectionColor = span.color;
+            }
+
+            textEditor.SelectionStart = selStart;
+            textEditor.SelectionLength = selLength;
+            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+            EndUpdate(textEditor);
+        }
+        finally
+        {
+            suppressSelectionChanged = false;
         }
     }
 
@@ -706,186 +905,6 @@ public partial class Form1 : Form
             {
                 modifiedLines.Add(i);
             }
-        }
-    }
-
-    private void ApplySyntaxHighlighting()
-    {
-        if (currentSyntax == null) return;
-
-        int selectionStart = textEditor.SelectionStart;
-        int selectionLength = textEditor.SelectionLength;
-        string text = textEditor.Text;
-
-        suppressSelectionChanged = true;
-        try
-        {
-            BeginUpdate(textEditor);
-
-            // Reset all to default
-            textEditor.SelectAll();
-            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-
-            var spans = new List<(int start, int length, Color color)>();
-            int i = 0;
-            int len = text.Length;
-            bool inMultiLineComment = false;
-
-            while (i < len)
-            {
-                char c = text[i];
-
-                // Multi-line comment exit: */
-                if (inMultiLineComment)
-                {
-                    if (i + 1 < len && text[i] == '*' && text[i + 1] == '/')
-                    {
-                        spans.Add((i, 2, commentColor));
-                        i += 2;
-                        inMultiLineComment = false;
-                    }
-                    else i++;
-                    continue;
-                }
-
-                // Single-line comment: //...\n
-                if (c == '/' && i + 1 < len && text[i + 1] == '/')
-                {
-                    int start = i;
-                    while (i < len && text[i] != '\n') i++;
-                    spans.Add((start, i - start, commentColor));
-                    continue;
-                }
-
-                // Multi-line comment start: /*
-                if (c == '/' && i + 1 < len && text[i + 1] == '*')
-                {
-                    i += 2;
-                    inMultiLineComment = true;
-                    continue;
-                }
-
-                // String: "..."
-                if (c == '"')
-                {
-                    int start = i++;
-                    while (i < len)
-                    {
-                        char ch = text[i];
-                        if (ch == '\\' && i + 1 < len) { i += 2; continue; }
-                        if (ch == '"') { i++; break; }
-                        i++;
-                    }
-                    spans.Add((start, i - start, stringColor));
-                    continue;
-                }
-
-                // Verbatim string: @"..."
-                if (c == '@' && i + 1 < len && text[i + 1] == '"')
-                {
-                    int start = i;
-                    i += 2;
-                    while (i < len)
-                    {
-                        if (text[i] == '"')
-                        {
-                            if (i + 1 < len && text[i + 1] == '"') { i += 2; continue; }
-                            i++; break;
-                        }
-                        i++;
-                    }
-                    spans.Add((start, i - start, stringColor));
-                    continue;
-                }
-
-                // Preprocessor at line start (# or !) — track line start inline
-                if ((c == '#' || c == '!') && (i == 0 || text[i - 1] == '\n'))
-                {
-                    int start = i;
-                    while (i < len && !char.IsWhiteSpace(text[i]) && text[i] != '\n') i++;
-                    spans.Add((start, i - start, preprocessorColor));
-                    continue;
-                }
-
-                // Keyword / Identifier
-                if (char.IsLetter(c) || c == '_')
-                {
-                    int start = i;
-                    while (i < len && (char.IsLetterOrDigit(text[i]) || text[i] == '_')) i++;
-                    string word = text.Substring(start, i - start);
-                    if (keywordSet.Contains(word) || typeSet.Contains(word))
-                        spans.Add((start, i - start, keywordColor));
-                    continue;
-                }
-
-                // Number literal
-                if (char.IsDigit(c))
-                {
-                    int start = i;
-                    while (i < len && char.IsDigit(text[i])) i++;
-
-                    if (i < len && text[i] == '.')
-                    {
-                        i++;
-                        while (i < len && char.IsDigit(text[i])) i++;
-                    }
-
-                    if (i < len && (text[i] == 'e' || text[i] == 'E'))
-                    {
-                        char after = (i + 1 < len) ? text[i + 1] : '\0';
-                        if (after == '+' || after == '-' || char.IsDigit(after))
-                        {
-                            i++;
-                            if (after == '+' || after == '-')
-                            {
-                                if (i < len && char.IsDigit(text[i]))
-                                    while (i < len && char.IsDigit(text[i])) i++;
-                            }
-                            else while (i < len && char.IsDigit(text[i])) i++;
-                        }
-                    }
-
-                    while (i < len)
-                    {
-                        char ch = text[i];
-                        if (ch == 'f' || ch == 'F' || ch == 'd' || ch == 'D' || ch == 'm' || ch == 'M' ||
-                            ch == 'u' || ch == 'U' || ch == 'l' || ch == 'L')
-                        {
-                            i++;
-                            if (i < len)
-                            {
-                                char ch2 = text[i];
-                                if ((ch == 'u' || ch == 'U') && (ch2 == 'l' || ch2 == 'L') ||
-                                    (ch == 'l' || ch == 'L') && (ch2 == 'u' || ch2 == 'U'))
-                                    i++;
-                            }
-                        }
-                        else break;
-                    }
-
-                    spans.Add((start, i - start, numberColor));
-                    continue;
-                }
-
-                i++;
-            }
-
-            // Apply spans in reverse order to preserve positions
-            foreach (var span in spans.OrderByDescending(s => s.start))
-            {
-                textEditor.Select(span.start, span.length);
-                textEditor.SelectionColor = span.color;
-            }
-
-            textEditor.SelectionStart = selectionStart;
-            textEditor.SelectionLength = selectionLength;
-            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-
-            EndUpdate(textEditor);
-        }
-        finally
-        {
-            suppressSelectionChanged = false;
         }
     }
 
