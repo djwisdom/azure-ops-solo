@@ -40,6 +40,9 @@ partial class Form1
     private ToolStripMenuItem restoreDefaultZoomMenuItem;
     private ToolStripMenuItem statusBarMenuItem;
     private ToolStripMenuItem wordWrapMenuItem;
+    private ToolStripMenuItem themeMenu;
+    private ToolStripMenuItem darkThemeMenuItem;
+    private ToolStripMenuItem lightThemeMenuItem;
 
     internal RichTextBox textEditor;
     private StatusStrip statusStrip;
@@ -127,8 +130,14 @@ partial class Form1
         wordWrapMenuItem.Checked = true;
 
         viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
-            zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem
+            zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
+            new ToolStripSeparator(), themeMenu
         });
+
+        themeMenu = new ToolStripMenuItem("&Theme");
+        darkThemeMenuItem = new ToolStripMenuItem("&Dark", null, DarkTheme_Click);
+        lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
+        themeMenu.DropDownItems.AddRange(new ToolStripItem[] { darkThemeMenuItem, lightThemeMenuItem });
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
