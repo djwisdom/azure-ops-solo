@@ -53,7 +53,7 @@ partial class Form1
     private ToolStripMenuItem lightThemeMenuItem;
 
     private GutterPanel gutterPanel;
-    private Panel mainPanel;
+    private TableLayoutPanel mainTable;
     internal RichTextBox textEditor;
     private StatusStrip statusStrip;
     private ToolStripStatusLabel lineColLabel;
@@ -164,13 +164,18 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
-        // Main Panel (contains gutter + editor)
-        mainPanel = new Panel();
-        mainPanel.Dock = DockStyle.Fill;
+        // Main Table Layout (2 columns: gutter, editor)
+        mainTable = new TableLayoutPanel();
+        mainTable.ColumnCount = 2;
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        mainTable.RowCount = 1;
+        mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        mainTable.Dock = DockStyle.Fill;
 
         // Gutter Panel
         gutterPanel = new GutterPanel(this);
-        gutterPanel.Dock = DockStyle.Left;
+        gutterPanel.Dock = DockStyle.Fill; // Fill its cell in table
 
         // Text Editor (RichTextBox)
         textEditor = new RichTextBox();
@@ -181,10 +186,12 @@ partial class Form1
         textEditor.TextChanged += TextEditor_TextChanged;
         textEditor.SelectionChanged += TextEditor_SelectionChanged;
         textEditor.VScroll += TextEditor_VScroll;
+        textEditor.Resize += TextEditor_Resize;
+        textEditor.Resize += TextEditor_Resize;
 
-        // Assemble main panel
-        mainPanel.Controls.Add(gutterPanel);
-        mainPanel.Controls.Add(textEditor);
+        // Assemble table
+        mainTable.Controls.Add(gutterPanel, 0, 0);
+        mainTable.Controls.Add(textEditor, 1, 0);
 
         // Status Strip
         statusStrip = new StatusStrip();
@@ -201,7 +208,7 @@ partial class Form1
 
         // Add controls in proper z-order
         Controls.Add(menuStrip);
-        Controls.Add(mainPanel);
+        Controls.Add(mainTable);
         Controls.Add(statusStrip);
 
         // Set main menu strip

@@ -569,11 +569,6 @@ public partial class Form1 : Form
         }
     }
 
-    private void TextEditor_VScroll(object sender, EventArgs e)
-    {
-        gutterPanel.RefreshGutter();
-    }
-
     private void UpdateModifiedLinesFromText()
     {
         // Simplified: mark all non-empty lines as modified (for demo)
@@ -593,7 +588,7 @@ public partial class Form1 : Form
         int selectionLength = textEditor.SelectionLength;
         string text = textEditor.Text;
 
-        textEditor.SuspendLayout();
+        BeginUpdate(textEditor);
 
         textEditor.SelectAll();
         textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
@@ -608,7 +603,7 @@ public partial class Form1 : Form
         textEditor.SelectionLength = selectionLength;
         textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
-        textEditor.ResumeLayout();
+        EndUpdate(textEditor);
     }
 
     private void HighlightKeywords(string text)
@@ -690,7 +685,16 @@ public partial class Form1 : Form
         {
             ApplySyntaxHighlighting();
         }
-        HighlightCurrentLine();
+        gutterPanel.RefreshGutter();
+    }
+
+    private void TextEditor_VScroll(object sender, EventArgs e)
+    {
+        gutterPanel.RefreshGutter();
+    }
+
+    private void TextEditor_Resize(object sender, EventArgs e)
+    {
         gutterPanel.RefreshGutter();
     }
 
@@ -708,7 +712,6 @@ public partial class Form1 : Form
             int selLength = textEditor.SelectionLength;
             int lineIndex = textEditor.GetLineFromCharIndex(selStart);
             
-            // Bounds check
             if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return;
             
             int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
@@ -717,11 +720,12 @@ public partial class Form1 : Form
             string lineText = textEditor.Lines[lineIndex];
             int lineLength = lineText.Length;
 
+            BeginUpdate(textEditor);
             textEditor.Select(lineStart, lineLength);
             textEditor.SelectionBackColor = isDarkTheme ? Color.FromArgb(60, 60, 60) : Color.FromArgb(230, 230, 230);
-
             textEditor.SelectionStart = selStart;
             textEditor.SelectionLength = selLength;
+            EndUpdate(textEditor);
         }
         finally
         {
