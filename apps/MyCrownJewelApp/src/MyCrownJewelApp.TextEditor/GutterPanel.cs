@@ -132,24 +132,22 @@ public class GutterPanel : Panel
     {
         RichTextBox editor = mainForm.textEditor;
         firstLine = 0;
-        lineCount = editor.Lines.Length;
+        lineCount = 0;
 
-        if (editor.Lines.Length == 0)
-        {
-            lineCount = 0;
-            return;
-        }
+        if (editor.Lines.Length == 0) return;
 
         // Get first visible line based on scroll position
         int firstChar = editor.GetCharIndexFromPosition(new Point(0, 0));
         firstLine = editor.GetLineFromCharIndex(firstChar);
         if (firstLine < 0) firstLine = 0;
 
-        // Calculate how many lines fit in the visible area
-        int visibleHeight = editor.Height;
-        int lineHeight = TextRenderer.MeasureText("A", editor.Font).Height;
-        lineCount = Math.Min(editor.Lines.Length - firstLine, (visibleHeight / lineHeight) + 2);
-        if (lineCount < 0) lineCount = 0;
+        // Count lines until their Y position exceeds editor height
+        for (int i = firstLine; i < editor.Lines.Length; i++)
+        {
+            int y = GetLineY(editor, i);
+            if (y >= editor.Height) break;
+            lineCount++;
+        }
     }
 
     private int GetLineY(RichTextBox editor, int lineIndex)
@@ -170,12 +168,16 @@ public class GutterPanel : Panel
     private void DrawLineNumber(Graphics g, int lineNumber, int x, int y)
     {
         string text = lineNumber.ToString();
-        Size textSize = TextRenderer.MeasureText(text, Font);
+        RichTextBox editor = mainForm.textEditor;
+        
+        // Use editor's font scaled by zoom factor
+        using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, editor.Font.Style);
+        Size textSize = TextRenderer.MeasureText(text, font);
         int textX = x + (LineNumberMarginWidth - textSize.Width) / 2;
         int textY = y;
 
         using var brush = new SolidBrush(Color.FromArgb(120, 120, 120));
-        TextRenderer.DrawText(g, text, Font, new Point(textX, textY), Color.FromArgb(120, 120, 120));
+        TextRenderer.DrawText(g, text, font, new Point(textX, textY), Color.FromArgb(120, 120, 120));
     }
 
     private void DrawBookmark(Graphics g, int lineIndex, int x, int y)
@@ -300,9 +302,28 @@ public class GutterPanel : Panel
     private int GetLineAtY(int y)
     {
         RichTextBox editor = mainForm.textEditor;
-        int lineHeight = TextRenderer.MeasureText("A", editor.Font).Height;
-        int relativeY = y + editor.AutoScrollOffset.Y;
-        int line = firstVisibleLine + (relativeY / lineHeight);
+        if (editor.Lines.Length == 0) return -1;
+
+        // Compute first visible line
+        int firstChar = editor.GetCharIndexFromPosition(new Point(0, 0));
+        int firstLine = editor.GetLineFromCharIndex(firstChar);
+        if (firstLine < 0) firstLine = 0;
+
+        // Determine actual line height from editor's rendered lines
+        int lineHeight;
+        if (firstLine < editor.Lines.Length - 1)
+        {
+            int y0 = GetLineY(editor, firstLine);
+            int y1 = GetLineY(editor, firstLine + 1);
+            lineHeight = y1 - y0;
+            if (lineHeight <= 0) lineHeight = (int)(TextRenderer.MeasureText("A", editor.Font).Height * editor.ZoomFactor);
+        }
+        else
+        {
+            lineHeight = (int)(TextRenderer.MeasureText("A", editor.Font).Height * editor.ZoomFactor);
+        }
+
+        int line = firstLine + (y / lineHeight);
         return (line >= 0 && line < editor.Lines.Length) ? line : -1;
     }
 
