@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using System.Windows.Forms;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -21,6 +23,12 @@ public partial class Form1 : Form
         SendMessage(control.Handle, WM_SETREDRAW, 1, 0);
         control.Invalidate();
     }
+
+    // Debounced syntax highlighting timer
+    private System.Windows.Forms.Timer syntaxHighlightTimer;
+
+    // Suppress SelectionChanged during internal selection updates
+    private bool suppressSelectionChanged = false;
 
     // State fields
     private string currentFile = null;
@@ -69,6 +77,10 @@ public partial class Form1 : Form
     // Current line highlighting
     private bool isHighlighting = false;
     private int lastHighlightedLine = -1;
+    private int currentCaretLine = -1;
+    private bool gutterVisible = true;
+    private bool gutterUserOverride = false;
+    private SyntaxDefinition currentSyntax;
 
     public Form1()
     {
@@ -80,6 +92,18 @@ public partial class Form1 : Form
         UpdateSyntaxHighlightingColors();
         UpdateStatusBar();
         UpdateTitle();
+
+        // Initialize debounced syntax highlighting timer
+        syntaxHighlightTimer = new System.Windows.Forms.Timer();
+        syntaxHighlightTimer.Interval = 300; // ms
+        syntaxHighlightTimer.Tick += (s, e) =>
+        {
+            syntaxHighlightTimer.Stop();
+            if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                ApplySyntaxHighlighting();
+            }
+        };
     }
 
     #region Properties
@@ -593,22 +617,30 @@ public partial class Form1 : Form
         int selectionLength = textEditor.SelectionLength;
         string text = textEditor.Text;
 
-        BeginUpdate(textEditor);
+        suppressSelectionChanged = true;
+        try
+        {
+            BeginUpdate(textEditor);
 
-        textEditor.SelectAll();
-        textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            textEditor.SelectAll();
+            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
-        HighlightKeywords(text);
-        HighlightStrings(text);
-        HighlightComments(text);
-        HighlightNumbers(text);
-        HighlightPreprocessor(text);
+            HighlightKeywords(text);
+            HighlightStrings(text);
+            HighlightComments(text);
+            HighlightNumbers(text);
+            HighlightPreprocessor(text);
 
-        textEditor.SelectionStart = selectionStart;
-        textEditor.SelectionLength = selectionLength;
-        textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            textEditor.SelectionStart = selectionStart;
+            textEditor.SelectionLength = selectionLength;
+            textEditor.SelectionColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
-        EndUpdate(textEditor);
+            EndUpdate(textEditor);
+        }
+        finally
+        {
+            suppressSelectionChanged = false;
+        }
     }
 
     private void HighlightKeywords(string text)
@@ -675,6 +707,7 @@ public partial class Form1 : Form
 
     private void TextEditor_SelectionChanged(object sender, EventArgs e)
     {
+        if (suppressSelectionChanged) return;
         UpdateStatusBar();
         HighlightCurrentLine();
     }
@@ -686,18 +719,10 @@ public partial class Form1 : Form
         UpdateTitle();
         UpdateModifiedLinesFromText();
 
-        if (currentFile != null && Path.GetExtension(currentFile).Equals(".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            ApplySyntaxHighlighting();
-        }
-        
-        // Clear previous highlight as line indices may have shifted
-        if (lastHighlightedLine >= 0)
-        {
-            ClearLineHighlight(lastHighlightedLine);
-            lastHighlightedLine = -1;
-        }
-        
+        // Restart debounced syntax highlighting timer
+        syntaxHighlightTimer?.Stop();
+        syntaxHighlightTimer?.Start();
+
         gutterPanel.RefreshGutter();
     }
 
@@ -727,24 +752,28 @@ public partial class Form1 : Form
             
             if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return;
 
-            // Clear previous highlight
+            BeginUpdate(textEditor);
+
+            // Clear previous line highlight if different
             if (lastHighlightedLine >= 0 && lastHighlightedLine != lineIndex)
             {
                 ClearLineHighlight(lastHighlightedLine);
             }
 
-            // Apply new highlight
+            // Apply highlight to current line
             int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
             if (lineStart < 0) return;
 
             string lineText = textEditor.Lines[lineIndex];
             int lineLength = lineText.Length;
 
-            BeginUpdate(textEditor);
             textEditor.Select(lineStart, lineLength);
             textEditor.SelectionBackColor = isDarkTheme ? Color.FromArgb(60, 60, 60) : Color.FromArgb(230, 230, 230);
+            
+            // Restore selection
             textEditor.SelectionStart = selStart;
             textEditor.SelectionLength = selLength;
+
             EndUpdate(textEditor);
 
             lastHighlightedLine = lineIndex;
@@ -761,20 +790,11 @@ public partial class Form1 : Form
         
         int lineStart = textEditor.GetFirstCharIndexFromLine(lineIndex);
         if (lineStart < 0) return;
-
-        string lineText = textEditor.Lines[lineIndex];
-        int lineLength = lineText.Length;
-
-        // Save current selection
-        int selStart = textEditor.SelectionStart;
-        int selLength = textEditor.SelectionLength;
-
-        BeginUpdate(textEditor);
+        
+        int lineLength = textEditor.Lines[lineIndex].Length;
+        
         textEditor.Select(lineStart, lineLength);
-        textEditor.SelectionBackColor = textEditor.BackColor; // Reset to default
-        textEditor.SelectionStart = selStart;
-        textEditor.SelectionLength = selLength;
-        EndUpdate(textEditor);
+        textEditor.SelectionBackColor = textEditor.BackColor;
     }
 
     #endregion

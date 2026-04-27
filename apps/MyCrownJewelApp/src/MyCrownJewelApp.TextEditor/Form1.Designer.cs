@@ -51,6 +51,7 @@ partial class Form1
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
+    private ToolStripMenuItem gutterMenuItem;
 
     private GutterPanel gutterPanel;
     private TableLayoutPanel mainTable;
