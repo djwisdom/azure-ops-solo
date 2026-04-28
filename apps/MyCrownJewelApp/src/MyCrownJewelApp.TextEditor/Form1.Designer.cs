@@ -219,8 +219,8 @@ partial class Form1
 
         // Add controls in proper z-order
         Controls.Add(menuStrip);
-        Controls.Add(mainTable);
         Controls.Add(statusStrip);
+        Controls.Add(mainTable);
 
         // Set main menu strip
         MainMenuStrip = menuStrip;

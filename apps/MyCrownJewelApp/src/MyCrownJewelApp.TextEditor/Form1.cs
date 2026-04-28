@@ -848,9 +848,27 @@ namespace MyCrownJewelApp.TextEditor
             // Cancel any pending/running highlight
             highlightCancelToken?.Cancel();
 
+            // Always re-detect syntax based on current file path
+            DetectSyntaxFromFile();
+
+            if (textEditor.IsDisposed) return;
+
+            Color baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+            // If no syntax definition (e.g. .txt), reset visible area to base color and exit
             if (currentSyntax == null)
-                DetectSyntaxFromFile();
-            if (currentSyntax == null || textEditor.IsDisposed) return;
+            {
+                if (textEditor.InvokeRequired)
+                {
+                    try { textEditor.Invoke(new Action(() => ResetVisibleRangeToBase(baseColor))); }
+                    catch { }
+                }
+                else
+                {
+                    ResetVisibleRangeToBase(baseColor);
+                }
+                return;
+            }
 
             var tokenSource = new CancellationTokenSource();
             highlightCancelToken = tokenSource;
@@ -859,8 +877,6 @@ namespace MyCrownJewelApp.TextEditor
             // Get visible line range only
             var (firstLine, lastLine) = GetVisibleLineRange();
             if (firstLine > lastLine || token.IsCancellationRequested) return;
-
-            Color baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
             // Run highlighting on background thread and get line token map
             Dictionary<int, List<(int start, int length, Color color)>>? lineRanges = null;
@@ -932,32 +948,21 @@ namespace MyCrownJewelApp.TextEditor
         private void ApplyLineRanges(Dictionary<int, List<(int start, int length, Color color)>> lineRanges, Color baseColor)
         {
             if (textEditor.IsDisposed) return;
-
-            // Save selection
-            int selStart = textEditor.SelectionStart;
-            int selLength = textEditor.SelectionLength;
-
+            int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
             BeginUpdate(textEditor);
             textEditor.SuspendLayout();
-
             try
             {
-                // For each line, reset to base then apply colors for that line
                 foreach (var kvp in lineRanges)
                 {
                     int lineNum = kvp.Key;
                     if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
-
                     int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
                     if (lineStart < 0) continue;
                     int lineLen = textEditor.Lines[lineNum].Length;
                     if (lineLen == 0) continue;
-
-                    // Reset entire line to base color
                     textEditor.Select(lineStart, lineLen);
                     textEditor.SelectionColor = baseColor;
-
-                    // Apply colored spans
                     foreach (var (start, length, color) in kvp.Value)
                     {
                         int idx = lineStart + start;
@@ -968,17 +973,38 @@ namespace MyCrownJewelApp.TextEditor
                         }
                     }
                 }
-
-                // Restore selection
                 textEditor.SelectionStart = selStart;
                 textEditor.SelectionLength = selLength;
                 textEditor.SelectionColor = baseColor;
             }
-            finally
+            finally { textEditor.ResumeLayout(); EndUpdate(textEditor); }
+        }
+
+        // Reset all visible lines to base color (used when no syntax highlighting)
+        private void ResetVisibleRangeToBase(Color baseColor)
+        {
+            if (textEditor.IsDisposed) return;
+            int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
+            BeginUpdate(textEditor);
+            textEditor.SuspendLayout();
+            try
             {
-                textEditor.ResumeLayout();
-                EndUpdate(textEditor);
+                var (firstLine, lastLine) = GetVisibleLineRange();
+                for (int lineNum = firstLine; lineNum <= lastLine; lineNum++)
+                {
+                    if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
+                    if (lineStart < 0) continue;
+                    int lineLen = textEditor.Lines[lineNum].Length;
+                    if (lineLen == 0) continue;
+                    textEditor.Select(lineStart, lineLen);
+                    textEditor.SelectionColor = baseColor;
+                }
+                textEditor.SelectionStart = selStart;
+                textEditor.SelectionLength = selLength;
+                textEditor.SelectionColor = baseColor;
             }
+            finally { textEditor.ResumeLayout(); EndUpdate(textEditor); }
         }
 
         // Helper: mark a range as colored
