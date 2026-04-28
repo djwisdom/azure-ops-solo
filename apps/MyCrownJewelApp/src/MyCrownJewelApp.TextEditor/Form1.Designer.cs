@@ -88,7 +88,7 @@ partial class Form1
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click);
-        recentMenuItem = new ToolStripMenuItem("Recent >");
+        recentMenuItem = new ToolStripMenuItem("Recent");
         saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click);
         saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click);
         saveAllMenuItem = new ToolStripMenuItem("Save A&ll", null, SaveAll_Click);
@@ -224,5 +224,9 @@ partial class Form1
 
         // Set main menu strip
         MainMenuStrip = menuStrip;
+
+        // Ensure layout is performed after all controls added
+        ResumeLayout(false);
+        PerformLayout();
     }
 }
