@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <!-- ConPTY for Windows – CI.Microsoft.Windows.Console.ConPTY 1.22.250314001
+         May require private feed; if unavailable, fallback to Conpty.Net 0.5.0 -->
+    <PackageReference Include="CI.Microsoft.Windows.Console.ConPTY" Version="1.22.250314001" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
     <!-- ConPTY for Windows -->
     <PackageReference Include="Conpty.Net" Version="0.5.0" />
   </ItemGroup>
