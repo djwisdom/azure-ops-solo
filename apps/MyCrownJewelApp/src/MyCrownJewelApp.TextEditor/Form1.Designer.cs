@@ -76,12 +76,14 @@ partial class Form1
     {
         components = new System.ComponentModel.Container();
         AutoScaleMode = AutoScaleMode.Font;
+        Padding = new Padding(0);
         ClientSize = new Size(1000, 600);
         Text = "Text Editor";
         StartPosition = FormStartPosition.CenterScreen;
 
         // Menu Strip
         menuStrip = new MenuStrip();
+        menuStrip.Dock = DockStyle.Top;
         fileMenu = new ToolStripMenuItem("&File");
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click);
@@ -175,6 +177,8 @@ partial class Form1
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
+        mainTable.Margin = new Padding(0);
+        mainTable.Padding = new Padding(0);
 
         // Gutter Panel
         gutterPanel = new GutterPanel(this);
@@ -186,6 +190,9 @@ partial class Form1
         textEditor.Multiline = true;
         textEditor.ScrollBars = RichTextBoxScrollBars.Both;
         textEditor.Font = new Font("Consolas", 12);
+        textEditor.BorderStyle = BorderStyle.None;
+        textEditor.Margin = new Padding(0);
+        textEditor.Padding = new Padding(0);
         textEditor.TextChanged += TextEditor_TextChanged;
         textEditor.SelectionChanged += TextEditor_SelectionChanged;
         textEditor.VScroll += TextEditor_VScroll;
@@ -198,6 +205,7 @@ partial class Form1
 
         // Status Strip
         statusStrip = new StatusStrip();
+        statusStrip.Dock = DockStyle.Bottom;
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         charCountLabel = new ToolStripStatusLabel("0 characters");
         zoomLabel = new ToolStripStatusLabel("100%");
