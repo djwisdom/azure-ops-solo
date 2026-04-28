@@ -8,14 +8,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Avalonia core packages (11.0.0) -->
-    <PackageReference Include="Avalonia.Base" Version="11.0.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.0.0" />
-    <PackageReference Include="Avalonia.Win32" Version="11.0.0" />
+<ItemGroup>
+    <!-- Avalonia core packages (12.0.1) -->
+    <PackageReference Include="Avalonia.Base" Version="12.0.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.1" />
+    <PackageReference Include="Avalonia.Win32" Version="12.0.1" />
     <!-- Terminal control -->
-    <PackageReference Include="Avalonia.Controls.Terminal" Version="11.0.0" />
-    <!-- ConPTY for Windows (only on Windows) -->
+    <PackageReference Include="Avalonia.Controls.Terminal" Version="12.0.1" />
+    <!-- ConPTY for Windows -->
     <PackageReference Include="Conpty.Net" Version="0.5.0" />
   </ItemGroup>
 
