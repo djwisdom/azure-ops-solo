@@ -119,7 +119,10 @@ public partial class Form1 : Form
         // Add Terminal toggle to View menu
         terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal);
         terminalMenuItem.Checked = terminalVisible;
-        viewMenu.DropDownItems.Add(terminalMenuItem);
+viewMenu.DropDownItems.Add(terminalMenuItem);
+
+        // Key binding: Ctrl+Enter sends current line/selection to terminal
+        textEditor.KeyDown += TextEditor_KeyDown;
 
         // Expand mainTable to two rows: editor on top, terminal below
         mainTable.RowCount = 2;
@@ -263,12 +266,7 @@ public partial class Form1 : Form
         if (!string.IsNullOrEmpty(text))
         {
             terminalPane.SendInput(text + "\n");
-        }
-    }
-
-    #endregion
-
-    #region Properties
+        ['', {}]
 
     public HashSet<int> Bookmarks => bookmarks;
     public HashSet<int> ModifiedLines => modifiedLines;
