@@ -60,6 +60,9 @@ namespace MyCrownJewelApp.TextEditor
         private CancellationTokenSource? highlightCancelToken;
         private System.Windows.Forms.Timer? highlightTimer;
 
+        // Incremental highlight cache
+        private Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> compiledRegexCache = new();
+
         public Form1()
         {
             InitializeComponent();
@@ -75,7 +78,7 @@ namespace MyCrownJewelApp.TextEditor
 
             // Initialize syntax highlighting debounce timer
             highlightTimer = new System.Windows.Forms.Timer();
-            highlightTimer.Interval = 300; // 300ms debounce
+            highlightTimer.Interval = 150; // 150ms debounce for responsiveness
             highlightTimer.Tick += (s, e) =>
             {
                 highlightTimer.Stop();
@@ -797,18 +800,201 @@ namespace MyCrownJewelApp.TextEditor
 
         #endregion
 
-        #region Syntax Highlighting (async)
-
-        private Color GetThemeColor(Color darkColor, Color lightColor)
-        {
-            return isDarkTheme ? darkColor : lightColor;
-        }
+        #region Syntax Highlighting (async, incremental, visible-range)
 
         private Color GetKeywordColor() => keywordColor;
         private Color GetStringColor() => stringColor;
         private Color GetCommentColor() => commentColor;
         private Color GetNumberColor() => numberColor;
         private Color GetPreprocessorColor() => preprocessorColor;
+
+        // Detect syntax from file extension
+        private void DetectSyntaxFromFile()
+        {
+            if (currentFilePath != null)
+            {
+                currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
+            }
+            else
+            {
+                currentSyntax = SyntaxDefinition.CSharp; // default
+            }
+        }
+
+        // Get visible line range in the editor (+ buffer)
+        private (int firstLine, int lastLine) GetVisibleLineRange()
+        {
+            try
+            {
+                int visibleStart = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, 0)));
+                int visibleEnd = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, textEditor.ClientSize.Height)));
+                // Add buffer lines for smooth scrolling
+                int buffer = 100;
+                int totalLines = textEditor.Lines.Length;
+                int first = Math.Max(0, visibleStart - buffer);
+                int last = Math.Min(totalLines - 1, visibleEnd + buffer);
+                return (first, last);
+            }
+            catch
+            {
+                // Fallback: whole document if visible range fails
+                return (0, textEditor.Lines.Length - 1);
+            }
+        }
+
+        // Async non-blocking incremental syntax highlighting
+        private async void HighlightSyntaxAsync()
+        {
+            // Cancel any pending/running highlight
+            highlightCancelToken?.Cancel();
+
+            if (currentSyntax == null)
+                DetectSyntaxFromFile();
+            if (currentSyntax == null || textEditor.IsDisposed) return;
+
+            var tokenSource = new CancellationTokenSource();
+            highlightCancelToken = tokenSource;
+            var token = tokenSource.Token;
+
+            // Get visible line range only
+            var (firstLine, lastLine) = GetVisibleLineRange();
+            if (firstLine > lastLine || token.IsCancellationRequested) return;
+
+            Color baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+
+            // Run highlighting on background thread and get line token map
+            Dictionary<int, List<(int start, int length, Color color)>>? lineRanges = null;
+            try
+            {
+                lineRanges = await Task.Run(() =>
+                {
+                    if (token.IsCancellationRequested) return null;
+
+                    var regexes = GetOrCreateCompiledRegexes(currentSyntax, token);
+                    var ranges = new Dictionary<int, List<(int, int, Color)>>();
+                    string[] lines = textEditor.Lines;
+
+                    for (int lineNum = firstLine; lineNum <= lastLine && !token.IsCancellationRequested; lineNum++)
+                    {
+                        if (lineNum >= lines.Length) break;
+                        string line = lines[lineNum];
+                        if (string.IsNullOrEmpty(line)) continue;
+
+                        var colored = new bool[line.Length];
+
+                        // Preprocessor first
+                        if (regexes.preprocessor != null)
+                            ApplyTokenMatches(regexes.preprocessor.Matches(line), colored, ranges, lineNum, GetPreprocessorColor());
+
+                        if (regexes.comment != null)
+                            ApplyTokenMatches(regexes.comment.Matches(line), colored, ranges, lineNum, GetCommentColor());
+
+                        if (regexes.stringRegex != null)
+                            ApplyTokenMatches(regexes.stringRegex.Matches(line), colored, ranges, lineNum, GetStringColor());
+
+                        if (regexes.number != null)
+                            ApplyTokenMatches(regexes.number.Matches(line), colored, ranges, lineNum, GetNumberColor());
+
+                        if (regexes.keywords != null)
+                            ApplyTokenMatches(regexes.keywords.Matches(line), colored, ranges, lineNum, GetKeywordColor());
+
+                        if (regexes.types != null)
+                            ApplyTokenMatches(regexes.types.Matches(line), colored, ranges, lineNum, GetKeywordColor());
+                    }
+
+                    return ranges;
+                }, token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch
+            {
+                return;
+            }
+
+            if (lineRanges == null || token.IsCancellationRequested || textEditor.IsDisposed) return;
+
+            // Apply on UI thread
+            if (textEditor.InvokeRequired)
+            {
+                try { textEditor.Invoke(new Action(() => ApplyLineRanges(lineRanges, baseColor))); }
+                catch { }
+            }
+            else
+            {
+                ApplyLineRanges(lineRanges, baseColor);
+            }
+        }
+
+        // Apply line-by-line highlighting (incremental)
+        private void ApplyLineRanges(Dictionary<int, List<(int start, int length, Color color)>> lineRanges, Color baseColor)
+        {
+            if (textEditor.IsDisposed) return;
+
+            // Save selection
+            int selStart = textEditor.SelectionStart;
+            int selLength = textEditor.SelectionLength;
+
+            BeginUpdate(textEditor);
+            textEditor.SuspendLayout();
+
+            try
+            {
+                // For each line, reset to base then apply colors for that line
+                foreach (var kvp in lineRanges)
+                {
+                    int lineNum = kvp.Key;
+                    if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
+
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
+                    if (lineStart < 0) continue;
+                    int lineLen = textEditor.Lines[lineNum].Length;
+                    if (lineLen == 0) continue;
+
+                    // Reset entire line to base color
+                    textEditor.Select(lineStart, lineLen);
+                    textEditor.SelectionColor = baseColor;
+
+                    // Apply colored spans
+                    foreach (var (start, length, color) in kvp.Value)
+                    {
+                        int idx = lineStart + start;
+                        if (idx >= lineStart && idx + length <= lineStart + lineLen)
+                        {
+                            textEditor.Select(idx, length);
+                            textEditor.SelectionColor = color;
+                        }
+                    }
+                }
+
+                // Restore selection
+                textEditor.SelectionStart = selStart;
+                textEditor.SelectionLength = selLength;
+                textEditor.SelectionColor = baseColor;
+            }
+            finally
+            {
+                textEditor.ResumeLayout();
+                EndUpdate(textEditor);
+            }
+        }
+
+        // Helper: mark a range as colored
+        private static void MarkRange(bool[] colored, int start, int length)
+        {
+            for (int i = start; i < start + length && i < colored.Length; i++)
+                colored[i] = true;
+        }
+
+        // Helper: check if range is free
+        private static bool IsRangeFree(bool[] colored, int start, int length)
+        {
+            for (int i = start; i < start + length && i < colored.Length; i++)
+                if (colored[i]) return false;
+            return true;
+        }
 
         // WinForms RichTextBox BeginUpdate/EndUpdate via native API
         [System.Runtime.InteropServices.DllImport("user32.dll")]
@@ -826,188 +1012,60 @@ namespace MyCrownJewelApp.TextEditor
             rtb.Invalidate();
         }
 
-        private void DetectSyntaxFromFile()
+        // Compile and cache regexes for a syntax definition
+        private static Regex? BuildRegex(string? pattern, RegexOptions options)
         {
-            if (currentFilePath != null)
-            {
-                currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
-            }
-            else
-            {
-                currentSyntax = SyntaxDefinition.CSharp; // default
-            }
+            if (string.IsNullOrEmpty(pattern)) return null;
+            return new Regex(pattern, options | RegexOptions.Compiled);
         }
 
-        // Async non-blocking syntax highlighting
-        private async void HighlightSyntaxAsync()
+        private (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor) GetOrCreateCompiledRegexes(SyntaxDefinition syntax, CancellationToken token)
         {
-            // Cancel any pending/running highlight
-            highlightCancelToken?.Cancel();
-
-            if (currentSyntax == null)
-                DetectSyntaxFromFile();
-            if (currentSyntax == null || textEditor.IsDisposed) return;
-
-            var tokenSource = new CancellationTokenSource();
-            highlightCancelToken = tokenSource;
-            var token = tokenSource.Token;
-
-            string text = textEditor.Text;
-            Color baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-
-            // Run regex matching on thread pool
-            List<(int index, int length, Color color)>? matches = null;
-            try
+            string key = syntax.Name; // simple unique key
+            lock (compiledRegexCache)
             {
-                matches = await Task.Run(() =>
+                if (compiledRegexCache.TryGetValue(key, out var existing))
                 {
-                    var list = new List<(int, int, Color)>();
-                    if (token.IsCancellationRequested) return list;
-
-                    // Order matters: multiline comment first, then single, then strings, preprocessor, numbers, keywords/types
-
-                    // 1. Multi-line comments
-                    if (currentSyntax.MultiLineCommentPatterns != null)
-                    {
-                        foreach (var pattern in currentSyntax.MultiLineCommentPatterns)
-                        {
-                            if (token.IsCancellationRequested) break;
-                            CollectMatches(text, pattern, GetCommentColor(), RegexOptions.Singleline, list, token);
-                        }
-                    }
-
-                    if (token.IsCancellationRequested) return list;
-
-                    // 2. Single-line comments
-                    if (!string.IsNullOrEmpty(currentSyntax.CommentPattern))
-                    {
-                        CollectMatches(text, currentSyntax.CommentPattern, GetCommentColor(), RegexOptions.Multiline, list, token);
-                    }
-
-                    if (token.IsCancellationRequested) return list;
-
-                    // 3. Strings
-                    if (!string.IsNullOrEmpty(currentSyntax.StringPattern))
-                    {
-                        CollectMatches(text, currentSyntax.StringPattern, GetStringColor(), RegexOptions.Singleline, list, token);
-                    }
-
-                    if (token.IsCancellationRequested) return list;
-
-                    // 4. Preprocessor directives
-                    if (currentSyntax.Preprocessor != null && currentSyntax.Preprocessor.Length > 0)
-                    {
-                        string ppPattern = @"^\s*(" + string.Join("|", currentSyntax.Preprocessor.Select(Regex.Escape)) + @")\b";
-                        CollectMatches(text, ppPattern, GetPreprocessorColor(), RegexOptions.Multiline, list, token);
-                    }
-
-                    if (token.IsCancellationRequested) return list;
-
-                    // 5. Numbers
-                    if (!string.IsNullOrEmpty(currentSyntax.NumberPattern))
-                    {
-                        CollectMatches(text, currentSyntax.NumberPattern, GetNumberColor(), RegexOptions.None, list, token);
-                    }
-
-                    if (token.IsCancellationRequested) return list;
-
-                    // 6. Keywords
-                    if (currentSyntax.Keywords != null && currentSyntax.Keywords.Length > 0)
-                    {
-                        string kwPattern = @"\b(" + string.Join("|", currentSyntax.Keywords.Select(Regex.Escape)) + @")\b";
-                        CollectMatches(text, kwPattern, GetKeywordColor(), RegexOptions.None, list, token);
-                    }
-
-                    if (token.IsCancellationRequested) return list;
-
-                    // 7. Types
-                    if (currentSyntax.Types != null && currentSyntax.Types.Length > 0)
-                    {
-                        string typePattern = @"\b(" + string.Join("|", currentSyntax.Types.Select(Regex.Escape)) + @")\b";
-                        CollectMatches(text, typePattern, GetKeywordColor(), RegexOptions.None, list, token);
-                    }
-
-                    return list;
-                }, token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch
-            {
-                return;
-            }
-
-            if (matches == null || token.IsCancellationRequested || textEditor.IsDisposed) return;
-
-            // Apply on UI thread in one shot
-            if (textEditor.InvokeRequired)
-            {
-                try
-                {
-                    textEditor.Invoke(new Action(() => ApplyMatches(matches, baseColor)));
+                    return existing;
                 }
-                catch { /* ignored if disposed */ }
             }
-            else
-            {
-                ApplyMatches(matches, baseColor);
-            }
+
+            var keywords = BuildRegex(@"\b(" + string.Join("|", syntax.Keywords.Select(Regex.Escape)) + @")\b", RegexOptions.None);
+            var types = BuildRegex(@"\b(" + string.Join("|", syntax.Types.Select(Regex.Escape)) + @")\b", RegexOptions.None);
+            var stringRegex = BuildRegex(syntax.StringPattern, RegexOptions.Singleline);
+            var comment = BuildRegex(syntax.CommentPattern, RegexOptions.Multiline);
+            var number = BuildRegex(syntax.NumberPattern, RegexOptions.None);
+            var preprocessor = syntax.Preprocessor?.Length > 0
+                ? BuildRegex(@"^\s*(" + string.Join("|", syntax.Preprocessor.Select(Regex.Escape)) + @")\b", RegexOptions.Multiline)
+                : null;
+
+            var tuple = (keywords, types, stringRegex, comment, number, preprocessor);
+            lock (compiledRegexCache) { compiledRegexCache[key] = tuple; }
+            return tuple;
         }
 
-        private void CollectMatches(string text, string pattern, Color color, RegexOptions options, List<(int index, int length, Color color)> list, CancellationToken token)
+        // Apply token matches to line ranges, respecting priority (colored[] tracks occupied spans)
+        private static void ApplyTokenMatches(MatchCollection matches, bool[] colored, Dictionary<int, List<(int start, int length, Color color)>> ranges, int lineNum, Color color)
         {
-            try
+            foreach (Match m in matches)
             {
-                var regex = new Regex(pattern, options);
-                var matches = regex.Matches(text);
-                foreach (Match match in matches)
+                if (m.Success && m.Index >= 0)
                 {
-                    if (token.IsCancellationRequested) break;
-                    if (match.Success && match.Index >= 0 && match.Length > 0)
+                    int len = Math.Min(m.Length, colored.Length - m.Index);
+                    if (len <= 0) continue;
+                    bool free = true;
+                    for (int i = m.Index; i < m.Index + len && i < colored.Length; i++)
                     {
-                        lock (list) { list.Add((match.Index, match.Length, color)); }
+                        if (colored[i]) { free = false; break; }
+                    }
+                    if (free)
+                    {
+                        for (int i = m.Index; i < m.Index + len && i < colored.Length; i++)
+                            colored[i] = true;
+                        if (!ranges.ContainsKey(lineNum)) ranges[lineNum] = new List<(int, int, Color)>();
+                        ranges[lineNum].Add((m.Index, len, color));
                     }
                 }
-            }
-            catch { /* ignore bad patterns */ }
-        }
-
-        private void ApplyMatches(List<(int index, int length, Color color)> matches, Color baseColor)
-        {
-            if (matches.Count == 0 || textEditor.IsDisposed) return;
-
-            // Save selection
-            int selStart = textEditor.SelectionStart;
-            int selLength = textEditor.SelectionLength;
-
-            // Begin update to prevent flicker
-            BeginUpdate(textEditor);
-            textEditor.SuspendLayout();
-
-            try
-            {
-                // Reset all to base color
-                textEditor.SelectAll();
-                textEditor.SelectionColor = baseColor;
-
-                // Sort by position to avoid selection flicker? Not necessary, just apply
-                foreach (var (index, length, color) in matches)
-                {
-                    textEditor.Select(index, length);
-                    textEditor.SelectionColor = color;
-                }
-
-                // Restore selection
-                textEditor.SelectionStart = selStart;
-                textEditor.SelectionLength = selLength;
-                textEditor.SelectionColor = baseColor;
-            }
-            finally
-            {
-                textEditor.ResumeLayout();
-                EndUpdate(textEditor);
             }
         }
 
