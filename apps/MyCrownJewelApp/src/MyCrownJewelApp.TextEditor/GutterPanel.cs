@@ -194,21 +194,29 @@ public class GutterPanel : Panel
         string text = lineNumber.ToString();
         RichTextBox editor = mainForm.textEditor;
 
-        // Use editor's font scaled by zoom; bold if current line and mode is NumberOnly
-        FontStyle style = editor.Font.Style;
+        // Determine if this line is current and mode is NumberOnly
+        bool isCurrentLine = false;
         if (mainForm.LineHighlightMode == Form1.CurrentLineHighlightMode.NumberOnly)
         {
             int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
-            if (lineNumber == currentLineNum)
-                style |= FontStyle.Bold;
+            isCurrentLine = (lineNumber == currentLineNum);
         }
+
+        // Use editor's font scaled by zoom; bold+yellow if current line in NumberOnly mode
+        FontStyle style = editor.Font.Style;
+        Color color = Color.FromArgb(120, 120, 120); // default gray
+        if (isCurrentLine)
+        {
+            style |= FontStyle.Bold;
+            color = Color.Yellow; // highlight color
+        }
+
         using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, style);
         Size textSize = TextRenderer.MeasureText(text, font);
         int textX = x + (LineNumberMarginWidth - textSize.Width) / 2;
         int textY = y;
 
-        using var brush = new SolidBrush(Color.FromArgb(120, 120, 120));
-        TextRenderer.DrawText(g, text, font, new Point(textX, textY), Color.FromArgb(120, 120, 120));
+        TextRenderer.DrawText(g, text, font, new Point(textX, textY), color);
     }
 
     private void DrawBookmark(Graphics g, int lineIndex, int x, int y)
