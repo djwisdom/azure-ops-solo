@@ -247,17 +247,6 @@ partial class Form1
         textEditor.Controls.Add(guidePanel);
         guidePanel.BringToFront();
 
-        // Minimap Control (overlay positioned over scrollbar area)
-        minimapControl = new MinimapControl();
-        minimapControl.Width = 100;
-        minimapControl.MinimapWidth = 100;
-        minimapControl.Scale = 0.5f;
-        minimapControl.ShowColors = false; // Disabled by default per requirements
-        minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
-        minimapControl.ViewportBorderColor = Color.DodgerBlue;
-        minimapControl.Margin = new Padding(0);
-        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
-
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
@@ -271,6 +260,7 @@ partial class Form1
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
+        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
         textEditor.Controls.Add(minimapControl);
         minimapControl.BringToFront();
 

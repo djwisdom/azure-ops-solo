@@ -144,10 +144,10 @@ namespace MyCrownJewelApp.TextEditor
             }
             if (minimapControl != null)
             {
-                // Match minimap background to editor background for seamless blend
                 minimapControl.BackColor = isDark ? darkEditorBackColor : lightEditorBackColor;
                 minimapControl.ViewportColor = isDark ? Color.FromArgb(100, Color.DodgerBlue) : Color.FromArgb(80, Color.LightBlue);
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
+                minimapControl.RefreshNow(); // Regenerate buffer with new colors
             }
             if (guidePanel != null)
             {

@@ -34,14 +34,13 @@ namespace MyCrownJewelApp.TextEditor
         private bool _redrawPending;
         private Bitmap? _bufferBitmap;
         private Rectangle _viewportRect = Rectangle.Empty;
-        private Rectangle _lastPolledViewport = Rectangle.Empty; // used for change detection
+        private Rectangle _lastPolledViewport = Rectangle.Empty;
         private bool _isDragging;
         private Point _dragStartPoint;
         private Rectangle _viewportDragStart;
         private int _totalLines;
         private int _visibleLines;
 
-        // Syntax coloring support
         private Func<int, IReadOnlyList<TokenInfo>?>? _tokenProvider;
         private Dictionary<SyntaxTokenType, Color> _tokenColors = new()
         {
@@ -104,11 +103,9 @@ namespace MyCrownJewelApp.TextEditor
             MinimumSize = new Size(40, 0);
             SetStyle(ControlStyles.Selectable, false);
 
-            // Redraw throttling timer (~20 FPS)
             _redrawTimer = new System.Windows.Forms.Timer { Interval = 50 };
             _redrawTimer.Tick += (s, e) => { _redrawTimer!.Stop(); RedrawImmediate(); };
 
-            // Polling timer for editor viewport changes (~33 FPS)
             _pollTimer = new System.Windows.Forms.Timer { Interval = 30 };
             _pollTimer.Tick += (s, e) => CheckEditorState();
         }
@@ -126,7 +123,6 @@ namespace MyCrownJewelApp.TextEditor
 
             _attachedEditor = editor;
 
-            // Subscribe to events that affect layout or content
             if (editor is TextBoxBase textBoxBase)
             {
                 textBoxBase.TextChanged += Editor_TextChanged;
@@ -183,6 +179,11 @@ namespace MyCrownJewelApp.TextEditor
             _tokenProvider = tokenProvider;
         }
 
+        public void RefreshNow()
+        {
+            ScheduleRedraw();
+        }
+
         #endregion
 
         #region Event Handlers
@@ -232,8 +233,7 @@ namespace MyCrownJewelApp.TextEditor
             if (lineIndex < 0) lineIndex = 0;
             if (lineIndex >= _totalLines) lineIndex = _totalLines - 1;
             int y = (int)(lineIndex * Scale);
-            if (y < 0) y = 0;
-            return y;
+            return Math.Max(0, y);
         }
 
         private int GetEditorFirstVisibleLine()
@@ -271,7 +271,7 @@ namespace MyCrownJewelApp.TextEditor
             int firstVisible = GetEditorFirstVisibleLine();
             int visibleCount = GetEditorVisibleLines();
 
-            if (firstVisible > 0) firstVisible--; // include partial top
+            if (firstVisible > 0) firstVisible--;
 
             int vpY = LineToMinimapY(firstVisible);
             int vpH = Math.Max(1, (int)Math.Ceiling(visibleCount * Scale));
@@ -336,15 +336,6 @@ namespace MyCrownJewelApp.TextEditor
         {
             _redrawPending = false;
 
-            if (_attachedEditor == null || _totalLines == 0)
-            {
-                using var g = CreateGraphics();
-                g.Clear(BackColor);
-                DrawEmptyMessage(g);
-                return;
-            }
-
-            // Guard against invalid dimensions
             if (Width <= 0 || Height <= 0) return;
 
             if (_bufferBitmap == null || _bufferBitmap.Width != Width || _bufferBitmap.Height != Height)
@@ -356,7 +347,6 @@ namespace MyCrownJewelApp.TextEditor
                 }
                 catch (ArgumentException)
                 {
-                    // Invalid dimensions — skip this redraw
                     return;
                 }
             }
@@ -364,13 +354,17 @@ namespace MyCrownJewelApp.TextEditor
             using (var g = Graphics.FromImage(_bufferBitmap))
             {
                 g.Clear(BackColor);
-                DrawMinimap(g);
+                if (_attachedEditor == null || _totalLines == 0)
+                {
+                    DrawEmptyMessage(g);
+                }
+                else
+                {
+                    DrawMinimap(g);
+                }
             }
 
-            using (var g = Graphics.FromHwnd(Handle))
-            {
-                g.DrawImageUnscaled(_bufferBitmap, 0, 0);
-            }
+            Invalidate();
         }
 
         private void DrawMinimap(Graphics g)
@@ -391,11 +385,12 @@ namespace MyCrownJewelApp.TextEditor
 
                 Color lineColor = GetLineColor(line);
                 int lineH = Math.Max(1, (int)Scale);
-                if (lineH <= 0) lineH = 1;
                 Rectangle lineRect = new Rectangle(1, y, MinimapWidth - 2, lineH);
-                // Clamp rectangle to control bounds
-                if (lineRect.Right > Width) lineRect.Width = Math.Max(1, Width - lineRect.Left);
-                if (lineRect.Bottom > Height) lineRect.Height = Math.Max(1, Height - lineRect.Top);
+
+                if (lineRect.Right > Width)
+                    lineRect.Width = Math.Max(1, Width - lineRect.Left);
+                if (lineRect.Bottom > Height)
+                    lineRect.Height = Math.Max(1, Height - lineRect.Top);
                 if (lineRect.Width <= 0 || lineRect.Height <= 0) continue;
 
                 using var brush = new SolidBrush(lineColor);
@@ -407,18 +402,15 @@ namespace MyCrownJewelApp.TextEditor
 
         private void DrawViewportOverlay(Graphics g)
         {
-            // Guard against invalid viewport dimensions
             if (_viewportRect.Width <= 0 || _viewportRect.Height <= 0) return;
 
-            using var fillBrush = new SolidBrush(ViewportColor);
-            g.FillRectangle(fillBrush, _viewportRect);
-            using var pen = new Pen(ViewportBorderColor, 2);
-            // Draw with safe coordinates
             Rectangle safeRect = Rectangle.Intersect(_viewportRect, new Rectangle(0, 0, Width, Height));
-            if (safeRect.Width > 0 && safeRect.Height > 0)
-            {
-                g.DrawRectangle(pen, safeRect.X, safeRect.Y, safeRect.Width - 1, safeRect.Height - 1);
-            }
+            if (safeRect.Width <= 0 || safeRect.Height <= 0) return;
+
+            using var fillBrush = new SolidBrush(ViewportColor);
+            g.FillRectangle(fillBrush, safeRect);
+            using var pen = new Pen(ViewportBorderColor, 2);
+            g.DrawRectangle(pen, safeRect.X, safeRect.Y, safeRect.Width - 1, safeRect.Height - 1);
         }
 
         private void DrawEmptyMessage(Graphics g)
@@ -426,14 +418,10 @@ namespace MyCrownJewelApp.TextEditor
             try
             {
                 using var font = new Font("Segoe UI", 9);
-                var size = g.MeasureString("Attach an editor to enable minimap.", font);
-                var x = (Width - (int)size.Width) / 2;
-                var y = (Height - (int)size.Height) / 2;
-                g.DrawString("Attach an editor to enable minimap.", font, Brushes.Gray, x, y);
+                g.DrawString("Attach an editor to enable minimap.", font, Brushes.Gray, 10, 10);
             }
             catch
             {
-                // Fallback: draw simple text without custom font
                 g.DrawString("Attach an editor to enable minimap.", Font, Brushes.Gray, 10, 10);
             }
         }
@@ -568,7 +556,6 @@ namespace MyCrownJewelApp.TextEditor
                 textBoxBase.SelectionLength = 0;
             }
 
-            // Update viewport immediately to reflect change; polling will also confirm
             UpdateViewportFromEditor();
             _lastPolledViewport = _viewportRect;
             ScheduleRedraw();
@@ -623,7 +610,16 @@ namespace MyCrownJewelApp.TextEditor
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            // Painting done via double-buffered bitmap in RedrawImmediate
+            base.OnPaint(e);
+            if (_bufferBitmap != null)
+            {
+                e.Graphics.DrawImageUnscaled(_bufferBitmap, 0, 0);
+            }
+            else
+            {
+                e.Graphics.Clear(BackColor);
+                DrawEmptyMessage(e.Graphics);
+            }
         }
 
         protected override void OnResize(EventArgs e)
