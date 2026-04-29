@@ -905,11 +905,13 @@ namespace MyCrownJewelApp.TextEditor
                         textEditor.SelectionBackColor = GetCurrentLineHighlightColor();
                     }
                 }
-                lastHighlightedLine = currentLine;
+                 lastHighlightedLine = currentLine;
 
-                // Restore original selection
-                textEditor.SelectionStart = savedStart;
-                textEditor.SelectionLength = savedLength;
+                 // Restore original selection
+                 textEditor.SelectionStart = savedStart;
+                 textEditor.SelectionLength = savedLength;
+                 // Ensure caret (original selection) is visible — this scrolls if needed
+                 textEditor.ScrollToCaret();
             }
             finally
             {
@@ -1298,6 +1300,7 @@ namespace MyCrownJewelApp.TextEditor
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int WM_SETREDRAW = 0x0B;
+        private const int EM_LINESCROLL = 0xB6;
 
         private void BeginUpdate(RichTextBox rtb)
         {
