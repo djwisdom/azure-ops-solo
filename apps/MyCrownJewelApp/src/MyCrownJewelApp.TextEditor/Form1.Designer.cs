@@ -219,7 +219,8 @@ partial class Form1
 
         // Gutter Panel
         gutterPanel = new GutterPanel(this);
-        gutterPanel.Dock = DockStyle.Fill; // Fill its cell in table
+        gutterPanel.Dock = DockStyle.Fill;
+        gutterPanel.Margin = new Padding(0);
 
         // Text Editor (RichTextBox)
         textEditor = new RichTextBox();
@@ -255,6 +256,7 @@ partial class Form1
         minimapControl.ShowColors = false; // Disabled by default per requirements
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
+        minimapControl.Margin = new Padding(0);
 
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
