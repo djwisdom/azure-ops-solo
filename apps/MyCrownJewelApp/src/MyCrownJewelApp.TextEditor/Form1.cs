@@ -116,15 +116,14 @@ namespace MyCrownJewelApp.TextEditor
             // Set initial column widths for visible state
             if (mainTable.ColumnCount >= 1)
                 mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
-            if (mainTable.ColumnCount >= 3)
-                mainTable.ColumnStyles[2].Width = 0; // minimap off by default
-
+            
             // Attach minimap to editor
             if (minimapControl != null)
             {
                 minimapControl.AttachEditor(textEditor);
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
-                minimapControl.SetTokenProvider(GetTokensForLine); // for optional syntax coloring
+                minimapControl.SetTokenProvider(GetTokensForLine);
+                PositionMinimap(); // initial placement
             }
             
             // Initialize syntax highlighting debounce timer
@@ -223,12 +222,23 @@ namespace MyCrownJewelApp.TextEditor
 
         private void ToggleMinimap()
         {
-            // Show/hide minimap by adjusting column width
             bool visible = minimapMenuItem.Checked;
-            if (mainTable.ColumnCount >= 3)
+            if (minimapControl != null)
             {
-                mainTable.ColumnStyles[2].Width = visible ? 100 : 0;
+                minimapControl.Visible = visible;
+                if (visible) PositionMinimap();
             }
+        }
+
+        private void PositionMinimap()
+        {
+            if (minimapControl == null || !minimapControl.Visible) return;
+            
+            int scrollbarWidth = SystemInformation.VerticalScrollBarWidth;
+            int x = textEditor.ClientSize.Width - scrollbarWidth - minimapControl.Width;
+            if (x < 0) x = 0;
+            minimapControl.Location = new Point(x, 0);
+            minimapControl.Height = textEditor.ClientSize.Height;
         }
 
         private void MinimapMenuItem_Click(object? sender, EventArgs e)
@@ -1176,6 +1186,7 @@ namespace MyCrownJewelApp.TextEditor
                  highlightTimer?.Start();
              }
              guidePanel?.Invalidate();
+             PositionMinimap();
          }
 
          private void UpdateStatusBar()

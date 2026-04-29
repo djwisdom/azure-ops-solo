@@ -247,12 +247,11 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
-        // Main Table Layout (3 columns: gutter | editor | minimap)
+        // Main Table Layout (2 columns: gutter | editor)
         mainTable = new TableLayoutPanel();
-        mainTable.ColumnCount = 3;
+        mainTable.ColumnCount = 2;
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));   // Gutter
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Editor
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // Minimap
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
@@ -269,6 +268,7 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
         textEditor.Dock = DockStyle.Fill;
         textEditor.Multiline = true;
         textEditor.ScrollBars = RichTextBoxScrollBars.Both;
+        textEditor.AcceptsTab = true; // allow Tab key input (we handle it)
         textEditor.Font = new Font("Consolas", 12);
         textEditor.BorderStyle = BorderStyle.None;
         textEditor.Margin = new Padding(0);
@@ -280,15 +280,18 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
         textEditor.Resize += TextEditor_Resize;
         textEditor.Resize += TextEditor_Resize;
 
-        // Minimap Control (separate column, fills its cell)
+        // Minimap Overlay — child of editor, positioned over scrollbar area
         minimapControl = new MinimapControl();
-        minimapControl.Dock = DockStyle.Fill;
+        minimapControl.Width = 100;
         minimapControl.MinimapWidth = 100;
         minimapControl.Scale = 0.5f;
         minimapControl.ShowColors = false;
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
+        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
+        textEditor.Controls.Add(minimapControl);
+        minimapControl.BringToFront();
 
         // Column Guide Overlay — child of editor so it overlays without layout conflict
         guidePanel = new ColumnGuidePanel();
@@ -304,7 +307,6 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
-        mainTable.Controls.Add(minimapControl, 2, 0);
 
         // Status Strip
         statusStrip = new StatusStrip();
