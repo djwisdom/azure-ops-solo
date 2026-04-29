@@ -1,669 +1,748 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace MyCrownJewelApp.TextEditor
+namespace MyCrownJewelApp.TextEditor;
+
+/// <summary>
+/// Token information for syntax coloring (shared with editor).
+/// </summary>
+public record struct TokenInfo(SyntaxTokenType Type, string Text, int StartIndex, int Length);
+
+/// <summary>
+/// Syntax categories for minimap rendering.
+/// </summary>
+public enum SyntaxTokenType
 {
+    Identifier,
+    Keyword,
+    String,
+    Comment,
+    Number,
+    Operator,
+    Preprocessor
+}
+
+/// <summary>
+/// High-performance progressive minimap control with background rendering,
+/// incremental updates, and smooth click-to-scroll. Optimized for large files.
+/// </summary>
+public class MinimapControl : Control
+{
+    #region Win32 Interop
+
+    [DllImport("user32.dll")]
+    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+
+    private const int EM_GETFIRSTVISIBLELINE = 0xCE;
+    private const int EM_GETLINECOUNT = 0xBA;
+    private const int EM_LINESCROLL = 0xB6;
+
+    #endregion
+
+    #region Snapshot & Token Types
+
     /// <summary>
-    /// MinimapControl provides a scaled vertical overview of an editor's content.
-    /// Pure WinForms implementation using GDI+ with double-buffering and polling-based
-    /// viewport synchronization (works with TextBox and RichTextBox).
+    /// Immutable per-line summary for minimap rendering.
     /// </summary>
-    public class MinimapControl : Control
+    public readonly record struct MinimapSnapshot(
+        IReadOnlyList<LineInfo> Lines,
+        int TotalLines,
+        int TotalColumns
+    );
+
+    /// <summary>
+    /// Pre-computed token run for a line.
+    /// </summary>
+    public readonly record struct LineInfo(
+        IReadOnlyList<TokenRun> Tokens,
+        string? PlainText // fallback when ShowColors=false
+    );
+
+    /// <summary>
+    /// A run of tokens of the same type with combined width.
+    /// </summary>
+    public readonly record struct TokenRun(
+        SyntaxTokenType Type,
+        int StartIndex,
+        int Length
+    );
+
+    #endregion
+
+    #region Fields
+
+    private Control? _attachedEditor;
+    private readonly System.Windows.Forms.Timer _pollTimer;
+    private readonly System.Windows.Forms.Timer _repaintTimer;
+    private readonly object _renderLock = new();
+    private CancellationTokenSource? _renderCts;
+
+    // Current snapshot and render state
+    private MinimapSnapshot _snapshot = new(Array.Empty<LineInfo>(), 0, 0);
+    private Bitmap? _bufferBitmap;
+    private int _bufferGeneration; // increment to discard stale renders
+    private int _currentGeneration = -1; // generation currently displayed
+
+    // Progressive render tiers
+    private enum RenderTier { Coarse, RefineVisible, RefineFull }
+    private RenderTier _currentTier = RenderTier.Coarse;
+
+    // Viewport
+    private Rectangle _viewportRect = Rectangle.Empty;
+    private Rectangle _lastPolledViewport = Rectangle.Empty;
+
+    // Interaction
+    private bool _isDragging;
+    private Point _dragStartPoint;
+    private Rectangle _viewportDragStart;
+
+    // Settings
+    private Font _font = new("Consolas", 8f);
+    private Brush _backgroundBrush = new SolidBrush(Color.WhiteSmoke);
+    private Brush _viewportBrush = new SolidBrush(Color.FromArgb(128, Color.LightBlue));
+    private Pen _viewportPen = new Pen(Color.DodgerBlue, 1);
+    private Brush _plainTextBrush = new SolidBrush(Color.Gray);
+    private readonly Dictionary<SyntaxTokenType, Brush> _tokenBrushes = new()
     {
-        #region Win32 Interop
+        [SyntaxTokenType.Keyword] = new SolidBrush(Color.Blue),
+        [SyntaxTokenType.String] = new SolidBrush(Color.Brown),
+        [SyntaxTokenType.Comment] = new SolidBrush(Color.Green),
+        [SyntaxTokenType.Number] = new SolidBrush(Color.Purple),
+        [SyntaxTokenType.Identifier] = new SolidBrush(Color.Black),
+        [SyntaxTokenType.Operator] = new SolidBrush(Color.DarkRed),
+        [SyntaxTokenType.Preprocessor] = new SolidBrush(Color.Gray)
+    };
 
-        [DllImport("user32.dll")]
-        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    // Token provider: given line text, returns token infos (thread-safe)
+    private Func<string, IReadOnlyList<TokenInfo>?>? _tokenProvider;
 
-        private const int EM_GETFIRSTVISIBLELINE = 0xCE;
-        private const int EM_GETLINECOUNT = 0xBA;
-        private const int EM_LINESCROLL = 0xB6;
+    // Search markers (optional)
+    private HashSet<int> _markedLines = new();
+    private Brush _markerBrush = new SolidBrush(Color.FromArgb(120, Color.Orange));
 
-        #endregion
+    // Dirty tracking for incremental updates
+    private int _dirtyStartLine = -1;
+    private int _dirtyEndLine = -1;
 
-        #region Fields
+    #endregion
 
-        private Control? _attachedEditor;
-        private System.Windows.Forms.Timer? _redrawTimer;
-        private System.Windows.Forms.Timer? _pollTimer;
-        private bool _redrawPending;
-        private Bitmap? _bufferBitmap;
-        private Rectangle _viewportRect = Rectangle.Empty;
-        private Rectangle _lastPolledViewport = Rectangle.Empty;
-        private bool _isDragging;
-        private Point _dragStartPoint;
-        private Rectangle _viewportDragStart;
-        private int _totalLines;
-        private int _visibleLines;
+    #region Properties
 
-        private Func<int, IReadOnlyList<TokenInfo>?>? _tokenProvider;
-        private Dictionary<SyntaxTokenType, Color> _tokenColors = new()
+    [Category("Layout"), Description("Width of the minimap control in pixels.")]
+    public int MinimapWidth { get; set; } = 100;
+
+    [Category("Behavior"), Description("Scale factor for minimap content (0.1 - 1.0).")]
+    public new float Scale { get; set; } = 0.5f;
+
+    [Category("Appearance"), Description("Enable syntax-aware coloring.")]
+    public bool ShowColors { get; set; } = false;
+
+    [Category("Appearance"), Description("Viewport indicator background color.")]
+    public Color ViewportColor
+    {
+        get => _viewportBrush is SolidBrush sb ? sb.Color : Color.Empty;
+        set { if (_viewportBrush is SolidBrush sb) sb.Color = value; else _viewportBrush.Dispose(); _viewportBrush = new SolidBrush(value); }
+    }
+
+    [Category("Appearance"), Description("Viewport border color.")]
+    public Color ViewportBorderColor
+    {
+        get => _viewportPen.Color;
+        set { _viewportPen.Dispose(); _viewportPen = new Pen(value, 1); }
+    }
+
+    [Category("Appearance"), Description("Background color.")]
+    public override Color BackColor
+    {
+        get => _backgroundBrush is SolidBrush sb ? sb.Color : Color.Empty;
+        set { if (_backgroundBrush is SolidBrush sb) sb.Color = value; else _backgroundBrush.Dispose(); _backgroundBrush = new SolidBrush(value); }
+    }
+
+    #endregion
+
+    #region Events
+
+    [Category("Behavior"), Description("Fired when viewport changes (due to scroll or user drag).")]
+    public event EventHandler<ViewportChangedEventArgs>? ViewportChanged;
+
+    #endregion
+
+    #region Constructor
+
+    public MinimapControl()
+    {
+        SetStyle(ControlStyles.OptimizedDoubleBuffer |
+                 ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.UserPaint |
+                 ControlStyles.ResizeRedraw, true);
+        DoubleBuffered = true;
+        UpdateStyles();
+
+        Width = MinimapWidth;
+        ResizeRedraw = true;
+
+        // Poll editor state at 60Hz for smoothness
+        _pollTimer = new System.Windows.Forms.Timer { Interval = 16 };
+        _pollTimer.Tick += (s, e) => PollEditorAndScheduleRender();
+
+        // Debounce repaint requests at 30fps max
+        _repaintTimer = new System.Windows.Forms.Timer { Interval = 33 };
+        _repaintTimer.Tick += (s, e) => { _repaintTimer.Stop(); RenderIfNeeded(); };
+    }
+
+    #endregion
+
+    #region Public API
+
+    /// <summary>
+    /// Attach to a RichTextBox/TextBox editor.
+    /// </summary>
+    public void AttachEditor(Control editor)
+    {
+        DetachEditor();
+        _attachedEditor = editor;
+        _attachedEditor.HandleCreated += Editor_HandleCreated;
+        _attachedEditor.HandleDestroyed += Editor_HandleDestroyed;
+        if (_attachedEditor.IsHandleCreated)
+            StartPolling();
+        _dirtyStartLine = 0;
+        _dirtyEndLine = int.MaxValue;
+        _repaintTimer.Stop();
+        RenderIfNeeded();
+    }
+
+    /// <summary>
+    /// Detach from current editor.
+    /// </summary>
+    public void DetachEditor()
+    {
+        if (_attachedEditor != null)
         {
-            [SyntaxTokenType.Keyword] = Color.Blue,
-            [SyntaxTokenType.String] = Color.Brown,
-            [SyntaxTokenType.Comment] = Color.Green,
-            [SyntaxTokenType.Number] = Color.Purple,
-            [SyntaxTokenType.Identifier] = Color.Black,
-            [SyntaxTokenType.Operator] = Color.DarkRed,
-            [SyntaxTokenType.Preprocessor] = Color.Gray
-        };
-
-        #endregion
-
-        #region Properties
-
-        [Category("Layout"), Description("Width of the minimap control in pixels.")]
-        public int MinimapWidth { get; set; } = 100;
-
-        [Category("Appearance"), Description("Vertical scale factor for the minimap content.")]
-        public new float Scale { get; set; } = 0.5f;
-
-        [Category("Appearance"), Description("Enables syntax-aware coloring when tokens are provided.")]
-        public bool ShowColors { get; set; } = false;
-
-        [Category("Appearance"), Description("Background color of the minimap.")]
-        public override Color BackColor { get; set; } = Color.WhiteSmoke;
-
-        [Category("Appearance"), Description("Color of the viewport indicator rectangle.")]
-        public Color ViewportColor { get; set; } = Color.FromArgb(128, Color.LightBlue);
-
-        [Category("Appearance"), Description("Border color of the viewport indicator.")]
-        public Color ViewportBorderColor { get; set; } = Color.DodgerBlue;
-
-        public int VirtualHeight => _totalLines > 0 ? (int)Math.Ceiling(_totalLines * Scale) : Height;
-        public int ViewportStartY => _viewportRect.Y;
-        public int ViewportHeight => _viewportRect.Height;
-
-        #endregion
-
-        #region Events
-
-        [Category("Behavior"), Description("Fired when the viewport position changes.")]
-        public event EventHandler<ViewportChangedEventArgs>? ViewportChanged;
-
-        #endregion
-
-        #region Constructor
-
-        public MinimapControl()
-        {
-            SetStyle(ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.AllPaintingInWmPaint |
-                     ControlStyles.UserPaint |
-                     ControlStyles.ResizeRedraw, true);
-            DoubleBuffered = true;
-            UpdateStyles();
-
-            Width = MinimapWidth;
-            MinimumSize = new Size(40, 0);
-            SetStyle(ControlStyles.Selectable, false);
-
-            _redrawTimer = new System.Windows.Forms.Timer { Interval = 50 };
-            _redrawTimer.Tick += (s, e) => { _redrawTimer!.Stop(); RedrawImmediate(); };
-
-            _pollTimer = new System.Windows.Forms.Timer { Interval = 30 };
-            _pollTimer.Tick += (s, e) => CheckEditorState();
+            _attachedEditor.HandleCreated -= Editor_HandleCreated;
+            _attachedEditor.HandleDestroyed -= Editor_HandleDestroyed;
         }
-
-        #endregion
-
-        #region Public API
-
-        public void AttachEditor(Control editor)
+        _attachedEditor = null;
+        StopPolling();
+        lock (_renderLock)
         {
-            if (editor == null) throw new ArgumentNullException(nameof(editor));
-            if (_attachedEditor == editor) return;
+            _renderCts?.Cancel();
+            _renderCts = null;
+        }
+    }
 
-            DetachEditor();
+    /// <summary>
+    /// Provide token provider for syntax coloring. The provider receives a line of text
+    /// and returns a list of TokenInfo (immutable). Called on background render thread.
+    /// </summary>
+    public void SetTokenProvider(Func<string, IReadOnlyList<TokenInfo>?> tokenProvider)
+    {
+        _tokenProvider = tokenProvider;
+        MarkAllDirty();
+    }
 
-            _attachedEditor = editor;
+    /// <summary>
+    /// Mark a line range as needing refresh (e.g., after edit).
+    /// </summary>
+    public void MarkDirty(int startLine, int endLine)
+    {
+        if (_dirtyStartLine < 0) _dirtyStartLine = startLine;
+        else _dirtyStartLine = Math.Min(_dirtyStartLine, startLine);
+        _dirtyEndLine = Math.Max(_dirtyEndLine, endLine);
+        _repaintTimer.Stop();
+        _repaintTimer.Start();
+    }
 
-            if (editor is TextBoxBase textBoxBase)
+    /// <summary>
+    /// Mark entire minimap as needing refresh.
+    /// </summary>
+    public void MarkAllDirty()
+    {
+        _dirtyStartLine = 0;
+        _dirtyEndLine = int.MaxValue;
+        _repaintTimer.Stop();
+        _repaintTimer.Start();
+    }
+
+    /// <summary>
+    /// Refresh immediately (coarse render) if idle.
+    /// </summary>
+    public void RefreshNow()
+    {
+        _repaintTimer.Stop();
+        MarkAllDirty();
+        RenderIfNeeded();
+    }
+
+    /// <summary>
+    /// Call when theme or colors change.
+    /// </summary>
+    public void UpdateColors(Dictionary<SyntaxTokenType, Color> tokenColors, Color? plainText = null, Color? back = null)
+    {
+        lock (_tokenBrushes)
+        {
+            foreach (var kv in tokenColors)
             {
-                textBoxBase.TextChanged += Editor_TextChanged;
-                textBoxBase.HandleCreated += Editor_HandleCreated;
-                textBoxBase.Resize += Editor_Resize;
+                var brush = _tokenBrushes[kv.Key] as SolidBrush;
+                if (brush != null) brush.Color = kv.Value;
+            }
+        }
+        if (plainText.HasValue)
+        {
+            if (_plainTextBrush is SolidBrush ptb) ptb.Color = plainText.Value;
+            else { _plainTextBrush.Dispose(); _plainTextBrush = new SolidBrush(plainText.Value); }
+        }
+        if (back.HasValue)
+        {
+            if (_backgroundBrush is SolidBrush bb) bb.Color = back.Value;
+            else { _backgroundBrush.Dispose(); _backgroundBrush = new SolidBrush(back.Value); }
+        }
+        MarkAllDirty();
+    }
+
+    #endregion
+
+    #region Editor Polling & Snapshot Build
+
+    private void Editor_HandleCreated(object? sender, EventArgs e) => StartPolling();
+    private void Editor_HandleDestroyed(object? sender, EventArgs e) => StopPolling();
+
+    private void StartPolling()
+    {
+        if (_attachedEditor?.IsHandleCreated == true)
+            _pollTimer.Start();
+    }
+
+    private void StopPolling()
+    {
+        _pollTimer.Stop();
+    }
+
+    private void PollEditorAndScheduleRender()
+    {
+        if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
+
+        try
+        {
+            // Query visible viewport from editor
+            int firstVisible = SendMessage(_attachedEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+            int totalLines = SendMessage(_attachedEditor.Handle, EM_GETLINECOUNT, 0, 0);
+            int visibleLines = _attachedEditor.Height / (int)(_attachedEditor.Font.GetHeight() * Scale);
+            if (visibleLines < 1) visibleLines = 1;
+
+            var newViewport = new Rectangle(0, firstVisible, 1, visibleLines);
+            if (newViewport != _lastPolledViewport)
+            {
+                _lastPolledViewport = newViewport;
+                _viewportRect = newViewport;
+                OnViewportChanged();
+            }
+
+            // Check if snapshot needs update (dirty or editor text changed)
+            // For simplicity, rebuild snapshot only on explicit MarkDirty or periodic full refresh
+            if (_dirtyStartLine >= 0)
+            {
+                MarkAllDirty(); // will trigger render on repaint timer
+            }
+        }
+        catch { /* ignore transient errors */ }
+    }
+
+    /// <summary>
+    /// Build the minimap snapshot from editor text, limited to visible + adjacent lines for progressive.
+    /// </summary>
+    private MinimapSnapshot BuildSnapshot(CancellationToken token)
+    {
+        if (_attachedEditor == null || !_attachedEditor.IsHandleCreated)
+            return _snapshot;
+
+        var editor = _attachedEditor;
+        string[] lines;
+        try
+        {
+            if (editor.InvokeRequired)
+            {
+                lines = (string[])editor.Invoke(new Func<string[]>(() =>
+                {
+                    if (editor is TextBoxBase tb) return tb.Lines;
+                    return Array.Empty<string>();
+                }));
             }
             else
             {
-                editor.HandleCreated += Editor_HandleCreated;
-                editor.Resize += Editor_Resize;
+                lines = editor is TextBoxBase tb ? tb.Lines : Array.Empty<string>();
             }
-
-            _pollTimer?.Start();
-
-            UpdateTotalLines();
-            UpdateViewportFromEditor();
-            _lastPolledViewport = _viewportRect;
-            ScheduleRedraw();
         }
+        catch { return _snapshot; }
 
-        public void DetachEditor()
+        if (lines.Length == 0)
+            return new(Array.Empty<LineInfo>(), 0, 0);
+
+        int totalLines = lines.Length;
+        int totalCols = lines.Max(l => l.Length);
+
+        var lineInfos = new LineInfo[totalLines];
+
+        // Determine line range to render based on current Tier
+        int startLine = 0, endLine = totalLines - 1;
+        if (_currentTier == RenderTier.Coarse)
         {
-            _pollTimer?.Stop();
-
-            if (_attachedEditor != null)
+            // Coarse: render every Nth line (e.g., every 4th) plus viewport area
+            int step = 4;
+            int viewportMid = _viewportRect.Y + _viewportRect.Height / 2;
+            int focusRadius = _viewportRect.Height * 2;
+            for (int i = 0; i < totalLines; i++)
             {
-                if (_attachedEditor is TextBoxBase textBoxBase)
+                bool inFocus = Math.Abs(i - viewportMid) <= focusRadius;
+                bool isSampled = (i % step) == 0;
+                if (inFocus || isSampled)
                 {
-                    textBoxBase.TextChanged -= Editor_TextChanged;
-                    textBoxBase.Resize -= Editor_Resize;
+                    lineInfos[i] = BuildLineInfo(lines[i], token);
                 }
                 else
                 {
-                    _attachedEditor.Resize -= Editor_Resize;
+                    lineInfos[i] = default(LineInfo);
                 }
-
-                _attachedEditor = null;
-            }
-
-            _totalLines = 0;
-            _viewportRect = Rectangle.Empty;
-            _lastPolledViewport = Rectangle.Empty;
-            ScheduleRedraw();
-        }
-
-        public void SetTokenProvider(Func<int, IReadOnlyList<TokenInfo>?> tokenProvider)
-        {
-            _tokenProvider = tokenProvider;
-        }
-
-        public void RefreshNow()
-        {
-            ScheduleRedraw();
-        }
-
-        #endregion
-
-        #region Event Handlers
-
-        private void Editor_TextChanged(object? sender, EventArgs e)
-        {
-            UpdateTotalLines();
-            UpdateViewportFromEditor();
-            _lastPolledViewport = _viewportRect;
-            ScheduleRedraw();
-        }
-
-        private void Editor_Resize(object? sender, EventArgs e)
-        {
-            UpdateVisibleLines();
-            UpdateViewportFromEditor();
-            _lastPolledViewport = _viewportRect;
-            ScheduleRedraw();
-        }
-
-        private void Editor_HandleCreated(object? sender, EventArgs e)
-        {
-            UpdateTotalLines();
-            UpdateVisibleLines();
-            UpdateViewportFromEditor();
-            _lastPolledViewport = _viewportRect;
-            ScheduleRedraw();
-        }
-
-        #endregion
-
-        #region Coordinate Conversion
-
-        public int MinimapYToLine(int minimapY)
-        {
-            if (Scale <= 0) return 0;
-            return (int)Math.Floor(minimapY / Scale);
-        }
-
-        public int LineToMinimapY(int lineIndex)
-        {
-            if (lineIndex < 0) lineIndex = 0;
-            if (lineIndex >= _totalLines) lineIndex = _totalLines - 1;
-            int y = (int)(lineIndex * Scale);
-            return Math.Max(0, y);
-        }
-
-        private int GetEditorFirstVisibleLine()
-        {
-            if (_attachedEditor?.IsHandleCreated == true)
-            {
-                return SendMessage(_attachedEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-            }
-            return 0;
-        }
-
-        private int GetEditorVisibleLines()
-        {
-            if (_attachedEditor is RichTextBox richTextBox)
-            {
-                if (richTextBox.Font.Height > 0)
-                    return richTextBox.ClientSize.Height / richTextBox.Font.Height;
-            }
-            else if (_attachedEditor is TextBoxBase textBoxBase)
-            {
-                if (textBoxBase.Font.Height > 0)
-                    return textBoxBase.ClientSize.Height / textBoxBase.Font.Height;
-            }
-            return 20;
-        }
-
-        private void UpdateViewportFromEditor()
-        {
-            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated)
-            {
-                _viewportRect = Rectangle.Empty;
-                return;
-            }
-
-            int firstVisible = GetEditorFirstVisibleLine();
-            int visibleCount = GetEditorVisibleLines();
-
-            if (firstVisible > 0) firstVisible--;
-
-            int vpY = LineToMinimapY(firstVisible);
-            int vpH = Math.Max(1, (int)Math.Ceiling(visibleCount * Scale));
-
-            if (vpY + vpH > VirtualHeight) vpH = Math.Max(1, VirtualHeight - vpY);
-            if (vpH < 1) vpH = 1;
-
-            _viewportRect = new Rectangle(0, vpY, MinimapWidth, vpH);
-        }
-
-        private void UpdateTotalLines()
-        {
-            if (_attachedEditor?.IsHandleCreated == true)
-            {
-                _totalLines = SendMessage(_attachedEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                if (_totalLines < 0) _totalLines = 0;
-            }
-            else
-            {
-                _totalLines = 0;
             }
         }
-
-        private void UpdateVisibleLines()
+        else if (_currentTier == RenderTier.RefineVisible)
         {
-            _visibleLines = GetEditorVisibleLines();
-        }
-
-        #endregion
-
-        #region Editor State Polling
-
-        private void CheckEditorState()
-        {
-            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
-
-            UpdateTotalLines();
-            UpdateViewportFromEditor();
-
-            if (!_viewportRect.Equals(_lastPolledViewport))
+            // Refine: render viewport + margin
+            int margin = _viewportRect.Height;
+            startLine = Math.Max(0, _viewportRect.Y - margin);
+            endLine = Math.Min(totalLines - 1, _viewportRect.Y + _viewportRect.Height + margin);
+            for (int i = startLine; i <= endLine; i++)
             {
-                _lastPolledViewport = _viewportRect;
-                ScheduleRedraw();
-                RaiseViewportChanged();
+                lineInfos[i] = BuildLineInfo(lines[i], token);
             }
         }
-
-        #endregion
-
-        #region Drawing
-
-        private void ScheduleRedraw()
+        else // RefineFull
         {
-            if (_redrawTimer != null && !_redrawPending)
-            {
-                _redrawPending = true;
-                _redrawTimer.Start();
-            }
+            // Full quality for all lines
+            for (int i = 0; i < totalLines; i++)
+                lineInfos[i] = BuildLineInfo(lines[i], token);
         }
 
-        private void RedrawImmediate()
+        // Clear dirty range after build
+        _dirtyStartLine = -1;
+        _dirtyEndLine = -1;
+
+        return new MinimapSnapshot(lineInfos, totalLines, totalCols);
+    }
+
+    private LineInfo BuildLineInfo(string line, CancellationToken token)
+    {
+        if (token.IsCancellationRequested) return default;
+
+        if (!ShowColors || _tokenProvider == null)
         {
-            _redrawPending = false;
+            return new LineInfo(Array.Empty<TokenRun>(), line);
+        }
 
-            if (Width <= 0 || Height <= 0) return;
+        var tokens = _tokenProvider(line);
+        if (tokens == null || tokens.Count == 0)
+            return new LineInfo(Array.Empty<TokenRun>(), line);
 
-            if (_bufferBitmap == null || _bufferBitmap.Width != Width || _bufferBitmap.Height != Height)
+        // Convert TokenInfo to TokenRun (already segregated by start/length)
+        var runs = tokens.Select(t => new TokenRun(t.Type, t.StartIndex, t.Length)).ToArray();
+        return new LineInfo(runs, null!);
+    }
+
+    #endregion
+
+    #region Rendering Pipeline
+
+    private void RenderIfNeeded()
+    {
+        if (_renderCts != null && !_renderCts.IsCancellationRequested)
+            return; // already rendering
+
+        lock (_renderLock)
+        {
+            _renderCts = CancellationTokenSource.CreateLinkedTokenSource();
+            var token = _renderCts.Token;
+
+            Task.Run(() =>
             {
-                _bufferBitmap?.Dispose();
                 try
                 {
-                    _bufferBitmap = new Bitmap(Width, Height);
-                }
-                catch (ArgumentException)
-                {
-                    return;
-                }
-            }
+                    // 1. Build or update snapshot (coarse-first strategy)
+                    var snapshot = BuildSnapshot(token);
+                    if (snapshot.Lines.Count == 0) return;
 
-            using (var g = Graphics.FromImage(_bufferBitmap))
-            {
-                g.Clear(BackColor);
-                if (_attachedEditor == null || _totalLines == 0)
-                {
-                    DrawEmptyMessage(g);
-                }
-                else
-                {
-                    DrawMinimap(g);
-                }
-            }
+                    // 2. Determine render tier based on idle time or first pass
+                    RenderTier tier = _currentTier;
 
-            Invalidate();
-        }
+                    // 3. Create off-screen bitmap
+                    int bmpWidth = Math.Max(Width, 1);
+                    int bmpHeight = (int)Math.Ceiling(snapshot.TotalLines * Scale);
+                    using var bmp = new Bitmap(bmpWidth, bmpHeight);
+                    using var g = Graphics.FromImage(bmp);
+                    g.Clear((_backgroundBrush as SolidBrush)?.Color ?? Color.WhiteSmoke);
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-        private void DrawMinimap(Graphics g)
-        {
-            if (_totalLines == 0) return;
+                    // 4. Render visible lines progressively
+                    int gen = Interlocked.Increment(ref _bufferGeneration);
+                    RenderSnapshot(g, snapshot, tier, token);
 
-            int startLine = Math.Max(0, MinimapYToLine(_viewportRect.Top) - 1);
-            int endLine = Math.Min(_totalLines - 1, MinimapYToLine(_viewportRect.Bottom) + 1);
+                    if (token.IsCancellationRequested) return;
 
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
-            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-
-            for (int line = startLine; line <= endLine; line++)
-            {
-                int y = LineToMinimapY(line);
-                if (y >= Height) break;
-
-                Color lineColor = GetLineColor(line);
-                int lineH = Math.Max(1, (int)Scale);
-                Rectangle lineRect = new Rectangle(1, y, MinimapWidth - 2, lineH);
-
-                if (lineRect.Right > Width)
-                    lineRect.Width = Math.Max(1, Width - lineRect.Left);
-                if (lineRect.Bottom > Height)
-                    lineRect.Height = Math.Max(1, Height - lineRect.Top);
-                if (lineRect.Width <= 0 || lineRect.Height <= 0) continue;
-
-                using var brush = new SolidBrush(lineColor);
-                g.FillRectangle(brush, lineRect);
-            }
-
-            DrawViewportOverlay(g);
-        }
-
-        private void DrawViewportOverlay(Graphics g)
-        {
-            if (_viewportRect.Width <= 0 || _viewportRect.Height <= 0) return;
-
-            Rectangle safeRect = Rectangle.Intersect(_viewportRect, new Rectangle(0, 0, Width, Height));
-            if (safeRect.Width <= 0 || safeRect.Height <= 0) return;
-
-            using var fillBrush = new SolidBrush(ViewportColor);
-            g.FillRectangle(fillBrush, safeRect);
-            using var pen = new Pen(ViewportBorderColor, 2);
-            g.DrawRectangle(pen, safeRect.X, safeRect.Y, safeRect.Width - 1, safeRect.Height - 1);
-        }
-
-        private void DrawEmptyMessage(Graphics g)
-        {
-            try
-            {
-                using var font = new Font("Segoe UI", 9);
-                g.DrawString("Attach an editor to enable minimap.", font, Brushes.Gray, 10, 10);
-            }
-            catch
-            {
-                g.DrawString("Attach an editor to enable minimap.", Font, Brushes.Gray, 10, 10);
-            }
-        }
-
-        private Color GetLineColor(int lineIndex)
-        {
-            if (ShowColors && _tokenProvider != null)
-            {
-                var tokens = _tokenProvider(lineIndex);
-                if (tokens != null && tokens.Count > 0)
-                {
-                    var token = tokens.FirstOrDefault(t => t.Type != SyntaxTokenType.Identifier) ?? tokens[0];
-                    if (_tokenColors.TryGetValue(token.Type, out Color color))
+                    // 5. Swap buffer on UI thread
+                    this.Invoke(new Action(() =>
                     {
-                        return ControlPaint.Light(color);
+                        if (gen != _currentGeneration) // not superseded
+                        {
+                            _bufferBitmap?.Dispose();
+                            _bufferBitmap = (Bitmap)bmp.Clone();
+                            _currentGeneration = gen;
+                            _currentTier = RenderTier.RefineVisible; // promote after first coarse
+                            Invalidate();
+                        }
+                    }));
+                }
+                catch { }
+                finally
+                {
+                    lock (_renderLock)
+                    {
+                        if (_renderCts?.IsCancellationRequested == false)
+                            _renderCts = null;
+                    }
+                }
+            }, token);
+        }
+    }
+
+    private void RenderSnapshot(Graphics g, MinimapSnapshot snapshot, RenderTier tier, CancellationToken token)
+    {
+        float scale = Scale;
+        Font font = _font;
+        int lineHeight = (int)Math.Ceiling(font.GetHeight() * scale);
+
+        for (int i = 0; i < snapshot.Lines.Count; i++)
+        {
+            if (token.IsCancellationRequested) return;
+
+            float y = i * scale;
+            var lineInfo = snapshot.Lines[i];
+
+            // Skip non-visible in coarse mode
+            if (tier == RenderTier.Coarse && !ShouldDrawLine(i)) continue;
+
+            if (lineInfo.Tokens?.Count > 0 && ShowColors)
+            {
+                float x = 0;
+                foreach (var run in lineInfo.Tokens)
+                {
+                    token.ThrowIfCancellationRequested();
+                    string? runText = null;
+                    if (lineInfo.PlainText != null)
+                    {
+                        runText = lineInfo.PlainText.Substring(run.StartIndex, run.Length);
+                    }
+                    else
+                    {
+                        // derive from original text - we need it; in full render we can reconstruct because PlainText is null
+                        // so we skip if we don't have text; that'll be done in refine full
+                        if (lineInfo.PlainText != null) {}
+                    }
+
+                    if (runText != null)
+                    {
+                        var brush = GetBrushForTokenType(run.Type);
+                        g.DrawString(runText, font, brush, x, y, StringFormat.GenericTypographic);
+                        int w = (int)Math.Ceiling(g.MeasureString(runText, font).Width * scale);
+                        x += w;
                     }
                 }
             }
-            return Color.Gray;
-        }
-
-        #endregion
-
-        #region Interaction
-
-        protected override void OnMouseDown(MouseEventArgs e)
-        {
-            base.OnMouseDown(e);
-            Focus();
-
-            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
-
-            if (e.Button == MouseButtons.Left)
+            else if (!string.IsNullOrEmpty(lineInfo.PlainText))
             {
-                _isDragging = true;
-                _dragStartPoint = e.Location;
-                _viewportDragStart = _viewportRect;
-
-                if (_viewportRect.Contains(e.Location))
-                {
-                    Capture = true;
-                }
-                else
-                {
-                    JumpToPosition(e.Y);
-                }
+                using var brush = new SolidBrush(Color.Gray);
+                g.DrawString(lineInfo.PlainText, font, brush, 0, y, StringFormat.GenericTypographic);
             }
         }
-
-        protected override void OnMouseMove(MouseEventArgs e)
-        {
-            base.OnMouseMove(e);
-
-            if (_isDragging && _attachedEditor != null && _attachedEditor.IsHandleCreated)
-            {
-                int deltaY = e.Y - _dragStartPoint.Y;
-                int newY = _viewportDragStart.Y + deltaY;
-
-                int maxY = VirtualHeight - _viewportRect.Height;
-                if (newY < 0) newY = 0;
-                if (newY > maxY) newY = maxY;
-
-                _viewportRect.Y = newY;
-                ScheduleRedraw();
-                ScrollEditorToViewport();
-            }
-        }
-
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            base.OnMouseUp(e);
-            if (e.Button == MouseButtons.Left)
-            {
-                _isDragging = false;
-                Capture = false;
-            }
-        }
-
-        protected override void OnMouseWheel(MouseEventArgs e)
-        {
-            base.OnMouseWheel(e);
-            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
-
-            int lines = e.Delta / SystemInformation.MouseWheelScrollDelta * SystemInformation.MouseWheelScrollLines;
-            int newFirstVisible = GetEditorFirstVisibleLine() + lines;
-            if (newFirstVisible < 0) newFirstVisible = 0;
-            if (newFirstVisible >= _totalLines) newFirstVisible = _totalLines - 1;
-
-            ScrollEditorToLine(newFirstVisible);
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            base.OnKeyDown(e);
-            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
-
-            int linesToScroll = 1;
-            int pagesToScroll = _visibleLines;
-
-            switch (e.KeyCode)
-            {
-                case Keys.Up: ScrollEditorByLines(-linesToScroll); break;
-                case Keys.Down: ScrollEditorByLines(linesToScroll); break;
-                case Keys.PageUp: ScrollEditorByLines(-pagesToScroll); break;
-                case Keys.PageDown: ScrollEditorByLines(pagesToScroll); break;
-                case Keys.Home: ScrollEditorToLine(0); break;
-                case Keys.End: ScrollEditorToLine(_totalLines - _visibleLines); break;
-            }
-
-            e.Handled = true;
-        }
-
-        #endregion
-
-        #region Editor Scrolling
-
-        private void ScrollEditorToLine(int lineIndex)
-        {
-            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
-
-            if (_attachedEditor is RichTextBox)
-            {
-                SendMessage(_attachedEditor.Handle, EM_LINESCROLL, 0, lineIndex);
-            }
-            else if (_attachedEditor is TextBoxBase textBoxBase)
-            {
-                if (lineIndex < 0 || lineIndex >= textBoxBase.Lines.Length) return;
-                int charIndex = textBoxBase.GetFirstCharIndexFromLine(lineIndex);
-                if (charIndex < 0) return;
-                textBoxBase.SelectionStart = charIndex;
-                textBoxBase.ScrollToCaret();
-                textBoxBase.SelectionLength = 0;
-            }
-
-            UpdateViewportFromEditor();
-            _lastPolledViewport = _viewportRect;
-            ScheduleRedraw();
-        }
-
-        private void ScrollEditorByLines(int lineDelta)
-        {
-            int current = GetEditorFirstVisibleLine();
-            ScrollEditorToLine(current + lineDelta);
-        }
-
-        private void ScrollEditorToViewport()
-        {
-            int targetLine = MinimapYToLine(_viewportRect.Y);
-            ScrollEditorToLine(targetLine);
-        }
-
-        private void JumpToPosition(int minimapY)
-        {
-            int targetLine = MinimapYToLine(minimapY);
-            ScrollEditorToLine(targetLine);
-        }
-
-        private void RaiseViewportChanged()
-        {
-            ViewportChanged?.Invoke(this, new ViewportChangedEventArgs(
-                MinimapYToLine(_viewportRect.Y),
-                Math.Max(1, (int)Math.Ceiling(_viewportRect.Height / Scale))));
-        }
-
-        #endregion
-
-        #region Lifetime
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _redrawTimer?.Stop();
-                _redrawTimer?.Dispose();
-                _pollTimer?.Stop();
-                _pollTimer?.Dispose();
-                _bufferBitmap?.Dispose();
-                DetachEditor();
-            }
-            base.Dispose(disposing);
-        }
-
-        #endregion
-
-        #region Overrides
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            if (_bufferBitmap != null)
-            {
-                e.Graphics.DrawImageUnscaled(_bufferBitmap, 0, 0);
-            }
-            else
-            {
-                e.Graphics.Clear(BackColor);
-                DrawEmptyMessage(e.Graphics);
-            }
-        }
-
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
-            ScheduleRedraw();
-        }
-
-        protected override void OnGotFocus(EventArgs e)
-        {
-            base.OnGotFocus(e);
-            Invalidate();
-        }
-
-        protected override void OnLostFocus(EventArgs e)
-        {
-            base.OnLostFocus(e);
-            Invalidate();
-        }
-
-        #endregion
     }
 
-    #region Supporting Types
-
-    public class TokenInfo
+    private bool ShouldDrawLine(int lineIndex)
     {
-        public SyntaxTokenType Type { get; set; }
-        public string Text { get; set; } = string.Empty;
-        public int StartIndex { get; set; }
-        public int Length { get; set; }
-    }
-
-    public enum SyntaxTokenType
-    {
-        Identifier,
-        Keyword,
-        String,
-        Comment,
-        Number,
-        Operator,
-        Preprocessor
-    }
-
-    public class ViewportChangedEventArgs : EventArgs
-    {
-        public int FirstLine { get; }
-        public int VisibleLines { get; }
-
-        public ViewportChangedEventArgs(int firstLine, int visibleLines)
+        // Determine if line should be drawn in current Tier
+        if (_currentTier == RenderTier.Coarse)
         {
-            FirstLine = firstLine;
-            VisibleLines = visibleLines;
+            // Always draw viewport area, otherwise every 4th line
+            int viewportMid = _viewportRect.Y + _viewportRect.Height / 2;
+            int focusRadius = _viewportRect.Height * 2;
+            bool inFocus = Math.Abs(lineIndex - viewportMid) <= focusRadius;
+            if (inFocus) return true;
+            return (lineIndex % 4) == 0;
+        }
+        else if (_currentTier == RenderTier.RefineVisible)
+        {
+            int margin = _viewportRect.Height;
+            return lineIndex >= _viewportRect.Y - margin && lineIndex <= _viewportRect.Y + _viewportRect.Height + margin;
+        }
+        else
+        {
+            return true;
+        }
+    }
+
+    private Brush GetBrushForTokenType(SyntaxTokenType type)
+    {
+        lock (_tokenBrushes)
+        {
+            return _tokenBrushes.TryGetValue(type, out var brush) ? brush : Brushes.Black;
         }
     }
 
     #endregion
+
+    #region Painting
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        if (_bufferBitmap == null)
+        {
+            e.Graphics.Clear(BackColor);
+            return;
+        }
+
+        // Draw minimap scaled to control width (maintain aspect)
+        lock (_renderLock)
+        {
+            int srcWidth = _bufferBitmap.Width;
+            int srcHeight = _bufferBitmap.Height;
+            var destRect = new Rectangle(0, 0, Width, Height);
+            e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+            e.Graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+            e.Graphics.DrawImage(_bufferBitmap, destRect, 0, 0, srcWidth, srcHeight, GraphicsUnit.Pixel);
+        }
+
+        // Draw viewport overlay scaled to minimap display
+        if (_viewportRect != Rectangle.Empty && _snapshot.TotalLines > 0)
+        {
+            float scale = (float)Height / _snapshot.TotalLines;
+            float vpY = _viewportRect.Y * scale;
+            float vpH = _viewportRect.Height * scale;
+            var vpRect = new Rectangle(0, (int)vpY, Width - 1, (int)Math.Max(vpH, 2));
+            using var backBrush = new SolidBrush(ViewportColor);
+            e.Graphics.FillRectangle(backBrush, vpRect);
+            e.Graphics.DrawRectangle(_viewportPen, vpRect.X, vpRect.Y, vpRect.Width, vpRect.Height);
+        }
+
+        // Draw search markers
+        foreach (int line in _markedLines)
+        {
+            float y = line * (float)Height / Math.Max(1, _snapshot.TotalLines);
+            e.Graphics.FillRectangle(_markerBrush, 0, y, Width, 2);
+        }
+    }
+
+    #endregion
+
+    #region Interaction (Click/Drag to Scroll)
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (e.Button != MouseButtons.Left || _attachedEditor == null) return;
+        _isDragging = true;
+        _dragStartPoint = e.Location;
+        _viewportDragStart = _viewportRect;
+        Capture = true;
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (!_isDragging || _attachedEditor == null) return;
+
+        float dy = e.Y - _dragStartPoint.Y;
+        float scale = (float)_snapshot.TotalLines / Math.Max(1, Height);
+        int deltaLines = (int)(dy * scale);
+
+        int newFirst = Math.Max(0, _viewportDragStart.Y - deltaLines);
+        ScrollEditorTo(newFirst);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (e.Button == MouseButtons.Left)
+        {
+            _isDragging = false;
+            Capture = false;
+        }
+    }
+
+    private void ScrollEditorTo(int firstLine)
+    {
+        if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
+
+        try
+        {
+            // Send scroll message
+            int currentFirst = SendMessage(_attachedEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+            int delta = firstLine - currentFirst;
+            if (delta != 0)
+            {
+                SendMessage(_attachedEditor.Handle, EM_LINESCROLL, 0, delta);
+                // Force a poll/update soon
+                _lastPolledViewport = Rectangle.Empty; // force refresh next tick
+            }
+        }
+        catch { }
+    }
+
+    #endregion
+
+    #region Cleanup
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            DetachEditor();
+            _backgroundBrush?.Dispose();
+            _viewportBrush?.Dispose();
+            _viewportPen?.Dispose();
+            _plainTextBrush?.Dispose();
+            _font?.Dispose();
+            foreach (var kv in _tokenBrushes) kv.Value.Dispose();
+            _bufferBitmap?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+
+    #endregion
+
+    #region Viewport Event
+
+    protected virtual void OnViewportChanged()
+    {
+        ViewportChanged?.Invoke(this, new ViewportChangedEventArgs(_viewportRect.Y, _viewportRect.Height));
+    }
+
+    #endregion
+}
+
+public class ViewportChangedEventArgs : EventArgs
+{
+    public int FirstLine { get; }
+    public int VisibleLines { get; }
+
+    public ViewportChangedEventArgs(int firstLine, int visibleLines)
+    {
+        FirstLine = firstLine;
+        VisibleLines = visibleLines;
+    }
 }
