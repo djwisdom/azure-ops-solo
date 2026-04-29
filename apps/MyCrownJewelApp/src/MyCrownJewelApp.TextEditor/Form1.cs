@@ -17,7 +17,7 @@ namespace MyCrownJewelApp.TextEditor
         private HashSet<int> collapsedRegions = new();
         private bool gutterVisible = true;
         private bool statusBarVisible = true;
-        private bool wordWrapEnabled = true;
+        private bool wordWrapEnabled = false;
         private bool syntaxHighlightingEnabled = false;
         private bool isDarkTheme = true;
         private float zoomFactor = 1.0f;
@@ -84,12 +84,37 @@ namespace MyCrownJewelApp.TextEditor
             zoomFactor = 1.0f;
             // Set flat border for editor
             textEditor.BorderStyle = BorderStyle.None;
+            
+            // Default feature states (all off)
+            wordWrapEnabled = false;
+            syntaxHighlightingEnabled = false;
+            gutterVisible = false;
+            showGuide = false;
+            
             LoadRecentFiles();
             UpdateRecentMenu();
             UpdateThemeColors(isDarkTheme);
             ApplyWordWrap();
             UpdateStatusBar();
             UpdateColumnGuideMenuChecked();
+            
+            // Initialize toggles to match defaults
+            gutterMenuItem.Checked = gutterVisible;
+            columnGuideMenuItem.Checked = showGuide;
+            minimapMenuItem.Checked = false; // minimap off by default
+            syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
+            wordWrapMenuItem.Checked = wordWrapEnabled;
+            
+            // Apply visibility states
+            gutterPanel.Visible = gutterVisible;
+            guidePanel.Visible = showGuide;
+            minimapControl.Visible = false;
+            
+            // Set gutter column width to 0 initially (gutter off)
+            if (mainTable.ColumnCount > 0)
+            {
+                mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
+            }
 
             // Initialize syntax highlighting debounce timer
             highlightTimer = new System.Windows.Forms.Timer();

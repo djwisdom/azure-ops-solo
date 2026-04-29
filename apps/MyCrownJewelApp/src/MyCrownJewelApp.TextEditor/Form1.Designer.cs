@@ -168,20 +168,20 @@ partial class Form1
         statusBarMenuItem = new ToolStripMenuItem("&Status Bar", null, StatusBar_Click);
         statusBarMenuItem.Checked = true;
         wordWrapMenuItem = new ToolStripMenuItem("&Word Wrap", null, WordWrap_Click);
-        wordWrapMenuItem.Checked = true;
+        wordWrapMenuItem.Checked = false;
         syntaxHighlightingMenuItem = new ToolStripMenuItem("&Syntax Highlighting", null, SyntaxHighlighting_Click);
         syntaxHighlightingMenuItem.Checked = false;
          gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
-         gutterMenuItem.Checked = true;
+         gutterMenuItem.Checked = false;
 
          // Minimap toggle (initially unchecked)
          minimapMenuItem = new ToolStripMenuItem("Minimap", null, MinimapMenuItem_Click);
-         minimapMenuItem.Checked = true; // Start visible
+         minimapMenuItem.Checked = false; // Start hidden
          minimapMenuItem.CheckOnClick = true;
 
         // Column Guide menu (checkable with dropdown for widths)
         columnGuideMenuItem = new ToolStripMenuItem("C&olumn Guide", null, ColumnGuide_Click);
-        columnGuideMenuItem.Checked = true;
+        columnGuideMenuItem.Checked = false;
         columnGuideMenuItem.CheckOnClick = true;
         col72MenuItem = new ToolStripMenuItem("&72", null, (s, e) => SetGuideColumn(72));
         col80MenuItem = new ToolStripMenuItem("&80", null, (s, e) => SetGuideColumn(80));
