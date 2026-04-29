@@ -59,12 +59,9 @@ namespace MyCrownJewelApp.TextEditor
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
         
-        // Suspend flag for selection changed during theme refresh
+        // Suspend selection changed events during internal updates
         private bool _suspendSelectionChanged = false;
-        
-        // Mouse drag selection guard
-        private bool _isMouseSelecting = false;
-        
+
         // Elastic tab stops system
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
@@ -149,10 +146,6 @@ namespace MyCrownJewelApp.TextEditor
             this.KeyPreview = true;
             this.KeyDown += Form1_KeyDown;
             this.FormClosing += Form1_FormClosing;
-
-            // Track mouse drag selection to avoid highlight interference
-            textEditor.MouseDown += TextEditor_MouseDown;
-            textEditor.MouseUp += TextEditor_MouseUp;
 
             isDarkTheme = true;
             zoomFactor = 1.0f;
@@ -453,6 +446,7 @@ namespace MyCrownJewelApp.TextEditor
                 }
             }
             gutterPanel?.RefreshGutter();
+            textEditor.Invalidate();
         }
 
         private void ToggleTheme()
@@ -1614,6 +1608,8 @@ namespace MyCrownJewelApp.TextEditor
                 finally
                 {
                     EndUpdate(textEditor);
+                    // Ensure full repaint to avoid artifacts
+                    textEditor.Invalidate();
                 }
             }
             finally
@@ -1664,22 +1660,6 @@ namespace MyCrownJewelApp.TextEditor
                 highlightTimer?.Start();
             }
             guidePanel?.Invalidate();
-        }
-
-        private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-                _isMouseSelecting = true;
-        }
-
-        private void TextEditor_MouseUp(object? sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                _isMouseSelecting = false;
-                // Refresh line highlight after mouse selection completes
-                HighlightCurrentLine();
-            }
         }
 
          private void TextEditor_Resize(object? sender, EventArgs e)
