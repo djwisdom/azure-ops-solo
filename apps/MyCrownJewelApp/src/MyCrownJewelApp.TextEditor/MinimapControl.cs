@@ -231,7 +231,9 @@ namespace MyCrownJewelApp.TextEditor
         {
             if (lineIndex < 0) lineIndex = 0;
             if (lineIndex >= _totalLines) lineIndex = _totalLines - 1;
-            return (int)(lineIndex * Scale);
+            int y = (int)(lineIndex * Scale);
+            if (y < 0) y = 0;
+            return y;
         }
 
         private int GetEditorFirstVisibleLine()
@@ -342,10 +344,21 @@ namespace MyCrownJewelApp.TextEditor
                 return;
             }
 
+            // Guard against invalid dimensions
+            if (Width <= 0 || Height <= 0) return;
+
             if (_bufferBitmap == null || _bufferBitmap.Width != Width || _bufferBitmap.Height != Height)
             {
                 _bufferBitmap?.Dispose();
-                _bufferBitmap = new Bitmap(Width, Height);
+                try
+                {
+                    _bufferBitmap = new Bitmap(Width, Height);
+                }
+                catch (ArgumentException)
+                {
+                    // Invalid dimensions — skip this redraw
+                    return;
+                }
             }
 
             using (var g = Graphics.FromImage(_bufferBitmap))
@@ -377,7 +390,14 @@ namespace MyCrownJewelApp.TextEditor
                 if (y >= Height) break;
 
                 Color lineColor = GetLineColor(line);
-                Rectangle lineRect = new Rectangle(1, y, MinimapWidth - 2, Math.Max(1, (int)Scale));
+                int lineH = Math.Max(1, (int)Scale);
+                if (lineH <= 0) lineH = 1;
+                Rectangle lineRect = new Rectangle(1, y, MinimapWidth - 2, lineH);
+                // Clamp rectangle to control bounds
+                if (lineRect.Right > Width) lineRect.Width = Math.Max(1, Width - lineRect.Left);
+                if (lineRect.Bottom > Height) lineRect.Height = Math.Max(1, Height - lineRect.Top);
+                if (lineRect.Width <= 0 || lineRect.Height <= 0) continue;
+
                 using var brush = new SolidBrush(lineColor);
                 g.FillRectangle(brush, lineRect);
             }
@@ -387,20 +407,35 @@ namespace MyCrownJewelApp.TextEditor
 
         private void DrawViewportOverlay(Graphics g)
         {
+            // Guard against invalid viewport dimensions
+            if (_viewportRect.Width <= 0 || _viewportRect.Height <= 0) return;
+
             using var fillBrush = new SolidBrush(ViewportColor);
             g.FillRectangle(fillBrush, _viewportRect);
             using var pen = new Pen(ViewportBorderColor, 2);
-            g.DrawRectangle(pen, _viewportRect.X, _viewportRect.Y, _viewportRect.Width - 1, _viewportRect.Height - 1);
+            // Draw with safe coordinates
+            Rectangle safeRect = Rectangle.Intersect(_viewportRect, new Rectangle(0, 0, Width, Height));
+            if (safeRect.Width > 0 && safeRect.Height > 0)
+            {
+                g.DrawRectangle(pen, safeRect.X, safeRect.Y, safeRect.Width - 1, safeRect.Height - 1);
+            }
         }
 
         private void DrawEmptyMessage(Graphics g)
         {
-            string msg = "Attach an editor to enable minimap.";
-            using var font = new Font("Segoe UI", 9);
-            var size = g.MeasureString(msg, font);
-            var x = (Width - (int)size.Width) / 2;
-            var y = (Height - (int)size.Height) / 2;
-            g.DrawString(msg, font, Brushes.Gray, x, y);
+            try
+            {
+                using var font = new Font("Segoe UI", 9);
+                var size = g.MeasureString("Attach an editor to enable minimap.", font);
+                var x = (Width - (int)size.Width) / 2;
+                var y = (Height - (int)size.Height) / 2;
+                g.DrawString("Attach an editor to enable minimap.", font, Brushes.Gray, x, y);
+            }
+            catch
+            {
+                // Fallback: draw simple text without custom font
+                g.DrawString("Attach an editor to enable minimap.", Font, Brushes.Gray, 10, 10);
+            }
         }
 
         private Color GetLineColor(int lineIndex)
