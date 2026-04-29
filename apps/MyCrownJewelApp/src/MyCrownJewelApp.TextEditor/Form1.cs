@@ -59,9 +59,12 @@ namespace MyCrownJewelApp.TextEditor
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
         
-        // Suspend selection changed events during internal updates
+        // Suspend flag for selection changed during theme refresh
         private bool _suspendSelectionChanged = false;
-
+        
+        // Mouse drag selection guard
+        private bool _isMouseSelecting = false;
+        
         // Elastic tab stops system
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
@@ -91,6 +94,9 @@ namespace MyCrownJewelApp.TextEditor
             string FontName,
             float FontSize,
             bool InsertSpaces,
+            bool AutoIndentEnabled,
+            bool SmartTabsEnabled,
+            bool ElasticTabsEnabled,
             CurrentLineHighlightMode CurrentLineHighlightMode,
             bool SyntaxHighlightingEnabled,
             bool MinimapVisible
@@ -143,6 +149,10 @@ namespace MyCrownJewelApp.TextEditor
             this.KeyPreview = true;
             this.KeyDown += Form1_KeyDown;
             this.FormClosing += Form1_FormClosing;
+
+            // Track mouse drag selection to avoid highlight interference
+            textEditor.MouseDown += TextEditor_MouseDown;
+            textEditor.MouseUp += TextEditor_MouseUp;
 
             isDarkTheme = true;
             zoomFactor = 1.0f;
@@ -475,6 +485,9 @@ namespace MyCrownJewelApp.TextEditor
                         fontName = settings.FontName;
                         fontSize = settings.FontSize;
                         insertSpaces = settings.InsertSpaces;
+                        autoIndentEnabled = settings.AutoIndentEnabled;
+                        smartTabsEnabled = settings.SmartTabsEnabled;
+                        elasticTabsEnabled = settings.ElasticTabsEnabled;
                         currentLineHighlightMode = settings.CurrentLineHighlightMode;
                         syntaxHighlightingEnabled = settings.SyntaxHighlightingEnabled;
                         _pendingMinimapVisible = settings.MinimapVisible;
@@ -501,6 +514,9 @@ namespace MyCrownJewelApp.TextEditor
                     FontName: fontName,
                     FontSize: fontSize,
                     InsertSpaces: insertSpaces,
+                    AutoIndentEnabled: autoIndentEnabled,
+                    SmartTabsEnabled: smartTabsEnabled,
+                    ElasticTabsEnabled: elasticTabsEnabled,
                     CurrentLineHighlightMode: currentLineHighlightMode,
                     SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
                     MinimapVisible: minimapMenuItem?.Checked ?? false
@@ -1626,8 +1642,15 @@ namespace MyCrownJewelApp.TextEditor
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
         {
             if (_suspendSelectionChanged) return;
+            // Skip line highlight during mouse drag to avoid interfering with selection
+            if (Control.MouseButtons == MouseButtons.Left)
+            {
+                gutterPanel?.RefreshGutter();
+                UpdateStatusBar();
+                return;
+            }
             HighlightCurrentLine();
-            if (gutterPanel != null) gutterPanel.RefreshGutter();
+            gutterPanel?.RefreshGutter();
             UpdateStatusBar();
         }
 
@@ -1641,6 +1664,22 @@ namespace MyCrownJewelApp.TextEditor
                 highlightTimer?.Start();
             }
             guidePanel?.Invalidate();
+        }
+
+        private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+                _isMouseSelecting = true;
+        }
+
+        private void TextEditor_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                _isMouseSelecting = false;
+                // Refresh line highlight after mouse selection completes
+                HighlightCurrentLine();
+            }
         }
 
          private void TextEditor_Resize(object? sender, EventArgs e)
