@@ -55,10 +55,7 @@ namespace MyCrownJewelApp.TextEditor
         private Rectangle normalBounds;
         private FormWindowState normalWindowState;
         private FormBorderStyle normalBorderStyle;
-        private string fontName = "Consolas";
-        private float fontSize = 12f;
-        
-        // Feature toggles
+
         private bool autoIndentEnabled = true;
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
@@ -78,6 +75,18 @@ namespace MyCrownJewelApp.TextEditor
         private int guideColumn = 80;
         private bool showGuide = true;
         private readonly Color guideColor = Color.FromArgb(60, 60, 60);
+
+        // Theme management
+        private ThemeManager _themeManager = ThemeManager.Instance;
+        private string fontName = "Consolas";
+        private float fontSize = 12f;
+        
+        // Colors - for syntax highlighting
+        private Color keywordColor = Color.Blue;
+        private Color stringColor = Color.Maroon;
+        private Color commentColor = Color.Green;
+        private Color numberColor = Color.DarkRed;
+        private Color preprocessorColor = Color.Gray;
 
         // Current file state
         private string? currentFilePath;
@@ -123,27 +132,6 @@ namespace MyCrownJewelApp.TextEditor
         public HashSet<int> Bookmarks => bookmarks;
         public HashSet<int> ModifiedLines => modifiedLines;
         public HashSet<int> CollapsedRegions => collapsedRegions;
-
-        // Colors
-        private Color darkBackColor = Color.FromArgb(30, 30, 30);
-        private Color darkForeColor = Color.FromArgb(220, 220, 220);
-        private Color darkMenuBackColor = Color.FromArgb(45, 45, 45);
-        private Color darkMenuForeColor = Color.FromArgb(220, 220, 220);
-        private Color darkEditorBackColor = Color.FromArgb(30, 30, 30);
-        private Color darkEditorForeColor = Color.FromArgb(220, 220, 220);
-
-        private Color lightBackColor = Color.White;
-        private Color lightForeColor = Color.Black;
-        private Color lightMenuBackColor = SystemColors.MenuBar;
-        private Color lightMenuForeColor = SystemColors.MenuText;
-        private Color lightEditorBackColor = Color.White;
-        private Color lightEditorForeColor = Color.Black;
-
-        private Color keywordColor = Color.Blue;
-        private Color stringColor = Color.Maroon;
-        private Color commentColor = Color.Green;
-        private Color numberColor = Color.DarkRed;
-        private Color preprocessorColor = Color.Gray;
 
         private System.Windows.Forms.Timer? highlightTimer;
 
@@ -407,30 +395,30 @@ namespace MyCrownJewelApp.TextEditor
 
         private void UpdateThemeColors(bool isDark)
         {
-            var backColor = isDark ? darkBackColor : lightBackColor;
-            var foreColor = isDark ? darkForeColor : lightForeColor;
-            var editorBack = isDark ? darkEditorBackColor : lightEditorBackColor;
-            var editorFore = isDark ? darkEditorForeColor : lightEditorForeColor;
-
-            this.BackColor = backColor;
-            this.ForeColor = foreColor;
+            var theme = isDark ? Theme.Dark : Theme.Light;
+            _themeManager.CurrentTheme = theme;
+            
+            this.BackColor = theme.Background;
+            this.ForeColor = theme.Text;
             if (menuStrip != null)
             {
-                menuStrip.BackColor = editorBack;
-                menuStrip.ForeColor = editorFore;
+                menuStrip.Renderer = new ThemeAwareMenuRenderer(theme);
+                menuStrip.BackColor = theme.MenuBackground;
+                menuStrip.ForeColor = theme.Text;
             }
             if (textEditor != null)
             {
-                textEditor.BackColor = editorBack;
-                textEditor.ForeColor = editorFore;
+                textEditor.BackColor = theme.EditorBackground;
+                textEditor.ForeColor = theme.Text;
             }
             if (gutterPanel != null)
             {
-                gutterPanel.BackColor = editorBack;
+                gutterPanel.BackColor = theme.EditorBackground;
+                gutterPanel.ForeColor = theme.Text;
             }
             if (minimapControl != null)
             {
-                minimapControl.BackColor = editorBack;
+                minimapControl.BackColor = theme.EditorBackground;
                 minimapControl.ViewportColor = isDark ? Color.FromArgb(100, Color.DodgerBlue) : Color.FromArgb(80, Color.LightBlue);
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
                 minimapControl.RefreshNow();
@@ -438,19 +426,19 @@ namespace MyCrownJewelApp.TextEditor
             if (guidePanel != null)
             {
                 guidePanel.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
+                guidePanel.Invalidate();
             }
             if (statusStrip != null)
             {
-                statusStrip.BackColor = editorBack;
-                statusStrip.ForeColor = editorFore;
+                statusStrip.BackColor = theme.PanelBackground;
+                statusStrip.ForeColor = theme.Text;
                 foreach (ToolStripItem item in statusStrip.Items)
                 {
-                    item.BackColor = editorBack;
-                    item.ForeColor = editorFore;
+                    item.BackColor = theme.PanelBackground;
+                    item.ForeColor = theme.Text;
                 }
             }
 
-            // Apply scrollbar theme immediately if handle exists
             if (textEditor != null && textEditor.IsHandleCreated)
             {
                 if (isDark)
@@ -458,29 +446,17 @@ namespace MyCrownJewelApp.TextEditor
                 else
                     SetWindowTheme(textEditor.Handle, null, null);
             }
-
-            // Update selection colors to match theme
-            if (textEditor != null && textEditor.IsHandleCreated)
+            
+            if (syntaxHighlightingEnabled && incrementalHighlighter != null)
             {
-                if (isDark)
-                {
-                    textEditor.SelectionBackColor = Color.FromArgb(0, 120, 215);
-                    textEditor.SelectionColor = Color.White;
-                }
-                else
-                {
-                    textEditor.SelectionBackColor = SystemColors.Highlight;
-                    textEditor.SelectionColor = SystemColors.HighlightText;
-                }
+                RequestVisibleHighlight();
             }
 
             darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
 
-            // Recreate highlighter with new theme colors
             CreateIncrementalHighlighter();
 
-            // Refresh current line highlight and gutter with new theme colors
             if (currentLineHighlightMode != CurrentLineHighlightMode.Off)
             {
                 _suspendSelectionChanged = true;
@@ -501,11 +477,25 @@ namespace MyCrownJewelApp.TextEditor
 
         private void ToggleTheme()
         {
-            isDarkTheme = !isDarkTheme;
+            _themeManager.ToggleTheme();
+            isDarkTheme = _themeManager.IsDarkMode;
             UpdateThemeColors(isDarkTheme);
             // Update theme menu checkmarks
             darkThemeMenuItem.Checked = isDarkTheme;
             lightThemeMenuItem.Checked = !isDarkTheme;
+        }
+
+        private void OnThemeChanged(Theme theme)
+        {
+            if (this.InvokeRequired)
+                this.Invoke(new Action(() => OnThemeChanged(theme)));
+            else
+            {
+                isDarkTheme = theme.Equals(Theme.Dark);
+                UpdateThemeColors(isDarkTheme);
+                darkThemeMenuItem.Checked = isDarkTheme;
+                lightThemeMenuItem.Checked = !isDarkTheme;
+            }
         }
 
         private void LoadSettings()
@@ -645,7 +635,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 incrementalHighlighter?.Dispose();
                 incrementalHighlighter = null;
-                var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+                var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
                 ResetVisibleRangeToBase(baseColor);
             }
             SaveSettings();
@@ -1853,12 +1843,12 @@ namespace MyCrownJewelApp.TextEditor
 
             if (!syntaxHighlightingEnabled || currentSyntax == null)
             {
-                var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+                var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
                 ResetVisibleRangeToBase(baseColor);
                 return;
             }
 
-            var baseColorCurrent = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            var baseColorCurrent = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             incrementalHighlighter = new IncrementalHighlighter(
                 textEditor,
                 currentSyntax,
@@ -1896,7 +1886,7 @@ namespace MyCrownJewelApp.TextEditor
             int lineLen = textEditor.Lines[line].Length;
             if (lineLen == 0) return;
 
-            var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             BeginUpdate(textEditor);
             textEditor.SuspendLayout();
             try
@@ -1933,7 +1923,7 @@ namespace MyCrownJewelApp.TextEditor
             SyntaxTokenType.Comment => GetCommentColor(),
             SyntaxTokenType.Number => GetNumberColor(),
             SyntaxTokenType.Preprocessor => GetPreprocessorColor(),
-            _ => (isDarkTheme ? darkEditorForeColor : lightEditorForeColor)
+            _ => (isDarkTheme ? Theme.Dark.Text : Theme.Light.Text)
         };
 
         // Get visible line range in the editor (no buffer — only truly visible lines)
