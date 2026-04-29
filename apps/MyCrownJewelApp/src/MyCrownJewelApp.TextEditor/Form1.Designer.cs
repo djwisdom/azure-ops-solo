@@ -247,11 +247,12 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
-        // Main Table Layout (2 columns: gutter | editor)
+        // Main Table Layout (3 columns: gutter | editor | minimap)
         mainTable = new TableLayoutPanel();
-        mainTable.ColumnCount = 2;
+        mainTable.ColumnCount = 3;
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));   // Gutter
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Editor
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // Minimap
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
@@ -279,6 +280,16 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
         textEditor.Resize += TextEditor_Resize;
         textEditor.Resize += TextEditor_Resize;
 
+        // Minimap Control (separate column, fills its cell)
+        minimapControl = new MinimapControl();
+        minimapControl.Dock = DockStyle.Fill;
+        minimapControl.MinimapWidth = 100;
+        minimapControl.Scale = 0.5f;
+        minimapControl.ShowColors = false;
+        minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
+        minimapControl.ViewportBorderColor = Color.DodgerBlue;
+        minimapControl.Margin = new Padding(0);
+
         // Column Guide Overlay — child of editor so it overlays without layout conflict
         guidePanel = new ColumnGuidePanel();
         guidePanel.LinkedEditor = textEditor;
@@ -293,19 +304,7 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
-
-        // Minimap Overlay — positioned over scrollbar area inside editor
-        minimapControl = new MinimapControl();
-        minimapControl.Width = 100;
-        minimapControl.MinimapWidth = 100;
-        minimapControl.Scale = 0.5f;
-        minimapControl.ShowColors = false;
-        minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
-        minimapControl.ViewportBorderColor = Color.DodgerBlue;
-        minimapControl.Margin = new Padding(0);
-        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
-        textEditor.Controls.Add(minimapControl);
-        minimapControl.BringToFront();
+        mainTable.Controls.Add(minimapControl, 2, 0);
 
         // Status Strip
         statusStrip = new StatusStrip();

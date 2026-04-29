@@ -111,14 +111,13 @@ namespace MyCrownJewelApp.TextEditor
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
             guidePanel.Visible = showGuide;
-            minimapControl.Visible = false; // matches menu default
-            PositionMinimap(); // ensure correct overlay position
+            minimapControl.Visible = false;
             
-            // Set gutter column width to 0 initially (gutter off)
-            if (mainTable.ColumnCount > 0)
-            {
+            // Set initial column widths for visible state
+            if (mainTable.ColumnCount >= 1)
                 mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
-            }
+            if (mainTable.ColumnCount >= 3)
+                mainTable.ColumnStyles[2].Width = 0; // minimap off by default
 
             // Attach minimap to editor
             if (minimapControl != null)
@@ -139,18 +138,15 @@ namespace MyCrownJewelApp.TextEditor
                     HighlightSyntaxAsync();
                 }
             };
-
-            // Position minimap over scrollbar area
-            PositionMinimap();
         }
 
-         private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
-         {
-             // Optional: update status bar or perform other actions when viewport changes
-             // Could sync with editor if needed; minimap already scrolls editor directly
-         }
+        private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
+        {
+            // Optional: update status bar or perform other actions when viewport changes
+            // Could sync with editor if needed; minimap already scrolls editor directly
+        }
 
-         #region Theme & Toggles
+        #region Theme & Toggles
 
         private void UpdateThemeColors(bool isDark)
         {
@@ -225,35 +221,22 @@ namespace MyCrownJewelApp.TextEditor
              // Form will auto-layout: statusStrip dock=Bottom, mainTable dock=Fill
          }
 
-         private void ToggleMinimap()
-         {
-             // Toggle minimap visibility when using overlay layout
-             bool visible = minimapMenuItem.Checked;
-             if (minimapControl != null)
-             {
-                 minimapControl.Visible = visible;
-                 if (visible) PositionMinimap();
-             }
-             mainTable.PerformLayout();
-         }
+        private void ToggleMinimap()
+        {
+            // Show/hide minimap by adjusting column width
+            bool visible = minimapMenuItem.Checked;
+            if (mainTable.ColumnCount >= 3)
+            {
+                mainTable.ColumnStyles[2].Width = visible ? 100 : 0;
+            }
+        }
 
-          private void PositionMinimap()
-          {
-              if (minimapControl == null || !minimapControl.Visible) return;
-              
-              int scrollbarWidth = SystemInformation.VerticalScrollBarWidth;
-              int x = textEditor.ClientSize.Width - scrollbarWidth - minimapControl.Width;
-              if (x < 0) x = 0;
-              minimapControl.Location = new Point(x, 0);
-              minimapControl.Height = textEditor.ClientSize.Height;
-          }
+        private void MinimapMenuItem_Click(object? sender, EventArgs e)
+        {
+            ToggleMinimap();
+        }
 
-          private void MinimapMenuItem_Click(object? sender, EventArgs e)
-         {
-             ToggleMinimap();
-         }
-
-         private void ToggleWordWrap()
+        private void ToggleWordWrap()
         {
             wordWrapEnabled = !wordWrapEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
@@ -1193,7 +1176,6 @@ namespace MyCrownJewelApp.TextEditor
                  highlightTimer?.Start();
              }
              guidePanel?.Invalidate();
-             PositionMinimap();
          }
 
          private void UpdateStatusBar()
@@ -1216,8 +1198,18 @@ namespace MyCrownJewelApp.TextEditor
             int totalLines = textEditor.Lines.Length;
             linePositionLabel.Text = $"{currentLineNum} / {totalLines}";
 
-            // Zoom
-            zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
+            // Scroll percentage (current line / total lines)
+            int total = textEditor.Lines.Length;
+            if (total > 0)
+            {
+                int current = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
+                int percent = (int)((double)current / total * 100);
+                zoomLabel.Text = $"{percent}%";
+            }
+            else
+            {
+                zoomLabel.Text = "100%";
+            }
 
             // Line endings (Windows)
             lineEndingsLabel.Text = "Windows (CRLF)";
