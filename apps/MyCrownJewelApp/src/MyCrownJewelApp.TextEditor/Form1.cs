@@ -394,8 +394,18 @@ namespace MyCrownJewelApp.TextEditor
                 }
                 else
                 {
-                    textEditor.Text = textEditor.Text.Insert(selStart, tabString);
-                    textEditor.SelectionStart = selStart + tabString.Length;
+                    BeginUpdate(textEditor);
+                    textEditor.SuspendLayout();
+                    try
+                    {
+                        textEditor.Text = textEditor.Text.Insert(selStart, tabString);
+                        textEditor.SelectionStart = selStart + tabString.Length;
+                    }
+                    finally
+                    {
+                        EndUpdate(textEditor);
+                        textEditor.ResumeLayout();
+                    }
                 }
             }
             
