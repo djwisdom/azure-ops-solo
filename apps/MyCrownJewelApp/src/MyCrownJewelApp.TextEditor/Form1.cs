@@ -19,6 +19,9 @@ namespace MyCrownJewelApp.TextEditor
         private bool statusBarVisible = true;
         private bool wordWrapEnabled = false;
         private bool syntaxHighlightingEnabled = false;
+        private CurrentLineHighlightMode currentLineHighlightMode = CurrentLineHighlightMode.Off;
+        private int tabSize = 4;
+        private bool insertSpaces = true;
         private bool isDarkTheme = true;
         private float zoomFactor = 1.0f;
         private bool isHighlighting = false;
@@ -108,7 +111,8 @@ namespace MyCrownJewelApp.TextEditor
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
             guidePanel.Visible = showGuide;
-            minimapControl.Visible = false;
+            minimapControl.Visible = false; // matches menu default
+            PositionMinimap(); // ensure correct overlay position
             
             // Set gutter column width to 0 initially (gutter off)
             if (mainTable.ColumnCount > 0)
@@ -116,6 +120,14 @@ namespace MyCrownJewelApp.TextEditor
                 mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
             }
 
+            // Attach minimap to editor
+            if (minimapControl != null)
+            {
+                minimapControl.AttachEditor(textEditor);
+                minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
+                minimapControl.SetTokenProvider(GetTokensForLine); // for optional syntax coloring
+            }
+            
             // Initialize syntax highlighting debounce timer
             highlightTimer = new System.Windows.Forms.Timer();
             highlightTimer.Interval = 150; // 150ms debounce for responsiveness
@@ -128,14 +140,8 @@ namespace MyCrownJewelApp.TextEditor
                 }
             };
 
-             // Attach minimap control
-             minimapControl.AttachEditor(textEditor);
-             minimapControl.ShowColors = false; // Default off; can be enabled via API
-             minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
-             minimapControl.SetTokenProvider(GetTokensForLine);
-             
-             // Position minimap over scrollbar area
-             PositionMinimap();
+            // Position minimap over scrollbar area
+            PositionMinimap();
         }
 
          private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
@@ -282,6 +288,201 @@ namespace MyCrownJewelApp.TextEditor
                     textEditor.ResumeLayout();
                     EndUpdate(textEditor);
                 }
+            }
+        }
+
+        // Tab handling
+        private void InsertSpaces_Click(object? sender, EventArgs e) => ToggleInsertSpaces();
+        private void SetTabSize(int size)
+        {
+            tabSize = size;
+            UpdateTabSizeMenu();
+            UpdateStatusBar();
+        }
+        private void UpdateTabSizeMenu()
+        {
+            if (tab2MenuItem != null && tab4MenuItem != null && tab6MenuItem != null &&
+                tab8MenuItem != null && tab10MenuItem != null && tab12MenuItem != null)
+            {
+                tab2MenuItem.Checked = (tabSize == 2);
+                tab4MenuItem.Checked = (tabSize == 4);
+                tab6MenuItem.Checked = (tabSize == 6);
+                tab8MenuItem.Checked = (tabSize == 8);
+                tab10MenuItem.Checked = (tabSize == 10);
+                tab12MenuItem.Checked = (tabSize == 12);
+            }
+        }
+        private void ToggleInsertSpaces()
+        {
+            insertSpaces = !insertSpaces;
+            insertSpacesMenuItem.Checked = insertSpaces;
+        }
+
+        // Current line highlight mode cycling
+        private void CurrentLineHighlightMode_Click(object? sender, EventArgs e)
+        {
+            // Cycle: Off -> NumberOnly -> WholeLine -> Off
+            currentLineHighlightMode = currentLineHighlightMode switch
+            {
+                CurrentLineHighlightMode.Off => CurrentLineHighlightMode.NumberOnly,
+                CurrentLineHighlightMode.NumberOnly => CurrentLineHighlightMode.WholeLine,
+                CurrentLineHighlightMode.WholeLine => CurrentLineHighlightMode.Off,
+                _ => CurrentLineHighlightMode.Off
+            };
+            
+            UpdateCurrentLineHighlightMenu();
+            
+            if (currentLineHighlightMode == CurrentLineHighlightMode.Off)
+            {
+                ClearCurrentLineHighlight();
+            }
+            else
+            {
+                lastHighlightedLine = -1;
+                HighlightCurrentLine();
+            }
+        }
+
+        private void UpdateCurrentLineHighlightMenu()
+        {
+            if (currentLineOffMenuItem != null && currentLineNumberOnlyMenuItem != null && currentLineWholeLineMenuItem != null)
+            {
+                currentLineOffMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.Off);
+                currentLineNumberOnlyMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.NumberOnly);
+                currentLineWholeLineMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine);
+            }
+        }
+
+        private void ClearCurrentLineHighlight()
+        {
+            if (lastHighlightedLine >= 0 && lastHighlightedLine < textEditor.Lines.Length)
+            {
+                int prevStart = textEditor.GetFirstCharIndexFromLine(lastHighlightedLine);
+                int prevLen = textEditor.Lines[lastHighlightedLine].Length;
+                if (prevStart >= 0 && prevLen > 0)
+                {
+                    textEditor.Select(prevStart, prevLen);
+                    textEditor.SelectionBackColor = textEditor.BackColor;
+                }
+            }
+            lastHighlightedLine = -1;
+        }
+
+        // Tab key handling
+        private void TextEditor_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Tab)
+            {
+                HandleTab(e);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void HandleTab(KeyEventArgs e)
+        {
+            if (textEditor == null) return;
+            
+            string tabString = insertSpaces ? new string(' ', tabSize) : "\t";
+            
+            if (e.Shift)
+            {
+                UnindentSelection();
+            }
+            else
+            {
+                int selStart = textEditor.SelectionStart;
+                int selLength = textEditor.SelectionLength;
+                
+                if (selLength > 0)
+                {
+                    IndentSelection();
+                }
+                else
+                {
+                    textEditor.Text = textEditor.Text.Insert(selStart, tabString);
+                    textEditor.SelectionStart = selStart + tabString.Length;
+                }
+            }
+            
+            UpdateStatusBar();
+        }
+
+        private void IndentSelection()
+        {
+            if (textEditor == null) return;
+            int start = textEditor.SelectionStart;
+            int end = textEditor.SelectionStart + textEditor.SelectionLength;
+            int startLine = textEditor.GetLineFromCharIndex(start);
+            int endLine = textEditor.GetLineFromCharIndex(end);
+            string tabString = insertSpaces ? new string(' ', tabSize) : "\t";
+            
+            BeginUpdate(textEditor);
+            textEditor.SuspendLayout();
+            try
+            {
+                for (int line = endLine; line >= startLine; line--)
+                {
+                    if (line < 0 || line >= textEditor.Lines.Length) continue;
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                    if (lineStart < 0) continue;
+                    textEditor.Text = textEditor.Text.Insert(lineStart, tabString);
+                }
+                
+                textEditor.SelectionStart = start + tabString.Length;
+                int selLen = textEditor.SelectionLength + (endLine - startLine + 1) * tabString.Length;
+                textEditor.SelectionLength = selLen;
+            }
+            finally
+            {
+                EndUpdate(textEditor);
+                textEditor.ResumeLayout();
+            }
+        }
+
+        private void UnindentSelection()
+        {
+            if (textEditor == null) return;
+            int start = textEditor.SelectionStart;
+            int end = textEditor.SelectionStart + textEditor.SelectionLength;
+            int startLine = textEditor.GetLineFromCharIndex(start);
+            int endLine = textEditor.GetLineFromCharIndex(end);
+            
+            BeginUpdate(textEditor);
+            textEditor.SuspendLayout();
+            try
+            {
+                for (int line = endLine; line >= startLine; line--)
+                {
+                    if (line < 0 || line >= textEditor.Lines.Length) continue;
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                    if (lineStart < 0) continue;
+                    
+                    string lineText = textEditor.Lines[line];
+                    int removeCount = 0;
+                    foreach (char c in lineText)
+                    {
+                        if (char.IsWhiteSpace(c))
+                            removeCount++;
+                        else
+                            break;
+                    }
+                    removeCount = Math.Min(removeCount, tabSize);
+                    if (removeCount > 0)
+                    {
+                        textEditor.Text = textEditor.Text.Remove(lineStart, removeCount);
+                    }
+                }
+                
+                int newStart = Math.Max(0, start - tabSize);
+                textEditor.SelectionStart = newStart;
+                int selLen = textEditor.SelectionLength - (endLine - startLine + 1) * tabSize;
+                textEditor.SelectionLength = Math.Max(0, selLen);
+            }
+            finally
+            {
+                EndUpdate(textEditor);
+                textEditor.ResumeLayout();
             }
         }
 
@@ -900,6 +1101,8 @@ namespace MyCrownJewelApp.TextEditor
         private void HighlightCurrentLine()
         {
             if (isHighlighting) return;
+            if (currentLineHighlightMode == CurrentLineHighlightMode.Off) return;
+            
             isHighlighting = true;
             try
             {
@@ -922,24 +1125,27 @@ namespace MyCrownJewelApp.TextEditor
                     }
                 }
 
-                // Apply new highlight
-                if (currentLine >= 0 && currentLine < textEditor.Lines.Length)
+                // Apply new highlight based on mode
+                if (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine)
                 {
-                    int start = textEditor.GetFirstCharIndexFromLine(currentLine);
-                    int len = textEditor.Lines[currentLine].Length;
-                    if (start >= 0)
+                    if (currentLine >= 0 && currentLine < textEditor.Lines.Length)
                     {
-                        textEditor.Select(start, Math.Max(len, 1)); // ensure at least 1 char for empty lines
-                        textEditor.SelectionBackColor = GetCurrentLineHighlightColor();
+                        int start = textEditor.GetFirstCharIndexFromLine(currentLine);
+                        int len = textEditor.Lines[currentLine].Length;
+                        if (start >= 0)
+                        {
+                            textEditor.Select(start, Math.Max(len, 1));
+                            textEditor.SelectionBackColor = GetCurrentLineHighlightColor();
+                        }
                     }
                 }
-                 lastHighlightedLine = currentLine;
+                // NumberOnly mode: no text background highlight; gutter will draw bold number
 
-                 // Restore original selection
-                 textEditor.SelectionStart = savedStart;
-                 textEditor.SelectionLength = savedLength;
-                 // Ensure caret (original selection) is visible — this scrolls if needed
-                 textEditor.ScrollToCaret();
+                lastHighlightedLine = currentLine;
+
+                // Restore original selection (no forced ScrollToCaret to avoid jumping)
+                textEditor.SelectionStart = savedStart;
+                textEditor.SelectionLength = savedLength;
             }
             finally
             {
@@ -1001,6 +1207,14 @@ namespace MyCrownJewelApp.TextEditor
 
             // Character count
             charCountLabel.Text = $"{textEditor.Text.Length:N0} characters";
+
+            // Tab size
+            tabSizeLabel.Text = $"Tab: {tabSize}";
+
+            // Current line / total lines
+            int currentLineNum = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
+            int totalLines = textEditor.Lines.Length;
+            linePositionLabel.Text = $"{currentLineNum} / {totalLines}";
 
             // Zoom
             zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
@@ -1442,6 +1656,16 @@ namespace MyCrownJewelApp.TextEditor
                 isFullScreen = true;
             }
         }
+
+        // Current line highlight modes
+        public enum CurrentLineHighlightMode
+        {
+            Off,
+            NumberOnly,
+            WholeLine
+        }
+
+        internal CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
 
         #endregion
 

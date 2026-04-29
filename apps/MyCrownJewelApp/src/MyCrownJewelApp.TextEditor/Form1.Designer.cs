@@ -53,6 +53,18 @@ partial class Form1
         private ToolStripMenuItem statusBarMenuItem;
         private ToolStripMenuItem wordWrapMenuItem;
         private ToolStripMenuItem syntaxHighlightingMenuItem;
+        private ToolStripMenuItem currentLineHighlightMenu;
+        private ToolStripMenuItem currentLineOffMenuItem;
+        private ToolStripMenuItem currentLineNumberOnlyMenuItem;
+        private ToolStripMenuItem currentLineWholeLineMenuItem;
+        private ToolStripMenuItem insertSpacesMenuItem;
+        private ToolStripMenuItem tabSizeMenu;
+        private ToolStripMenuItem tab2MenuItem;
+        private ToolStripMenuItem tab4MenuItem;
+        private ToolStripMenuItem tab6MenuItem;
+        private ToolStripMenuItem tab8MenuItem;
+        private ToolStripMenuItem tab10MenuItem;
+        private ToolStripMenuItem tab12MenuItem;
         private ToolStripMenuItem columnGuideMenuItem;
         private ToolStripMenuItem col72MenuItem;
         private ToolStripMenuItem col80MenuItem;
@@ -74,6 +86,8 @@ partial class Form1
         private StatusStrip statusStrip;
     private ToolStripStatusLabel lineColLabel;
     private ToolStripStatusLabel charCountLabel;
+    private ToolStripStatusLabel tabSizeLabel;
+    private ToolStripStatusLabel linePositionLabel;
     private ToolStripStatusLabel zoomLabel;
     private ToolStripStatusLabel lineEndingsLabel;
     private ToolStripStatusLabel encodingLabel;
@@ -171,6 +185,33 @@ partial class Form1
         wordWrapMenuItem.Checked = false;
         syntaxHighlightingMenuItem = new ToolStripMenuItem("&Syntax Highlighting", null, SyntaxHighlighting_Click);
         syntaxHighlightingMenuItem.Checked = false;
+        
+        // Current Line Highlight submenu
+        currentLineHighlightMenu = new ToolStripMenuItem("Current Line &Highlight");
+        currentLineOffMenuItem = new ToolStripMenuItem("&Off", null, CurrentLineHighlightMode_Click);
+        currentLineNumberOnlyMenuItem = new ToolStripMenuItem("Number &Only", null, CurrentLineHighlightMode_Click);
+        currentLineWholeLineMenuItem = new ToolStripMenuItem("&Whole Line", null, CurrentLineHighlightMode_Click);
+        currentLineHighlightMenu.DropDownItems.AddRange(new ToolStripItem[] {
+            currentLineOffMenuItem, currentLineNumberOnlyMenuItem, currentLineWholeLineMenuItem
+        });
+        
+        // Tab handling: Insert Spaces toggle
+        insertSpacesMenuItem = new ToolStripMenuItem("&Insert Spaces", null, InsertSpaces_Click);
+        insertSpacesMenuItem.Checked = true;
+        insertSpacesMenuItem.CheckOnClick = true;
+        
+        // Tab Size submenu
+        tabSizeMenu = new ToolStripMenuItem("Tab &Size");
+        tab2MenuItem = new ToolStripMenuItem("&2", null, (s, e) => SetTabSize(2));
+        tab4MenuItem = new ToolStripMenuItem("&4", null, (s, e) => SetTabSize(4));
+        tab6MenuItem = new ToolStripMenuItem("&6", null, (s, e) => SetTabSize(6));
+        tab8MenuItem = new ToolStripMenuItem("&8", null, (s, e) => SetTabSize(8));
+        tab10MenuItem = new ToolStripMenuItem("1&0", null, (s, e) => SetTabSize(10));
+        tab12MenuItem = new ToolStripMenuItem("1&2", null, (s, e) => SetTabSize(12));
+        tabSizeMenu.DropDownItems.AddRange(new ToolStripItem[] {
+            tab2MenuItem, tab4MenuItem, tab6MenuItem, tab8MenuItem, tab10MenuItem, tab12MenuItem
+        });
+        
          gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
          gutterMenuItem.Checked = false;
 
@@ -198,10 +239,11 @@ partial class Form1
         lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
         themeMenu.DropDownItems.AddRange(new ToolStripItem[] { darkThemeMenuItem, lightThemeMenuItem });
 
-         viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
-             zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
-             syntaxHighlightingMenuItem, gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
-         });
+viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
+    zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
+    syntaxHighlightingMenuItem, currentLineHighlightMenu, insertSpacesMenuItem, tabSizeMenu,
+    gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
+});
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
@@ -233,6 +275,7 @@ partial class Form1
         textEditor.TextChanged += TextEditor_TextChanged;
         textEditor.SelectionChanged += TextEditor_SelectionChanged;
         textEditor.VScroll += TextEditor_VScroll;
+        textEditor.KeyDown += TextEditor_KeyDown;
         textEditor.Resize += TextEditor_Resize;
         textEditor.Resize += TextEditor_Resize;
 
@@ -267,15 +310,18 @@ partial class Form1
         // Status Strip
         statusStrip = new StatusStrip();
         statusStrip.Dock = DockStyle.Bottom;
+        statusStrip.RenderMode = ToolStripRenderMode.System; // flat
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         charCountLabel = new ToolStripStatusLabel("0 characters");
+        tabSizeLabel = new ToolStripStatusLabel("Tab: 4");
+        linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
         encodingLabel = new ToolStripStatusLabel("UTF-8");
 
         statusStrip.Items.AddRange(new ToolStripItem[] {
-            lineColLabel, charCountLabel, new ToolStripStatusLabel { Spring = true },
-            zoomLabel, lineEndingsLabel, encodingLabel
+            lineColLabel, charCountLabel, tabSizeLabel, new ToolStripStatusLabel { Spring = true },
+            linePositionLabel, zoomLabel, lineEndingsLabel, encodingLabel
         });
 
         // Add controls: Fill first, then Bottom and Top so they claim space before Fill
