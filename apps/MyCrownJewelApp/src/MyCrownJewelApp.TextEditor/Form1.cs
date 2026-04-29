@@ -6,7 +6,10 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Collections.Concurrent;
+using System.Linq;
 
 namespace MyCrownJewelApp.TextEditor
 {
@@ -50,6 +53,10 @@ namespace MyCrownJewelApp.TextEditor
         private FormBorderStyle normalBorderStyle;
         private string fontName = "Consolas";
         private float fontSize = 12f;
+        
+        // Elastic tab stops system
+        private System.Windows.Forms.Timer? elasticTabTimer;
+        private CancellationTokenSource? tabComputeCts;
 
         // Column guide state
         private int guideColumn = 80;
@@ -150,7 +157,7 @@ namespace MyCrownJewelApp.TextEditor
             try { textEditor.Font = new Font(fontName, fontSize); } catch { }
             
             // Subscribe to handle creation BEFORE any operations that might cause handle creation
-            textEditor.HandleCreated += (s, e) => ApplyScrollbarTheme();
+            textEditor.HandleCreated += (s, e) => { ApplyScrollbarTheme(); ComputeElasticTabStopsAsync(); };
             
             UpdateThemeColors(isDarkTheme);
             ApplyWordWrap();
@@ -203,6 +210,11 @@ namespace MyCrownJewelApp.TextEditor
                 }
             };
 
+            // Elastic tab stops debounce timer
+            elasticTabTimer = new System.Windows.Forms.Timer();
+            elasticTabTimer.Interval = 250; // 250ms after last change
+            elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); ComputeElasticTabStopsAsync(); };
+
             // Apply syntax highlighting state after timer is created
             if (syntaxHighlightingEnabled)
             {
@@ -236,6 +248,92 @@ namespace MyCrownJewelApp.TextEditor
             // Optional: update status bar or perform other actions when viewport changes
             // Could sync with editor if needed; minimap already scrolls editor directly
         }
+
+        #region Elastic Tab Stops
+
+        // Compute and apply elastic tab stops for visible lines on background thread
+        private void ComputeElasticTabStopsAsync()
+        {
+            if (textEditor == null || !textEditor.IsHandleCreated) return;
+            
+            tabComputeCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            tabComputeCts = cts;
+            var token = cts.Token;
+            
+            Task.Run(() =>
+            {
+                try
+                {
+                    // Capture needed UI data on UI thread
+                    string[] lines = Array.Empty<string>();
+                    int firstVisible = 0;
+                    int visibleLineCount = 0;
+                    
+                    textEditor.Invoke(new Action(() =>
+                    {
+                        if (textEditor.IsDisposed) return;
+                        lines = textEditor.Lines;
+                        firstVisible = (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+                        using var g = Graphics.FromHwnd(textEditor.Handle);
+                        int lineHeight = TextRenderer.MeasureText("X", textEditor.Font).Height;
+                        visibleLineCount = textEditor.ClientSize.Height / lineHeight + 2; // +2 for buffer
+                    }));
+                    
+                    if (token.IsCancellationRequested) return;
+                    if (lines.Length == 0) return;
+                    
+                    int lastIndex = Math.Min(firstVisible + visibleLineCount, lines.Length) - 1;
+                    if (lastIndex < firstVisible) return;
+                    
+                    // Compute max cell width per column (i.e., width of text before each tab)
+                    var maxWidths = new Dictionary<int, int>();
+                    for (int lineIdx = firstVisible; lineIdx <= lastIndex; lineIdx++)
+                    {
+                        if (token.IsCancellationRequested) return;
+                        string line = lines[lineIdx];
+                        // Split: each tab produces a cell before it; we consider all cells except the final one
+                        string[] cells = line.Split('\t');
+                        for (int col = 0; col < cells.Length - 1; col++)
+                        {
+                            string cell = cells[col];
+                            int w = TabMeasurementCache.GetStringWidth(cell, textEditor.Font);
+                            lock (maxWidths)
+                            {
+                                if (!maxWidths.ContainsKey(col) || w > maxWidths[col])
+                                    maxWidths[col] = w;
+                            }
+                        }
+                    }
+                    
+                    if (token.IsCancellationRequested) return;
+                    
+                    // Build tab stop positions (cumulative widths + padding)
+                    var stops = new List<int>();
+                    int cumulative = 0;
+                    for (int i = 0; ; i++)
+                    {
+                        if (!maxWidths.TryGetValue(i, out int w)) break;
+                        cumulative += w + 2; // 2px padding between columns
+                        stops.Add(cumulative);
+                    }
+                    
+                    if (token.IsCancellationRequested) return;
+                    
+                    // Apply to editor on UI thread
+                    textEditor.Invoke(new Action(() =>
+                    {
+                        if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Count > 0)
+                        {
+                            textEditor.SelectionTabs = stops.ToArray();
+                        }
+                    }));
+                }
+                catch { /* ignore */ }
+            }, token);
+        }
+
+        #endregion
 
         #region Theme & Toggles
 
@@ -549,32 +647,104 @@ namespace MyCrownJewelApp.TextEditor
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.KeyCode == Keys.Enter)
+            {
+                HandleEnter(e);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
 
         private void HandleTab(KeyEventArgs e)
         {
             if (textEditor == null) return;
             
-            string tabString = insertSpaces ? new string(' ', tabSize) : "\t";
-            
-            if (e.Shift)
+            BeginUndoUnit(textEditor);
+            try
             {
-                UnindentSelection();
-            }
-            else
-            {
-                int selStart = textEditor.SelectionStart;
-                int selLength = textEditor.SelectionLength;
-                
-                if (selLength > 0)
+                if (e.Shift)
                 {
-                    IndentSelection();
+                    UnindentSelection();
                 }
                 else
                 {
-                    // Use SelectedText to insert without disturbing scroll/caret
-                    textEditor.SelectedText = tabString;
+                    int selStart = textEditor.SelectionStart;
+                    int selLength = textEditor.SelectionLength;
+                    
+                    if (selLength > 0)
+                    {
+                        IndentSelection();
+                    }
+                    else
+                    {
+                        // Determine if caret is at line start or only whitespace before it
+                        int lineStartIdx = textEditor.GetFirstCharIndexFromLine(textEditor.GetLineFromCharIndex(selStart));
+                        int charsOnLineBeforeCaret = selStart - lineStartIdx;
+                        string lineText = textEditor.Lines[textEditor.GetLineFromCharIndex(selStart)];
+                        string textBeforeCaret = lineText.Substring(0, charsOnLineBeforeCaret);
+                        
+                        if (string.IsNullOrEmpty(textBeforeCaret) || textBeforeCaret.All(char.IsWhiteSpace))
+                        {
+                            // Smart indent: move to next tab stop
+                            int currentCol = 0;
+                            foreach (char c in textBeforeCaret)
+                            {
+                                currentCol += (c == '\t') ? tabSize : 1;
+                            }
+                            int targetCol = ((currentCol / tabSize) + 1) * tabSize;
+                            int needed = targetCol - currentCol;
+                            string indent = IndentationHelper.ComputeMixedIndent(needed, tabSize, insertSpaces);
+                            textEditor.SelectedText = indent;
+                        }
+                        else
+                        {
+                            // Normal tab insertion
+                            if (insertSpaces)
+                            {
+                                textEditor.SelectedText = new string(' ', tabSize);
+                            }
+                            else
+                            {
+                                textEditor.SelectedText = "\t";
+                            }
+                        }
+                    }
                 }
+            }
+            finally
+            {
+                EndUndoUnit(textEditor);
+            }
+            
+            UpdateStatusBar();
+        }
+
+        private void HandleEnter(KeyEventArgs e)
+        {
+            if (textEditor == null) return;
+            
+            BeginUndoUnit(textEditor);
+            try
+            {
+                int selStart = textEditor.SelectionStart;
+                int currentLine = textEditor.GetLineFromCharIndex(selStart);
+                string prevLineText = "";
+                if (currentLine > 0)
+                {
+                    prevLineText = textEditor.Lines[currentLine - 1];
+                }
+                // Compute indent based on previous line
+                string indent = IndentationHelper.ComputeIndent(prevLineText, tabSize, insertSpaces);
+                
+                // Insert newline + indent
+                string newText = Environment.NewLine + indent;
+                textEditor.SelectedText = newText;
+                
+                // Move caret to after indent (SelectedText already places caret at end)
+            }
+            finally
+            {
+                EndUndoUnit(textEditor);
             }
             
             UpdateStatusBar();
@@ -589,6 +759,7 @@ namespace MyCrownJewelApp.TextEditor
             int endLine = textEditor.GetLineFromCharIndex(end);
             string tabString = insertSpaces ? new string(' ', tabSize) : "\t";
             
+            BeginUndoUnit(textEditor);
             BeginUpdate(textEditor);
             textEditor.SuspendLayout();
             try
@@ -609,6 +780,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 EndUpdate(textEditor);
                 textEditor.ResumeLayout();
+                EndUndoUnit(textEditor);
             }
         }
 
@@ -620,6 +792,7 @@ namespace MyCrownJewelApp.TextEditor
             int startLine = textEditor.GetLineFromCharIndex(start);
             int endLine = textEditor.GetLineFromCharIndex(end);
             
+            BeginUndoUnit(textEditor);
             BeginUpdate(textEditor);
             textEditor.SuspendLayout();
             try
@@ -655,6 +828,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 EndUpdate(textEditor);
                 textEditor.ResumeLayout();
+                EndUndoUnit(textEditor);
             }
         }
 
@@ -987,6 +1161,10 @@ namespace MyCrownJewelApp.TextEditor
                 // Trigger gutter refresh to recalc line numbers
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
                 SaveSettings();
+                
+                // Recompute elastic tab stops with new font
+                elasticTabTimer?.Stop();
+                elasticTabTimer?.Start();
             }
         }
 
@@ -1352,6 +1530,10 @@ namespace MyCrownJewelApp.TextEditor
                 highlightTimer.Stop();
                 highlightTimer.Start();
             }
+
+            // Restart debounce timer for elastic tab stops recompute
+            elasticTabTimer?.Stop();
+            elasticTabTimer?.Start();
         }
 
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
@@ -1744,6 +1926,10 @@ namespace MyCrownJewelApp.TextEditor
         private const int EM_LINESCROLL = 0xB6;
         private const int WM_VSCROLL = 0x115;
         private const int SB_TOP = 6;
+        private const int EM_STARTUNDOACTION = 0x00B7;
+        private const int EM_ENDUNDOACTION = 0x00B8;
+        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+        private const int EM_GETLINECOUNT = 0x00BA;
 
         private void BeginUpdate(RichTextBox rtb)
         {
@@ -1753,6 +1939,16 @@ namespace MyCrownJewelApp.TextEditor
         private void EndUpdate(RichTextBox rtb)
         {
             SendMessage(rtb.Handle, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero);
+        }
+
+        private void BeginUndoUnit(RichTextBox rtb)
+        {
+            SendMessage(rtb.Handle, EM_STARTUNDOACTION, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        private void EndUndoUnit(RichTextBox rtb)
+        {
+            SendMessage(rtb.Handle, EM_ENDUNDOACTION, IntPtr.Zero, IntPtr.Zero);
         }
 
         // Compile and cache regexes for a syntax definition
@@ -1874,5 +2070,26 @@ namespace MyCrownJewelApp.TextEditor
         #endregion
 
         #endregion
+
+        // Tab measurement cache for elastic tab stops
+        private static class TabMeasurementCache
+        {
+            private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _cache
+                = new System.Collections.Concurrent.ConcurrentDictionary<string, int>(StringComparer.Ordinal);
+            
+            public static int GetStringWidth(string s, Font font)
+            {
+                if (string.IsNullOrEmpty(s)) return 0;
+                string key = $"{s}|{font.Name}|{font.Size}";
+                return _cache.GetOrAdd(key, _ =>
+                {
+                    using var bmp = new Bitmap(1, 1);
+                    using var g = Graphics.FromImage(bmp);
+                    var size = g.MeasureString(s, font, new PointF(0, 0), StringFormat.GenericTypographic);
+                    return (int)Math.Ceiling(size.Width);
+                });
+            }
+        }
+
     }
 }

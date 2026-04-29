@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <RootNamespace>MyCrownJewelApp.Tests</RootNamespace>
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,9 +22,13 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\src\MyCrownJewelApp.Web\MyCrownJewelApp.Web.csproj" />
-    <ProjectReference Include="..\src\MyCrownJewelApp.Core\MyCrownJewelApp.Core.csproj" />
-  </ItemGroup>
+   <ItemGroup>
+     <ProjectReference Include="..\src\MyCrownJewelApp.Core\MyCrownJewelApp.Core.csproj" />
+     <ProjectReference Include="..\src\MyCrownJewelApp.TextEditor\MyCrownJewelApp.TextEditor.csproj" />
+   </ItemGroup>
+
+   <ItemGroup>
+     <Compile Remove="MyCrownJewelApp.Terminal.Tests\**\*.cs" />
+   </ItemGroup>
 
 </Project>
