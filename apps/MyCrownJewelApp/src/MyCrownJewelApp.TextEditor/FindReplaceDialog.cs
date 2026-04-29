@@ -1,5 +1,6 @@
 namespace MyCrownJewelApp.TextEditor;
 
+#pragma warning disable CS8618 // All fields assigned in InitializeForm/InitializeComponent
 public partial class FindReplaceDialog : Form
 {
     private Form1 mainForm;
@@ -16,7 +17,9 @@ public partial class FindReplaceDialog : Form
     private Button replaceButton;
     private Button replaceAllButton;
     private Button cancelButton;
+#pragma warning disable CS0169 // Intentionally unused layout spacer
     private Label spacerLabel;
+#pragma warning restore CS0169
 
     public FindReplaceDialog(Form1 form, bool replaceMode)
     {
@@ -109,3 +112,4 @@ public partial class FindReplaceDialog : Form
         mainForm.PerformReplace(findTextBox.Text, "", caseSensitiveCheckBox.Checked, true);
     }
 }
+#pragma warning restore CS8618

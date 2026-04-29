@@ -2,22 +2,22 @@ using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.TextEditor;
 
-public class SyntaxDefinition
-{
-    public string Name { get; set; }
-    public string[] Extensions { get; set; }
-    public string[] Keywords { get; set; }
-    public string[] Types { get; set; }
-    public string[] Preprocessor { get; set; }
-    public string StringPattern { get; set; }
-    public string CommentPattern { get; set; }
-    public string NumberPattern { get; set; }
-    public string[] MultiLineCommentPatterns { get; set; }
-
-    public SyntaxDefinition()
+    public class SyntaxDefinition
     {
-        // Default empty definition
-    }
+        public string Name { get; set; } = string.Empty;
+        public string[] Extensions { get; set; } = Array.Empty<string>();
+        public string[] Keywords { get; set; } = Array.Empty<string>();
+        public string[] Types { get; set; } = Array.Empty<string>();
+        public string[] Preprocessor { get; set; } = Array.Empty<string>();
+        public string StringPattern { get; set; } = string.Empty;
+        public string CommentPattern { get; set; } = string.Empty;
+        public string NumberPattern { get; set; } = string.Empty;
+        public string[] MultiLineCommentPatterns { get; set; } = Array.Empty<string>();
+
+        public SyntaxDefinition()
+        {
+            // Default empty definition
+        }
 
     public static SyntaxDefinition CSharp => new SyntaxDefinition
     {
@@ -186,22 +186,22 @@ public class SyntaxDefinition
         NumberPattern = @"\b\d+(\.\d+)?\b"
     };
 
-    public static SyntaxDefinition GetDefinitionForFile(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath)) return CSharp; // default
-
-        string ext = Path.GetExtension(filePath).ToLowerInvariant();
-        return ext switch
+        public static SyntaxDefinition? GetDefinitionForFile(string filePath)
         {
-            ".cs" or ".csx" => CSharp,
-            ".c" or ".h" => C,
-            ".cpp" or ".cxx" or ".cc" or ".c++" or ".hpp" or ".hxx" or ".hh" or ".h++" => Cpp,
-            ".bicep" => Bicep,
-            ".tf" or ".tfvars" or ".tfstate" => Terraform,
-            ".yaml" or ".yml" => Yaml,
-            ".ps1" or ".psm1" or ".psd1" or ".psrc" or ".pssc" => PowerShell,
-            ".sh" or ".bash" or ".zsh" or ".ksh" or ".csh" or ".tcsh" or ".fish" => Bash,
-            _ => null // unsupported - no syntax highlighting
-        };
-    }
+            if (string.IsNullOrEmpty(filePath)) return CSharp; // default
+
+            string ext = Path.GetExtension(filePath).ToLowerInvariant();
+            return ext switch
+            {
+                ".cs" or ".csx" => CSharp,
+                ".c" or ".h" => C,
+                ".cpp" or ".cxx" or ".cc" or ".c++" or ".hpp" or ".hxx" or ".hh" or ".h++" => Cpp,
+                ".bicep" => Bicep,
+                ".tf" or ".tfvars" or ".tfstate" => Terraform,
+                ".yaml" or ".yml" => Yaml,
+                ".ps1" or ".psm1" or ".psd1" or ".psrc" or ".pssc" => PowerShell,
+                ".sh" or ".bash" or ".zsh" or ".ksh" or ".csh" or ".tcsh" or ".fish" => Bash,
+                _ => null // unsupported - no syntax highlighting
+            };
+        }
 }

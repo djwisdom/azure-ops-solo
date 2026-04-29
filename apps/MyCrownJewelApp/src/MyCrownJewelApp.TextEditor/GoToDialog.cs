@@ -1,5 +1,6 @@
 namespace MyCrownJewelApp.TextEditor;
 
+#pragma warning disable CS8618 // Fields assigned in InitializeComponent()
 public partial class GoToDialog : Form
 {
     private Form1 mainForm;
@@ -25,10 +26,14 @@ public partial class GoToDialog : Form
 
         lineLabel = new Label { Text = "Line &number:", Location = new Point(10, 15), AutoSize = true };
         lineTextBox = new TextBox { Location = new Point(90, 12), Width = 150 };
+#pragma warning disable CS8622 // Event subscription — sender may be null at attach time
         lineTextBox.KeyPress += LineTextBox_KeyPress;
+#pragma warning restore CS8622
 
         goToButton = new Button { Text = "&Go To", Location = new Point(90, 50), Width = 80 };
+#pragma warning disable CS8622
         goToButton.Click += GoToButton_Click;
+#pragma warning restore CS8622
 
         cancelButton = new Button { Text = "Cancel", Location = new Point(180, 50), Width = 80 };
         cancelButton.Click += (s, e) => Close();
@@ -61,3 +66,4 @@ public partial class GoToDialog : Form
         }
     }
 }
+#pragma warning restore CS8618

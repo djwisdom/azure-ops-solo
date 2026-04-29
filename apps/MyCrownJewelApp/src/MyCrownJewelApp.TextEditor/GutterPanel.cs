@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Drawing;
+using System.Runtime.InteropServices;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -12,8 +13,6 @@ public class GutterPanel : Panel
     private const int FoldMarginWidth = 20;
 
     private int totalMarginWidth;
-    private int firstVisibleLine;
-    private int visibleLines;
 
     [Category("Appearance")]
     public bool ShowLineNumbers { get; set; } = true;
@@ -26,6 +25,10 @@ public class GutterPanel : Panel
 
     [Category("Appearance")]
     public bool ShowCodeFolds { get; set; } = true;
+
+    [DllImport("user32.dll")]
+    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
 
     public GutterPanel(Form1 form)
     {
@@ -57,15 +60,19 @@ public class GutterPanel : Panel
     {
         if (mainForm?.textEditor == null) return;
 
+        RichTextBox editor = mainForm.textEditor;
+        if (editor.IsDisposed || !editor.Visible) return;
+
+        // Determine visible lines
+        GetVisibleLineRange(out int firstVisibleLine, out int visibleLines);
+
         g.Clear(BackColor);
 
-        RichTextBox editor = mainForm.textEditor;
-        int yOffset = 0;
+        // Compute line height for partial-line clipping
+        int lineHeight = (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor);
+        if (lineHeight <= 0) lineHeight = 1;
 
-        // Calculate visible line range
-        GetVisibleLineRange(out firstVisibleLine, out visibleLines);
-
-        // Draw separator lines between sections
+        // Draw separator vertical lines between margin sections
         int x = 0;
         if (ShowLineNumbers)
         {
@@ -95,7 +102,12 @@ public class GutterPanel : Panel
             if (lineIndex >= editor.Lines.Length) break;
 
             int lineY = GetLineY(editor, lineIndex);
-            if (lineY < 0) continue;
+            if (lineY == -1) continue;
+
+            // Skip lines that are completely above the viewport (lineY + lineHeight <= 0)
+            if (lineY + lineHeight <= 0) continue;
+            // Stop if line starts at or beyond bottom edge
+            if (lineY >= editor.Height) break;
 
             int currentX = 0;
 
@@ -126,7 +138,7 @@ public class GutterPanel : Panel
                 DrawFoldMarker(g, lineIndex, currentX, lineY);
             }
         }
-    }
+        }
 
     private void GetVisibleLineRange(out int firstLine, out int lineCount)
     {
@@ -135,19 +147,31 @@ public class GutterPanel : Panel
         lineCount = 0;
 
         if (editor.Lines.Length == 0) return;
+        if (editor.IsDisposed || !editor.Visible) return;
 
-        // Get first visible line based on scroll position
-        int firstChar = editor.GetCharIndexFromPosition(new Point(0, 0));
-        firstLine = editor.GetLineFromCharIndex(firstChar);
-        if (firstLine < 0) firstLine = 0;
+        // Use native message: returns first fully visible line index
+        int nativeFirst = SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+        if (nativeFirst < 0) nativeFirst = 0;
 
-        // Count lines until their Y position exceeds editor height
-        for (int i = firstLine; i < editor.Lines.Length; i++)
+        // Compute line height
+        int lineHeight = (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor);
+        if (lineHeight <= 0) lineHeight = 1;
+
+        // Find the actual first visible line (including partially visible at top)
+        firstLine = nativeFirst;
+        if (nativeFirst > 0)
         {
-            int y = GetLineY(editor, i);
-            if (y >= editor.Height) break;
-            lineCount++;
+            int yAbove = GetLineY(editor, nativeFirst - 1);
+            if (yAbove != -1 && (yAbove + lineHeight) > 0)
+            {
+                firstLine = nativeFirst - 1;
+            }
         }
+
+        // Compute visible line count from client height (include partial at bottom)
+        int clientHeight = editor.ClientSize.Height;
+        lineCount = (clientHeight / lineHeight) + 2; // +2 for partial top+bottom safety
+        if (lineCount < 1) lineCount = 1;
     }
 
     private int GetLineY(RichTextBox editor, int lineIndex)
@@ -156,7 +180,7 @@ public class GutterPanel : Panel
         int charIndex = editor.GetFirstCharIndexFromLine(lineIndex);
         if (charIndex < 0) return -1;
         Point charPos = editor.GetPositionFromCharIndex(charIndex);
-        return charPos.Y - editor.AutoScrollOffset.Y;
+        return charPos.Y;
     }
 
     private void DrawVerticalLine(Graphics g, int x, Color color)
@@ -169,8 +193,8 @@ public class GutterPanel : Panel
     {
         string text = lineNumber.ToString();
         RichTextBox editor = mainForm.textEditor;
-        
-        // Use editor's font scaled by zoom factor
+
+        // Use editor's font scaled by zoom
         using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, editor.Font.Style);
         Size textSize = TextRenderer.MeasureText(text, font);
         int textX = x + (LineNumberMarginWidth - textSize.Width) / 2;
@@ -182,7 +206,6 @@ public class GutterPanel : Panel
 
     private void DrawBookmark(Graphics g, int lineIndex, int x, int y)
     {
-        // Defensive: ensure lineIndex is valid
         if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
 
         bool hasBookmark = mainForm.Bookmarks.Contains(lineIndex);
@@ -195,32 +218,19 @@ public class GutterPanel : Panel
             using var brush = new SolidBrush(Color.Orange);
             g.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
         }
-        else
-        {
-            using var pen = new Pen(Color.FromArgb(80, 80, 80));
-            g.DrawEllipse(pen, centerX - radius, centerY - radius, radius * 2, radius * 2);
-        }
     }
 
     private void DrawChangeIndicator(Graphics g, int lineIndex, int x, int y)
     {
         if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
 
-        bool hasChanges = mainForm.ModifiedLines.Contains(lineIndex);
-        int barWidth = 4;
-        int barX = x + (ChangeMarginWidth - barWidth) / 2;
-        int barHeight = 12;
-        int barY = y + 2;
-
-        if (hasChanges)
+        bool modified = mainForm.ModifiedLines.Contains(lineIndex);
+        if (modified)
         {
+            int barWidth = 4;
+            int barX = x + (ChangeMarginWidth - barWidth) / 2;
             using var brush = new SolidBrush(Color.Orange);
-            g.FillRectangle(brush, barX, barY, barWidth, barHeight);
-        }
-        else
-        {
-            using var pen = new Pen(Color.FromArgb(60, 60, 60));
-            g.DrawRectangle(pen, barX, barY, barWidth, barHeight);
+            g.FillRectangle(brush, barX, y + 2, barWidth, 10);
         }
     }
 
@@ -228,103 +238,24 @@ public class GutterPanel : Panel
     {
         if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
 
-        string line = mainForm.textEditor.Lines[lineIndex];
-        bool isRegionStart = line.TrimStart().StartsWith("#region");
-        bool isRegionEnd = line.TrimStart().StartsWith("#endregion");
+        bool folded = mainForm.CollapsedRegions.Contains(lineIndex);
+        int size = 12;
+        int centerX = x + FoldMarginWidth / 2 - size / 2;
+        int centerY = y + 4;
 
-        if (!isRegionStart && !isRegionEnd) return;
-
-        int boxSize = 12;
-        int boxX = x + (FoldMarginWidth - boxSize) / 2;
-        int boxY = y + 2;
-
-        using var pen = new Pen(Color.FromArgb(120, 120, 120));
+        using var pen = new Pen(Color.Gray);
         using var brush = new SolidBrush(Color.FromArgb(60, 60, 60));
+        g.FillRectangle(brush, centerX, centerY, size, size);
+        g.DrawRectangle(pen, centerX, centerY, size, size);
 
-        // Draw +/- box
-        g.FillRectangle(brush, boxX, boxY, boxSize, boxSize);
-        g.DrawRectangle(pen, boxX, boxY, boxSize, boxSize);
-
-        // Draw minus/plus sign
-        using var signPen = new Pen(Color.White, 2);
-        g.DrawLine(signPen, boxX + 3, boxY + boxSize / 2, boxX + boxSize - 3, boxY + boxSize / 2);
-        if (isRegionStart)
-        {
-            g.DrawLine(signPen, boxX + boxSize / 2, boxY + 3, boxX + boxSize / 2, boxY + boxSize - 3);
-        }
-    }
-
-    protected override void OnMouseDown(MouseEventArgs e)
-    {
-        base.OnMouseDown(e);
-        HandleMouseClick(e.X, e.Y);
-    }
-
-    private void HandleMouseClick(int x, int y)
-    {
-        int sectionX = 0;
-
-        // Line numbers - no action
-        if (ShowLineNumbers) sectionX += LineNumberMarginWidth;
-
-        // Bookmarks - toggle on click
-        if (ShowBookmarks && x >= sectionX && x < sectionX + BookmarkMarginWidth)
-        {
-            int line = GetLineAtY(y);
-            if (line >= 0)
-            {
-                mainForm.ToggleBookmark(line);
-                Invalidate();
-            }
-            return;
-        }
-
-        sectionX += BookmarkMarginWidth;
-
-        // Change history - no action
-        if (ShowChangeHistory) sectionX += ChangeMarginWidth;
-
-        // Code folds
-        if (ShowCodeFolds && x >= sectionX && x < sectionX + FoldMarginWidth)
-        {
-            int line = GetLineAtY(y);
-            if (line >= 0)
-            {
-                string lineText = mainForm.textEditor.Lines[line];
-                if (lineText.TrimStart().StartsWith("#region"))
-                {
-                    mainForm.ToggleFold(line);
-                }
-            }
-        }
-    }
-
-    private int GetLineAtY(int y)
-    {
-        RichTextBox editor = mainForm.textEditor;
-        if (editor.Lines.Length == 0) return -1;
-
-        // Compute first visible line
-        int firstChar = editor.GetCharIndexFromPosition(new Point(0, 0));
-        int firstLine = editor.GetLineFromCharIndex(firstChar);
-        if (firstLine < 0) firstLine = 0;
-
-        // Determine actual line height from editor's rendered lines
-        int lineHeight;
-        if (firstLine < editor.Lines.Length - 1)
-        {
-            int y0 = GetLineY(editor, firstLine);
-            int y1 = GetLineY(editor, firstLine + 1);
-            lineHeight = y1 - y0;
-            if (lineHeight <= 0) lineHeight = (int)(TextRenderer.MeasureText("A", editor.Font).Height * editor.ZoomFactor);
-        }
-        else
-        {
-            lineHeight = (int)(TextRenderer.MeasureText("A", editor.Font).Height * editor.ZoomFactor);
-        }
-
-        int line = firstLine + (y / lineHeight);
-        return (line >= 0 && line < editor.Lines.Length) ? line : -1;
+        // Draw minus/plus
+        using var textBrush = new SolidBrush(Color.White);
+        string symbol = folded ? "+" : "-";
+        using var font = new Font("Marlett", 8);
+        Size sz = TextRenderer.MeasureText(symbol, font);
+        int tx = centerX + (size - sz.Width) / 2;
+        int ty = centerY + (size - sz.Height) / 2;
+        TextRenderer.DrawText(g, symbol, font, new Point(tx, ty), Color.White);
     }
 
     public void RefreshGutter()

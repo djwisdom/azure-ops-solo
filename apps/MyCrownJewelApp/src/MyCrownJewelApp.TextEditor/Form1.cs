@@ -18,10 +18,20 @@ namespace MyCrownJewelApp.TextEditor
         private bool gutterVisible = true;
         private bool statusBarVisible = true;
         private bool wordWrapEnabled = true;
+        private bool syntaxHighlightingEnabled = false;
         private bool isDarkTheme = true;
         private float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
+        private bool isFullScreen = false;
+        private Rectangle normalBounds;
+        private FormWindowState normalWindowState;
+        private FormBorderStyle normalBorderStyle;
+
+        // Column guide state
+        private int guideColumn = 80;
+        private bool showGuide = true;
+        private readonly Color guideColor = Color.FromArgb(60, 60, 60);
 
         // Current file state
         private string? currentFilePath;
@@ -34,6 +44,7 @@ namespace MyCrownJewelApp.TextEditor
         // Designer fields (accessible via Controls collection)
         public HashSet<int> Bookmarks => bookmarks;
         public HashSet<int> ModifiedLines => modifiedLines;
+        public HashSet<int> CollapsedRegions => collapsedRegions;
 
         // Colors
         private Color darkBackColor = Color.FromArgb(30, 30, 30);
@@ -49,6 +60,10 @@ namespace MyCrownJewelApp.TextEditor
         private Color lightMenuForeColor = SystemColors.MenuText;
         private Color lightEditorBackColor = Color.White;
         private Color lightEditorForeColor = Color.Black;
+
+        // Minimap theme colors
+        private Color darkMinimapBackColor = Color.FromArgb(45, 45, 45);
+        private Color lightMinimapBackColor = Color.FromArgb(240, 240, 240);
 
         private Color keywordColor = Color.Blue;
         private Color stringColor = Color.Maroon;
@@ -66,6 +81,9 @@ namespace MyCrownJewelApp.TextEditor
         public Form1()
         {
             InitializeComponent();
+            this.KeyPreview = true;
+            this.KeyDown += Form1_KeyDown;
+
             isDarkTheme = true;
             zoomFactor = 1.0f;
             // Set flat border for editor
@@ -75,6 +93,7 @@ namespace MyCrownJewelApp.TextEditor
             UpdateThemeColors(isDarkTheme);
             ApplyWordWrap();
             UpdateStatusBar();
+            UpdateColumnGuideMenuChecked();
 
             // Initialize syntax highlighting debounce timer
             highlightTimer = new System.Windows.Forms.Timer();
@@ -82,11 +101,29 @@ namespace MyCrownJewelApp.TextEditor
             highlightTimer.Tick += (s, e) =>
             {
                 highlightTimer.Stop();
-                HighlightSyntaxAsync();
+                if (syntaxHighlightingEnabled)
+                {
+                    HighlightSyntaxAsync();
+                }
             };
+
+             // Attach minimap control
+             minimapControl.AttachEditor(textEditor);
+             minimapControl.ShowColors = false; // Default off; can be enabled via API
+             minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
+             minimapControl.SetTokenProvider(GetTokensForLine);
+             
+             // Position minimap overlay over scrollbar
+             PositionMinimap();
         }
 
-        #region Theme & Toggles
+         private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
+         {
+             // Optional: update status bar or perform other actions when viewport changes
+             // Could sync with editor if needed; minimap already scrolls editor directly
+         }
+
+         #region Theme & Toggles
 
         private void UpdateThemeColors(bool isDark)
         {
@@ -108,6 +145,12 @@ namespace MyCrownJewelApp.TextEditor
             if (gutterPanel != null)
             {
                 gutterPanel.BackColor = isDark ? darkEditorBackColor : lightEditorBackColor;
+            }
+            if (minimapControl != null)
+            {
+                minimapControl.BackColor = isDark ? darkMinimapBackColor : lightMinimapBackColor;
+                minimapControl.ViewportColor = isDark ? Color.FromArgb(100, Color.DodgerBlue) : Color.FromArgb(80, Color.LightBlue);
+                minimapControl.ViewportBorderColor = isDark ? Color.DodgerBlue : Color.DodgerBlue;
             }
     // Update checkmarks
     darkThemeMenuItem.Checked = isDark;
@@ -141,13 +184,41 @@ namespace MyCrownJewelApp.TextEditor
             gutterPanel.RefreshGutter();
         }
 
-        private void ToggleStatusBar()
-        {
-            statusBarVisible = !statusBarVisible;
-            statusBarMenuItem.Checked = statusBarVisible;
-            statusStrip.Visible = statusBarVisible;
-            // Form will auto-layout: statusStrip dock=Bottom, mainTable dock=Fill
-        }
+         private void ToggleStatusBar()
+         {
+             statusBarVisible = !statusBarVisible;
+             statusBarMenuItem.Checked = statusBarVisible;
+             statusStrip.Visible = statusBarVisible;
+             // Form will auto-layout: statusStrip dock=Bottom, mainTable dock=Fill
+         }
+
+         private void ToggleMinimap()
+         {
+             // Toggle minimap visibility when using overlay layout
+             bool visible = minimapMenuItem.Checked;
+             if (minimapControl != null)
+             {
+                 minimapControl.Visible = visible;
+             }
+             // Reposition editor content if needed
+             mainTable.PerformLayout();
+         }
+
+         private void PositionMinimap()
+         {
+             if (minimapControl == null || !minimapControl.Visible) return;
+             
+             int scrollbarWidth = SystemInformation.VerticalScrollBarWidth;
+             int x = textEditor.ClientSize.Width - scrollbarWidth - minimapControl.Width;
+             if (x < 0) x = 0;
+             minimapControl.Location = new Point(x, 0);
+             minimapControl.Height = textEditor.ClientSize.Height;
+         }
+
+         private void MinimapMenuItem_Click(object? sender, EventArgs e)
+         {
+             ToggleMinimap();
+         }
 
         private void ToggleWordWrap()
         {
@@ -156,15 +227,93 @@ namespace MyCrownJewelApp.TextEditor
             ApplyWordWrap();
         }
 
+        private void ToggleSyntaxHighlighting()
+        {
+            syntaxHighlightingEnabled = !syntaxHighlightingEnabled;
+            syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
+            if (syntaxHighlightingEnabled)
+            {
+                highlightTimer?.Stop();
+                highlightTimer?.Start();
+            }
+            else
+            {
+                highlightCancelToken?.Cancel();
+                var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+                int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
+                BeginUpdate(textEditor);
+                textEditor.SuspendLayout();
+                try
+                {
+                    textEditor.SelectAll();
+                    textEditor.SelectionColor = baseColor;
+                    textEditor.SelectionStart = selStart;
+                    textEditor.SelectionLength = selLength;
+                }
+                finally
+                {
+                    textEditor.ResumeLayout();
+                    EndUpdate(textEditor);
+                }
+            }
+        }
+
+        private void OpenCustomColumnDialog()
+        {
+            using var dlg = new Form()
+            {
+                Text = "Column Guide Position",
+                Size = new Size(300, 120),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false,
+                MinimizeBox = false
+            };
+            Label label = new Label() { Text = "Column:", Location = new Point(10, 15), AutoSize = true };
+            TextBox textBox = new TextBox() { Location = new Point(60, 12), Width = 80, Text = guideColumn.ToString() };
+            Button ok = new Button() { Text = "OK", Location = new Point(60, 50), DialogResult = DialogResult.OK };
+            Button cancel = new Button() { Text = "Cancel", Location = new Point(150, 50), DialogResult = DialogResult.Cancel };
+            dlg.Controls.AddRange(new Control[] { label, textBox, ok, cancel });
+            dlg.AcceptButton = ok;
+            dlg.CancelButton = cancel;
+            if (dlg.ShowDialog() == DialogResult.OK)
+            {
+                if (int.TryParse(textBox.Text, out int col) && col > 0)
+                {
+                    SetGuideColumn(col);
+                }
+            }
+        }
+
+        private void SetGuideColumn(int column)
+        {
+            guideColumn = column;
+            showGuide = true;
+            columnGuideMenuItem.Checked = true;
+            UpdateColumnGuideMenuChecked();
+            guidePanel?.Invalidate();
+        }
+
+        private void UpdateColumnGuideMenuChecked()
+        {
+            if (col72MenuItem == null || col80MenuItem == null || col100MenuItem == null ||
+                col120MenuItem == null || col150MenuItem == null || colCustomMenuItem == null)
+                return;
+
+            col72MenuItem.Checked = (guideColumn == 72);
+            col80MenuItem.Checked = (guideColumn == 80);
+            col100MenuItem.Checked = (guideColumn == 100);
+            col120MenuItem.Checked = (guideColumn == 120);
+            col150MenuItem.Checked = (guideColumn == 150);
+            colCustomMenuItem.Checked = !(guideColumn == 72 || guideColumn == 80 || guideColumn == 100 || guideColumn == 120 || guideColumn == 150);
+        }
+
         private void ApplyWordWrap()
         {
-            if (textEditor != null)
-            {
-                textEditor.WordWrap = wordWrapEnabled;
-                // RichTextBox: ScrollBars should be Both only if WordWrap is false for horizontal
-                // If WordWrap is true, horizontal scroll not needed
-                textEditor.ScrollBars = wordWrapEnabled ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
-            }
+            if (textEditor == null) return;
+            textEditor.WordWrap = wordWrapEnabled;
+            textEditor.ScrollBars = wordWrapEnabled ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
+            if (gutterPanel != null) gutterPanel.RefreshGutter();
         }
 
         #endregion
@@ -205,22 +354,27 @@ namespace MyCrownJewelApp.TextEditor
             }
         }
 
-        private void LoadFile(string path)
-        {
-            try
-            {
-                textEditor.Text = File.ReadAllText(path);
-                currentFilePath = path;
-                isModified = false;
-                this.Text = $"MyCrownJewelApp TextEditor - {Path.GetFileName(path)}";
-                AddToRecentFiles(path);
-                UpdateStatusBar();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
+         private void LoadFile(string path)
+         {
+             try
+             {
+                 textEditor.Text = File.ReadAllText(path);
+                 currentFilePath = path;
+                 isModified = false;
+                 this.Text = $"MyCrownJewelApp TextEditor - {Path.GetFileName(path)}";
+                 AddToRecentFiles(path);
+                 
+                 // Ensure editor starts at top
+                 textEditor.SelectionStart = 0;
+                 textEditor.ScrollToCaret();
+                 
+                 UpdateStatusBar();
+             }
+             catch (Exception ex)
+             {
+                 MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+             }
+         }
 
         private void SaveFile()
         {
@@ -558,6 +712,7 @@ namespace MyCrownJewelApp.TextEditor
                 textEditor.ZoomFactor = zoomFactor;
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
+                guidePanel?.Invalidate();
             }
         }
 
@@ -569,6 +724,7 @@ namespace MyCrownJewelApp.TextEditor
                 textEditor.ZoomFactor = zoomFactor;
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
+                guidePanel?.Invalidate();
             }
         }
 
@@ -578,9 +734,21 @@ namespace MyCrownJewelApp.TextEditor
             textEditor.ZoomFactor = zoomFactor;
             zoomLabel.Text = "100%";
             if (gutterPanel != null) gutterPanel.RefreshGutter();
+            guidePanel?.Invalidate();
         }
 
         private void StatusBar_Click(object? sender, EventArgs e) => ToggleStatusBar();
+
+        private void ColumnGuide_Click(object? sender, EventArgs e)
+        {
+            // Menu item's Checked state is the new desired state
+            bool visible = columnGuideMenuItem.Checked;
+            showGuide = visible;
+            if (guidePanel != null) guidePanel.ShowGuide = visible;
+        }
+
+        private void SyntaxHighlighting_Click(object? sender, EventArgs e) => ToggleSyntaxHighlighting();
+
         private void WordWrap_Click(object? sender, EventArgs e) => ToggleWordWrap();
         private void GutterMenuItem_Click(object? sender, EventArgs e) => ToggleGutter();
 
@@ -752,8 +920,8 @@ namespace MyCrownJewelApp.TextEditor
             isModified = true;
             UpdateStatusBar();
 
-            // Restart debounce timer for syntax highlighting
-            if (highlightTimer != null)
+            // Restart debounce timer for syntax highlighting (only if enabled)
+            if (syntaxHighlightingEnabled && highlightTimer != null)
             {
                 highlightTimer.Stop();
                 highlightTimer.Start();
@@ -766,17 +934,31 @@ namespace MyCrownJewelApp.TextEditor
             UpdateStatusBar();
         }
 
+
         private void TextEditor_VScroll(object? sender, EventArgs e)
         {
             if (gutterPanel != null) gutterPanel.RefreshGutter();
+            if (syntaxHighlightingEnabled)
+            {
+                highlightTimer?.Stop();
+                highlightTimer?.Start();
+            }
+            guidePanel?.Invalidate();
         }
 
-        private void TextEditor_Resize(object? sender, EventArgs e)
-        {
-            if (gutterPanel != null) gutterPanel.RefreshGutter();
-        }
+         private void TextEditor_Resize(object? sender, EventArgs e)
+         {
+             if (gutterPanel != null) gutterPanel.RefreshGutter();
+             if (syntaxHighlightingEnabled)
+             {
+                 highlightTimer?.Stop();
+                 highlightTimer?.Start();
+             }
+             guidePanel?.Invalidate();
+             PositionMinimap();
+         }
 
-        private void UpdateStatusBar()
+         private void UpdateStatusBar()
         {
             if (statusStrip == null || textEditor == null) return;
 
@@ -821,24 +1003,25 @@ namespace MyCrownJewelApp.TextEditor
             }
         }
 
-        // Get visible line range in the editor (+ buffer)
+        // Get visible line range in the editor (no buffer — only truly visible lines)
         private (int firstLine, int lastLine) GetVisibleLineRange()
         {
             try
             {
                 int visibleStart = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, 0)));
                 int visibleEnd = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, textEditor.ClientSize.Height)));
-                // Add buffer lines for smooth scrolling
-                int buffer = 100;
                 int totalLines = textEditor.Lines.Length;
-                int first = Math.Max(0, visibleStart - buffer);
-                int last = Math.Min(totalLines - 1, visibleEnd + buffer);
+                // No buffer: only highlight lines that are actually visible
+                int first = Math.Max(0, visibleStart);
+                int last = Math.Min(totalLines - 1, visibleEnd);
+                // If viewport is invalid (e.g., control not yet laid out), return empty range
+                if (first > last) return (0, -1);
                 return (first, last);
             }
             catch
             {
-                // Fallback: whole document if visible range fails
-                return (0, textEditor.Lines.Length - 1);
+                // Return empty range on any error
+                return (0, -1);
             }
         }
 
@@ -848,10 +1031,13 @@ namespace MyCrownJewelApp.TextEditor
             // Cancel any pending/running highlight
             highlightCancelToken?.Cancel();
 
-            // Always re-detect syntax based on current file path
-            DetectSyntaxFromFile();
+            // Small debounce delay to let cancellations propagate and coalesce rapid events
+            await Task.Delay(80);
 
             if (textEditor.IsDisposed) return;
+
+            // Re-detect syntax based on current file path
+            DetectSyntaxFromFile();
 
             Color baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
 
@@ -874,7 +1060,7 @@ namespace MyCrownJewelApp.TextEditor
             highlightCancelToken = tokenSource;
             var token = tokenSource.Token;
 
-            // Get visible line range only
+            // Capture visible range at this moment
             var (firstLine, lastLine) = GetVisibleLineRange();
             if (firstLine > lastLine || token.IsCancellationRequested) return;
 
@@ -932,6 +1118,13 @@ namespace MyCrownJewelApp.TextEditor
 
             if (lineRanges == null || token.IsCancellationRequested || textEditor.IsDisposed) return;
 
+            // Strict check: viewport must be unchanged (exact match)
+            var currentVisible = GetVisibleLineRange();
+            if (currentVisible.firstLine != firstLine || currentVisible.lastLine != lastLine)
+            {
+                return;
+            }
+
             // Apply on UI thread
             if (textEditor.InvokeRequired)
             {
@@ -977,35 +1170,112 @@ namespace MyCrownJewelApp.TextEditor
                 textEditor.SelectionLength = selLength;
                 textEditor.SelectionColor = baseColor;
             }
-            finally { textEditor.ResumeLayout(); EndUpdate(textEditor); }
+            finally
+            {
+                textEditor.ResumeLayout();
+                EndUpdate(textEditor);
+            }
         }
 
-        // Reset all visible lines to base color (used when no syntax highlighting)
-        private void ResetVisibleRangeToBase(Color baseColor)
-        {
-            if (textEditor.IsDisposed) return;
-            int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
-            BeginUpdate(textEditor);
-            textEditor.SuspendLayout();
-            try
-            {
-                var (firstLine, lastLine) = GetVisibleLineRange();
-                for (int lineNum = firstLine; lineNum <= lastLine; lineNum++)
-                {
-                    if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
-                    int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
-                    if (lineStart < 0) continue;
-                    int lineLen = textEditor.Lines[lineNum].Length;
-                    if (lineLen == 0) continue;
-                    textEditor.Select(lineStart, lineLen);
-                    textEditor.SelectionColor = baseColor;
-                }
-                textEditor.SelectionStart = selStart;
-                textEditor.SelectionLength = selLength;
-                textEditor.SelectionColor = baseColor;
-            }
-            finally { textEditor.ResumeLayout(); EndUpdate(textEditor); }
-        }
+         // Reset all visible lines to base color (used when no syntax highlighting)
+         private void ResetVisibleRangeToBase(Color baseColor)
+         {
+             if (textEditor.IsDisposed) return;
+             int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
+             BeginUpdate(textEditor);
+             textEditor.SuspendLayout();
+             try
+             {
+                 var (firstLine, lastLine) = GetVisibleLineRange();
+                 if (firstLine <= lastLine)
+                 {
+                     for (int lineNum = firstLine; lineNum <= lastLine; lineNum++)
+                     {
+                         if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
+                         int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
+                         if (lineStart < 0) continue;
+                         int lineLen = textEditor.Lines[lineNum].Length;
+                         if (lineLen == 0) continue;
+                         textEditor.Select(lineStart, lineLen);
+                         textEditor.SelectionColor = baseColor;
+                     }
+                 }
+                 textEditor.SelectionStart = selStart;
+                 textEditor.SelectionLength = selLength;
+                 textEditor.SelectionColor = baseColor;
+             }
+             finally
+             {
+                 textEditor.ResumeLayout();
+                 EndUpdate(textEditor);
+             }
+         }
+
+         /// <summary>
+         /// Returns tokens for a given line index, used by MinimapControl for syntax coloring.
+         /// </summary>
+         private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
+         {
+             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             
+             string line = textEditor.Lines[lineIndex];
+             if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             
+             var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
+             var colored = new bool[line.Length];
+             
+             var regexes = GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None);
+             
+             // Local helper to add token if region is free
+             void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
+             {
+                 if (regex == null) return;
+                 var matches = regex.Matches(line);
+                 foreach (System.Text.RegularExpressions.Match m in matches)
+                 {
+                     if (!m.Success) continue;
+                     int start = m.Index;
+                     int len = m.Length;
+                     if (start < 0 || start >= colored.Length) continue;
+                     if (start + len > colored.Length) len = colored.Length - start;
+                     if (len <= 0) continue;
+                     
+                     // Check if region is completely free
+                     bool free = true;
+                     for (int i = start; i < start + len; i++)
+                     {
+                         if (colored[i])
+                         {
+                             free = false;
+                             break;
+                         }
+                     }
+                     if (free)
+                     {
+                         for (int i = start; i < start + len; i++)
+                             colored[i] = true;
+                         tokens.Add(new MyCrownJewelApp.TextEditor.TokenInfo
+                         {
+                             Type = type,
+                             Text = line.Substring(start, len),
+                             StartIndex = start,
+                             Length = len
+                         });
+                     }
+                 }
+             }
+             
+             // Apply in priority order: preprocessor, comment, string, number, keywords, types
+             AddMatches(regexes.preprocessor, MyCrownJewelApp.TextEditor.SyntaxTokenType.Preprocessor);
+             AddMatches(regexes.comment, MyCrownJewelApp.TextEditor.SyntaxTokenType.Comment);
+             AddMatches(regexes.stringRegex, MyCrownJewelApp.TextEditor.SyntaxTokenType.String);
+             AddMatches(regexes.number, MyCrownJewelApp.TextEditor.SyntaxTokenType.Number);
+             AddMatches(regexes.keywords, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
+             AddMatches(regexes.types, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
+             
+             return tokens;
+         }
 
         // Helper: mark a range as colored
         private static void MarkRange(bool[] colored, int start, int length)
@@ -1022,7 +1292,7 @@ namespace MyCrownJewelApp.TextEditor
             return true;
         }
 
-        // WinForms RichTextBox BeginUpdate/EndUpdate via native API
+        // WinForms RichTextBox BeginUpdate/EndUpdate via native API (no forced invalidation)
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int WM_SETREDRAW = 0x0B;
@@ -1035,7 +1305,6 @@ namespace MyCrownJewelApp.TextEditor
         private void EndUpdate(RichTextBox rtb)
         {
             SendMessage(rtb.Handle, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero);
-            rtb.Invalidate();
         }
 
         // Compile and cache regexes for a syntax definition
@@ -1094,6 +1363,52 @@ namespace MyCrownJewelApp.TextEditor
                 }
             }
         }
+
+        #region Fullscreen Toggle
+        private void Form1_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.F11)
+            {
+                ToggleFullScreen();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void ToggleFullScreen()
+        {
+            if (isFullScreen)
+            {
+                // Restore previous state
+                this.FormBorderStyle = normalBorderStyle;
+                this.WindowState = FormWindowState.Normal;
+                if (normalWindowState == FormWindowState.Maximized)
+                {
+                    this.WindowState = FormWindowState.Maximized;
+                }
+                else
+                {
+                    this.Bounds = normalBounds;
+                }
+                this.TopMost = false;
+                isFullScreen = false;
+            }
+            else
+            {
+                // Save current state
+                normalBounds = this.Bounds;
+                normalWindowState = this.WindowState;
+                normalBorderStyle = this.FormBorderStyle;
+                // Enter fullscreen: borderless, covers working area
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.WindowState = FormWindowState.Normal;
+                this.Bounds = Screen.GetWorkingArea(this);
+                this.TopMost = true;
+                isFullScreen = true;
+            }
+        }
+
+        #endregion
 
         #endregion
     }
