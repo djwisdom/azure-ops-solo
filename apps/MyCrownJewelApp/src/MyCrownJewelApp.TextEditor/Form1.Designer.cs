@@ -205,12 +205,11 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
-        // Main Table Layout (3 columns: gutter | editor | minimap)
+        // Main Table Layout (2 columns: gutter | editor)
         mainTable = new TableLayoutPanel();
-        mainTable.ColumnCount = 3;
+        mainTable.ColumnCount = 2;
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));   // Gutter
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Editor
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // Minimap
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
@@ -261,7 +260,18 @@ partial class Form1
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
-        mainTable.Controls.Add(minimapControl, 2, 0);
+
+        // Minimap Overlay — positioned over scrollbar area inside editor
+        minimapControl = new MinimapControl();
+        minimapControl.Width = 100;
+        minimapControl.MinimapWidth = 100;
+        minimapControl.Scale = 0.5f;
+        minimapControl.ShowColors = false;
+        minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
+        minimapControl.ViewportBorderColor = Color.DodgerBlue;
+        minimapControl.Margin = new Padding(0);
+        textEditor.Controls.Add(minimapControl);
+        minimapControl.BringToFront();
 
         // Status Strip
         statusStrip = new StatusStrip();

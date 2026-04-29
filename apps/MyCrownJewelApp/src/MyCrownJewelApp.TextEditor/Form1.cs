@@ -108,6 +108,9 @@ namespace MyCrownJewelApp.TextEditor
              minimapControl.ShowColors = false; // Default off; can be enabled via API
              minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
              minimapControl.SetTokenProvider(GetTokensForLine);
+             
+             // Position minimap over scrollbar area
+             PositionMinimap();
         }
 
          private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
@@ -193,16 +196,28 @@ namespace MyCrownJewelApp.TextEditor
 
          private void ToggleMinimap()
          {
-             // Column 2 (index 2) holds minimap; toggle width between 0 and 100
+             // Toggle minimap visibility when using overlay layout
              bool visible = minimapMenuItem.Checked;
-             if (mainTable.ColumnCount > 2)
+             if (minimapControl != null)
              {
-                 mainTable.ColumnStyles[2].Width = visible ? 100 : 0;
+                 minimapControl.Visible = visible;
+                 if (visible) PositionMinimap();
              }
              mainTable.PerformLayout();
          }
 
-         private void MinimapMenuItem_Click(object? sender, EventArgs e)
+          private void PositionMinimap()
+          {
+              if (minimapControl == null || !minimapControl.Visible) return;
+              
+              int scrollbarWidth = SystemInformation.VerticalScrollBarWidth;
+              int x = textEditor.ClientSize.Width - scrollbarWidth - minimapControl.Width;
+              if (x < 0) x = 0;
+              minimapControl.Location = new Point(x, 0);
+              minimapControl.Height = textEditor.ClientSize.Height;
+          }
+
+          private void MinimapMenuItem_Click(object? sender, EventArgs e)
          {
              ToggleMinimap();
          }
@@ -942,6 +957,7 @@ namespace MyCrownJewelApp.TextEditor
                  highlightTimer?.Start();
              }
              guidePanel?.Invalidate();
+             PositionMinimap();
          }
 
          private void UpdateStatusBar()
