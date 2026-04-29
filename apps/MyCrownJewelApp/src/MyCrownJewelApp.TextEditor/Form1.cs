@@ -70,6 +70,10 @@ namespace MyCrownJewelApp.TextEditor
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
 
+        // Syntax highlighting
+        private SyntaxDefinition? currentSyntax;
+        private IncrementalHighlighter? incrementalHighlighter;
+
         // Column guide state
         private int guideColumn = 80;
         private bool showGuide = true;
@@ -141,8 +145,6 @@ namespace MyCrownJewelApp.TextEditor
         private Color numberColor = Color.DarkRed;
         private Color preprocessorColor = Color.Gray;
 
-        private SyntaxDefinition? currentSyntax;
-        private CancellationTokenSource? highlightCancelToken;
         private System.Windows.Forms.Timer? highlightTimer;
 
         // Incremental highlight cache
@@ -229,7 +231,7 @@ namespace MyCrownJewelApp.TextEditor
                 highlightTimer.Stop();
                 if (syntaxHighlightingEnabled)
                 {
-                    HighlightSyntaxAsync();
+                    RequestVisibleHighlight();
                 }
             };
 
@@ -238,31 +240,13 @@ namespace MyCrownJewelApp.TextEditor
             elasticTabTimer.Interval = 250; // 250ms after last change
             elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
 
+            // Initialize incremental highlighter (after colors are loaded)
+            CreateIncrementalHighlighter();
+
             // Apply syntax highlighting state after timer is created
             if (syntaxHighlightingEnabled)
             {
                 highlightTimer.Start();
-            }
-            else
-            {
-                // Ensure all text is base color
-                highlightCancelToken?.Cancel();
-                var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-                int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
-                BeginUpdate(textEditor);
-                textEditor.SuspendLayout();
-                try
-                {
-                    textEditor.SelectAll();
-                    textEditor.SelectionColor = baseColor;
-                    textEditor.SelectionStart = selStart;
-                    textEditor.SelectionLength = selLength;
-                }
-                finally
-                {
-                    textEditor.ResumeLayout();
-                    EndUpdate(textEditor);
-                }
             }
         }
 
@@ -432,12 +416,8 @@ namespace MyCrownJewelApp.TextEditor
             darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
 
-            // Re-apply syntax highlighting if enabled to update token colors
-            if (syntaxHighlightingEnabled)
-            {
-                highlightCancelToken?.Cancel();
-                HighlightSyntaxAsync();
-            }
+            // Recreate highlighter with new theme colors
+            CreateIncrementalHighlighter();
 
             // Refresh current line highlight and gutter with new theme colors
             if (currentLineHighlightMode != CurrentLineHighlightMode.Off)
@@ -602,23 +582,10 @@ namespace MyCrownJewelApp.TextEditor
             }
             else
             {
-                highlightCancelToken?.Cancel();
+                incrementalHighlighter?.Dispose();
+                incrementalHighlighter = null;
                 var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-                int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
-                BeginUpdate(textEditor);
-                textEditor.SuspendLayout();
-                try
-                {
-                    textEditor.SelectAll();
-                    textEditor.SelectionColor = baseColor;
-                    textEditor.SelectionStart = selStart;
-                    textEditor.SelectionLength = selLength;
-                }
-                finally
-                {
-                    textEditor.ResumeLayout();
-                    EndUpdate(textEditor);
-                }
+                ResetVisibleRangeToBase(baseColor);
             }
             SaveSettings();
         }
@@ -1003,10 +970,13 @@ namespace MyCrownJewelApp.TextEditor
             isModified = false;
             savedContentHash = null;
             lastFileWriteTime = null;
-            modifiedLines.Clear();
-            UpdateWindowTitle();
-            UpdateStatusBar();
-        }
+             modifiedLines.Clear();
+             UpdateWindowTitle();
+             UpdateStatusBar();
+             
+             // Request highlighting for empty buffer (clears any previous highlights)
+             RequestVisibleHighlight();
+         }
 
         private void OpenFile()
         {
@@ -1039,9 +1009,12 @@ namespace MyCrownJewelApp.TextEditor
                 {
                     SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
                 }
-                
-                UpdateStatusBar();
-            }
+                 
+                 UpdateStatusBar();
+                 
+                 // Request syntax highlighting for newly loaded content
+                 RequestVisibleHighlight();
+             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1701,6 +1674,10 @@ namespace MyCrownJewelApp.TextEditor
             int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             modifiedLines.Add(lineIndex);
 
+            // Mark affected lines for incremental re-highlighting (line and following line for context)
+            incrementalHighlighter?.MarkDirty(lineIndex);
+            incrementalHighlighter?.MarkDirty(lineIndex + 1);
+
             UpdateStatusBar();
 
             // Restart debounce timer for syntax highlighting (only if enabled)
@@ -1804,9 +1781,12 @@ namespace MyCrownJewelApp.TextEditor
         private Color GetNumberColor() => numberColor;
         private Color GetPreprocessorColor() => preprocessorColor;
 
-        // Detect syntax from file extension
-        private void DetectSyntaxFromFile()
+        private void CreateIncrementalHighlighter()
         {
+            incrementalHighlighter?.Dispose();
+            incrementalHighlighter = null;
+
+            // Detect syntax based on current file path or default
             if (currentFilePath != null)
             {
                 currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
@@ -1815,7 +1795,91 @@ namespace MyCrownJewelApp.TextEditor
             {
                 currentSyntax = SyntaxDefinition.CSharp; // default
             }
+
+            if (!syntaxHighlightingEnabled || currentSyntax == null)
+            {
+                var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+                ResetVisibleRangeToBase(baseColor);
+                return;
+            }
+
+            var baseColorCurrent = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            incrementalHighlighter = new IncrementalHighlighter(
+                textEditor,
+                currentSyntax,
+                baseColorCurrent,
+                GetKeywordColor(),
+                GetStringColor(),
+                GetCommentColor(),
+                GetNumberColor(),
+                GetPreprocessorColor());
+
+            incrementalHighlighter.PatchReady += ApplyHighlightPatch;
+
+            // Request visible range after creation
+            RequestVisibleHighlight();
         }
+
+        // Request highlighting of currently visible lines
+        private void RequestVisibleHighlight()
+        {
+            if (incrementalHighlighter == null || !syntaxHighlightingEnabled) return;
+            var (first, last) = GetVisibleLineRange();
+            if (first <= last)
+            {
+                incrementalHighlighter.RequestRange(first, last);
+            }
+        }
+
+        private void ApplyHighlightPatch(object? sender, HighlightPatch patch)
+        {
+            if (textEditor.IsDisposed) return;
+            int line = patch.LineNumber;
+            if (line < 0 || line >= textEditor.Lines.Length) return;
+
+            int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+            int lineLen = textEditor.Lines[line].Length;
+            if (lineLen == 0) return;
+
+            var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+            BeginUpdate(textEditor);
+            textEditor.SuspendLayout();
+            try
+            {
+                // Reset line to base color
+                textEditor.SelectionStart = lineStart;
+                textEditor.SelectionLength = lineLen;
+                textEditor.SelectionColor = baseColor;
+
+                // Apply token colors
+                foreach (var token in patch.Tokens)
+                {
+                    int idx = lineStart + token.StartIndex;
+                    int len = token.Length;
+                    if (idx >= lineStart && idx + len <= lineStart + lineLen)
+                    {
+                        textEditor.SelectionStart = idx;
+                        textEditor.SelectionLength = len;
+                        textEditor.SelectionColor = GetColorForToken(token.Type);
+                    }
+                }
+            }
+            finally
+            {
+                textEditor.ResumeLayout();
+                EndUpdate(textEditor);
+            }
+        }
+
+        private Color GetColorForToken(SyntaxTokenType type) => type switch
+        {
+            SyntaxTokenType.Keyword => GetKeywordColor(),
+            SyntaxTokenType.String => GetStringColor(),
+            SyntaxTokenType.Comment => GetCommentColor(),
+            SyntaxTokenType.Number => GetNumberColor(),
+            SyntaxTokenType.Preprocessor => GetPreprocessorColor(),
+            _ => (isDarkTheme ? darkEditorForeColor : lightEditorForeColor)
+        };
 
         // Get visible line range in the editor (no buffer — only truly visible lines)
         private (int firstLine, int lastLine) GetVisibleLineRange()
@@ -1839,157 +1903,6 @@ namespace MyCrownJewelApp.TextEditor
             }
         }
 
-        // Async non-blocking incremental syntax highlighting
-        private async void HighlightSyntaxAsync()
-        {
-            // Cancel any pending/running highlight
-            highlightCancelToken?.Cancel();
-
-            // Small debounce delay to let cancellations propagate and coalesce rapid events
-            await Task.Delay(80);
-
-            if (textEditor.IsDisposed) return;
-
-            // Re-detect syntax based on current file path
-            DetectSyntaxFromFile();
-
-            Color baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
-
-            // If no syntax definition (e.g. .txt), reset visible area to base color and exit
-            if (currentSyntax == null)
-            {
-                if (textEditor.InvokeRequired)
-                {
-                    try { textEditor.Invoke(new Action(() => ResetVisibleRangeToBase(baseColor))); }
-                    catch { }
-                }
-                else
-                {
-                    ResetVisibleRangeToBase(baseColor);
-                }
-                return;
-            }
-
-            var tokenSource = new CancellationTokenSource();
-            highlightCancelToken = tokenSource;
-            var token = tokenSource.Token;
-
-            // Capture visible range at this moment
-            var (firstLine, lastLine) = GetVisibleLineRange();
-            if (firstLine > lastLine || token.IsCancellationRequested) return;
-
-            // Run highlighting on background thread and get line token map
-            Dictionary<int, List<(int start, int length, Color color)>>? lineRanges = null;
-            try
-            {
-                lineRanges = await Task.Run(() =>
-                {
-                    if (token.IsCancellationRequested) return null;
-
-                    var regexes = GetOrCreateCompiledRegexes(currentSyntax, token);
-                    var ranges = new Dictionary<int, List<(int, int, Color)>>();
-                    string[] lines = textEditor.Lines;
-
-                    for (int lineNum = firstLine; lineNum <= lastLine && !token.IsCancellationRequested; lineNum++)
-                    {
-                        if (lineNum >= lines.Length) break;
-                        string line = lines[lineNum];
-                        if (string.IsNullOrEmpty(line)) continue;
-
-                        var colored = new bool[line.Length];
-
-                        // Preprocessor first
-                        if (regexes.preprocessor != null)
-                            ApplyTokenMatches(regexes.preprocessor.Matches(line), colored, ranges, lineNum, GetPreprocessorColor());
-
-                        if (regexes.comment != null)
-                            ApplyTokenMatches(regexes.comment.Matches(line), colored, ranges, lineNum, GetCommentColor());
-
-                        if (regexes.stringRegex != null)
-                            ApplyTokenMatches(regexes.stringRegex.Matches(line), colored, ranges, lineNum, GetStringColor());
-
-                        if (regexes.number != null)
-                            ApplyTokenMatches(regexes.number.Matches(line), colored, ranges, lineNum, GetNumberColor());
-
-                        if (regexes.keywords != null)
-                            ApplyTokenMatches(regexes.keywords.Matches(line), colored, ranges, lineNum, GetKeywordColor());
-
-                        if (regexes.types != null)
-                            ApplyTokenMatches(regexes.types.Matches(line), colored, ranges, lineNum, GetKeywordColor());
-                    }
-
-                    return ranges;
-                }, token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch
-            {
-                return;
-            }
-
-            if (lineRanges == null || token.IsCancellationRequested || textEditor.IsDisposed) return;
-
-            // Strict check: viewport must be unchanged (exact match)
-            var currentVisible = GetVisibleLineRange();
-            if (currentVisible.firstLine != firstLine || currentVisible.lastLine != lastLine)
-            {
-                return;
-            }
-
-            // Apply on UI thread
-            if (textEditor.InvokeRequired)
-            {
-                try { textEditor.Invoke(new Action(() => ApplyLineRanges(lineRanges, baseColor))); }
-                catch { }
-            }
-            else
-            {
-                ApplyLineRanges(lineRanges, baseColor);
-            }
-        }
-
-        // Apply line-by-line highlighting (incremental)
-        private void ApplyLineRanges(Dictionary<int, List<(int start, int length, Color color)>> lineRanges, Color baseColor)
-        {
-            if (textEditor.IsDisposed) return;
-            int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
-            BeginUpdate(textEditor);
-            textEditor.SuspendLayout();
-            try
-            {
-                foreach (var kvp in lineRanges)
-                {
-                    int lineNum = kvp.Key;
-                    if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
-                    int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
-                    if (lineStart < 0) continue;
-                    int lineLen = textEditor.Lines[lineNum].Length;
-                    if (lineLen == 0) continue;
-                    textEditor.Select(lineStart, lineLen);
-                    textEditor.SelectionColor = baseColor;
-                    foreach (var (start, length, color) in kvp.Value)
-                    {
-                        int idx = lineStart + start;
-                        if (idx >= lineStart && idx + length <= lineStart + lineLen)
-                        {
-                            textEditor.Select(idx, length);
-                            textEditor.SelectionColor = color;
-                        }
-                    }
-                }
-                textEditor.SelectionStart = selStart;
-                textEditor.SelectionLength = selLength;
-                textEditor.SelectionColor = baseColor;
-            }
-            finally
-            {
-                textEditor.ResumeLayout();
-                EndUpdate(textEditor);
-            }
-        }
 
          // Reset all visible lines to base color (used when no syntax highlighting)
          private void ResetVisibleRangeToBase(Color baseColor)
@@ -2025,71 +1938,80 @@ namespace MyCrownJewelApp.TextEditor
              }
          }
 
-         /// <summary>
-         /// Returns tokens for a given line index, used by MinimapControl for syntax coloring.
-          /// </summary>
-          private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
-          {
-              if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-              if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-              
-              string line = textEditor.Lines[lineIndex];
-              if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-              
-              var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
-              var colored = new bool[line.Length];
-              
-              var regexes = GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None);
-              
-              // Local helper to add token if region is free
-              void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
-              {
-                  if (regex == null) return;
-                  var matches = regex.Matches(line);
-                  foreach (System.Text.RegularExpressions.Match m in matches)
-                  {
-                      if (!m.Success) continue;
-                      int start = m.Index;
-                      int len = m.Length;
-                      if (start < 0 || start >= colored.Length) continue;
-                      if (start + len > colored.Length) len = colored.Length - start;
-                      if (len <= 0) continue;
-                      
-                      // Check if region is completely free
-                      bool free = true;
-                      for (int i = start; i < start + len; i++)
-                      {
-                          if (colored[i])
-                          {
-                              free = false;
-                              break;
-                          }
-                      }
-                      if (free)
-                      {
-                          for (int i = start; i < start + len; i++)
-                              colored[i] = true;
-                          tokens.Add(new MyCrownJewelApp.TextEditor.TokenInfo
-                          {
-                              Type = type,
-                              Text = line.Substring(start, len),
-                              StartIndex = start,
-                              Length = len
-                          });
-                      }
-                  }
-              }
-              
-              // Apply in priority order: preprocessor, comment, string, number, keywords, types
-              AddMatches(regexes.preprocessor, MyCrownJewelApp.TextEditor.SyntaxTokenType.Preprocessor);
-              AddMatches(regexes.comment, MyCrownJewelApp.TextEditor.SyntaxTokenType.Comment);
-              AddMatches(regexes.stringRegex, MyCrownJewelApp.TextEditor.SyntaxTokenType.String);
-              AddMatches(regexes.number, MyCrownJewelApp.TextEditor.SyntaxTokenType.Number);
-              AddMatches(regexes.keywords, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
-              AddMatches(regexes.types, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
-              
-              return tokens;
-          }
+        /// <summary>
+        /// Returns tokens for a given line index, used by MinimapControl for syntax coloring.
+        /// </summary>
+        private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
+        {
+            if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+            if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+
+            // Try incremental highlighter cache first
+            if (incrementalHighlighter?.GetTokens(lineIndex) is IReadOnlyList<TokenInfo> cached)
+                return cached;
+
+            // Fallback: synchronous tokenization (no state)
+            return TokenizeLineSynchronously(lineIndex);
+        }
+
+        private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> TokenizeLineSynchronously(int lineIndex)
+        {
+            string line = textEditor.Lines[lineIndex];
+            if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+
+            var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
+            var colored = new bool[line.Length];
+
+            var regexes = GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None);
+
+            void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
+            {
+                if (regex == null) return;
+                var matches = regex.Matches(line);
+                foreach (System.Text.RegularExpressions.Match m in matches)
+                {
+                    if (!m.Success) continue;
+                    int start = m.Index;
+                    int len = m.Length;
+                    if (start < 0 || start >= colored.Length) continue;
+                    if (start + len > colored.Length) len = colored.Length - start;
+                    if (len <= 0) continue;
+
+                    // Check if region is completely free
+                    bool free = true;
+                    for (int i = start; i < start + len; i++)
+                    {
+                        if (colored[i])
+                        {
+                            free = false;
+                            break;
+                        }
+                    }
+                    if (free)
+                    {
+                        for (int i = start; i < start + len; i++)
+                            colored[i] = true;
+                        tokens.Add(new MyCrownJewelApp.TextEditor.TokenInfo
+                        {
+                            Type = type,
+                            Text = line.Substring(start, len),
+                            StartIndex = start,
+                            Length = len
+                        });
+                    }
+                }
+            }
+
+            // Priority order
+            AddMatches(regexes.preprocessor, MyCrownJewelApp.TextEditor.SyntaxTokenType.Preprocessor);
+            AddMatches(regexes.comment, MyCrownJewelApp.TextEditor.SyntaxTokenType.Comment);
+            AddMatches(regexes.stringRegex, MyCrownJewelApp.TextEditor.SyntaxTokenType.String);
+            AddMatches(regexes.number, MyCrownJewelApp.TextEditor.SyntaxTokenType.Number);
+            AddMatches(regexes.keywords, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
+            AddMatches(regexes.types, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
+
+            return tokens;
+        }
 
         // Helper: mark a range as colored
         private static void MarkRange(bool[] colored, int start, int length)
