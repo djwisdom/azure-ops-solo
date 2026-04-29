@@ -179,13 +179,14 @@ namespace MyCrownJewelApp.TextEditor
             try { textEditor.Font = new Font(fontName, fontSize); } catch { }
             
             // Subscribe to handle creation BEFORE any operations that might cause handle creation
-            textEditor.HandleCreated += (s, e) => { ApplyScrollbarTheme(); ComputeElasticTabStopsAsync(); };
+            textEditor.HandleCreated += (s, e) => { ApplyScrollbarTheme(); UpdateTabStops(); };
             
             UpdateThemeColors(isDarkTheme);
             ApplyWordWrap();
             UpdateStatusBar();
             UpdateColumnGuideMenuChecked();
             UpdateTabSizeMenu();
+            UpdateTabStops();
             UpdateCurrentLineHighlightMenu();
             
             // Initialize toggles to match loaded/default settings
@@ -198,7 +199,13 @@ namespace MyCrownJewelApp.TextEditor
             autoIndentMenuItem.Checked = autoIndentEnabled;
             smartTabsMenuItem.Checked = smartTabsEnabled;
             elasticTabsMenuItem.Checked = elasticTabsEnabled;
-            
+
+            // Initialize incremental syntax highlighter if enabled
+            if (syntaxHighlightingEnabled)
+            {
+                CreateIncrementalHighlighter();
+            }
+
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
             guidePanel.Visible = showGuide;
@@ -255,6 +262,47 @@ namespace MyCrownJewelApp.TextEditor
             // Optional: update status bar or perform other actions when viewport changes
             // Could sync with editor if needed; minimap already scrolls editor directly
         }
+
+        #region Tab Stops
+
+        // Compute fixed tab stops based on current font and tabSize (used when elastic tabs disabled)
+        private void ComputeFixedTabStops()
+        {
+            if (textEditor == null || !textEditor.IsHandleCreated) return;
+            if (elasticTabsEnabled) return;
+
+            try
+            {
+                using var bmp = new Bitmap(1, 1);
+                using var g = Graphics.FromImage(bmp);
+                var size = g.MeasureString("0", textEditor.Font);
+                int charWidth = (int)Math.Ceiling(size.Width);
+                int tabPixelWidth = Math.Max(1, charWidth * tabSize);
+
+                var stops = new List<int>();
+                for (int pos = tabPixelWidth; pos <= tabPixelWidth * 500; pos += tabPixelWidth)
+                {
+                    stops.Add(pos);
+                }
+                textEditor.SelectionTabs = stops.ToArray();
+            }
+            catch { }
+        }
+
+        private void UpdateTabStops()
+        {
+            if (elasticTabsEnabled)
+            {
+                elasticTabTimer?.Stop();
+                elasticTabTimer?.Start();
+            }
+            else
+            {
+                ComputeFixedTabStops();
+            }
+        }
+
+        #endregion
 
         #region Elastic Tab Stops
 
@@ -596,6 +644,7 @@ namespace MyCrownJewelApp.TextEditor
         {
             tabSize = size;
             UpdateTabSizeMenu();
+            UpdateTabStops();
             UpdateStatusBar();
             SaveSettings();
         }
@@ -634,17 +683,7 @@ namespace MyCrownJewelApp.TextEditor
         private void ElasticTabs_Click(object? sender, EventArgs e)
         {
             elasticTabsEnabled = elasticTabsMenuItem.Checked;
-            if (!elasticTabsEnabled)
-            {
-                // Clear elastic tab stops to fallback to default
-                textEditor.SelectionTabs = Array.Empty<int>();
-            }
-            else
-            {
-                // Trigger recompute
-                elasticTabTimer?.Stop();
-                elasticTabTimer?.Start();
-            }
+            UpdateTabStops();
             SaveSettings();
         }
 
@@ -1722,11 +1761,12 @@ namespace MyCrownJewelApp.TextEditor
          private void TextEditor_Resize(object? sender, EventArgs e)
          {
              if (gutterPanel != null) gutterPanel.RefreshGutter();
-             if (syntaxHighlightingEnabled)
-             {
-                 highlightTimer?.Stop();
-                 highlightTimer?.Start();
-             }
+            if (syntaxHighlightingEnabled)
+            {
+                CreateIncrementalHighlighter();
+                highlightTimer?.Stop();
+                highlightTimer?.Start();
+            }
              guidePanel?.Invalidate();
              PositionMinimap();
          }
