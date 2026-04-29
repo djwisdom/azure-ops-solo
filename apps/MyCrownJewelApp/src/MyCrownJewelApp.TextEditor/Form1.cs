@@ -399,11 +399,27 @@ namespace MyCrownJewelApp.TextEditor
                     SetWindowTheme(textEditor.Handle, null, null);
             }
 
+            // Update selection colors to match theme
+            if (textEditor != null && textEditor.IsHandleCreated)
+            {
+                if (isDark)
+                {
+                    textEditor.SelectionBackColor = Color.FromArgb(0, 120, 215);
+                    textEditor.SelectionColor = Color.White;
+                }
+                else
+                {
+                    textEditor.SelectionBackColor = SystemColors.Highlight;
+                    textEditor.SelectionColor = SystemColors.HighlightText;
+                }
+            }
+
             darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
 
             lastHighlightedLine = -1;
             HighlightCurrentLine();
+            gutterPanel?.RefreshGutter();
         }
 
         private void ToggleTheme()
@@ -1508,50 +1524,58 @@ namespace MyCrownJewelApp.TextEditor
         {
             if (isHighlighting) return;
             if (currentLineHighlightMode == CurrentLineHighlightMode.Off) return;
-            
+
+            int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+            if (currentLine == lastHighlightedLine) return;
+
             isHighlighting = true;
             try
             {
-                int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
-                if (currentLine == lastHighlightedLine) return;
-
-                // Save current selection
-                int savedStart = textEditor.SelectionStart;
-                int savedLength = textEditor.SelectionLength;
-
-                // Clear previous highlight
-                if (lastHighlightedLine >= 0 && lastHighlightedLine < textEditor.Lines.Length)
+                BeginUpdate(textEditor);
+                try
                 {
-                    int prevStart = textEditor.GetFirstCharIndexFromLine(lastHighlightedLine);
-                    int prevLen = textEditor.Lines[lastHighlightedLine].Length;
-                    if (prevStart >= 0 && prevLen > 0)
-                    {
-                        textEditor.Select(prevStart, prevLen);
-                        textEditor.SelectionBackColor = textEditor.BackColor;
-                    }
-                }
+                    // Save current selection
+                    int savedStart = textEditor.SelectionStart;
+                    int savedLength = textEditor.SelectionLength;
 
-                // Apply new highlight based on mode
-                if (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine)
-                {
-                    if (currentLine >= 0 && currentLine < textEditor.Lines.Length)
+                    // Clear previous highlight
+                    if (lastHighlightedLine >= 0 && lastHighlightedLine < textEditor.Lines.Length)
                     {
-                        int start = textEditor.GetFirstCharIndexFromLine(currentLine);
-                        int len = textEditor.Lines[currentLine].Length;
-                        if (start >= 0)
+                        int prevStart = textEditor.GetFirstCharIndexFromLine(lastHighlightedLine);
+                        int prevLen = textEditor.Lines[lastHighlightedLine].Length;
+                        if (prevStart >= 0 && prevLen > 0)
                         {
-                            textEditor.Select(start, Math.Max(len, 1));
-                            textEditor.SelectionBackColor = GetCurrentLineHighlightColor();
+                            textEditor.Select(prevStart, prevLen);
+                            textEditor.SelectionBackColor = textEditor.BackColor;
                         }
                     }
+
+                    // Apply new highlight based on mode
+                    if (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine)
+                    {
+                        if (currentLine >= 0 && currentLine < textEditor.Lines.Length)
+                        {
+                            int start = textEditor.GetFirstCharIndexFromLine(currentLine);
+                            int len = textEditor.Lines[currentLine].Length;
+                            if (start >= 0)
+                            {
+                                textEditor.Select(start, Math.Max(len, 1));
+                                textEditor.SelectionBackColor = GetCurrentLineHighlightColor();
+                            }
+                        }
+                    }
+                    // NumberOnly mode: no text background highlight; gutter will draw bold number
+
+                    lastHighlightedLine = currentLine;
+
+                    // Restore original selection (no forced ScrollToCaret to avoid jumping)
+                    textEditor.SelectionStart = savedStart;
+                    textEditor.SelectionLength = savedLength;
                 }
-                // NumberOnly mode: no text background highlight; gutter will draw bold number
-
-                lastHighlightedLine = currentLine;
-
-                // Restore original selection (no forced ScrollToCaret to avoid jumping)
-                textEditor.SelectionStart = savedStart;
-                textEditor.SelectionLength = savedLength;
+                finally
+                {
+                    EndUpdate(textEditor);
+                }
             }
             finally
             {
@@ -2106,6 +2130,8 @@ namespace MyCrownJewelApp.TextEditor
         }
 
         internal CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
+
+        public bool IsDarkTheme => isDarkTheme;
 
         #endregion
 

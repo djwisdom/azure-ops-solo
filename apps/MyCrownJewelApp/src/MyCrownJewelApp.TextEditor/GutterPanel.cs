@@ -202,13 +202,13 @@ public class GutterPanel : Panel
             isCurrentLine = (lineNumber == currentLineNum);
         }
 
-        // Use editor's font scaled by zoom; bold+yellow if current line in NumberOnly mode
+        // Use editor's font scaled by zoom; bold+yellow (dark) or black (light) if current line in NumberOnly mode
         FontStyle style = editor.Font.Style;
         Color color = Color.FromArgb(120, 120, 120); // default gray
         if (isCurrentLine)
         {
             style |= FontStyle.Bold;
-            color = Color.Yellow; // highlight color
+            color = mainForm.IsDarkTheme ? Color.Yellow : Color.Black;
         }
 
         using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, style);
