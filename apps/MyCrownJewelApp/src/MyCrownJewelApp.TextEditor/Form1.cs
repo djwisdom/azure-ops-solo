@@ -666,48 +666,20 @@ namespace MyCrownJewelApp.TextEditor
                 {
                     UnindentSelection();
                 }
+                else if (textEditor.SelectionLength > 0)
+                {
+                    IndentSelection();
+                }
                 else
                 {
-                    int selStart = textEditor.SelectionStart;
-                    int selLength = textEditor.SelectionLength;
-                    
-                    if (selLength > 0)
+                    // Insert a full tab (or spaces) — simple behavior
+                    if (insertSpaces)
                     {
-                        IndentSelection();
+                        textEditor.SelectedText = new string(' ', tabSize);
                     }
                     else
                     {
-                        // Determine if caret is at line start or only whitespace before it
-                        int lineStartIdx = textEditor.GetFirstCharIndexFromLine(textEditor.GetLineFromCharIndex(selStart));
-                        int charsOnLineBeforeCaret = selStart - lineStartIdx;
-                        string lineText = textEditor.Lines[textEditor.GetLineFromCharIndex(selStart)];
-                        string textBeforeCaret = lineText.Substring(0, charsOnLineBeforeCaret);
-                        
-                        if (string.IsNullOrEmpty(textBeforeCaret) || textBeforeCaret.All(char.IsWhiteSpace))
-                        {
-                            // Smart indent: move to next tab stop
-                            int currentCol = 0;
-                            foreach (char c in textBeforeCaret)
-                            {
-                                currentCol += (c == '\t') ? tabSize : 1;
-                            }
-                            int targetCol = ((currentCol / tabSize) + 1) * tabSize;
-                            int needed = targetCol - currentCol;
-                            string indent = IndentationHelper.ComputeMixedIndent(needed, tabSize, insertSpaces);
-                            textEditor.SelectedText = indent;
-                        }
-                        else
-                        {
-                            // Normal tab insertion
-                            if (insertSpaces)
-                            {
-                                textEditor.SelectedText = new string(' ', tabSize);
-                            }
-                            else
-                            {
-                                textEditor.SelectedText = "\t";
-                            }
-                        }
+                        textEditor.SelectedText = "\t";
                     }
                 }
             }
