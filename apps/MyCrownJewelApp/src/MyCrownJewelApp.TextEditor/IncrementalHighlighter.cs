@@ -103,22 +103,30 @@ public sealed class IncrementalHighlighter : IDisposable
     }
 
     /// <summary>
-    /// Marks a line as requiring re-tokenization.
+    /// Marks a line as requiring re-tokenization (called after text edit).
+    /// Evicts from cache to force re-compute.
     /// </summary>
     public void MarkDirty(int lineNumber)
     {
         if (lineNumber < 0) return;
+        // Evict from cache — content changed
+        _tokenCache.TryRemove(lineNumber, out _);
         _dirtyLines.Writer.TryWrite(lineNumber);
     }
 
     /// <summary>
     /// Requests highlighting for a range of lines (used on viewport change).
+    /// Only enqueues lines that are not already cached.
     /// </summary>
     public void RequestRange(int startLine, int endLine)
     {
         for (int line = startLine; line <= endLine; line++)
         {
-            MarkDirty(line);
+            // Only mark dirty if not already cached
+            if (!_tokenCache.ContainsKey(line))
+            {
+                _dirtyLines.Writer.TryWrite(line);
+            }
         }
     }
 
