@@ -2196,6 +2196,7 @@ namespace MyCrownJewelApp.TextEditor
                 }
             }
             SaveSettings();
+            incrementalHighlighter?.Dispose();
         }
 
         private void Form1_Activated(object? sender, EventArgs e)
