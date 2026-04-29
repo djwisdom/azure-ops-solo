@@ -205,11 +205,12 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
-        // Main Table Layout (2 columns: gutter, editor)
+        // Main Table Layout (3 columns: gutter | editor | minimap)
         mainTable = new TableLayoutPanel();
-        mainTable.ColumnCount = 2;
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        mainTable.ColumnCount = 3;
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));   // Gutter
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Editor
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); // Minimap
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
@@ -258,19 +259,7 @@ partial class Form1
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
-
-        // Minimap Overlay — child of editor so it sits on top of scrollbar area
-        minimapControl = new MinimapControl();
-        minimapControl.Width = 100;
-        minimapControl.MinimapWidth = 100;
-        minimapControl.Scale = 0.5f;
-        minimapControl.ShowColors = false;
-        minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
-        minimapControl.ViewportBorderColor = Color.DodgerBlue;
-        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
-        minimapControl.Location = new Point(textEditor.Width - 100, 0);
-        textEditor.Controls.Add(minimapControl);
-        minimapControl.BringToFront();
+        mainTable.Controls.Add(minimapControl, 2, 0);
 
         // Status Strip
         statusStrip = new StatusStrip();

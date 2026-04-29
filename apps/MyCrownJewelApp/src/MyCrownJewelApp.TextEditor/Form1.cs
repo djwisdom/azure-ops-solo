@@ -61,10 +61,6 @@ namespace MyCrownJewelApp.TextEditor
         private Color lightEditorBackColor = Color.White;
         private Color lightEditorForeColor = Color.Black;
 
-        // Minimap theme colors
-        private Color darkMinimapBackColor = Color.FromArgb(45, 45, 45);
-        private Color lightMinimapBackColor = Color.FromArgb(240, 240, 240);
-
         private Color keywordColor = Color.Blue;
         private Color stringColor = Color.Maroon;
         private Color commentColor = Color.Green;
@@ -112,9 +108,6 @@ namespace MyCrownJewelApp.TextEditor
              minimapControl.ShowColors = false; // Default off; can be enabled via API
              minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
              minimapControl.SetTokenProvider(GetTokensForLine);
-             
-             // Position minimap overlay over scrollbar
-             PositionMinimap();
         }
 
          private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
@@ -148,9 +141,15 @@ namespace MyCrownJewelApp.TextEditor
             }
             if (minimapControl != null)
             {
-                minimapControl.BackColor = isDark ? darkMinimapBackColor : lightMinimapBackColor;
+                // Match minimap background to editor background for seamless blend
+                minimapControl.BackColor = isDark ? darkEditorBackColor : lightEditorBackColor;
                 minimapControl.ViewportColor = isDark ? Color.FromArgb(100, Color.DodgerBlue) : Color.FromArgb(80, Color.LightBlue);
-                minimapControl.ViewportBorderColor = isDark ? Color.DodgerBlue : Color.DodgerBlue;
+                minimapControl.ViewportBorderColor = Color.DodgerBlue;
+            }
+            if (guidePanel != null)
+            {
+                // Subtle guide line that contrasts with background
+                guidePanel.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
             }
     // Update checkmarks
     darkThemeMenuItem.Checked = isDark;
@@ -194,25 +193,13 @@ namespace MyCrownJewelApp.TextEditor
 
          private void ToggleMinimap()
          {
-             // Toggle minimap visibility when using overlay layout
+             // Column 2 (index 2) holds minimap; toggle width between 0 and 100
              bool visible = minimapMenuItem.Checked;
-             if (minimapControl != null)
+             if (mainTable.ColumnCount > 2)
              {
-                 minimapControl.Visible = visible;
+                 mainTable.ColumnStyles[2].Width = visible ? 100 : 0;
              }
-             // Reposition editor content if needed
              mainTable.PerformLayout();
-         }
-
-         private void PositionMinimap()
-         {
-             if (minimapControl == null || !minimapControl.Visible) return;
-             
-             int scrollbarWidth = SystemInformation.VerticalScrollBarWidth;
-             int x = textEditor.ClientSize.Width - scrollbarWidth - minimapControl.Width;
-             if (x < 0) x = 0;
-             minimapControl.Location = new Point(x, 0);
-             minimapControl.Height = textEditor.ClientSize.Height;
          }
 
          private void MinimapMenuItem_Click(object? sender, EventArgs e)
@@ -220,7 +207,7 @@ namespace MyCrownJewelApp.TextEditor
              ToggleMinimap();
          }
 
-        private void ToggleWordWrap()
+         private void ToggleWordWrap()
         {
             wordWrapEnabled = !wordWrapEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
@@ -955,7 +942,6 @@ namespace MyCrownJewelApp.TextEditor
                  highlightTimer?.Start();
              }
              guidePanel?.Invalidate();
-             PositionMinimap();
          }
 
          private void UpdateStatusBar()
