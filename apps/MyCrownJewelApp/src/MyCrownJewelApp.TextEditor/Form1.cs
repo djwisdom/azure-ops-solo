@@ -366,9 +366,12 @@ namespace MyCrownJewelApp.TextEditor
                  this.Text = $"MyCrownJewelApp TextEditor - {Path.GetFileName(path)}";
                  AddToRecentFiles(path);
                  
-                 // Ensure editor starts at top
+                 // Ensure editor starts at top: set caret at 0 and scroll via Win32
                  textEditor.SelectionStart = 0;
-                 textEditor.ScrollToCaret();
+                 if (textEditor.IsHandleCreated)
+                 {
+                     SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
+                 }
                  
                  UpdateStatusBar();
              }
@@ -1301,6 +1304,8 @@ namespace MyCrownJewelApp.TextEditor
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int WM_SETREDRAW = 0x0B;
         private const int EM_LINESCROLL = 0xB6;
+        private const int WM_VSCROLL = 0x115;
+        private const int SB_TOP = 6;
 
         private void BeginUpdate(RichTextBox rtb)
         {
