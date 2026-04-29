@@ -179,7 +179,20 @@ namespace MyCrownJewelApp.TextEditor
             try { textEditor.Font = new Font(fontName, fontSize); } catch { }
             
             // Subscribe to handle creation BEFORE any operations that might cause handle creation
-            textEditor.HandleCreated += (s, e) => { ApplyScrollbarTheme(); UpdateTabStops(); };
+            textEditor.HandleCreated += (s, e) =>
+            {
+                ApplyScrollbarTheme();
+                UpdateTabStops();
+                if (syntaxHighlightingEnabled)
+                {
+                    CreateIncrementalHighlighter();
+                }
+            };
+            textEditor.HandleDestroyed += (s, e) =>
+            {
+                incrementalHighlighter?.Dispose();
+                incrementalHighlighter = null;
+            };
             
             UpdateThemeColors(isDarkTheme);
             ApplyWordWrap();
@@ -1826,6 +1839,8 @@ namespace MyCrownJewelApp.TextEditor
             incrementalHighlighter?.Dispose();
             incrementalHighlighter = null;
 
+            if (!textEditor.IsHandleCreated) return;
+
             // Detect syntax based on current file path or default
             if (currentFilePath != null)
             {
@@ -1863,7 +1878,7 @@ namespace MyCrownJewelApp.TextEditor
         // Request highlighting of currently visible lines
         private void RequestVisibleHighlight()
         {
-            if (incrementalHighlighter == null || !syntaxHighlightingEnabled) return;
+            if (incrementalHighlighter == null || !syntaxHighlightingEnabled || !textEditor.IsHandleCreated) return;
             var (first, last) = GetVisibleLineRange();
             if (first <= last)
             {
@@ -1873,7 +1888,7 @@ namespace MyCrownJewelApp.TextEditor
 
         private void ApplyHighlightPatch(object? sender, HighlightPatch patch)
         {
-            if (textEditor.IsDisposed) return;
+            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             int line = patch.LineNumber;
             if (line < 0 || line >= textEditor.Lines.Length) return;
 
@@ -1984,6 +1999,7 @@ namespace MyCrownJewelApp.TextEditor
         private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
         {
             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+            if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
             if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
 
             // Try incremental highlighter cache first
