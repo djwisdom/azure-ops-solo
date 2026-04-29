@@ -560,7 +560,9 @@ namespace MyCrownJewelApp.TextEditor
             }
             else if (_attachedEditor is TextBoxBase textBoxBase)
             {
+                if (lineIndex < 0 || lineIndex >= textBoxBase.Lines.Length) return;
                 int charIndex = textBoxBase.GetFirstCharIndexFromLine(lineIndex);
+                if (charIndex < 0) return;
                 textBoxBase.SelectionStart = charIndex;
                 textBoxBase.ScrollToCaret();
                 textBoxBase.SelectionLength = 0;
