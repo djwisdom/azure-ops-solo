@@ -467,7 +467,7 @@ public class MinimapControl : Control
 
         lock (_renderLock)
         {
-            _renderCts = CancellationTokenSource.CreateLinkedTokenSource();
+            _renderCts = new CancellationTokenSource();
             var token = _renderCts.Token;
 
             Task.Run(() =>

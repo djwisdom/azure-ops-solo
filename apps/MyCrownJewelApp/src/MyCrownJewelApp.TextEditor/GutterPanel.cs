@@ -107,7 +107,8 @@ public class GutterPanel : Panel
             // Skip lines that are completely above the viewport (lineY + lineHeight <= 0)
             if (lineY + lineHeight <= 0) continue;
             // Stop if line starts at or beyond bottom edge
-            if (lineY >= editor.Height) break;
+            // Stop when we've passed the visible client area
+            if (lineY >= editor.ClientSize.Height) break;
 
             int currentX = 0;
 
@@ -153,9 +154,8 @@ public class GutterPanel : Panel
         int nativeFirst = SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
         if (nativeFirst < 0) nativeFirst = 0;
 
-        // Compute line height
-        int lineHeight = (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor);
-        if (lineHeight <= 0) lineHeight = 1;
+        // Compute line height from font's Height property (line spacing) with zoom
+        int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
 
         // Find the actual first visible line (including partially visible at top)
         firstLine = nativeFirst;
