@@ -126,14 +126,10 @@ namespace MyCrownJewelApp.TextEditor
             if (editor is TextBoxBase textBoxBase)
             {
                 textBoxBase.TextChanged += Editor_TextChanged;
-                textBoxBase.HandleCreated += Editor_HandleCreated;
-                textBoxBase.HandleDestroyed += Editor_HandleDestroyed;
                 textBoxBase.Resize += Editor_Resize;
             }
             else
             {
-                editor.HandleCreated += Editor_HandleCreated;
-                editor.HandleDestroyed += Editor_HandleDestroyed;
                 editor.Resize += Editor_Resize;
             }
 
@@ -154,14 +150,10 @@ namespace MyCrownJewelApp.TextEditor
                 if (_attachedEditor is TextBoxBase textBoxBase)
                 {
                     textBoxBase.TextChanged -= Editor_TextChanged;
-                    textBoxBase.HandleCreated -= Editor_HandleCreated;
-                    textBoxBase.HandleDestroyed -= Editor_HandleDestroyed;
                     textBoxBase.Resize -= Editor_Resize;
                 }
                 else
                 {
-                    _attachedEditor.HandleCreated -= Editor_HandleCreated;
-                    _attachedEditor.HandleDestroyed -= Editor_HandleDestroyed;
                     _attachedEditor.Resize -= Editor_Resize;
                 }
 
@@ -202,20 +194,6 @@ namespace MyCrownJewelApp.TextEditor
             UpdateViewportFromEditor();
             _lastPolledViewport = _viewportRect;
             ScheduleRedraw();
-        }
-
-        private void Editor_HandleCreated(object? sender, EventArgs e)
-        {
-            UpdateTotalLines();
-            UpdateVisibleLines();
-            UpdateViewportFromEditor();
-            _lastPolledViewport = _viewportRect;
-            ScheduleRedraw();
-        }
-
-        private void Editor_HandleDestroyed(object? sender, EventArgs e)
-        {
-            DetachEditor();
         }
 
         #endregion
