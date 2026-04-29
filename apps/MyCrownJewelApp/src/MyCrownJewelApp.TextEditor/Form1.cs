@@ -17,7 +17,7 @@ namespace MyCrownJewelApp.TextEditor
     {
         // Win32 API for dark scrollbar support
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-        private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
+        private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
         private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
@@ -446,7 +446,7 @@ namespace MyCrownJewelApp.TextEditor
                 }
             }
             gutterPanel?.RefreshGutter();
-            textEditor.Invalidate();
+            textEditor?.Invalidate();
         }
 
         private void ToggleTheme()
