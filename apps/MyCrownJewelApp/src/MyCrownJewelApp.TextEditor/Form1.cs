@@ -333,6 +333,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 lastHighlightedLine = -1;
                 HighlightCurrentLine();
+                gutterPanel?.RefreshGutter();
             }
         }
 
@@ -1162,6 +1163,7 @@ namespace MyCrownJewelApp.TextEditor
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
         {
             HighlightCurrentLine();
+            if (gutterPanel != null) gutterPanel.RefreshGutter();
             UpdateStatusBar();
         }
 

@@ -126,10 +126,12 @@ namespace MyCrownJewelApp.TextEditor
             if (editor is TextBoxBase textBoxBase)
             {
                 textBoxBase.TextChanged += Editor_TextChanged;
+                textBoxBase.HandleCreated += Editor_HandleCreated;
                 textBoxBase.Resize += Editor_Resize;
             }
             else
             {
+                editor.HandleCreated += Editor_HandleCreated;
                 editor.Resize += Editor_Resize;
             }
 
@@ -190,6 +192,15 @@ namespace MyCrownJewelApp.TextEditor
 
         private void Editor_Resize(object? sender, EventArgs e)
         {
+            UpdateVisibleLines();
+            UpdateViewportFromEditor();
+            _lastPolledViewport = _viewportRect;
+            ScheduleRedraw();
+        }
+
+        private void Editor_HandleCreated(object? sender, EventArgs e)
+        {
+            UpdateTotalLines();
             UpdateVisibleLines();
             UpdateViewportFromEditor();
             _lastPolledViewport = _viewportRect;
