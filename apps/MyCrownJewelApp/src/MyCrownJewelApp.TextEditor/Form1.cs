@@ -54,6 +54,11 @@ namespace MyCrownJewelApp.TextEditor
         private string fontName = "Consolas";
         private float fontSize = 12f;
         
+        // Feature toggles
+        private bool autoIndentEnabled = true;
+        private bool smartTabsEnabled = true;
+        private bool elasticTabsEnabled = true;
+        
         // Elastic tab stops system
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
@@ -173,6 +178,9 @@ namespace MyCrownJewelApp.TextEditor
             syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
             insertSpacesMenuItem.Checked = insertSpaces;
+            autoIndentMenuItem.Checked = autoIndentEnabled;
+            smartTabsMenuItem.Checked = smartTabsEnabled;
+            elasticTabsMenuItem.Checked = elasticTabsEnabled;
             
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
@@ -213,7 +221,7 @@ namespace MyCrownJewelApp.TextEditor
             // Elastic tab stops debounce timer
             elasticTabTimer = new System.Windows.Forms.Timer();
             elasticTabTimer.Interval = 250; // 250ms after last change
-            elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); ComputeElasticTabStopsAsync(); };
+            elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
 
             // Apply syntax highlighting state after timer is created
             if (syntaxHighlightingEnabled)
@@ -586,6 +594,35 @@ namespace MyCrownJewelApp.TextEditor
             SaveSettings();
         }
 
+        private void AutoIndent_Click(object? sender, EventArgs e)
+        {
+            autoIndentEnabled = autoIndentMenuItem.Checked;
+            SaveSettings();
+        }
+
+        private void SmartTabs_Click(object? sender, EventArgs e)
+        {
+            smartTabsEnabled = smartTabsMenuItem.Checked;
+            SaveSettings();
+        }
+
+        private void ElasticTabs_Click(object? sender, EventArgs e)
+        {
+            elasticTabsEnabled = elasticTabsMenuItem.Checked;
+            if (!elasticTabsEnabled)
+            {
+                // Clear elastic tab stops to fallback to default
+                textEditor.SelectionTabs = Array.Empty<int>();
+            }
+            else
+            {
+                // Trigger recompute
+                elasticTabTimer?.Stop();
+                elasticTabTimer?.Start();
+            }
+            SaveSettings();
+        }
+
         // Current line highlight mode cycling
         private void CurrentLineHighlightMode_Click(object? sender, EventArgs e)
         {
@@ -672,7 +709,33 @@ namespace MyCrownJewelApp.TextEditor
                 }
                 else
                 {
-                    // Insert a full tab (or spaces) — simple behavior
+                    if (smartTabsEnabled)
+                    {
+                        // Check if caret is at line start or only whitespace before it
+                        int lineIdx = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+                        int lineStartIdx = textEditor.GetFirstCharIndexFromLine(lineIdx);
+                        int charsOnLineBeforeCaret = textEditor.SelectionStart - lineStartIdx;
+                        string lineText = textEditor.Lines[lineIdx];
+                        string textBeforeCaret = lineText.Substring(0, charsOnLineBeforeCaret);
+                        
+                        if (string.IsNullOrEmpty(textBeforeCaret) || textBeforeCaret.All(char.IsWhiteSpace))
+                        {
+                            // Smart indent: move to next tab stop
+                            int currentCol = 0;
+                            foreach (char c in textBeforeCaret)
+                            {
+                                currentCol += (c == '\t') ? tabSize : 1;
+                            }
+                            int targetCol = ((currentCol / tabSize) + 1) * tabSize;
+                            int needed = targetCol - currentCol;
+                            string indent = IndentationHelper.ComputeMixedIndent(needed, tabSize, insertSpaces);
+                            textEditor.SelectedText = indent;
+                            UpdateStatusBar();
+                            return;
+                        }
+                    }
+                    
+                    // Normal tab insertion (fallback)
                     if (insertSpaces)
                     {
                         textEditor.SelectedText = new string(' ', tabSize);
@@ -698,21 +761,26 @@ namespace MyCrownJewelApp.TextEditor
             BeginUndoUnit(textEditor);
             try
             {
-                int selStart = textEditor.SelectionStart;
-                int currentLine = textEditor.GetLineFromCharIndex(selStart);
-                string prevLineText = "";
-                if (currentLine > 0)
+                if (autoIndentEnabled)
                 {
-                    prevLineText = textEditor.Lines[currentLine - 1];
+                    int selStart = textEditor.SelectionStart;
+                    int currentLine = textEditor.GetLineFromCharIndex(selStart);
+                    string prevLineText = "";
+                    if (currentLine > 0)
+                    {
+                        prevLineText = textEditor.Lines[currentLine - 1];
+                    }
+                    // Compute indent based on previous line
+                    string indent = IndentationHelper.ComputeIndent(prevLineText, tabSize, insertSpaces);
+                    // Insert newline + indent
+                    string newText = Environment.NewLine + indent;
+                    textEditor.SelectedText = newText;
                 }
-                // Compute indent based on previous line
-                string indent = IndentationHelper.ComputeIndent(prevLineText, tabSize, insertSpaces);
-                
-                // Insert newline + indent
-                string newText = Environment.NewLine + indent;
-                textEditor.SelectedText = newText;
-                
-                // Move caret to after indent (SelectedText already places caret at end)
+                else
+                {
+                    // Simple newline
+                    textEditor.SelectedText = Environment.NewLine;
+                }
             }
             finally
             {

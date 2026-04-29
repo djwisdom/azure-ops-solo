@@ -65,6 +65,9 @@ partial class Form1
         private ToolStripMenuItem tab8MenuItem;
         private ToolStripMenuItem tab10MenuItem;
         private ToolStripMenuItem tab12MenuItem;
+        private ToolStripMenuItem autoIndentMenuItem;
+        private ToolStripMenuItem smartTabsMenuItem;
+        private ToolStripMenuItem elasticTabsMenuItem;
         private ToolStripMenuItem columnGuideMenuItem;
         private ToolStripMenuItem col72MenuItem;
         private ToolStripMenuItem col80MenuItem;
@@ -196,25 +199,38 @@ partial class Form1
             currentLineOffMenuItem, currentLineNumberOnlyMenuItem, currentLineWholeLineMenuItem
         });
         
-        // Tab handling: Insert Spaces toggle
-        insertSpacesMenuItem = new ToolStripMenuItem("&Insert Spaces", null, InsertSpaces_Click);
-        insertSpacesMenuItem.Checked = true;
-        insertSpacesMenuItem.CheckOnClick = true;
-        
-        // Tab Size submenu
-        tabSizeMenu = new ToolStripMenuItem("Tab &Size");
-        tab2MenuItem = new ToolStripMenuItem("&2", null, (s, e) => SetTabSize(2));
-        tab4MenuItem = new ToolStripMenuItem("&4", null, (s, e) => SetTabSize(4));
-        tab6MenuItem = new ToolStripMenuItem("&6", null, (s, e) => SetTabSize(6));
-        tab8MenuItem = new ToolStripMenuItem("&8", null, (s, e) => SetTabSize(8));
-        tab10MenuItem = new ToolStripMenuItem("1&0", null, (s, e) => SetTabSize(10));
-        tab12MenuItem = new ToolStripMenuItem("1&2", null, (s, e) => SetTabSize(12));
-        tabSizeMenu.DropDownItems.AddRange(new ToolStripItem[] {
-            tab2MenuItem, tab4MenuItem, tab6MenuItem, tab8MenuItem, tab10MenuItem, tab12MenuItem
-        });
-        
-         gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
-         gutterMenuItem.Checked = false;
+         // Tab handling: Insert Spaces toggle
+         insertSpacesMenuItem = new ToolStripMenuItem("&Insert Spaces", null, InsertSpaces_Click);
+         insertSpacesMenuItem.Checked = true;
+         insertSpacesMenuItem.CheckOnClick = true;
+         
+         // Tab Size submenu
+         tabSizeMenu = new ToolStripMenuItem("Tab &Size");
+         tab2MenuItem = new ToolStripMenuItem("&2", null, (s, e) => SetTabSize(2));
+         tab4MenuItem = new ToolStripMenuItem("&4", null, (s, e) => SetTabSize(4));
+         tab6MenuItem = new ToolStripMenuItem("&6", null, (s, e) => SetTabSize(6));
+         tab8MenuItem = new ToolStripMenuItem("&8", null, (s, e) => SetTabSize(8));
+         tab10MenuItem = new ToolStripMenuItem("1&0", null, (s, e) => SetTabSize(10));
+         tab12MenuItem = new ToolStripMenuItem("1&2", null, (s, e) => SetTabSize(12));
+         tabSizeMenu.DropDownItems.AddRange(new ToolStripItem[] {
+             tab2MenuItem, tab4MenuItem, tab6MenuItem, tab8MenuItem, tab10MenuItem, tab12MenuItem
+         });
+         
+         // Auto Indent, Smart Tabs, Elastic Tab Stops toggles
+         autoIndentMenuItem = new ToolStripMenuItem("Auto &Indent", null, AutoIndent_Click);
+         autoIndentMenuItem.Checked = true;
+         autoIndentMenuItem.CheckOnClick = true;
+         
+         smartTabsMenuItem = new ToolStripMenuItem("Smart &Tabs", null, SmartTabs_Click);
+         smartTabsMenuItem.Checked = true;
+         smartTabsMenuItem.CheckOnClick = true;
+         
+         elasticTabsMenuItem = new ToolStripMenuItem("&Elastic Tab Stops", null, ElasticTabs_Click);
+         elasticTabsMenuItem.Checked = true;
+         elasticTabsMenuItem.CheckOnClick = true;
+         
+          gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
+          gutterMenuItem.Checked = false;
 
          // Minimap toggle (initially unchecked)
          minimapMenuItem = new ToolStripMenuItem("Minimap", null, MinimapMenuItem_Click);
@@ -240,11 +256,12 @@ partial class Form1
         lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
         themeMenu.DropDownItems.AddRange(new ToolStripItem[] { darkThemeMenuItem, lightThemeMenuItem });
 
-viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
-    zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
-    syntaxHighlightingMenuItem, currentLineHighlightMenu, insertSpacesMenuItem, tabSizeMenu,
-    gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
-});
+         viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
+             zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
+             syntaxHighlightingMenuItem, currentLineHighlightMenu, insertSpacesMenuItem, tabSizeMenu,
+             autoIndentMenuItem, smartTabsMenuItem, elasticTabsMenuItem,
+             gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
+         });
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
