@@ -208,7 +208,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 minimapControl.AttachEditor(textEditor);
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
-                minimapControl.SetTokenProvider(TokenizeLine);
+                minimapControl.SetTokenProvider(GetTokensForLine);
                 PositionMinimap(); // initial placement
             }
             
@@ -1950,24 +1950,17 @@ namespace MyCrownJewelApp.TextEditor
           /// </summary>
           private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
           {
-              if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-              string line = textEditor.Lines[lineIndex];
-              return TokenizeLine(line);
-          }
-
-          /// <summary>
-          /// Tokenizes a line of text into TokenInfo. Thread-safe for background rendering.
-          /// </summary>
-          private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> TokenizeLine(string line)
-          {
               if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+              if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+              
+              string line = textEditor.Lines[lineIndex];
               if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-
+              
               var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
               var colored = new bool[line.Length];
-
+              
               var regexes = GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None);
-
+              
               // Local helper to add token if region is free
               void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
               {
@@ -1981,7 +1974,7 @@ namespace MyCrownJewelApp.TextEditor
                       if (start < 0 || start >= colored.Length) continue;
                       if (start + len > colored.Length) len = colored.Length - start;
                       if (len <= 0) continue;
-
+                      
                       // Check if region is completely free
                       bool free = true;
                       for (int i = start; i < start + len; i++)
@@ -2006,7 +1999,7 @@ namespace MyCrownJewelApp.TextEditor
                       }
                   }
               }
-
+              
               // Apply in priority order: preprocessor, comment, string, number, keywords, types
               AddMatches(regexes.preprocessor, MyCrownJewelApp.TextEditor.SyntaxTokenType.Preprocessor);
               AddMatches(regexes.comment, MyCrownJewelApp.TextEditor.SyntaxTokenType.Comment);
@@ -2014,7 +2007,7 @@ namespace MyCrownJewelApp.TextEditor
               AddMatches(regexes.number, MyCrownJewelApp.TextEditor.SyntaxTokenType.Number);
               AddMatches(regexes.keywords, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
               AddMatches(regexes.types, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
-
+              
               return tokens;
           }
 
