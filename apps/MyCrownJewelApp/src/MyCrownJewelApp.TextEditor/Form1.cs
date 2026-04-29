@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
@@ -11,6 +12,23 @@ namespace MyCrownJewelApp.TextEditor
 {
     public partial class Form1 : Form
     {
+        // Win32 API for dark scrollbar support
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
+
+        private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
+
+        private void ApplyScrollbarTheme()
+        {
+            if (textEditor != null && textEditor.IsHandleCreated)
+            {
+                if (isDarkTheme)
+                    SetWindowTheme(textEditor.Handle, DARK_MODE_SCROLLBAR, null);
+                else
+                    SetWindowTheme(textEditor.Handle, null, null);
+            }
+        }
+
         // State
         private HashSet<int> bookmarks = new();
         private HashSet<int> modifiedLines = new();
@@ -30,6 +48,8 @@ namespace MyCrownJewelApp.TextEditor
         private Rectangle normalBounds;
         private FormWindowState normalWindowState;
         private FormBorderStyle normalBorderStyle;
+        private string fontName = "Consolas";
+        private float fontSize = 12f;
 
         // Column guide state
         private int guideColumn = 80;
@@ -43,6 +63,31 @@ namespace MyCrownJewelApp.TextEditor
         // Recent files
         private const int MaxRecentFiles = 10;
         private List<string> recentFiles = new List<string>();
+
+        // Settings persistence
+        private record AppSettings(
+            bool IsDarkTheme,
+            bool WordWrapEnabled,
+            bool GutterVisible,
+            bool StatusBarVisible,
+            bool ShowGuide,
+            int GuideColumn,
+            int TabSize,
+            string FontName,
+            float FontSize,
+            bool InsertSpaces,
+            CurrentLineHighlightMode CurrentLineHighlightMode,
+            bool SyntaxHighlightingEnabled,
+            bool MinimapVisible
+        );
+
+        private string SettingsFilePath =>
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MyCrownJewelApp",
+                "TextEditor",
+                "settings.json"
+            );
 
         // Designer fields (accessible via Controls collection)
         public HashSet<int> Bookmarks => bookmarks;
@@ -82,6 +127,7 @@ namespace MyCrownJewelApp.TextEditor
             InitializeComponent();
             this.KeyPreview = true;
             this.KeyDown += Form1_KeyDown;
+            this.FormClosing += Form1_FormClosing;
 
             isDarkTheme = true;
             zoomFactor = 1.0f;
@@ -96,22 +142,41 @@ namespace MyCrownJewelApp.TextEditor
             
             LoadRecentFiles();
             UpdateRecentMenu();
+            
+            // Load persisted settings (overrides defaults below)
+            LoadSettings();
+            
+            // Apply loaded font after settings are loaded
+            try { textEditor.Font = new Font(fontName, fontSize); } catch { }
+            
+            // Subscribe to handle creation BEFORE any operations that might cause handle creation
+            textEditor.HandleCreated += (s, e) => ApplyScrollbarTheme();
+            
             UpdateThemeColors(isDarkTheme);
             ApplyWordWrap();
             UpdateStatusBar();
             UpdateColumnGuideMenuChecked();
+            UpdateTabSizeMenu();
+            UpdateCurrentLineHighlightMenu();
             
-            // Initialize toggles to match defaults
+            // Initialize toggles to match loaded/default settings
             gutterMenuItem.Checked = gutterVisible;
             columnGuideMenuItem.Checked = showGuide;
-            minimapMenuItem.Checked = false; // minimap off by default
+            minimapMenuItem.Checked = _pendingMinimapVisible;
             syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
+            insertSpacesMenuItem.Checked = insertSpaces;
             
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
             guidePanel.Visible = showGuide;
-            minimapControl.Visible = false;
+            if (guidePanel != null)
+            {
+                guidePanel.ShowGuide = showGuide;
+                guidePanel.GuideColumn = guideColumn;
+            }
+            minimapControl.Visible = _pendingMinimapVisible;
+            statusStrip.Visible = statusBarVisible;
             
             // Set initial column widths for visible state
             if (mainTable.ColumnCount >= 1)
@@ -137,6 +202,33 @@ namespace MyCrownJewelApp.TextEditor
                     HighlightSyntaxAsync();
                 }
             };
+
+            // Apply syntax highlighting state after timer is created
+            if (syntaxHighlightingEnabled)
+            {
+                highlightTimer.Start();
+            }
+            else
+            {
+                // Ensure all text is base color
+                highlightCancelToken?.Cancel();
+                var baseColor = isDarkTheme ? darkEditorForeColor : lightEditorForeColor;
+                int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
+                BeginUpdate(textEditor);
+                textEditor.SuspendLayout();
+                try
+                {
+                    textEditor.SelectAll();
+                    textEditor.SelectionColor = baseColor;
+                    textEditor.SelectionStart = selStart;
+                    textEditor.SelectionLength = selLength;
+                }
+                finally
+                {
+                    textEditor.ResumeLayout();
+                    EndUpdate(textEditor);
+                }
+            }
         }
 
         private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
@@ -151,43 +243,62 @@ namespace MyCrownJewelApp.TextEditor
         {
             var backColor = isDark ? darkBackColor : lightBackColor;
             var foreColor = isDark ? darkForeColor : lightForeColor;
+            var editorBack = isDark ? darkEditorBackColor : lightEditorBackColor;
+            var editorFore = isDark ? darkEditorForeColor : lightEditorForeColor;
 
             this.BackColor = backColor;
             this.ForeColor = foreColor;
             if (menuStrip != null)
             {
-                menuStrip.BackColor = isDark ? darkMenuBackColor : lightMenuBackColor;
-                menuStrip.ForeColor = isDark ? darkMenuForeColor : lightMenuForeColor;
+                menuStrip.BackColor = editorBack;
+                menuStrip.ForeColor = editorFore;
             }
             if (textEditor != null)
             {
-                textEditor.BackColor = isDark ? darkEditorBackColor : lightEditorBackColor;
-                textEditor.ForeColor = isDark ? darkEditorForeColor : lightEditorForeColor;
+                textEditor.BackColor = editorBack;
+                textEditor.ForeColor = editorFore;
             }
             if (gutterPanel != null)
             {
-                gutterPanel.BackColor = isDark ? darkEditorBackColor : lightEditorBackColor;
+                gutterPanel.BackColor = editorBack;
             }
             if (minimapControl != null)
             {
-                minimapControl.BackColor = isDark ? darkEditorBackColor : lightEditorBackColor;
+                minimapControl.BackColor = editorBack;
                 minimapControl.ViewportColor = isDark ? Color.FromArgb(100, Color.DodgerBlue) : Color.FromArgb(80, Color.LightBlue);
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
-                minimapControl.RefreshNow(); // Regenerate buffer with new colors
+                minimapControl.RefreshNow();
             }
             if (guidePanel != null)
             {
-                // Subtle guide line that contrasts with background
                 guidePanel.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
             }
-    // Update checkmarks
-    darkThemeMenuItem.Checked = isDark;
-    lightThemeMenuItem.Checked = !isDark;
+            if (statusStrip != null)
+            {
+                statusStrip.BackColor = editorBack;
+                statusStrip.ForeColor = editorFore;
+                foreach (ToolStripItem item in statusStrip.Items)
+                {
+                    item.BackColor = editorBack;
+                    item.ForeColor = editorFore;
+                }
+            }
 
-    // Reapply line highlight with new color
-    lastHighlightedLine = -1;
-    HighlightCurrentLine();
-}
+            // Apply scrollbar theme immediately if handle exists
+            if (textEditor != null && textEditor.IsHandleCreated)
+            {
+                if (isDark)
+                    SetWindowTheme(textEditor.Handle, DARK_MODE_SCROLLBAR, null);
+                else
+                    SetWindowTheme(textEditor.Handle, null, null);
+            }
+
+            darkThemeMenuItem.Checked = isDark;
+            lightThemeMenuItem.Checked = !isDark;
+
+            lastHighlightedLine = -1;
+            HighlightCurrentLine();
+        }
 
         private void ToggleTheme()
         {
@@ -197,6 +308,65 @@ namespace MyCrownJewelApp.TextEditor
             darkThemeMenuItem.Checked = isDarkTheme;
             lightThemeMenuItem.Checked = !isDarkTheme;
         }
+
+        private void LoadSettings()
+        {
+            try
+            {
+                string path = SettingsFilePath;
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var settings = JsonSerializer.Deserialize<AppSettings>(json);
+                    if (settings != null)
+                    {
+                        isDarkTheme = settings.IsDarkTheme;
+                        wordWrapEnabled = settings.WordWrapEnabled;
+                        gutterVisible = settings.GutterVisible;
+                        statusBarVisible = settings.StatusBarVisible;
+                        showGuide = settings.ShowGuide;
+                        guideColumn = settings.GuideColumn;
+                        tabSize = settings.TabSize;
+                        fontName = settings.FontName;
+                        fontSize = settings.FontSize;
+                        insertSpaces = settings.InsertSpaces;
+                        currentLineHighlightMode = settings.CurrentLineHighlightMode;
+                        syntaxHighlightingEnabled = settings.SyntaxHighlightingEnabled;
+                        _pendingMinimapVisible = settings.MinimapVisible;
+                    }
+                }
+            }
+            catch { /* ignore settings load errors */ }
+        }
+
+        private void SaveSettings()
+        {
+            try
+            {
+                string path = SettingsFilePath;
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                var settings = new AppSettings(
+                    IsDarkTheme: isDarkTheme,
+                    WordWrapEnabled: wordWrapEnabled,
+                    GutterVisible: gutterVisible,
+                    StatusBarVisible: statusBarVisible,
+                    ShowGuide: showGuide,
+                    GuideColumn: guideColumn,
+                    TabSize: tabSize,
+                    FontName: fontName,
+                    FontSize: fontSize,
+                    InsertSpaces: insertSpaces,
+                    CurrentLineHighlightMode: currentLineHighlightMode,
+                    SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
+                    MinimapVisible: minimapMenuItem?.Checked ?? false
+                );
+                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+            }
+            catch { /* ignore settings save errors */ }
+        }
+
+        private bool _pendingMinimapVisible = false; // set by LoadSettings, applied after controls exist
 
         private void ToggleGutter()
         {
@@ -210,15 +380,17 @@ namespace MyCrownJewelApp.TextEditor
             }
             // Force redraw after layout change
             gutterPanel.RefreshGutter();
+            SaveSettings();
         }
 
-         private void ToggleStatusBar()
-         {
-             statusBarVisible = !statusBarVisible;
-             statusBarMenuItem.Checked = statusBarVisible;
-             statusStrip.Visible = statusBarVisible;
-             // Form will auto-layout: statusStrip dock=Bottom, mainTable dock=Fill
-         }
+        private void ToggleStatusBar()
+        {
+            statusBarVisible = !statusBarVisible;
+            statusBarMenuItem.Checked = statusBarVisible;
+            statusStrip.Visible = statusBarVisible;
+            // Form will auto-layout: statusStrip dock=Bottom, mainTable dock=Fill
+            SaveSettings();
+        }
 
         private void ToggleMinimap()
         {
@@ -228,6 +400,7 @@ namespace MyCrownJewelApp.TextEditor
                 minimapControl.Visible = visible;
                 if (visible) PositionMinimap();
             }
+            SaveSettings();
         }
 
         private void PositionMinimap()
@@ -251,6 +424,7 @@ namespace MyCrownJewelApp.TextEditor
             wordWrapEnabled = !wordWrapEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
             ApplyWordWrap();
+            SaveSettings();
         }
 
         private void ToggleSyntaxHighlighting()
@@ -282,6 +456,7 @@ namespace MyCrownJewelApp.TextEditor
                     EndUpdate(textEditor);
                 }
             }
+            SaveSettings();
         }
 
         // Tab handling
@@ -291,6 +466,7 @@ namespace MyCrownJewelApp.TextEditor
             tabSize = size;
             UpdateTabSizeMenu();
             UpdateStatusBar();
+            SaveSettings();
         }
         private void UpdateTabSizeMenu()
         {
@@ -309,6 +485,7 @@ namespace MyCrownJewelApp.TextEditor
         {
             insertSpaces = !insertSpaces;
             insertSpacesMenuItem.Checked = insertSpaces;
+            SaveSettings();
         }
 
         // Current line highlight mode cycling
@@ -335,6 +512,7 @@ namespace MyCrownJewelApp.TextEditor
                 HighlightCurrentLine();
                 gutterPanel?.RefreshGutter();
             }
+            SaveSettings();
         }
 
         private void UpdateCurrentLineHighlightMenu()
@@ -394,18 +572,8 @@ namespace MyCrownJewelApp.TextEditor
                 }
                 else
                 {
-                    BeginUpdate(textEditor);
-                    textEditor.SuspendLayout();
-                    try
-                    {
-                        textEditor.Text = textEditor.Text.Insert(selStart, tabString);
-                        textEditor.SelectionStart = selStart + tabString.Length;
-                    }
-                    finally
-                    {
-                        EndUpdate(textEditor);
-                        textEditor.ResumeLayout();
-                    }
+                    // Use SelectedText to insert without disturbing scroll/caret
+                    textEditor.SelectedText = tabString;
                 }
             }
             
@@ -524,6 +692,7 @@ namespace MyCrownJewelApp.TextEditor
             columnGuideMenuItem.Checked = true;
             UpdateColumnGuideMenuChecked();
             guidePanel?.Invalidate();
+            SaveSettings();
         }
 
         private void UpdateColumnGuideMenuChecked()
@@ -813,8 +982,11 @@ namespace MyCrownJewelApp.TextEditor
             if (fd.ShowDialog() == DialogResult.OK)
             {
                 textEditor.Font = fd.Font;
+                fontName = fd.Font.Name;
+                fontSize = fd.Font.Size;
                 // Trigger gutter refresh to recalc line numbers
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
+                SaveSettings();
             }
         }
 
@@ -980,6 +1152,7 @@ namespace MyCrownJewelApp.TextEditor
             bool visible = columnGuideMenuItem.Checked;
             showGuide = visible;
             if (guidePanel != null) guidePanel.ShowGuide = visible;
+            SaveSettings();
         }
 
         private void SyntaxHighlighting_Click(object? sender, EventArgs e) => ToggleSyntaxHighlighting();
@@ -987,8 +1160,19 @@ namespace MyCrownJewelApp.TextEditor
         private void WordWrap_Click(object? sender, EventArgs e) => ToggleWordWrap();
         private void GutterMenuItem_Click(object? sender, EventArgs e) => ToggleGutter();
 
-        private void DarkTheme_Click(object? sender, EventArgs e) => UpdateThemeColors(true);
-        private void LightTheme_Click(object? sender, EventArgs e) => UpdateThemeColors(false);
+        private void DarkTheme_Click(object? sender, EventArgs e)
+        {
+            isDarkTheme = true;
+            UpdateThemeColors(isDarkTheme);
+            SaveSettings();
+        }
+
+        private void LightTheme_Click(object? sender, EventArgs e)
+        {
+            isDarkTheme = false;
+            UpdateThemeColors(isDarkTheme);
+            SaveSettings();
+        }
 
         #endregion
 
@@ -1637,6 +1821,11 @@ namespace MyCrownJewelApp.TextEditor
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+        }
+
+        private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            SaveSettings();
         }
 
         private void ToggleFullScreen()

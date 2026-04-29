@@ -113,6 +113,7 @@ partial class Form1
         // Menu Strip
         menuStrip = new MenuStrip();
         menuStrip.Dock = DockStyle.Top;
+        menuStrip.RenderMode = ToolStripRenderMode.Professional;
         fileMenu = new ToolStripMenuItem("&File");
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click);
@@ -278,7 +279,6 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
         textEditor.VScroll += TextEditor_VScroll;
         textEditor.KeyDown += TextEditor_KeyDown;
         textEditor.Resize += TextEditor_Resize;
-        textEditor.Resize += TextEditor_Resize;
 
         // Minimap Overlay — child of editor, positioned over scrollbar area
         minimapControl = new MinimapControl();
@@ -324,6 +324,16 @@ viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
             lineColLabel, charCountLabel, tabSizeLabel, new ToolStripStatusLabel { Spring = true },
             linePositionLabel, zoomLabel, lineEndingsLabel, encodingLabel
         });
+
+        // Add padding between items for visual separation
+        const int itemPadding = 8;
+        lineColLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        charCountLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        tabSizeLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        linePositionLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        zoomLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        lineEndingsLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        encodingLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
 
         // Add controls: Fill first, then Bottom and Top so they claim space before Fill
         Controls.Add(mainTable);
