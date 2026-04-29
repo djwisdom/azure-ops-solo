@@ -59,6 +59,9 @@ namespace MyCrownJewelApp.TextEditor
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
         
+        // Suspend selection changed events during internal updates
+        private bool _suspendSelectionChanged = false;
+
         // Elastic tab stops system
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
@@ -417,8 +420,28 @@ namespace MyCrownJewelApp.TextEditor
             darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
 
-            lastHighlightedLine = -1;
-            HighlightCurrentLine();
+            // Re-apply syntax highlighting if enabled to update token colors
+            if (syntaxHighlightingEnabled)
+            {
+                highlightCancelToken?.Cancel();
+                HighlightSyntaxAsync();
+            }
+
+            // Refresh current line highlight and gutter with new theme colors
+            if (currentLineHighlightMode != CurrentLineHighlightMode.Off)
+            {
+                _suspendSelectionChanged = true;
+                try
+                {
+                    ClearCurrentLineHighlight();
+                    lastHighlightedLine = -1;
+                    HighlightCurrentLine();
+                }
+                finally
+                {
+                    _suspendSelectionChanged = false;
+                }
+            }
             gutterPanel?.RefreshGutter();
         }
 
@@ -1602,6 +1625,7 @@ namespace MyCrownJewelApp.TextEditor
 
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
         {
+            if (_suspendSelectionChanged) return;
             HighlightCurrentLine();
             if (gutterPanel != null) gutterPanel.RefreshGutter();
             UpdateStatusBar();
