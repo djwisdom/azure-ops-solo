@@ -297,11 +297,11 @@ partial class Form1
         textEditor.KeyDown += TextEditor_KeyDown;
         textEditor.Resize += TextEditor_Resize;
 
-        // Minimap Overlay — child of editor, positioned over scrollbar area
+        // Minimap Overlay
         minimapControl = new MinimapControl();
         minimapControl.Width = 100;
         minimapControl.MinimapWidth = 100;
-        minimapControl.Scale = 0.5f;
+        minimapControl.Scale = 1.0f;
         minimapControl.ShowColors = false;
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;

@@ -10,6 +10,10 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
 
 namespace MyCrownJewelApp.TextEditor
 {
@@ -74,6 +78,10 @@ namespace MyCrownJewelApp.TextEditor
         // Current file state
         private string? currentFilePath;
         private bool isModified = false;
+        private DateTime? lastFileWriteTime;
+
+        // Per-buffer dirty-flag system: saved snapshot (hash)
+        private string? savedContentHash = null;
 
         // Recent files
         private const int MaxRecentFiles = 10;
@@ -146,6 +154,7 @@ namespace MyCrownJewelApp.TextEditor
             this.KeyPreview = true;
             this.KeyDown += Form1_KeyDown;
             this.FormClosing += Form1_FormClosing;
+            this.Activated += Form1_Activated;
 
             isDarkTheme = true;
             zoomFactor = 1.0f;
@@ -986,28 +995,23 @@ namespace MyCrownJewelApp.TextEditor
 
         private void NewFile()
         {
-            if (IsModified())
-            {
-                var result = MessageBox.Show("Save changes to current file?", "Confirm", MessageBoxButtons.YesNoCancel);
-                if (result == DialogResult.Cancel) return;
-                if (result == DialogResult.Yes) SaveFile();
-            }
+            var result = PromptSaveChanges();
+            if (result == DialogResult.Cancel) return;
 
             textEditor.Clear();
             currentFilePath = null;
             isModified = false;
-            this.Text = "MyCrownJewelApp TextEditor - Untitled";
+            savedContentHash = null;
+            lastFileWriteTime = null;
+            modifiedLines.Clear();
+            UpdateWindowTitle();
             UpdateStatusBar();
         }
 
         private void OpenFile()
         {
-            if (IsModified())
-            {
-                var result = MessageBox.Show("Save changes to current file?", "Confirm", MessageBoxButtons.YesNoCancel);
-                if (result == DialogResult.Cancel) return;
-                if (result == DialogResult.Yes) SaveFile();
-            }
+            var result = PromptSaveChanges();
+            if (result == DialogResult.Cancel) return;
 
             using var ofd = new OpenFileDialog();
             ofd.Filter = "Text Files|*.txt|All Files|*.*";
@@ -1018,30 +1022,31 @@ namespace MyCrownJewelApp.TextEditor
             }
         }
 
-         private void LoadFile(string path)
-         {
-             try
-             {
-                 textEditor.Text = File.ReadAllText(path);
-                 currentFilePath = path;
-                 isModified = false;
-                 this.Text = $"MyCrownJewelApp TextEditor - {Path.GetFileName(path)}";
-                 AddToRecentFiles(path);
-                 
-                 // Ensure editor starts at top: set caret at 0 and scroll via Win32
-                 textEditor.SelectionStart = 0;
-                 if (textEditor.IsHandleCreated)
-                 {
-                     SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
-                 }
-                 
-                 UpdateStatusBar();
-             }
-             catch (Exception ex)
-             {
-                 MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-             }
-         }
+        internal void LoadFile(string path)
+        {
+            try
+            {
+                textEditor.Text = File.ReadAllText(path);
+                currentFilePath = path;
+                if (File.Exists(path))
+                    lastFileWriteTime = File.GetLastWriteTimeUtc(path);
+                ClearDirtyAfterSave();
+                AddToRecentFiles(path);
+                
+                // Ensure editor starts at top: set caret at 0 and scroll via Win32
+                textEditor.SelectionStart = 0;
+                if (textEditor.IsHandleCreated)
+                {
+                    SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
+                }
+                
+                UpdateStatusBar();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
 
         private void SaveFile()
         {
@@ -1054,8 +1059,9 @@ namespace MyCrownJewelApp.TextEditor
                 try
                 {
                     File.WriteAllText(currentFilePath, textEditor.Text);
-                    isModified = false;
-                    UpdateStatusBar();
+                    lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
+                    ClearDirtyAfterSave();
+                    modifiedLines.Clear();
                 }
                 catch (Exception ex)
                 {
@@ -1075,9 +1081,10 @@ namespace MyCrownJewelApp.TextEditor
                 {
                     File.WriteAllText(sfd.FileName, textEditor.Text);
                     currentFilePath = sfd.FileName;
-                    isModified = false;
-                    this.Text = $"MyCrownJewelApp TextEditor - {Path.GetFileName(currentFilePath)}";
+                    lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
+                    ClearDirtyAfterSave();
                     AddToRecentFiles(currentFilePath);
+                    modifiedLines.Clear();
                     UpdateStatusBar();
                 }
                 catch (Exception ex)
@@ -1093,10 +1100,74 @@ namespace MyCrownJewelApp.TextEditor
             SaveFile();
         }
 
-        private bool IsModified()
+        internal bool IsModified()
         {
             // For now, compare with stored state; could also compare with disk
             return isModified;
+        }
+
+        private string ComputeContentHash()
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(textEditor.Text);
+            var hash = sha.ComputeHash(bytes);
+            return Convert.ToHexString(hash);
+        }
+
+        private void SetDirty()
+        {
+            if (isModified) return; // Already dirty
+
+            isModified = true;
+            UpdateWindowTitle();
+            // Note: modifiedLines will be updated by TextEditor_TextChanged or selection logic
+        }
+
+        internal void ClearDirtyAfterSave()
+        {
+            isModified = false;
+            savedContentHash = ComputeContentHash();
+            modifiedLines.Clear();
+            UpdateWindowTitle();
+        }
+
+        private void UpdateWindowTitle()
+        {
+            string baseTitle = currentFilePath != null 
+                ? $"MyCrownJewelApp TextEditor - {Path.GetFileName(currentFilePath)}"
+                : "MyCrownJewelApp TextEditor - Untitled";
+            this.Text = isModified ? "*" + baseTitle : baseTitle;
+        }
+
+        private DialogResult PromptSaveChanges()
+        {
+            var result = MessageBox.Show(
+                "This file has unsaved changes. Save before proceeding?",
+                "Unsaved Changes",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                SaveFile();
+                if (IsModified()) // Save failed
+                    return DialogResult.Cancel;
+            }
+
+            return result;
+        }
+
+        internal void CheckIfClean()
+        {
+            if (!isModified || savedContentHash == null) return;
+
+            string currentHash = ComputeContentHash();
+            if (currentHash == savedContentHash)
+            {
+                isModified = false;
+                modifiedLines.Clear();
+                UpdateWindowTitle();
+            }
         }
 
         #endregion
@@ -1202,7 +1273,11 @@ namespace MyCrownJewelApp.TextEditor
 
         private void Undo_Click(object? sender, EventArgs e)
         {
-            if (textEditor.CanUndo) textEditor.Undo();
+            if (textEditor.CanUndo) 
+            {
+                textEditor.Undo();
+                CheckIfClean(); // May clear dirty if undo restored to saved state
+            }
         }
 
         private void Cut_Click(object? sender, EventArgs e)
@@ -1620,7 +1695,12 @@ namespace MyCrownJewelApp.TextEditor
 
         private void TextEditor_TextChanged(object? sender, EventArgs e)
         {
-            isModified = true;
+            SetDirty();
+
+            // Track which line changed for gutter display
+            int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+            modifiedLines.Add(lineIndex);
+
             UpdateStatusBar();
 
             // Restart debounce timer for syntax highlighting (only if enabled)
@@ -2128,7 +2208,54 @@ namespace MyCrownJewelApp.TextEditor
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
+            if (IsModified())
+            {
+                var result = PromptSaveChanges();
+                if (result == DialogResult.Cancel)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
             SaveSettings();
+        }
+
+        private void Form1_Activated(object? sender, EventArgs e)
+        {
+            if (CheckExternalChange())
+            {
+                var result = MessageBox.Show(
+                    "The file has been modified by an external program. Reload?",
+                    "External Change Detected",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Yes)
+                {
+                    LoadFile(currentFilePath!);
+                }
+                else
+                {
+                    // Update our stored timestamp to the current file time to suppress further prompts
+                    try { lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath!); } catch { }
+                }
+            }
+        }
+
+        internal bool CheckExternalChange()
+        {
+            if (currentFilePath == null || !File.Exists(currentFilePath) || lastFileWriteTime == null)
+                return false;
+
+            try
+            {
+                var currentWrite = File.GetLastWriteTimeUtc(currentFilePath);
+                return currentWrite != lastFileWriteTime;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private void ToggleFullScreen()
