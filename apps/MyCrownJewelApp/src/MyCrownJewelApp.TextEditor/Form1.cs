@@ -1766,11 +1766,11 @@ namespace MyCrownJewelApp.TextEditor
 
             // Current line / total lines
             int currentLineNum = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
-            int totalLines = textEditor.Lines.Length;
+            int totalLines = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
             linePositionLabel.Text = $"{currentLineNum} / {totalLines}";
 
             // Scroll percentage (current line / total lines)
-            int total = textEditor.Lines.Length;
+            int total = totalLines;
             if (total > 0)
             {
                 int current = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
@@ -1855,11 +1855,17 @@ namespace MyCrownJewelApp.TextEditor
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             int line = patch.LineNumber;
-            if (line < 0 || line >= textEditor.Lines.Length) return;
+
+            // Get total line count via EM_GETLINECOUNT (cheap)
+            int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
+            if (line < 0 || line >= lineCount) return;
 
             int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-            int lineLen = textEditor.Lines[line].Length;
-            if (lineLen == 0) return;
+            if (lineStart < 0) return;
+
+            int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
+            int lineLen = lineEnd - lineStart;
+            if (lineLen <= 0) return;
 
             var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             BeginUpdate(textEditor);
@@ -1906,22 +1912,18 @@ namespace MyCrownJewelApp.TextEditor
         {
             try
             {
-                if (textEditor == null || textEditor.Lines == null || textEditor.Font == null)
-                    return (0, -1);
+                if (textEditor == null || !textEditor.IsHandleCreated) return (0, -1);
 
                 int visibleStart = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, 0)));
                 int visibleEnd = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, textEditor.ClientSize.Height)));
-                int totalLines = textEditor.Lines.Length;
-                // No buffer: only highlight lines that are actually visible
+                int totalLines = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
                 int first = Math.Max(0, visibleStart);
                 int last = Math.Min(totalLines - 1, visibleEnd);
-                // If viewport is invalid (e.g., control not yet laid out), return empty range
                 if (first > last) return (0, -1);
                 return (first, last);
             }
             catch
             {
-                // Return empty range on any error
                 return (0, -1);
             }
         }
