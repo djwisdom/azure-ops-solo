@@ -170,7 +170,6 @@ namespace MyCrownJewelApp.TextEditor
             textEditor.HandleCreated += (s, e) =>
             {
                 ApplyScrollbarTheme();
-                UpdateTabStops();
                 if (syntaxHighlightingEnabled)
                 {
                     CreateIncrementalHighlighter();
@@ -189,7 +188,11 @@ namespace MyCrownJewelApp.TextEditor
             UpdateTabSizeMenu();
             UpdateTabStops();
             UpdateCurrentLineHighlightMenu();
-            
+            if (textEditor != null)
+            {
+                textEditor.CurrentLineHighlightMode = currentLineHighlightMode;
+            }
+
             // Initialize toggles to match loaded/default settings
             gutterMenuItem.Checked = gutterVisible;
             columnGuideMenuItem.Checked = showGuide;
@@ -274,12 +277,24 @@ namespace MyCrownJewelApp.TextEditor
 
             try
             {
-                using var bmp = new Bitmap(1, 1);
-                using var g = Graphics.FromImage(bmp);
-                var size = g.MeasureString("0", textEditor.Font);
-                int charWidth = (int)Math.Ceiling(size.Width);
-                int tabPixelWidth = Math.Max(1, charWidth * tabSize);
+                int charWidth;
+                // Use editor's native character positioning for accurate tab stop calculation
+                if (textEditor.TextLength > 0)
+                {
+                    Point p0 = textEditor.GetPositionFromCharIndex(0);
+                    Point p1 = textEditor.GetPositionFromCharIndex(1);
+                    charWidth = p1.X - p0.X;
+                }
+                else
+                {
+                    // Editor empty — measure a single character using TextRenderer (GDI)
+                    var size = TextRenderer.MeasureText("0", textEditor.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
+                    charWidth = size.Width;
+                }
 
+                if (charWidth <= 0) charWidth = 8; // sensible fallback
+
+                int tabPixelWidth = Math.Max(1, charWidth * tabSize);
                 var stops = new List<int>();
                 for (int pos = tabPixelWidth; pos <= tabPixelWidth * 500; pos += tabPixelWidth)
                 {
@@ -410,6 +425,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 textEditor.BackColor = theme.EditorBackground;
                 textEditor.ForeColor = theme.Text;
+                textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
             }
             if (gutterPanel != null)
             {
@@ -428,6 +444,10 @@ namespace MyCrownJewelApp.TextEditor
                 guidePanel.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
                 guidePanel.Invalidate();
             }
+            if (textEditor != null)
+            {
+                textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
+            }
             if (statusStrip != null)
             {
                 statusStrip.BackColor = theme.PanelBackground;
@@ -441,10 +461,7 @@ namespace MyCrownJewelApp.TextEditor
 
             if (textEditor != null && textEditor.IsHandleCreated)
             {
-                if (isDark)
-                    SetWindowTheme(textEditor.Handle, DARK_MODE_SCROLLBAR, null);
-                else
-                    SetWindowTheme(textEditor.Handle, null, null);
+                ApplyScrollbarTheme();
             }
             
             if (syntaxHighlightingEnabled && incrementalHighlighter != null)
@@ -457,20 +474,6 @@ namespace MyCrownJewelApp.TextEditor
 
             CreateIncrementalHighlighter();
 
-            if (currentLineHighlightMode != CurrentLineHighlightMode.Off)
-            {
-                _suspendSelectionChanged = true;
-                try
-                {
-                    ClearCurrentLineHighlight();
-                    lastHighlightedLine = -1;
-                    HighlightCurrentLine();
-                }
-                finally
-                {
-                    _suspendSelectionChanged = false;
-                }
-            }
             gutterPanel?.RefreshGutter();
             textEditor?.Invalidate();
         }
@@ -537,22 +540,22 @@ namespace MyCrownJewelApp.TextEditor
             {
                 string path = SettingsFilePath;
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                var settings = new AppSettings(
-                    IsDarkTheme: isDarkTheme,
-                    WordWrapEnabled: wordWrapEnabled,
-                    GutterVisible: gutterVisible,
-                    StatusBarVisible: statusBarVisible,
-                    ShowGuide: showGuide,
-                    GuideColumn: guideColumn,
-                    TabSize: tabSize,
-                    FontName: fontName,
-                    FontSize: fontSize,
-                    InsertSpaces: insertSpaces,
-                    AutoIndentEnabled: autoIndentEnabled,
-                    SmartTabsEnabled: smartTabsEnabled,
-                    ElasticTabsEnabled: elasticTabsEnabled,
-                    CurrentLineHighlightMode: currentLineHighlightMode,
-                    SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
+                 var settings = new AppSettings(
+                     IsDarkTheme: isDarkTheme,
+                     WordWrapEnabled: wordWrapEnabled,
+                     GutterVisible: gutterVisible,
+                     StatusBarVisible: statusBarVisible,
+                     ShowGuide: showGuide,
+                     GuideColumn: guideColumn,
+                     TabSize: tabSize,
+                     FontName: fontName,
+                     FontSize: fontSize,
+                     InsertSpaces: insertSpaces,
+                     AutoIndentEnabled: autoIndentEnabled,
+                     SmartTabsEnabled: smartTabsEnabled,
+                     ElasticTabsEnabled: elasticTabsEnabled,
+                     CurrentLineHighlightMode: currentLineHighlightMode,
+                     SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
                     MinimapVisible: minimapMenuItem?.Checked ?? false
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
@@ -703,16 +706,22 @@ namespace MyCrownJewelApp.TextEditor
             };
             
             UpdateCurrentLineHighlightMenu();
-            
+
+            // Sync editor's highlight mode (new HighlightRichTextBox handles drawing)
+            if (textEditor != null)
+            {
+                textEditor.CurrentLineHighlightMode = currentLineHighlightMode;
+            }
+
             if (currentLineHighlightMode == CurrentLineHighlightMode.Off)
             {
-                ClearCurrentLineHighlight();
+                lastHighlightedLine = -1;
+                gutterPanel?.RefreshGutter();
             }
             else
             {
                 lastHighlightedLine = -1;
                 HighlightCurrentLine();
-                gutterPanel?.RefreshGutter();
             }
             SaveSettings();
         }
@@ -725,22 +734,7 @@ namespace MyCrownJewelApp.TextEditor
                 currentLineNumberOnlyMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.NumberOnly);
                 currentLineWholeLineMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine);
             }
-        }
-
-        private void ClearCurrentLineHighlight()
-        {
-            if (lastHighlightedLine >= 0 && lastHighlightedLine < textEditor.Lines.Length)
-            {
-                int prevStart = textEditor.GetFirstCharIndexFromLine(lastHighlightedLine);
-                int prevLen = textEditor.Lines[lastHighlightedLine].Length;
-                if (prevStart >= 0 && prevLen > 0)
-                {
-                    textEditor.Select(prevStart, prevLen);
-                    textEditor.SelectionBackColor = textEditor.BackColor;
-                }
-            }
-            lastHighlightedLine = -1;
-        }
+         }
 
         // Tab key handling
         private void TextEditor_KeyDown(object? sender, KeyEventArgs e)
@@ -1637,12 +1631,6 @@ namespace MyCrownJewelApp.TextEditor
 
         #region Editor Event Handlers
 
-        private Color GetCurrentLineHighlightColor()
-        {
-            // VS Code style: subtle lighter/darker than background
-            return isDarkTheme ? Color.FromArgb(60, 60, 60) : Color.FromArgb(230, 230, 230);
-        }
-
         private void HighlightCurrentLine()
         {
             if (isHighlighting) return;
@@ -1651,61 +1639,8 @@ namespace MyCrownJewelApp.TextEditor
             int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             if (currentLine == lastHighlightedLine) return;
 
-            isHighlighting = true;
-            try
-            {
-                BeginUpdate(textEditor);
-                try
-                {
-                    // Save current selection
-                    int savedStart = textEditor.SelectionStart;
-                    int savedLength = textEditor.SelectionLength;
-
-                    // Clear previous highlight
-                    if (lastHighlightedLine >= 0 && lastHighlightedLine < textEditor.Lines.Length)
-                    {
-                        int prevStart = textEditor.GetFirstCharIndexFromLine(lastHighlightedLine);
-                        int prevLen = textEditor.Lines[lastHighlightedLine].Length;
-                        if (prevStart >= 0 && prevLen > 0)
-                        {
-                            textEditor.Select(prevStart, prevLen);
-                            textEditor.SelectionBackColor = textEditor.BackColor;
-                        }
-                    }
-
-                    // Apply new highlight based on mode
-                    if (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine)
-                    {
-                        if (currentLine >= 0 && currentLine < textEditor.Lines.Length)
-                        {
-                            int start = textEditor.GetFirstCharIndexFromLine(currentLine);
-                            int len = textEditor.Lines[currentLine].Length;
-                            if (start >= 0)
-                            {
-                                textEditor.Select(start, Math.Max(len, 1));
-                                textEditor.SelectionBackColor = GetCurrentLineHighlightColor();
-                            }
-                        }
-                    }
-                    // NumberOnly mode: no text background highlight; gutter will draw bold number
-
-                    lastHighlightedLine = currentLine;
-
-                    // Restore original selection (no forced ScrollToCaret to avoid jumping)
-                    textEditor.SelectionStart = savedStart;
-                    textEditor.SelectionLength = savedLength;
-                }
-                finally
-                {
-                    EndUpdate(textEditor);
-                    // Ensure full repaint to avoid artifacts
-                    textEditor.Invalidate();
-                }
-            }
-            finally
-            {
-                isHighlighting = false;
-            }
+            lastHighlightedLine = currentLine;
+            gutterPanel?.RefreshGutter(); // Redraw gutter for NumberOnly mode
         }
 
         private void TextEditor_TextChanged(object? sender, EventArgs e)
@@ -2258,14 +2193,6 @@ namespace MyCrownJewelApp.TextEditor
                 this.TopMost = true;
                 isFullScreen = true;
             }
-        }
-
-        // Current line highlight modes
-        public enum CurrentLineHighlightMode
-        {
-            Off,
-            NumberOnly,
-            WholeLine
         }
 
         internal CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;

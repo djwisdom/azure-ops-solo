@@ -84,7 +84,7 @@ partial class Form1
         private GutterPanel gutterPanel;
         private ColumnGuidePanel guidePanel;
         private TableLayoutPanel mainTable;
-        internal RichTextBox textEditor;
+        internal HighlightRichTextBox textEditor;
         private MinimapControl minimapControl;
         private StatusStrip statusStrip;
     private ToolStripStatusLabel lineColLabel;
@@ -237,7 +237,7 @@ partial class Form1
          minimapMenuItem.Checked = false; // Start hidden
          minimapMenuItem.CheckOnClick = true;
 
-        // Column Guide menu (checkable with dropdown for widths)
+         // Column Guide menu (checkable with dropdown for widths)
         columnGuideMenuItem = new ToolStripMenuItem("C&olumn Guide", null, ColumnGuide_Click);
         columnGuideMenuItem.Checked = false;
         columnGuideMenuItem.CheckOnClick = true;
@@ -256,12 +256,12 @@ partial class Form1
         lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
         themeMenu.DropDownItems.AddRange(new ToolStripItem[] { darkThemeMenuItem, lightThemeMenuItem });
 
-         viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
-             zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
-             syntaxHighlightingMenuItem, currentLineHighlightMenu, insertSpacesMenuItem, tabSizeMenu,
-             autoIndentMenuItem, smartTabsMenuItem, elasticTabsMenuItem,
-             gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
-         });
+          viewMenu.DropDownItems.AddRange(new ToolStripItem[] {
+              zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
+              syntaxHighlightingMenuItem, currentLineHighlightMenu, insertSpacesMenuItem, tabSizeMenu,
+              autoIndentMenuItem, smartTabsMenuItem, elasticTabsMenuItem,
+              gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
+          });
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
@@ -282,7 +282,7 @@ partial class Form1
         gutterPanel.Margin = new Padding(0);
 
         // Text Editor (RichTextBox)
-        textEditor = new RichTextBox();
+        textEditor = new HighlightRichTextBox();
         textEditor.Dock = DockStyle.Fill;
         textEditor.Multiline = true;
         textEditor.ScrollBars = RichTextBoxScrollBars.Both;
@@ -310,18 +310,18 @@ partial class Form1
         textEditor.Controls.Add(minimapControl);
         minimapControl.BringToFront();
 
-        // Column Guide Overlay — child of editor so it overlays without layout conflict
-        guidePanel = new ColumnGuidePanel();
-        guidePanel.LinkedEditor = textEditor;
-        guidePanel.GuideColumn = 80;
-        guidePanel.ShowGuide = true;
-        guidePanel.GuideColor = Color.FromArgb(60, 60, 60);
-        guidePanel.Bounds = textEditor.ClientRectangle;
-        guidePanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        textEditor.Controls.Add(guidePanel);
-        guidePanel.BringToFront();
+         // Column Guide Overlay
+         guidePanel = new ColumnGuidePanel();
+         guidePanel.LinkedEditor = textEditor;
+         guidePanel.GuideColumn = 80;
+         guidePanel.ShowGuide = true;
+         guidePanel.GuideColor = Color.FromArgb(60, 60, 60);
+         guidePanel.Bounds = textEditor.ClientRectangle;
+         guidePanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+         textEditor.Controls.Add(guidePanel);
+         guidePanel.BringToFront();
 
-        // Assemble table
+         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
 

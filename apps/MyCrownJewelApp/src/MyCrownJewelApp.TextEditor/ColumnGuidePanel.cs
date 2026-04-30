@@ -5,57 +5,87 @@ using System.Windows.Forms;
 namespace MyCrownJewelApp.TextEditor;
 
 /// <summary>
-/// Transparent overlay panel that draws a vertical column guide at a configurable column.
-/// Sits on top of the editor and tracks scrolling/zoom automatically.
+/// Transparent overlay panel that manages a ColumnGuideManager.
+/// Maintains compatibility with existing code while providing high-performance drawing.
 /// </summary>
 public sealed class ColumnGuidePanel : Panel
 {
     private RichTextBox? linkedEditor;
+    private ColumnGuideManager? _guideManager;
     private int guideColumn = 80;
-    private Color guideColor = Color.Gray;
+    private Color guideColor = Color.FromArgb(60, 60, 60);
     private bool showGuide = true;
 
     public ColumnGuidePanel()
     {
-        // Transparent support
+        SetStyle(ControlStyles.UserPaint, true);
         SetStyle(ControlStyles.SupportsTransparentBackColor, true);
         SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
         SetStyle(ControlStyles.AllPaintingInWmPaint, true);
         BackColor = Color.Transparent;
-        // Make panel non-interactive so mouse/keyboard goes to editor
         Enabled = false;
         TabStop = false;
     }
 
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT
+            return cp;
+        }
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        // Do not erase background — keep fully transparent
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        const int WM_ERASEBKGND = 0x0014;
+        if (m.Msg == WM_ERASEBKGND)
+        {
+            m.Result = IntPtr.Zero; // indicate handled, no erase
+            return;
+        }
+        base.WndProc(ref m);
+    }
+
     /// <summary>
-    /// The RichTextBox editor to track. The guide aligns to its text area.
+    /// The RichTextBox editor to track.
     /// </summary>
     public RichTextBox? LinkedEditor
     {
         get => linkedEditor;
         set
         {
-            if (linkedEditor != null)
+            if (linkedEditor != null && _guideManager != null)
             {
-                linkedEditor.VScroll -= Editor_ViewChanged;
-                linkedEditor.HScroll -= Editor_ViewChanged;
-                linkedEditor.Resize -= Editor_ViewChanged;
-                linkedEditor.FontChanged -= Editor_ViewChanged;
+                _guideManager.Dispose();
             }
+
             linkedEditor = value;
+
             if (linkedEditor != null)
             {
-                linkedEditor.VScroll += Editor_ViewChanged;
-                linkedEditor.HScroll += Editor_ViewChanged;
-                linkedEditor.Resize += Editor_ViewChanged;
-                linkedEditor.FontChanged += Editor_ViewChanged;
+                _guideManager = new ColumnGuideManager(linkedEditor, this);
+                _guideManager.GuideColumns = new[] { guideColumn - 1 }; // manager uses 0-based
+                _guideManager.GuideColor = guideColor;
+                _guideManager.Style = GuideStyle.Strong; // ~60% opacity to match legacy
+                _guideManager.Placement = GuidePlacement.OverText;
+                _guideManager.Smooth = true;
+
+                if (showGuide) _guideManager.Attach();
             }
+
             Invalidate();
         }
     }
 
     /// <summary>
-    /// Column number (1-based) to draw the vertical line. Default 80.
+    /// Column number (1-based) to draw the vertical line.
     /// </summary>
     public int GuideColumn
     {
@@ -64,6 +94,10 @@ public sealed class ColumnGuidePanel : Panel
         {
             if (value < 1) value = 1;
             guideColumn = value;
+            if (_guideManager != null)
+            {
+                _guideManager.SetGuides(value - 1); // manager uses 0-based
+            }
             Invalidate();
         }
     }
@@ -74,7 +108,7 @@ public sealed class ColumnGuidePanel : Panel
     public Color GuideColor
     {
         get => guideColor;
-        set { guideColor = value; Invalidate(); }
+        set { guideColor = value; if (_guideManager != null) _guideManager.GuideColor = value; Invalidate(); }
     }
 
     /// <summary>
@@ -83,52 +117,33 @@ public sealed class ColumnGuidePanel : Panel
     public bool ShowGuide
     {
         get => showGuide;
-        set { showGuide = value; Invalidate(); }
+        set
+        {
+            showGuide = value;
+            if (_guideManager != null)
+            {
+                if (value) _guideManager.Attach(); else _guideManager.Detach();
+            }
+            Visible = value; // hide panel entirely when guide is off
+            Invalidate();
+        }
     }
 
-    private void Editor_ViewChanged(object? sender, EventArgs e)
+    protected override void Dispose(bool disposing)
     {
-        Invalidate();
+        if (disposing)
+        {
+            _guideManager?.Dispose();
+            _guideManager = null;
+        }
+        base.Dispose(disposing);
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-        if (!showGuide || linkedEditor == null || !linkedEditor.Visible)
-            return;
-
-        try
+        if (ShowGuide && _guideManager != null)
         {
-            // Get origin of first character (includes left margin, padding, and horizontal scroll offset)
-            Point origin = linkedEditor.GetPositionFromCharIndex(0);
-
-            // Compute exact character advance using the editor's own positioning
-            int charWidth;
-            if (linkedEditor.TextLength >= 1)
-            {
-                Point p1 = linkedEditor.GetPositionFromCharIndex(1);
-                charWidth = p1.X - origin.X;
-            }
-            else
-            {
-                // Editor is empty — fall back to font measurement
-                using var g = CreateGraphics();
-                charWidth = (int)Math.Ceiling(g.MeasureString("W", linkedEditor.Font).Width);
-            }
-
-            // Sanity check
-            if (charWidth <= 0) charWidth = 8; // sensible fallback
-
-            // Compute guide X position: origin + (column - 1) * charWidth
-            int x = origin.X + (guideColumn - 1) * charWidth;
-
-            // Draw within panel bounds
-            if (x >= 0 && x < Width)
-            {
-                using Pen pen = new Pen(guideColor);
-                e.Graphics.DrawLine(pen, x, 0, x, Height);
-            }
+            _guideManager.DrawGuides(e.Graphics);
         }
-        catch { }
     }
 }

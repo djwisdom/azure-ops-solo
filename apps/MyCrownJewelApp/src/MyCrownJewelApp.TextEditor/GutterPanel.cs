@@ -196,7 +196,7 @@ public class GutterPanel : Panel
 
         // Determine if this line is current and mode is NumberOnly
         bool isCurrentLine = false;
-        if (mainForm.LineHighlightMode == Form1.CurrentLineHighlightMode.NumberOnly)
+        if (mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly)
         {
             int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
             isCurrentLine = (lineNumber == currentLineNum);
