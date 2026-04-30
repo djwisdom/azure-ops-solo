@@ -73,35 +73,23 @@ public class HighlightRichTextBox : RichTextBox
             if (Lines == null || Lines.Length == 0 || SelectionStart < 0)
                 return;
 
-            int currentLine = GetLineFromCharIndex(SelectionStart);
-            if (currentLine < 0 || currentLine >= Lines.Length)
+            if (_highlightMode != CurrentLineHighlightMode.WholeLine || !Focused)
                 return;
 
+            int currentLine = GetLineFromCharIndex(SelectionStart);
             _lastLine = currentLine;
+
+            Point pt = GetPositionFromCharIndex(SelectionStart);
+            if (pt.IsEmpty) return;
 
             int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
             if (lineHeight <= 0) lineHeight = 1;
 
-            int firstVisible = 0;
-            if (IsHandleCreated)
-            {
-                firstVisible = SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-                if (firstVisible < 0) firstVisible = 0;
-            }
-
-            int baseY = 0;
-            int firstCharIdx = GetFirstCharIndexFromLine(firstVisible);
-            if (firstCharIdx >= 0)
-            {
-                Point pt0 = GetPositionFromCharIndex(firstCharIdx);
-                if (pt0 != Point.Empty) baseY = pt0.Y;
-            }
-
-            int y = baseY + (currentLine - firstVisible) * lineHeight;
-            if (y < 0) return;
+            int lineY = pt.Y;
+            if (lineY < 0) return;
 
             using var brush = new SolidBrush(_highlightColor);
-            g.FillRectangle(brush, 0, y, ClientSize.Width, lineHeight);
+            g.FillRectangle(brush, 0, lineY, ClientSize.Width, lineHeight);
         }
         catch { }
     }
