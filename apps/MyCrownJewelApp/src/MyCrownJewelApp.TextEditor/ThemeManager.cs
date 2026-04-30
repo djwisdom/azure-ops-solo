@@ -98,7 +98,7 @@ public sealed class ThemeManager : IDisposable
 
     public static Bitmap? TintIcon(Bitmap source, Color tint) => source == null ? null! : TintIconImpl(source, tint);
 
-    private static Bitmap TintIconImpl(Bitmap source, Color tint)
+    private static Bitmap? TintIconImpl(Bitmap source, Color tint)
     {
         if (source == null) return null;
         var result = new Bitmap(source.Width, source.Height);

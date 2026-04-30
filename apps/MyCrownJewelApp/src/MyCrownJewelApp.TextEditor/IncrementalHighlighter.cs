@@ -19,6 +19,7 @@ public sealed record TokenizerState
     public bool InString { get; init; }
     public bool InComment { get; init; }  // block comment /* ... */
     public bool InCharLiteral { get; init; }
+    public bool IsVerbatim { get; init; } // true if inside a verbatim string literal (@"...")
     public int OpenDelimiterIndex { get; init; }
     public static readonly TokenizerState Initial = new();
 }
@@ -53,9 +54,9 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly SyntaxDefinition _syntax;
     private readonly Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> _regexCache;
     private readonly ConcurrentDictionary<int, LineTokens> _tokenCache;
-    private readonly Channel<int> _dirtyLines;
+    private readonly Channel<(int LineNumber, string Text)> _dirtyLines;
     private readonly CancellationTokenSource _cts;
-    private readonly Task _workerTask;
+    private readonly Task? _workerTask;
     private readonly SynchronizationContext? _uiContext;
     private readonly Color _baseColor;
     private readonly Color _keywordColor;
@@ -63,6 +64,8 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly Color _commentColor;
     private readonly Color _numberColor;
     private readonly Color _preprocessorColor;
+    private readonly bool _useWorker;
+    private int _maxCacheSize;
     private bool _disposed;
 
     public event EventHandler<HighlightPatch>? PatchReady;
@@ -99,7 +102,9 @@ public sealed class IncrementalHighlighter : IDisposable
         Color stringColor,
         Color commentColor,
         Color numberColor,
-        Color preprocessorColor)
+        Color preprocessorColor,
+        bool useWorker = true,
+        int maxCacheSize = 5000)
     {
         _textEditor = textEditor;
         _syntax = syntax;
@@ -109,11 +114,14 @@ public sealed class IncrementalHighlighter : IDisposable
         _commentColor = commentColor;
         _numberColor = numberColor;
         _preprocessorColor = preprocessorColor;
+        _useWorker = useWorker;
+        _maxCacheSize = maxCacheSize;
 
         _regexCache = new Dictionary<string, (Regex?, Regex?, Regex?, Regex?, Regex?, Regex?)>();
         _tokenCache = new ConcurrentDictionary<int, LineTokens>();
-        _dirtyLines = Channel.CreateUnbounded<int>(new UnboundedChannelOptions
+        _dirtyLines = Channel.CreateBounded<(int LineNumber, string Text)>(new BoundedChannelOptions(1000)
         {
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false
         });
@@ -123,13 +131,16 @@ public sealed class IncrementalHighlighter : IDisposable
         // Compile regexes upfront
         GetOrCreateCompiledRegexes(syntax);
 
-        // Start background worker
-        _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token));
+        // Start background worker if requested
+        if (_useWorker)
+        {
+            _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token), _cts.Token);
+        }
     }
 
     /// <summary>
     /// Marks a line as requiring re-tokenization (called after text edit).
-    /// Evicts from cache and enqueues dirty line for background processing.
+    /// Evicts from cache and enqueues dirty line with its text for background processing.
     /// </summary>
     public void MarkDirty(int lineNumber)
     {
@@ -137,21 +148,39 @@ public sealed class IncrementalHighlighter : IDisposable
 
         // Evict from cache — content changed
         _tokenCache.TryRemove(lineNumber, out _);
-        _dirtyLines.Writer.TryWrite(lineNumber);
+        string text = GetLineText(lineNumber);
+        _dirtyLines.Writer.TryWrite((lineNumber, text));
+    }
+
+    /// <summary>
+    /// Marks a range of lines as dirty.
+    /// </summary>
+    public void MarkDirtyRange(int startLine, int endLine)
+    {
+        if (startLine < 0) return;
+        if (endLine < startLine) return;
+        for (int line = startLine; line <= endLine; line++)
+        {
+            MarkDirty(line);
+        }
     }
 
     /// <summary>
     /// Requests highlighting for a range of lines (used on viewport change).
     /// Only enqueues lines that are not already cached.
+    /// Must be called on UI thread.
     /// </summary>
     public void RequestRange(int startLine, int endLine)
     {
+        if (startLine < 0) return;
+        if (endLine < startLine) return;
+
         for (int line = startLine; line <= endLine; line++)
         {
-            // Only mark dirty if not already cached
             if (!_tokenCache.ContainsKey(line))
             {
-                _dirtyLines.Writer.TryWrite(line);
+                string text = GetLineText(line);
+                _dirtyLines.Writer.TryWrite((line, text));
             }
         }
     }
@@ -197,53 +226,53 @@ public sealed class IncrementalHighlighter : IDisposable
 
     private async Task WorkerLoopAsync(CancellationToken cancellationToken)
     {
-        var dirtyBatch = new List<int>();
+        var dirtyBatch = new List<(int LineNumber, string Text)>();
         var dirtySet = new HashSet<int>();
 
-        await foreach (var line in _dirtyLines.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var entry in _dirtyLines.Reader.ReadAllAsync(cancellationToken))
         {
             if (cancellationToken.IsCancellationRequested) break;
 
             // Batch consecutive dirty lines
             dirtyBatch.Clear();
             dirtySet.Clear();
-            dirtyBatch.Add(line);
-            dirtySet.Add(line);
+            dirtyBatch.Add(entry);
+            dirtySet.Add(entry.LineNumber);
 
             // Drain channel into batch
             while (_dirtyLines.Reader.TryRead(out var next))
             {
                 if (cancellationToken.IsCancellationRequested) break;
-                if (!dirtySet.Contains(next))
+                if (!dirtySet.Contains(next.LineNumber))
                 {
                     dirtyBatch.Add(next);
-                    dirtySet.Add(next);
+                    dirtySet.Add(next.LineNumber);
                 }
             }
 
             // Sort and coalesce into ranges
-            dirtyBatch.Sort();
+            dirtyBatch.Sort((a, b) => a.LineNumber.CompareTo(b.LineNumber));
             var ranges = CoalesceIntoRanges(dirtyBatch);
 
             foreach (var (start, end) in ranges)
             {
                 if (cancellationToken.IsCancellationRequested) break;
-                TokenizeRange(start, end);
+                TokenizeRange(start, end, dirtyBatch);
             }
         }
     }
 
-    private static List<(int start, int end)> CoalesceIntoRanges(List<int> lines)
+    private static List<(int start, int end)> CoalesceIntoRanges(List<(int LineNumber, string Text)> lines)
     {
         var ranges = new List<(int, int)>();
         if (lines.Count == 0) return ranges;
 
-        int rangeStart = lines[0];
-        int prev = lines[0];
+        int rangeStart = lines[0].LineNumber;
+        int prev = lines[0].LineNumber;
 
         for (int i = 1; i < lines.Count; i++)
         {
-            int curr = lines[i];
+            int curr = lines[i].LineNumber;
             if (curr <= prev + 3) // small gap, coalesce (allow slight discontinuity)
             {
                 prev = curr;
@@ -257,8 +286,11 @@ public sealed class IncrementalHighlighter : IDisposable
         return ranges;
     }
 
-    private void TokenizeRange(int startLine, int endLine)
+    private void TokenizeRange(int startLine, int endLine, List<(int LineNumber, string Text)> batch)
     {
+        // Build quick lookup for line text
+        var textByLine = batch.ToDictionary(b => b.LineNumber, b => b.Text);
+
         // Get initial state from cache at startLine - 1
         TokenizerState state = startLine > 0 && _tokenCache.TryGetValue(startLine - 1, out var prevEntry)
             ? prevEntry.StateAfter
@@ -266,8 +298,8 @@ public sealed class IncrementalHighlighter : IDisposable
 
         for (int lineNum = startLine; lineNum <= endLine; lineNum++)
         {
-            string line = GetLineText(lineNum);
-            var (tokens, nextState) = TokenizeLine(line, state, lineNum);
+            string lineText = textByLine[lineNum];
+            var (tokens, nextState) = TokenizeLine(lineText, state, lineNum);
             state = nextState;
 
             var lineTokens = new LineTokens(tokens, state);
@@ -282,7 +314,7 @@ public sealed class IncrementalHighlighter : IDisposable
         }
     }
 
-    private (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(string line, TokenizerState initialState, int lineIndex)
+    internal (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(string line, TokenizerState initialState, int lineIndex)
     {
         var tokens = new List<TokenInfo>();
         if (string.IsNullOrEmpty(line))
@@ -302,6 +334,8 @@ public sealed class IncrementalHighlighter : IDisposable
                 // Entire segment [pos..endIdx+2) is comment
                 AddToken(tokens, colored, SyntaxTokenType.Comment, 0, endIdx + 2);
                 pos = endIdx + 2;
+                // Comment closed
+                initialState = initialState with { InComment = false };
             }
             else
             {
@@ -321,6 +355,8 @@ public sealed class IncrementalHighlighter : IDisposable
                 // String from pos to closePos+1
                 AddToken(tokens, colored, SyntaxTokenType.String, pos, closePos + 1 - pos);
                 pos = closePos + 1;
+                // String closed
+                initialState = initialState with { InString = false, IsVerbatim = false, OpenDelimiterIndex = -1 };
             }
             else
             {
@@ -344,30 +380,34 @@ public sealed class IncrementalHighlighter : IDisposable
 
         while (pos < line.Length)
         {
-            // Skip whitespace not part of tokens (colored span consumption checked by AddToken)
-            // We'll let regexes match freely; AddToken respects colored[]
             bool matched = false;
 
-            // Block comment start
-            if (commentRegex != null && pos == 0) // only check at pos for /* (avoid mid-line false positives)
+            // Block comment start (/*) — enable regardless of line comment regex
+            if (pos < line.Length - 1 && line[pos] == '/' && line[pos + 1] == '*')
             {
-                var m = commentRegex.Match(line, pos);
-                if (m.Success && m.Index == pos)
+                int endIdx = line.IndexOf("*/", pos + 2, StringComparison.Ordinal);
+                if (endIdx >= 0)
                 {
-                    AddToken(tokens, colored, SyntaxTokenType.Comment, m.Index, m.Length);
-                    pos = m.Index + m.Length;
-                    matched = true;
+                    AddToken(tokens, colored, SyntaxTokenType.Comment, pos, endIdx - pos + 2);
+                    pos = endIdx + 2;
                 }
+                else
+                {
+                    AddToken(tokens, colored, SyntaxTokenType.Comment, pos, line.Length - pos);
+                    return (tokens, initialState with { InComment = true });
+                }
+                matched = true;
+                continue;
             }
 
             // Line comment (//)
             if (!matched && commentRegex != null && pos < line.Length - 1 && line[pos] == '/' && line[pos + 1] == '/')
             {
-                // remainder is comment
                 int len = line.Length - pos;
                 AddToken(tokens, colored, SyntaxTokenType.Comment, pos, len);
                 pos = line.Length;
                 matched = true;
+                break;
             }
 
             // String (regular or verbatim)
@@ -375,7 +415,7 @@ public sealed class IncrementalHighlighter : IDisposable
             {
                 if (line[pos] == '"')
                 {
-                    var end = FindStringEnd(line, pos, pos);
+                    var end = FindStringEnd(line, pos + 1, pos);
                     if (end >= 0)
                     {
                         int len = end - pos + 1;
@@ -496,7 +536,7 @@ public sealed class IncrementalHighlighter : IDisposable
         if (_disposed) return;
         _cts.Cancel();
         _dirtyLines.Writer.Complete();
-        try { _workerTask.Wait(1000); } catch { }
+        try { _workerTask?.Wait(1000); } catch { }
         _cts.Dispose();
         _disposed = true;
     }

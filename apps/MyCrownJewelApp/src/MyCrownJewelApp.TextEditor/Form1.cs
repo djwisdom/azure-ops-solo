@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -224,7 +225,7 @@ namespace MyCrownJewelApp.TextEditor
                 mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
             
             // Attach minimap to editor
-            if (minimapControl != null)
+            if (minimapControl != null && textEditor != null)
             {
                 minimapControl.AttachEditor(textEditor);
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
@@ -367,7 +368,7 @@ namespace MyCrownJewelApp.TextEditor
 
                     // Compute max cell width per column using captured font
                     var maxWidths = new Dictionary<int, int>();
-                    using var font = new Font(fontName, fontSize, fontStyle);
+                    using var font = new Font(fontName!, fontSize, fontStyle);
                     for (int lineIdx = firstVisible; lineIdx <= lastIndex; lineIdx++)
                     {
                         if (token.IsCancellationRequested) return;
@@ -644,6 +645,7 @@ namespace MyCrownJewelApp.TextEditor
             if (syntaxHighlightingEnabled)
             {
                 highlightTimer?.Stop();
+                CreateIncrementalHighlighter();
                 highlightTimer?.Start();
             }
             else
@@ -782,14 +784,14 @@ namespace MyCrownJewelApp.TextEditor
                 }
                 else
                 {
-                    if (smartTabsEnabled)
-                    {
-                        // Check if caret is at line start or only whitespace before it
-                        int lineIdx = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
-                        int lineStartIdx = textEditor.GetFirstCharIndexFromLine(lineIdx);
-                        int charsOnLineBeforeCaret = textEditor.SelectionStart - lineStartIdx;
-                        string lineText = textEditor.Lines[lineIdx];
-                        string textBeforeCaret = lineText.Substring(0, charsOnLineBeforeCaret);
+                     if (smartTabsEnabled)
+                     {
+                         // Check if caret is at line start or only whitespace before it
+                         int lineIdx = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+                         int lineStartIdx = textEditor.GetFirstCharIndexFromLine(lineIdx);
+                         int charsOnLineBeforeCaret = textEditor.SelectionStart - lineStartIdx;
+                         string lineText = GetLineText(lineIdx);
+                         string textBeforeCaret = lineText.Substring(0, charsOnLineBeforeCaret);
                         
                         if (string.IsNullOrEmpty(textBeforeCaret) || textBeforeCaret.All(char.IsWhiteSpace))
                         {
@@ -841,7 +843,7 @@ namespace MyCrownJewelApp.TextEditor
                     string prevLineText = "";
                     if (currentLine > 0)
                     {
-                        prevLineText = textEditor.Lines[currentLine - 1];
+                        prevLineText = GetLineText(currentLine - 1);
                     }
                     // Compute indent based on previous line
                     string indent = IndentationHelper.ComputeIndent(prevLineText, tabSize, insertSpaces);
@@ -879,7 +881,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 for (int line = endLine; line >= startLine; line--)
                 {
-                    if (line < 0 || line >= textEditor.Lines.Length) continue;
+                    if (line < 0 || line >= LineCount) continue;
                     int lineStart = textEditor.GetFirstCharIndexFromLine(line);
                     if (lineStart < 0) continue;
                     textEditor.Text = textEditor.Text.Insert(lineStart, tabString);
@@ -912,11 +914,11 @@ namespace MyCrownJewelApp.TextEditor
             {
                 for (int line = endLine; line >= startLine; line--)
                 {
-                    if (line < 0 || line >= textEditor.Lines.Length) continue;
+                    if (line < 0 || line >= LineCount) continue;
                     int lineStart = textEditor.GetFirstCharIndexFromLine(line);
                     if (lineStart < 0) continue;
-                    
-                    string lineText = textEditor.Lines[line];
+
+                    string lineText = GetLineText(line);
                     int removeCount = 0;
                     foreach (char c in lineText)
                     {
@@ -1466,9 +1468,9 @@ namespace MyCrownJewelApp.TextEditor
         private void ToggleAllFolds_Click(object? sender, EventArgs e)
         {
             // Toggle collapse on all #region/#endregion
-            for (int i = 0; i < textEditor.Lines.Length; i++)
+            for (int i = 0; i < LineCount; i++)
             {
-                string line = textEditor.Lines[i];
+                string line = GetLineText(i);
                 if (line.TrimStart().StartsWith("#region") || line.TrimStart().StartsWith("#endregion"))
                 {
                     if (collapsedRegions.Contains(i))
@@ -1571,9 +1573,9 @@ namespace MyCrownJewelApp.TextEditor
 
         public void GoToLine(int lineNumber)
         {
-            if (lineNumber < 1 || textEditor.Lines.Length == 0) return;
-            int targetIndex = lineNumber - 1;
-            if (targetIndex >= textEditor.Lines.Length) targetIndex = textEditor.Lines.Length - 1;
+             if (lineNumber < 1 || LineCount == 0) return;
+             int targetIndex = lineNumber - 1;
+             if (targetIndex >= LineCount) targetIndex = LineCount - 1;
             int charIndex = textEditor.GetFirstCharIndexFromLine(targetIndex);
             if (charIndex >= 0)
             {
@@ -1938,20 +1940,21 @@ namespace MyCrownJewelApp.TextEditor
              textEditor.SuspendLayout();
              try
              {
-                 var (firstLine, lastLine) = GetVisibleLineRange();
-                 if (firstLine <= lastLine)
-                 {
-                     for (int lineNum = firstLine; lineNum <= lastLine; lineNum++)
-                     {
-                         if (lineNum < 0 || lineNum >= textEditor.Lines.Length) continue;
-                         int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
-                         if (lineStart < 0) continue;
-                         int lineLen = textEditor.Lines[lineNum].Length;
-                         if (lineLen == 0) continue;
-                         textEditor.Select(lineStart, lineLen);
-                         textEditor.SelectionColor = baseColor;
-                     }
-                 }
+                  var (firstLine, lastLine) = GetVisibleLineRange();
+                  if (firstLine <= lastLine)
+                  {
+                      for (int lineNum = firstLine; lineNum <= lastLine; lineNum++)
+                      {
+                          if (lineNum < 0 || lineNum >= LineCount) continue;
+                          int lineStart = textEditor.GetFirstCharIndexFromLine(lineNum);
+                          if (lineStart < 0) continue;
+                          string line = GetLineText(lineNum);
+                          int lineLen = line.Length;
+                          if (lineLen == 0) continue;
+                          textEditor.Select(lineStart, lineLen);
+                          textEditor.SelectionColor = baseColor;
+                      }
+                  }
                  textEditor.SelectionStart = selStart;
                  textEditor.SelectionLength = selLength;
                  textEditor.SelectionColor = baseColor;
@@ -1966,11 +1969,11 @@ namespace MyCrownJewelApp.TextEditor
         /// <summary>
         /// Returns tokens for a given line index, used by MinimapControl for syntax coloring.
         /// </summary>
-        private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
-        {
-            if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-            if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-            if (lineIndex < 0 || lineIndex >= textEditor.Lines.Length) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+         private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
+         {
+             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             if (lineIndex < 0 || lineIndex >= LineCount) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
 
             // Try incremental highlighter cache first
             if (incrementalHighlighter?.GetTokens(lineIndex) is IReadOnlyList<TokenInfo> cached)
@@ -1982,13 +1985,13 @@ namespace MyCrownJewelApp.TextEditor
 
         private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> TokenizeLineSynchronously(int lineIndex)
         {
-            string line = textEditor.Lines[lineIndex];
+            string line = GetLineText(lineIndex);
             if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
 
             var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
             var colored = new bool[line.Length];
 
-            var regexes = GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None);
+             var regexes = currentSyntax != null ? GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None) : ((Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor))default;
 
             void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
             {
@@ -2055,6 +2058,9 @@ namespace MyCrownJewelApp.TextEditor
         }
 
         // WinForms RichTextBox BeginUpdate/EndUpdate via native API (no forced invalidation)
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, StringBuilder lParam);
+
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int WM_SETREDRAW = 0x0B;
@@ -2065,6 +2071,26 @@ namespace MyCrownJewelApp.TextEditor
         private const int EM_ENDUNDOACTION = 0x00B8;
         private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
+        private const int EM_GETLINE = 0x00C4;
+
+        // Get a single line without allocating the entire .Lines array
+        private string GetLineText(int lineIndex)
+        {
+            if (!textEditor.IsHandleCreated || textEditor.IsDisposed) return string.Empty;
+            var sb = new System.Text.StringBuilder(4096);
+            int len = SendMessage(textEditor.Handle, EM_GETLINE, lineIndex, sb);
+            return len > 0 ? sb.ToString() : string.Empty;
+        }
+
+        // Get total line count
+        private int LineCount
+        {
+            get
+            {
+                if (!textEditor.IsHandleCreated || textEditor.IsDisposed) return 0;
+                return (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
+            }
+        }
 
         private void BeginUpdate(RichTextBox rtb)
         {
