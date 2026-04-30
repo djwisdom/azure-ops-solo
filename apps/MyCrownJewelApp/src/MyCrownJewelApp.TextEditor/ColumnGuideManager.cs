@@ -33,6 +33,7 @@ public sealed class ColumnGuideManager : IDisposable
     private bool _repaintPending;
     private int _lastVisibleStartLine = -1;
     private int _lastVisibleEndLine = -1;
+    private volatile bool _suspendRequests; // temporarily skip work during heavy ops
 
     // Event handlers for detaching
     private EventHandler? _resizeHandler;
@@ -47,7 +48,7 @@ public sealed class ColumnGuideManager : IDisposable
 
     private const float GuideAlphaSoft = 80f;   // ~30% opacity
     private const float GuideAlphaStrong = 160f; // ~60% opacity
-    private const int BackgroundDelayMs = 50;   // Low-priority bg task delay
+    private const int BackgroundDelayMs = 500;   // Low-priority bg task delay (increased to avoid UI flooding)
     private const int PaintBudgetMs = 8;        // Target <8ms per paint
 
     /// <summary>
@@ -165,14 +166,30 @@ public sealed class ColumnGuideManager : IDisposable
     /// <summary>
     /// Detaches the guide manager from the editor.
     /// </summary>
-    public void Detach()
-    {
-        _isAttached = false;
-    }
+     public void Detach()
+     {
+         _isAttached = false;
+     }
 
-    /// <summary>
-    /// Updates the set of guide columns and clears cached positions.
-    /// </summary>
+     /// <summary>
+     /// Temporarily suspend background cache updates. Call before a heavy UI operation
+     /// (e.g. file load, bulk replace) and call <see cref="ResumeRequests"/> afterward.
+     /// </summary>
+     public void SuspendRequests() => _suspendRequests = true;
+
+     /// <summary>
+     /// Resume background cache updates after a suspend. Triggers an immediate refresh.
+     /// </summary>
+     public void ResumeRequests()
+     {
+         _suspendRequests = false;
+         InvalidateCache();
+         RequestRepaint();
+     }
+
+     /// <summary>
+     /// Updates the set of guide columns and clears cached positions.
+     /// </summary>
     /// <param name="columns">Zero-based character column indices (or null to clear).</param>
     public void SetGuides(params int[] columns)
     {
@@ -440,17 +457,25 @@ public sealed class ColumnGuideManager : IDisposable
             {
                 System.Threading.Thread.Sleep(BackgroundDelayMs);
 
-                if (!_isAttached || _editor.IsDisposed || !_editor.IsHandleCreated)
+                if (!_isAttached || _editor.IsDisposed || !_editor.IsHandleCreated || _suspendRequests)
                     continue;
 
-                // Get visible line range on UI thread without blocking indefinitely
+                // Non-blocking: if UI thread seems busy, skip this cycle quickly
+                if (_editor.InvokeRequired)
+                {
+                    var ar = _editor.BeginInvoke(new Action(() => { }));
+                    bool completed = ar.AsyncWaitHandle.WaitOne(50);
+                    if (!completed) continue; // UI thread busy, skip
+                }
+
+                // Get visible line range (quick, already on UI thread due to BeginInvoke above)
                 int visibleLines = 0;
                 int firstLine = 0, lastLine = 0;
-                var ar = _editor.BeginInvoke(new Action(() =>
+                try
                 {
                     visibleLines = GetVisibleLineRange(_editor, out firstLine, out lastLine);
-                }));
-                ar.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1)); // timeout to avoid deadlock
+                }
+                catch { continue; }
 
                 if (visibleLines <= 0) continue;
 
@@ -460,12 +485,16 @@ public sealed class ColumnGuideManager : IDisposable
                 _lastVisibleStartLine = firstLine;
                 _lastVisibleEndLine = lastLine;
 
-                // Refine cache on UI thread (non-blocking with timeout)
-                var ar2 = _editor.BeginInvoke(new Action(() =>
+                // Non-blocking refinement: fire and forget
+                try
                 {
-                    RefineCacheForVisibleRange(firstLine, lastLine);
-                }));
-                ar2.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+                    _editor.BeginInvoke(new Action(() =>
+                    {
+                        try { RefineCacheForVisibleRange(firstLine, lastLine); }
+                        catch { }
+                    }));
+                }
+                catch { }
             }
             catch { }
         }

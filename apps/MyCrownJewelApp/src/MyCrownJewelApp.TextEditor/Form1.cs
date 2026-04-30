@@ -399,15 +399,18 @@ namespace MyCrownJewelApp.TextEditor
 
                     if (token.IsCancellationRequested) return;
 
-                    // Apply to editor on UI thread (non-blocking)
-                    var arApply = textEditor.BeginInvoke(new Action(() =>
+                    // Apply to editor on UI thread (fire-and-forget)
+                    try
                     {
-                        if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Count > 0)
+                        textEditor.BeginInvoke(new Action(() =>
                         {
-                            textEditor.SelectionTabs = stops.ToArray();
-                        }
-                    }));
-                    arApply.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+                            if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Count > 0)
+                            {
+                                textEditor.SelectionTabs = stops.ToArray();
+                            }
+                        }));
+                    }
+                    catch { }
                 }
                 catch { /* ignore */ }
             }, token);
@@ -1041,6 +1044,11 @@ namespace MyCrownJewelApp.TextEditor
          {
              try
              {
+                 // Suspend background workers during file load
+                 guidePanel?.SuspendRequests();
+                 elasticTabTimer?.Stop();
+                 highlightTimer?.Stop();
+
                  textEditor.Text = File.ReadAllText(path);
                  currentFilePath = path;
                  if (File.Exists(path))
@@ -1075,9 +1083,16 @@ namespace MyCrownJewelApp.TextEditor
                      }
                      catch { }
                  }
+
+                 // Resume column guide updates after load completes
+                 guidePanel?.ResumeRequests();
+                 if (elasticTabsEnabled) elasticTabTimer?.Start();
+                 if (syntaxHighlightingEnabled) highlightTimer?.Start();
               }
              catch (Exception ex)
              {
+                 // Ensure guide is resumed even on error
+                 try { guidePanel?.ResumeRequests(); } catch { }
                  MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
              }
          }

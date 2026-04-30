@@ -85,6 +85,22 @@ public sealed class ColumnGuidePanel : Panel
     }
 
     /// <summary>
+    /// Temporarily suspend column guide updates during heavy operations.
+    /// </summary>
+    public void SuspendRequests()
+    {
+        _guideManager?.SuspendRequests();
+    }
+
+    /// <summary>
+    /// Resume column guide updates after suspension.
+    /// </summary>
+    public void ResumeRequests()
+    {
+        _guideManager?.ResumeRequests();
+    }
+
+    /// <summary>
     /// Column number (1-based) to draw the vertical line.
     /// </summary>
     public int GuideColumn
