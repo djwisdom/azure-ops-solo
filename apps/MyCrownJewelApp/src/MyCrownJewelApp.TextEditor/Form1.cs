@@ -337,7 +337,7 @@ namespace MyCrownJewelApp.TextEditor
             {
                 try
                 {
-                    // Capture needed UI data on UI thread
+                    // Capture needed UI data on UI thread (non-blocking)
                     string[] lines = Array.Empty<string>();
                     int firstVisible = 0;
                     int visibleLineCount = 0;
@@ -345,19 +345,19 @@ namespace MyCrownJewelApp.TextEditor
                     float fontSize = 0;
                     FontStyle fontStyle = FontStyle.Regular;
 
-                    textEditor.Invoke(new Action(() =>
+                    var ar = textEditor.BeginInvoke(new Action(() =>
                     {
                         if (textEditor.IsDisposed) return;
                         lines = textEditor.Lines;
                         firstVisible = (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
                         using var g = Graphics.FromHwnd(textEditor.Handle);
                         int lineHeight = TextRenderer.MeasureText("X", textEditor.Font).Height;
-                        visibleLineCount = textEditor.ClientSize.Height / lineHeight + 2; // +2 for buffer
-                        // Capture font properties for background thread use
+                        visibleLineCount = textEditor.ClientSize.Height / lineHeight + 2;
                         fontName = textEditor.Font.Name;
                         fontSize = textEditor.Font.Size;
                         fontStyle = textEditor.Font.Style;
                     }));
+                    ar.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
 
                     if (token.IsCancellationRequested) return;
                     if (lines.Length == 0) return;
@@ -399,14 +399,15 @@ namespace MyCrownJewelApp.TextEditor
 
                     if (token.IsCancellationRequested) return;
 
-                    // Apply to editor on UI thread
-                    textEditor.Invoke(new Action(() =>
+                    // Apply to editor on UI thread (non-blocking)
+                    var arApply = textEditor.BeginInvoke(new Action(() =>
                     {
                         if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Count > 0)
                         {
                             textEditor.SelectionTabs = stops.ToArray();
                         }
                     }));
+                    arApply.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
                 }
                 catch { /* ignore */ }
             }, token);

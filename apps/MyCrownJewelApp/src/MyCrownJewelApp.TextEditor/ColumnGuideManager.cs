@@ -443,13 +443,14 @@ public sealed class ColumnGuideManager : IDisposable
                 if (!_isAttached || _editor.IsDisposed || !_editor.IsHandleCreated)
                     continue;
 
-                // Get visible line range on UI thread (cross-thread safe)
+                // Get visible line range on UI thread without blocking indefinitely
                 int visibleLines = 0;
                 int firstLine = 0, lastLine = 0;
-                _editor.Invoke(new Action(() =>
+                var ar = _editor.BeginInvoke(new Action(() =>
                 {
                     visibleLines = GetVisibleLineRange(_editor, out firstLine, out lastLine);
                 }));
+                ar.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1)); // timeout to avoid deadlock
 
                 if (visibleLines <= 0) continue;
 
@@ -459,11 +460,12 @@ public sealed class ColumnGuideManager : IDisposable
                 _lastVisibleStartLine = firstLine;
                 _lastVisibleEndLine = lastLine;
 
-                // Refine cache on UI thread (accesses editor graphics/font)
-                _editor.Invoke(new Action(() =>
+                // Refine cache on UI thread (non-blocking with timeout)
+                var ar2 = _editor.BeginInvoke(new Action(() =>
                 {
                     RefineCacheForVisibleRange(firstLine, lastLine);
                 }));
+                ar2.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
             }
             catch { }
         }
