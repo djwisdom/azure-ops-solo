@@ -172,13 +172,12 @@ public sealed class ColumnGuideManager : IDisposable
      }
 
      /// <summary>
-     /// Temporarily suspend background cache updates. Call before a heavy UI operation
-     /// (e.g. file load, bulk replace) and call <see cref="ResumeRequests"/> afterward.
+     /// Temporarily suspend background cache updates during heavy operations.
      /// </summary>
      public void SuspendRequests() => _suspendRequests = true;
 
      /// <summary>
-     /// Resume background cache updates after a suspend. Triggers an immediate refresh.
+     /// Resume background cache updates after suspension.
      /// </summary>
      public void ResumeRequests()
      {
@@ -187,11 +186,11 @@ public sealed class ColumnGuideManager : IDisposable
          RequestRepaint();
      }
 
-     /// <summary>
-     /// Updates the set of guide columns and clears cached positions.
-     /// </summary>
-    /// <param name="columns">Zero-based character column indices (or null to clear).</param>
-    public void SetGuides(params int[] columns)
+      /// <summary>
+      /// Updates the set of guide columns and clears cached positions.
+      /// </summary>
+      /// <param name="columns">Zero-based character column indices (or null to clear).</param>
+      public void SetGuides(params int[] columns)
     {
         _guideColumns = columns?.Where(c => c >= 0).Distinct().OrderBy(c => c).ToArray() ?? Array.Empty<int>();
         InvalidateCache();
@@ -460,22 +459,19 @@ public sealed class ColumnGuideManager : IDisposable
                 if (!_isAttached || _editor.IsDisposed || !_editor.IsHandleCreated || _suspendRequests)
                     continue;
 
-                // Non-blocking: if UI thread seems busy, skip this cycle quickly
-                if (_editor.InvokeRequired)
-                {
-                    var ar = _editor.BeginInvoke(new Action(() => { }));
-                    bool completed = ar.AsyncWaitHandle.WaitOne(50);
-                    if (!completed) continue; // UI thread busy, skip
-                }
+                // Skip during active typing (last edit <2 sec ago)
+                if (DateTime.UtcNow.Ticks - _lastTextChangeTicks < TimeSpan.TicksPerSecond * 2)
+                    continue;
 
-                // Get visible line range (quick, already on UI thread due to BeginInvoke above)
+                // Run GetVisibleLineRange on UI thread with short timeout
                 int visibleLines = 0;
                 int firstLine = 0, lastLine = 0;
-                try
+                var ar = _editor.BeginInvoke(new Action(() =>
                 {
                     visibleLines = GetVisibleLineRange(_editor, out firstLine, out lastLine);
-                }
-                catch { continue; }
+                }));
+                bool completed = ar.AsyncWaitHandle.WaitOne(50);
+                if (!completed) continue; // UI thread busy, skip
 
                 if (visibleLines <= 0) continue;
 
@@ -485,7 +481,7 @@ public sealed class ColumnGuideManager : IDisposable
                 _lastVisibleStartLine = firstLine;
                 _lastVisibleEndLine = lastLine;
 
-                // Non-blocking refinement: fire and forget
+                // Fire-and-forget refinement
                 try
                 {
                     _editor.BeginInvoke(new Action(() =>
