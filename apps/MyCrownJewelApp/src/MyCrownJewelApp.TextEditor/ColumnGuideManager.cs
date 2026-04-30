@@ -440,21 +440,30 @@ public sealed class ColumnGuideManager : IDisposable
             {
                 System.Threading.Thread.Sleep(BackgroundDelayMs);
 
-                if (!_isAttached || _editor.IsDisposed) continue;
+                if (!_isAttached || _editor.IsDisposed || !_editor.IsHandleCreated)
+                    continue;
 
-                // Process pending cache refinement requests
-                var visibleLines = GetVisibleLineRange(_editor, out int firstLine, out int lastLine);
+                // Get visible line range on UI thread (cross-thread safe)
+                int visibleLines = 0;
+                int firstLine = 0, lastLine = 0;
+                _editor.Invoke(new Action(() =>
+                {
+                    visibleLines = GetVisibleLineRange(_editor, out firstLine, out lastLine);
+                }));
+
                 if (visibleLines <= 0) continue;
 
-                // Check if visible range changed
                 if (firstLine == _lastVisibleStartLine && lastLine == _lastVisibleEndLine)
                     continue;
 
                 _lastVisibleStartLine = firstLine;
                 _lastVisibleEndLine = lastLine;
 
-                // Refine cache by rendering sample text and measuring precise character positions
-                RefineCacheForVisibleRange(firstLine, lastLine);
+                // Refine cache on UI thread (accesses editor graphics/font)
+                _editor.Invoke(new Action(() =>
+                {
+                    RefineCacheForVisibleRange(firstLine, lastLine);
+                }));
             }
             catch { }
         }
@@ -464,6 +473,8 @@ public sealed class ColumnGuideManager : IDisposable
     {
         try
         {
+            if (_editor.IsDisposed || !_editor.IsHandleCreated) return;
+
             using var g = _editor.CreateGraphics();
             g.PageUnit = GraphicsUnit.Pixel;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
@@ -473,9 +484,9 @@ public sealed class ColumnGuideManager : IDisposable
             if (font == null) return;
 
             // Measure a sample string of N characters to get per-char accumulated width
-            var sample = new string('x', Math.Max(100, _guideColumns.Max() + 1));
+            int maxCol = _guideColumns.Length > 0 ? _guideColumns.Max() + 1 : 100;
+            var sample = new string('x', Math.Max(100, maxCol));
 
-            // Get char-by-char positions using MeasureString with character ranges
             var charPositions = new List<float>(sample.Length + 1);
             charPositions.Add(0);
 
@@ -486,7 +497,6 @@ public sealed class ColumnGuideManager : IDisposable
                 charPositions.Add(sz.Width * zoom);
             }
 
-            // Update cache for all columns with refined measurements
             foreach (var col in _guideColumns)
             {
                 if (col < charPositions.Count)
@@ -526,22 +536,33 @@ public sealed class ColumnGuideManager : IDisposable
         firstVisible = 0;
         lastVisible = 0;
 
-        if (editor is RichTextBox rtb)
+        try
         {
-            firstVisible = rtb.GetLineFromCharIndex(rtb.GetCharIndexFromPosition(new Point(0, 0)));
-            int visibleHeight = editor.ClientSize.Height;
-            int lineHeight = (int)Math.Ceiling(rtb.Font.GetHeight() * rtb.ZoomFactor);
-            lastVisible = Math.Min(rtb.Lines.Length - 1, firstVisible + (visibleHeight / lineHeight) + 2);
-            return lastVisible - firstVisible + 1;
+            if (editor is RichTextBox rtb)
+            {
+                if (!rtb.IsHandleCreated || rtb.Lines == null || rtb.Font == null)
+                    return 0;
+
+                firstVisible = rtb.GetLineFromCharIndex(rtb.GetCharIndexFromPosition(new Point(0, 0)));
+                int visibleHeight = editor.ClientSize.Height;
+                if (visibleHeight <= 0) return 0;
+                int lineHeight = (int)Math.Ceiling(rtb.Font.GetHeight() * rtb.ZoomFactor);
+                if (lineHeight <= 0) return 0;
+                lastVisible = Math.Min(rtb.Lines.Length - 1, firstVisible + (visibleHeight / lineHeight) + 2);
+                return Math.Max(0, lastVisible - firstVisible + 1);
+            }
+            else if (editor is TextBoxBase tb)
+            {
+                if (!tb.IsHandleCreated || tb.Lines == null || tb.Font == null)
+                    return 0;
+                firstVisible = 0;
+                int lineHeight = (int)Math.Ceiling(tb.Font.GetHeight() * GetZoomFactor(tb));
+                if (lineHeight <= 0) return 0;
+                lastVisible = Math.Min(tb.Lines.Length - 1, (editor.ClientSize.Height / lineHeight) + 2);
+                return Math.Max(0, lastVisible - firstVisible + 1);
+            }
         }
-        else if (editor is TextBoxBase tb)
-        {
-            // Approximate for TextBoxBase
-            firstVisible = 0;
-            int lineHeight = (int)Math.Ceiling(tb.Font.GetHeight() * GetZoomFactor(tb));
-            lastVisible = Math.Min(tb.Lines.Length - 1, (editor.ClientSize.Height / lineHeight) + 2);
-            return lastVisible - firstVisible + 1;
-        }
+        catch { /* Ignore — treat as no visible lines */ }
 
         return 0;
     }

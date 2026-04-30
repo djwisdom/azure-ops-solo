@@ -138,15 +138,13 @@ namespace MyCrownJewelApp.TextEditor
         // Incremental highlight cache
         private Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> compiledRegexCache = new();
 
-        public Form1()
-        {
-            InitializeComponent();
-            this.KeyPreview = true;
-            this.KeyDown += Form1_KeyDown;
-            this.FormClosing += Form1_FormClosing;
-            this.Activated += Form1_Activated;
-
-            isDarkTheme = true;
+    public Form1()
+    {
+        InitializeComponent();
+        this.KeyPreview = true;
+        this.KeyDown += Form1_KeyDown;
+        this.FormClosing += Form1_FormClosing;
+        this.Activated += Form1_Activated;
             zoomFactor = 1.0f;
             // Set flat border for editor
             textEditor.BorderStyle = BorderStyle.None;
@@ -259,6 +257,9 @@ namespace MyCrownJewelApp.TextEditor
             {
                 highlightTimer.Start();
             }
+
+            // Ensure initial dirty flag is clear after all initialization
+            isModified = false;
         }
 
         private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
@@ -340,7 +341,10 @@ namespace MyCrownJewelApp.TextEditor
                     string[] lines = Array.Empty<string>();
                     int firstVisible = 0;
                     int visibleLineCount = 0;
-                    
+                    string? fontName = null;
+                    float fontSize = 0;
+                    FontStyle fontStyle = FontStyle.Regular;
+
                     textEditor.Invoke(new Action(() =>
                     {
                         if (textEditor.IsDisposed) return;
@@ -349,26 +353,30 @@ namespace MyCrownJewelApp.TextEditor
                         using var g = Graphics.FromHwnd(textEditor.Handle);
                         int lineHeight = TextRenderer.MeasureText("X", textEditor.Font).Height;
                         visibleLineCount = textEditor.ClientSize.Height / lineHeight + 2; // +2 for buffer
+                        // Capture font properties for background thread use
+                        fontName = textEditor.Font.Name;
+                        fontSize = textEditor.Font.Size;
+                        fontStyle = textEditor.Font.Style;
                     }));
-                    
+
                     if (token.IsCancellationRequested) return;
                     if (lines.Length == 0) return;
-                    
+
                     int lastIndex = Math.Min(firstVisible + visibleLineCount, lines.Length) - 1;
                     if (lastIndex < firstVisible) return;
-                    
-                    // Compute max cell width per column (i.e., width of text before each tab)
+
+                    // Compute max cell width per column using captured font
                     var maxWidths = new Dictionary<int, int>();
+                    using var font = new Font(fontName, fontSize, fontStyle);
                     for (int lineIdx = firstVisible; lineIdx <= lastIndex; lineIdx++)
                     {
                         if (token.IsCancellationRequested) return;
                         string line = lines[lineIdx];
-                        // Split: each tab produces a cell before it; we consider all cells except the final one
                         string[] cells = line.Split('\t');
                         for (int col = 0; col < cells.Length - 1; col++)
                         {
                             string cell = cells[col];
-                            int w = TabMeasurementCache.GetStringWidth(cell, textEditor.Font);
+                            int w = TabMeasurementCache.GetStringWidth(cell, font);
                             lock (maxWidths)
                             {
                                 if (!maxWidths.ContainsKey(col) || w > maxWidths[col])
@@ -376,9 +384,9 @@ namespace MyCrownJewelApp.TextEditor
                             }
                         }
                     }
-                    
+
                     if (token.IsCancellationRequested) return;
-                    
+
                     // Build tab stop positions (cumulative widths + padding)
                     var stops = new List<int>();
                     int cumulative = 0;
@@ -388,9 +396,9 @@ namespace MyCrownJewelApp.TextEditor
                         cumulative += w + 2; // 2px padding between columns
                         stops.Add(cumulative);
                     }
-                    
+
                     if (token.IsCancellationRequested) return;
-                    
+
                     // Apply to editor on UI thread
                     textEditor.Invoke(new Action(() =>
                     {
@@ -1028,34 +1036,50 @@ namespace MyCrownJewelApp.TextEditor
             }
         }
 
-        internal void LoadFile(string path)
-        {
-            try
-            {
-                textEditor.Text = File.ReadAllText(path);
-                currentFilePath = path;
-                if (File.Exists(path))
-                    lastFileWriteTime = File.GetLastWriteTimeUtc(path);
-                ClearDirtyAfterSave();
-                AddToRecentFiles(path);
-                
-                // Ensure editor starts at top: set caret at 0 and scroll via Win32
-                textEditor.SelectionStart = 0;
-                if (textEditor.IsHandleCreated)
-                {
-                    SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
-                }
+         internal void LoadFile(string path)
+         {
+             try
+             {
+                 textEditor.Text = File.ReadAllText(path);
+                 currentFilePath = path;
+                 if (File.Exists(path))
+                     lastFileWriteTime = File.GetLastWriteTimeUtc(path);
+                 ClearDirtyAfterSave();
+                 AddToRecentFiles(path);
+                 
+                 // Ensure editor starts at top: set caret at 0
+                 textEditor.SelectionStart = 0;
+                 
+                 // Defer scrolling and highlighting until control is fully laid out
+                 if (textEditor.IsHandleCreated)
+                 {
+                     try
+                     {
+                         SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
+                     }
+                     catch { }
+                 }
                  
                  UpdateStatusBar();
                  
-                 // Request syntax highlighting for newly loaded content
-                 RequestVisibleHighlight();
+                 // Defer syntax highlight request until UI is idle
+                 if (textEditor.IsHandleCreated)
+                 {
+                     try
+                     {
+                         this.BeginInvoke(new Action(() =>
+                         {
+                             try { RequestVisibleHighlight(); } catch { }
+                         }));
+                     }
+                     catch { }
+                 }
+              }
+             catch (Exception ex)
+             {
+                 MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
              }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
+         }
 
         private void SaveFile()
         {
@@ -1866,6 +1890,9 @@ namespace MyCrownJewelApp.TextEditor
         {
             try
             {
+                if (textEditor == null || textEditor.Lines == null || textEditor.Font == null)
+                    return (0, -1);
+
                 int visibleStart = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, 0)));
                 int visibleEnd = textEditor.GetLineFromCharIndex(textEditor.GetCharIndexFromPosition(new Point(0, textEditor.ClientSize.Height)));
                 int totalLines = textEditor.Lines.Length;

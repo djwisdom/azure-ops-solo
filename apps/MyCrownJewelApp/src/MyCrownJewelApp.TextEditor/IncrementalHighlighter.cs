@@ -63,6 +63,7 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly Color _preprocessorColor;
 
     private bool _disposed;
+    private string[]? _linesSnapshot;
 
     public event EventHandler<HighlightPatch>? PatchReady;
 
@@ -98,20 +99,38 @@ public sealed class IncrementalHighlighter : IDisposable
         // Compile regexes upfront
         GetOrCreateCompiledRegexes(syntax);
 
+        // Capture initial lines snapshot on UI thread
+        _linesSnapshot = _textEditor.Lines;
+
         // Start background worker
         _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token));
     }
 
     /// <summary>
     /// Marks a line as requiring re-tokenization (called after text edit).
-    /// Evicts from cache to force re-compute.
+    /// Evicts from cache — content changed, and refreshes lines snapshot.
     /// </summary>
     public void MarkDirty(int lineNumber)
     {
         if (lineNumber < 0) return;
+        // Update snapshot on UI thread (this call itself is on UI thread)
+        RefreshSnapshot();
         // Evict from cache — content changed
         _tokenCache.TryRemove(lineNumber, out _);
         _dirtyLines.Writer.TryWrite(lineNumber);
+    }
+
+    /// <summary>
+    /// Takes a fresh snapshot of editor lines for background tokenization.
+    /// Must be called on the UI thread.
+    /// </summary>
+    public void RefreshSnapshot()
+    {
+        try
+        {
+            Volatile.Write(ref _linesSnapshot, _textEditor.Lines);
+        }
+        catch { }
     }
 
     /// <summary>
@@ -238,7 +257,10 @@ public sealed class IncrementalHighlighter : IDisposable
             ? prevEntry.StateAfter
             : TokenizerState.Initial;
 
-        string[] lines = _textEditor.Lines;
+        // Access lines snapshot safely (background thread)
+        string[] lines = Volatile.Read(ref _linesSnapshot) ?? Array.Empty<string>();
+        if (lines.Length == 0) return;
+
         for (int lineNum = startLine; lineNum <= endLine; lineNum++)
         {
             if (lineNum >= lines.Length) break;
