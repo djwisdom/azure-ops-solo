@@ -431,25 +431,27 @@ public sealed class ColumnGuideManager : IDisposable
         {
             if (editor is RichTextBox rtb)
             {
-                if (!rtb.IsHandleCreated || rtb.Lines == null || rtb.Font == null)
+                if (!rtb.IsHandleCreated || rtb.Font == null)
                     return 0;
 
                 firstVisible = rtb.GetLineFromCharIndex(rtb.GetCharIndexFromPosition(new Point(0, 0)));
                 int visibleHeight = editor.ClientSize.Height;
                 if (visibleHeight <= 0) return 0;
-                int lineHeight = (int)Math.Ceiling(rtb.Font.GetHeight() * rtb.ZoomFactor);
+                int lineHeight = (int)Math.Ceiling(rtb.Font.GetHeight() * GetZoomFactor(rtb));
                 if (lineHeight <= 0) return 0;
-                lastVisible = Math.Min(rtb.Lines.Length - 1, firstVisible + (visibleHeight / lineHeight) + 2);
+                int totalLines = rtb.GetLineFromCharIndex(rtb.TextLength) + 1;
+                lastVisible = Math.Min(totalLines - 1, firstVisible + (visibleHeight / lineHeight) + 2);
                 return Math.Max(0, lastVisible - firstVisible + 1);
             }
             else if (editor is TextBoxBase tb)
             {
-                if (!tb.IsHandleCreated || tb.Lines == null || tb.Font == null)
+                if (!tb.IsHandleCreated || tb.Font == null)
                     return 0;
                 firstVisible = 0;
                 int lineHeight = (int)Math.Ceiling(tb.Font.GetHeight() * GetZoomFactor(tb));
                 if (lineHeight <= 0) return 0;
-                lastVisible = Math.Min(tb.Lines.Length - 1, (editor.ClientSize.Height / lineHeight) + 2);
+                int totalLines = tb.GetLineFromCharIndex(tb.TextLength) + 1;
+                lastVisible = Math.Min(totalLines - 1, (editor.ClientSize.Height / lineHeight) + 2);
                 return Math.Max(0, lastVisible - firstVisible + 1);
             }
         }
