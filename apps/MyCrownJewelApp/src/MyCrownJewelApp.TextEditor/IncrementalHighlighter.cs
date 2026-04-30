@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 
+// Performance and safety constants for syntax highlighting
 namespace MyCrownJewelApp.TextEditor;
 
 /// <summary>
@@ -54,6 +56,11 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly SyntaxDefinition _syntax;
     private readonly Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> _regexCache;
     private readonly ConcurrentDictionary<int, LineTokens> _tokenCache;
+    // Performance and safety constants
+    private const int MaxParseTimeMs = 16; // Target ~60fps (16ms per frame)
+    private const int MaxIterationsPerLine = 10000; // Prevent infinite loops in tokenization
+    private const int MaxWorkerBatchTimeMs = 50; // Max time worker spends per batch before yielding
+
     private readonly Channel<(int LineNumber, string Text)> _dirtyLines;
     private readonly CancellationTokenSource _cts;
     private readonly Task? _workerTask;
@@ -228,6 +235,7 @@ public sealed class IncrementalHighlighter : IDisposable
     {
         var dirtyBatch = new List<(int LineNumber, string Text)>();
         var dirtySet = new HashSet<int>();
+        var batchStopwatch = Stopwatch.StartNew();
 
         await foreach (var entry in _dirtyLines.Reader.ReadAllAsync(cancellationToken))
         {
@@ -239,7 +247,8 @@ public sealed class IncrementalHighlighter : IDisposable
             dirtyBatch.Add(entry);
             dirtySet.Add(entry.LineNumber);
 
-            // Drain channel into batch
+            // Drain channel into batch but with time limit to prevent starvation
+            batchStopwatch.Restart();
             while (_dirtyLines.Reader.TryRead(out var next))
             {
                 if (cancellationToken.IsCancellationRequested) break;
@@ -248,15 +257,31 @@ public sealed class IncrementalHighlighter : IDisposable
                     dirtyBatch.Add(next);
                     dirtySet.Add(next.LineNumber);
                 }
+
+                // Check if we've spent too much time batching - yield to prevent starvation
+                if (batchStopwatch.ElapsedMilliseconds > MaxWorkerBatchTimeMs)
+                {
+                    break;
+                }
             }
 
             // Sort and coalesce into ranges
             dirtyBatch.Sort((a, b) => a.LineNumber.CompareTo(b.LineNumber));
             var ranges = CoalesceIntoRanges(dirtyBatch);
 
+            // Process each range with time checking
             foreach (var (start, end) in ranges)
             {
                 if (cancellationToken.IsCancellationRequested) break;
+                
+                // Check if we've spent too much time on this batch - yield if needed
+                if (batchStopwatch.ElapsedMilliseconds > MaxWorkerBatchTimeMs)
+                {
+                    // Yield control back to the system briefly
+                    await Task.Delay(1, cancellationToken);
+                    batchStopwatch.Restart();
+                }
+                
                 TokenizeRange(start, end, dirtyBatch);
             }
         }
@@ -323,6 +348,8 @@ public sealed class IncrementalHighlighter : IDisposable
         var (keywords, types, stringRegex, commentRegex, numberRegex, preprocessorRegex) = GetOrCreateCompiledRegexes(_syntax);
         var colored = new bool[line.Length];
         int pos = 0;
+        int iterations = 0;
+        var stopwatch = Stopwatch.StartNew();
 
         // ---- Handle multi-line continuation from previous line ----
         if (initialState.InComment)
@@ -380,7 +407,16 @@ public sealed class IncrementalHighlighter : IDisposable
 
         while (pos < line.Length)
         {
+            // Check for timeout or excessive iterations
+            if (stopwatch.ElapsedMilliseconds > MaxParseTimeMs || iterations > MaxIterationsPerLine)
+            {
+                // Timeout or too many iterations - return what we have so far and reset state
+                // This prevents hanging on problematic input
+                return (tokens, TokenizerState.Initial);
+            }
+
             bool matched = false;
+            iterations++;
 
             // Block comment start (/*) — enable regardless of line comment regex
             if (pos < line.Length - 1 && line[pos] == '/' && line[pos + 1] == '*')
@@ -485,6 +521,7 @@ public sealed class IncrementalHighlighter : IDisposable
             }
         }
 
+        stopwatch.Stop();
         return (tokens, initialState);
     }
 

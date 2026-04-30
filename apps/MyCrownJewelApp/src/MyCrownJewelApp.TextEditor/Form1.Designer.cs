@@ -120,15 +120,15 @@ partial class Form1
         fileMenu = new ToolStripMenuItem("&File");
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click);
-        openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click);
+        openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click) { ShortcutKeys = Keys.Control | Keys.O };
         recentMenuItem = new ToolStripMenuItem("Recent");
-        saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click);
-        saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click);
+        saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click) { ShortcutKeys = Keys.Control | Keys.S };
+        saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click) { ShortcutKeys = Keys.Control | Keys.Shift | Keys.S };
         saveAllMenuItem = new ToolStripMenuItem("Save A&ll", null, SaveAll_Click);
         closeTabMenuItem = new ToolStripMenuItem("Close Tab", null, CloseTab_Click);
         closeWindowMenuItem = new ToolStripMenuItem("Close Window", null, CloseWindow_Click);
         closeAllMenuItem = new ToolStripMenuItem("Close All", null, CloseAll_Click);
-        exitMenuItem = new ToolStripMenuItem("E&xit", null, Exit_Click);
+        exitMenuItem = new ToolStripMenuItem("E&xit", null, Exit_Click) { ShortcutKeys = Keys.Alt | Keys.F4 };
 
         fileMenu.DropDownItems.AddRange(new ToolStripItem[] {
             newTabMenuItem, newWindowMenuItem, openMenuItem, recentMenuItem,
@@ -138,17 +138,17 @@ partial class Form1
         });
 
         editMenu = new ToolStripMenuItem("&Edit");
-        undoMenuItem = new ToolStripMenuItem("&Undo", null, Undo_Click);
-        cutMenuItem = new ToolStripMenuItem("Cu&t", null, Cut_Click);
-        copyMenuItem = new ToolStripMenuItem("&Copy", null, Copy_Click);
-        pasteMenuItem = new ToolStripMenuItem("&Paste", null, Paste_Click);
-        deleteMenuItem = new ToolStripMenuItem("&Delete", null, Delete_Click);
-        findMenuItem = new ToolStripMenuItem("&Find...", null, Find_Click);
-        findNextMenuItem = new ToolStripMenuItem("Find &Next", null, FindNext_Click);
-        findPreviousMenuItem = new ToolStripMenuItem("Find &Previous", null, FindPrevious_Click);
-        replaceMenuItem = new ToolStripMenuItem("&Replace...", null, Replace_Click);
-        gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click);
-        selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click);
+        undoMenuItem = new ToolStripMenuItem("&Undo", null, Undo_Click) { ShortcutKeys = Keys.Control | Keys.Z };
+        cutMenuItem = new ToolStripMenuItem("Cu&t", null, Cut_Click) { ShortcutKeys = Keys.Control | Keys.X };
+        copyMenuItem = new ToolStripMenuItem("&Copy", null, Copy_Click) { ShortcutKeys = Keys.Control | Keys.C };
+        pasteMenuItem = new ToolStripMenuItem("&Paste", null, Paste_Click) { ShortcutKeys = Keys.Control | Keys.V };
+        deleteMenuItem = new ToolStripMenuItem("&Delete", null, Delete_Click) { ShortcutKeys = Keys.Delete };
+        findMenuItem = new ToolStripMenuItem("&Find...", null, Find_Click) { ShortcutKeys = Keys.Control | Keys.F };
+        findNextMenuItem = new ToolStripMenuItem("Find &Next", null, FindNext_Click) { ShortcutKeys = Keys.F3 };
+        findPreviousMenuItem = new ToolStripMenuItem("Find &Previous", null, FindPrevious_Click) { ShortcutKeys = Keys.Shift | Keys.F3 };
+        replaceMenuItem = new ToolStripMenuItem("&Replace...", null, Replace_Click) { ShortcutKeys = Keys.Control | Keys.H };
+        gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click) { ShortcutKeys = Keys.Control | Keys.G };
+        selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click) { ShortcutKeys = Keys.Control | Keys.A };
         timeDateMenuItem = new ToolStripMenuItem("&Time/Date", null, TimeDate_Click);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click);
 
@@ -175,19 +175,19 @@ partial class Form1
 
         viewMenu = new ToolStripMenuItem("&View");
         zoomMenu = new ToolStripMenuItem("&Zoom");
-        zoomInMenuItem = new ToolStripMenuItem("Zoom &In", null, ZoomIn_Click);
-        zoomOutMenuItem = new ToolStripMenuItem("Zoom &Out", null, ZoomOut_Click);
-        restoreDefaultZoomMenuItem = new ToolStripMenuItem("&Restore Default Zoom", null, RestoreDefaultZoom_Click);
+        zoomInMenuItem = new ToolStripMenuItem("Zoom &In", null, ZoomIn_Click) { ShortcutKeys = Keys.Control | Keys.Add };
+        zoomOutMenuItem = new ToolStripMenuItem("Zoom &Out", null, ZoomOut_Click) { ShortcutKeys = Keys.Control | Keys.Subtract };
+        restoreDefaultZoomMenuItem = new ToolStripMenuItem("&Restore Default Zoom", null, RestoreDefaultZoom_Click) { ShortcutKeys = Keys.Control | Keys.D0 };
 
         zoomMenu.DropDownItems.AddRange(new ToolStripItem[] {
             zoomInMenuItem, zoomOutMenuItem, restoreDefaultZoomMenuItem
         });
 
-        statusBarMenuItem = new ToolStripMenuItem("&Status Bar", null, StatusBar_Click);
+        statusBarMenuItem = new ToolStripMenuItem("&Status Bar", null, StatusBar_Click) { ShortcutKeys = Keys.F8 };
         statusBarMenuItem.Checked = true;
-        wordWrapMenuItem = new ToolStripMenuItem("&Word Wrap", null, WordWrap_Click);
+        wordWrapMenuItem = new ToolStripMenuItem("&Word Wrap", null, WordWrap_Click) { ShortcutKeys = Keys.Control | Keys.W };
         wordWrapMenuItem.Checked = false;
-        syntaxHighlightingMenuItem = new ToolStripMenuItem("&Syntax Highlighting", null, SyntaxHighlighting_Click);
+        syntaxHighlightingMenuItem = new ToolStripMenuItem("&Syntax Highlighting", null, SyntaxHighlighting_Click) { ShortcutKeys = Keys.Control | Keys.Y };
         syntaxHighlightingMenuItem.Checked = false;
         
         // Current Line Highlight submenu

@@ -56,10 +56,16 @@ namespace MyCrownJewelApp.TextEditor
         private Rectangle normalBounds;
         private FormWindowState normalWindowState;
         private FormBorderStyle normalBorderStyle;
-
+        
+        // Tab behavior settings
         private bool autoIndentEnabled = true;
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
+        
+        // Syntax highlighting performance tracking
+        private DateTime _lastHighlightTime;
+        private int _highlightCountInLastSecond;
+        private Queue<DateTime> _highlightTimes;
         
         // Suspend selection changed events during internal updates
         private bool _suspendSelectionChanged = false;
@@ -203,6 +209,11 @@ namespace MyCrownJewelApp.TextEditor
             smartTabsMenuItem.Checked = smartTabsEnabled;
             elasticTabsMenuItem.Checked = elasticTabsEnabled;
 
+            // Initialize syntax highlighting performance tracking
+            _lastHighlightTime = DateTime.Now;
+            _highlightCountInLastSecond = 0;
+            _highlightTimes = new Queue<DateTime>();
+
             // Initialize incremental syntax highlighter if enabled
             if (syntaxHighlightingEnabled)
             {
@@ -244,6 +255,11 @@ namespace MyCrownJewelApp.TextEditor
                     RequestVisibleHighlight();
                 }
             };
+
+            // Performance tracking for adaptive debouncing
+            _lastHighlightTime = DateTime.Now;
+            _highlightCountInLastSecond = 0;
+            _highlightTimes = new Queue<DateTime>();
 
             // Elastic tab stops debounce timer
             elasticTabTimer = new System.Windows.Forms.Timer();
@@ -1699,16 +1715,45 @@ namespace MyCrownJewelApp.TextEditor
 
             UpdateStatusBar();
 
-            // Restart debounce timer for syntax highlighting (only if enabled)
-            if (syntaxHighlightingEnabled && highlightTimer != null)
-            {
-                highlightTimer.Stop();
-                highlightTimer.Start();
-            }
-
             // Restart debounce timer for elastic tab stops recompute
             elasticTabTimer?.Stop();
             elasticTabTimer?.Start();
+
+            // Adaptive debouncing for syntax highlighting based on recent activity
+            if (syntaxHighlightingEnabled && highlightTimer != null)
+            {
+                // Track highlighting frequency for adaptive behavior
+                var now = DateTime.Now;
+                _highlightTimes.Enqueue(now);
+                
+                // Remove entries older than 1 second
+                while (_highlightTimes.Count > 0 && 
+                       (now - _highlightTimes.Peek()).TotalSeconds > 1.0)
+                {
+                    _highlightTimes.Dequeue();
+                }
+                
+                _highlightCountInLastSecond = _highlightTimes.Count;
+                
+                // Adjust debounce interval based on activity level
+                int adaptiveInterval;
+                if (_highlightCountInLastSecond > 20) // Very active typing
+                {
+                    adaptiveInterval = 200; // Longer delay to catch bursts
+                }
+                else if (_highlightCountInLastSecond > 10) // Moderate activity
+                {
+                    adaptiveInterval = 150; // Default delay
+                }
+                else // Low activity
+                {
+                    adaptiveInterval = 50; // Shorter delay for responsiveness
+                }
+                
+                highlightTimer.Interval = adaptiveInterval;
+                highlightTimer.Stop();
+                highlightTimer.Start();
+            }
         }
 
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
