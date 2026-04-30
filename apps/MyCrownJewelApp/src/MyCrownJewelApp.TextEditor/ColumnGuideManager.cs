@@ -19,9 +19,6 @@ public sealed class ColumnGuideManager : IDisposable
     private readonly bool _isOverlayPanel;
     private readonly ConcurrentDictionary<int, (float x, float width)> _columnCache = new();
     private readonly object _penLock = new();
-    private readonly System.Threading.CancellationTokenSource _bgCts = new();
-    private readonly System.Threading.Tasks.Task _backgroundWorker;
-    private readonly WinFormsTimer _repaintTimer;
     private float _dpiScale;
 
     private Pen? _softGuidePen;
@@ -29,11 +26,6 @@ public sealed class ColumnGuideManager : IDisposable
     private bool _isAttached;
     private int[] _guideColumns = Array.Empty<int>();
     private bool _disposed;
-    private long _lastTextChangeTicks;
-    private bool _repaintPending;
-    private int _lastVisibleStartLine = -1;
-    private int _lastVisibleEndLine = -1;
-    private volatile bool _suspendRequests; // temporarily skip work during heavy ops
 
     // Event handlers for detaching
     private EventHandler? _resizeHandler;
@@ -48,7 +40,6 @@ public sealed class ColumnGuideManager : IDisposable
 
     private const float GuideAlphaSoft = 80f;   // ~30% opacity
     private const float GuideAlphaStrong = 160f; // ~60% opacity
-    private const int BackgroundDelayMs = 500;   // Low-priority bg task delay (increased to avoid UI flooding)
     private const int PaintBudgetMs = 8;        // Target <8ms per paint
 
     /// <summary>
@@ -99,9 +90,6 @@ public sealed class ColumnGuideManager : IDisposable
         _isOverlayPanel = _drawTarget != _editor;
 
         _dpiScale = GetDpiScale(_editor);
-        _backgroundWorker = System.Threading.Tasks.Task.Run(BackgroundCacheWorker);
-        _repaintTimer = new WinFormsTimer { Interval = 16, Enabled = false };
-        _repaintTimer.Tick += (s, e) => { _repaintTimer.Stop(); SafeInvalidate(); };
 
         // Create and attach event handlers (store for later detach)
         _handleCreatedHandler = (s, e) => { if (_isAttached) { InvalidateCache(); RequestRepaint(); } };
@@ -111,7 +99,7 @@ public sealed class ColumnGuideManager : IDisposable
 
         _resizeHandler = (s, e) => { InvalidateCache(); RequestRepaint(); };
         _fontChangedHandler = (s, e) => { InvalidateCache(); RequestRepaint(); };
-        _textChangedHandler = (s, e) => { InvalidateCache(); _lastTextChangeTicks = DateTime.UtcNow.Ticks; RequestRepaint(); };
+        _textChangedHandler = (s, e) => { InvalidateCache(); RequestRepaint(); };
         _mouseWheelHandler = (s, e) => { InvalidateCache(); RequestRepaint(); };
 
         _editor.Resize += _resizeHandler;
@@ -157,8 +145,6 @@ public sealed class ColumnGuideManager : IDisposable
     {
         if (_isAttached) return;
         _isAttached = true;
-        _lastVisibleStartLine = -1;
-        _lastVisibleEndLine = -1;
         InvalidateCache();
         RequestRepaint();
     }
@@ -171,24 +157,12 @@ public sealed class ColumnGuideManager : IDisposable
          _isAttached = false;
      }
 
-     /// <summary>
-     /// Temporarily suspend background cache updates during heavy operations.
-     /// </summary>
-     public void SuspendRequests() => _suspendRequests = true;
+     public void SuspendRequests() { }
+     public void ResumeRequests() { }
 
      /// <summary>
-     /// Resume background cache updates after suspension.
+     /// Updates the set of guide columns and clears cached positions.
      /// </summary>
-     public void ResumeRequests()
-     {
-         _suspendRequests = false;
-         InvalidateCache();
-         RequestRepaint();
-     }
-
-      /// <summary>
-      /// Updates the set of guide columns and clears cached positions.
-      /// </summary>
       /// <param name="columns">Zero-based character column indices (or null to clear).</param>
       public void SetGuides(params int[] columns)
     {
@@ -204,9 +178,6 @@ public sealed class ColumnGuideManager : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-
-        _bgCts.Cancel();
-        _repaintTimer.Dispose();
 
         DisposePens();
 
@@ -229,8 +200,6 @@ public sealed class ColumnGuideManager : IDisposable
         {
             _drawTarget.Paint -= _paintHandler!;
         }
-
-        _bgCts.Dispose();
     }
 
     #region Drawing
@@ -312,6 +281,11 @@ public sealed class ColumnGuideManager : IDisposable
 
         // Restore clipping
         g.ResetClip();
+    }
+
+    private void EnqueueBackgroundCacheRequest(int column)
+    {
+        // No-op: background caching disabled.
     }
 
     private void EnsurePens()
@@ -438,124 +412,14 @@ public sealed class ColumnGuideManager : IDisposable
         return columnIndex >= 0;
     }
 
-    #endregion
+     #endregion
 
-    #region Background Cache Worker
-
-    private void EnqueueBackgroundCacheRequest(int column)
-    {
-        // Stub: could queue column for background refinement.
-        // BackgroundCacheWorker already refines all visible columns.
-    }
-
-    private void BackgroundCacheWorker()
-    {
-        while (!_bgCts.Token.IsCancellationRequested)
-        {
-            try
-            {
-                System.Threading.Thread.Sleep(BackgroundDelayMs);
-
-                if (!_isAttached || _editor.IsDisposed || !_editor.IsHandleCreated || _suspendRequests)
-                    continue;
-
-                // Skip during active typing (last edit <2 sec ago)
-                if (DateTime.UtcNow.Ticks - _lastTextChangeTicks < TimeSpan.TicksPerSecond * 2)
-                    continue;
-
-                // Run GetVisibleLineRange on UI thread with short timeout
-                int visibleLines = 0;
-                int firstLine = 0, lastLine = 0;
-                var ar = _editor.BeginInvoke(new Action(() =>
-                {
-                    visibleLines = GetVisibleLineRange(_editor, out firstLine, out lastLine);
-                }));
-                bool completed = ar.AsyncWaitHandle.WaitOne(50);
-                if (!completed) continue; // UI thread busy, skip
-
-                if (visibleLines <= 0) continue;
-
-                if (firstLine == _lastVisibleStartLine && lastLine == _lastVisibleEndLine)
-                    continue;
-
-                _lastVisibleStartLine = firstLine;
-                _lastVisibleEndLine = lastLine;
-
-                // Fire-and-forget refinement
-                try
-                {
-                    _editor.BeginInvoke(new Action(() =>
-                    {
-                        try { RefineCacheForVisibleRange(firstLine, lastLine); }
-                        catch { }
-                    }));
-                }
-                catch { }
-            }
-            catch { }
-        }
-    }
-
-    private void RefineCacheForVisibleRange(int firstLine, int lastLine)
-    {
-        try
-        {
-            if (_editor.IsDisposed || !_editor.IsHandleCreated) return;
-
-            using var g = _editor.CreateGraphics();
-            g.PageUnit = GraphicsUnit.Pixel;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-            float zoom = GetZoomFactor(_editor);
-            var font = _editor.Font;
-            if (font == null) return;
-
-            // Measure a sample string of N characters to get per-char accumulated width
-            int maxCol = _guideColumns.Length > 0 ? _guideColumns.Max() + 1 : 100;
-            var sample = new string('x', Math.Max(100, maxCol));
-
-            var charPositions = new List<float>(sample.Length + 1);
-            charPositions.Add(0);
-
-            for (int i = 0; i < sample.Length; i++)
-            {
-                var sub = sample.Substring(0, i + 1);
-                var sz = g.MeasureString(sub, font, new PointF(0, 0), StringFormat.GenericTypographic);
-                charPositions.Add(sz.Width * zoom);
-            }
-
-            foreach (var col in _guideColumns)
-            {
-                if (col < charPositions.Count)
-                {
-                    var refinedX = charPositions[col];
-                    var width = (col + 1 < charPositions.Count) ? charPositions[col + 1] - charPositions[col] : charPositions[^1] - charPositions[^2];
-                    _columnCache.AddOrUpdate(col, (refinedX, width), (k, old) => (refinedX, width));
-                }
-            }
-        }
-        catch { }
-    }
-
-    #endregion
-
-    #region Repaint
+     #region Repaint
 
     private void RequestRepaint()
     {
-        if (_repaintPending) return;
-        _repaintPending = true;
-        _repaintTimer.Stop();
-        _repaintTimer.Start();
-    }
-
-    private void SafeInvalidate()
-    {
-        if (_repaintPending && _drawTarget.IsHandleCreated && !_drawTarget.IsDisposed)
-        {
+        if (_drawTarget.IsHandleCreated && !_drawTarget.IsDisposed)
             _drawTarget.Invalidate();
-            _repaintPending = false;
-        }
     }
 
     private static int GetVisibleLineRange(Control editor, out int firstVisible, out int lastVisible)
