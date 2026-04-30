@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 
 namespace MyCrownJewelApp.TextEditor;
 
@@ -61,11 +63,33 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly Color _commentColor;
     private readonly Color _numberColor;
     private readonly Color _preprocessorColor;
-
     private bool _disposed;
-    private string[]? _linesSnapshot;
 
     public event EventHandler<HighlightPatch>? PatchReady;
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, StringBuilder lParam);
+    private const int EM_GETLINE = 0x00C4;
+
+    private string GetLineText(int lineIndex)
+    {
+        if (_textEditor.IsDisposed) return string.Empty;
+
+        if (_textEditor.IsHandleCreated)
+        {
+            var sb = new StringBuilder(4096);
+            int len = SendMessage(_textEditor.Handle, EM_GETLINE, lineIndex, sb);
+            if (len > 0) return sb.ToString();
+            return string.Empty;
+        }
+        else
+        {
+            // Fallback for scenarios without a window handle (e.g., unit tests)
+            var lines = _textEditor.Lines;
+            if (lineIndex >= 0 && lineIndex < lines.Length) return lines[lineIndex];
+            return string.Empty;
+        }
+    }
 
     public IncrementalHighlighter(
         RichTextBox textEditor,
@@ -99,38 +123,21 @@ public sealed class IncrementalHighlighter : IDisposable
         // Compile regexes upfront
         GetOrCreateCompiledRegexes(syntax);
 
-        // Capture initial lines snapshot on UI thread
-        _linesSnapshot = _textEditor.Lines;
-
         // Start background worker
         _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token));
     }
 
     /// <summary>
     /// Marks a line as requiring re-tokenization (called after text edit).
-    /// Evicts from cache — content changed, and refreshes lines snapshot.
+    /// Evicts from cache and enqueues dirty line for background processing.
     /// </summary>
     public void MarkDirty(int lineNumber)
     {
         if (lineNumber < 0) return;
-        // Update snapshot on UI thread (this call itself is on UI thread)
-        RefreshSnapshot();
+
         // Evict from cache — content changed
         _tokenCache.TryRemove(lineNumber, out _);
         _dirtyLines.Writer.TryWrite(lineNumber);
-    }
-
-    /// <summary>
-    /// Takes a fresh snapshot of editor lines for background tokenization.
-    /// Must be called on the UI thread.
-    /// </summary>
-    public void RefreshSnapshot()
-    {
-        try
-        {
-            Volatile.Write(ref _linesSnapshot, _textEditor.Lines);
-        }
-        catch { }
     }
 
     /// <summary>
@@ -257,22 +264,15 @@ public sealed class IncrementalHighlighter : IDisposable
             ? prevEntry.StateAfter
             : TokenizerState.Initial;
 
-        // Access lines snapshot safely (background thread)
-        string[] lines = Volatile.Read(ref _linesSnapshot) ?? Array.Empty<string>();
-        if (lines.Length == 0) return;
-
         for (int lineNum = startLine; lineNum <= endLine; lineNum++)
         {
-            if (lineNum >= lines.Length) break;
-
-            string line = lines[lineNum];
+            string line = GetLineText(lineNum);
             var (tokens, nextState) = TokenizeLine(line, state, lineNum);
             state = nextState;
 
             var lineTokens = new LineTokens(tokens, state);
             _tokenCache[lineNum] = lineTokens;
 
-            // Send patch to UI thread
             var patch = new HighlightPatch(lineNum, tokens);
             _uiContext?.Post(_ =>
             {
