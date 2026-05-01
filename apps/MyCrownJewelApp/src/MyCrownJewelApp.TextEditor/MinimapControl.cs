@@ -388,16 +388,34 @@ namespace MyCrownJewelApp.TextEditor
 
         private void UpdateTotalLines()
         {
-            if (_attachedEditor?.IsHandleCreated == true)
+            if (_attachedEditor == null)
             {
-                _totalLines = SendMessage(_attachedEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                if (_totalLines < 0) _totalLines = 0;
+                _totalLines = 0;
+                return;
+            }
+
+            if (_attachedEditor is TextBoxBase tb)
+            {
+                string text = tb.Text ?? string.Empty;
+                if (text.Length == 0)
+                {
+                    _totalLines = 1; // Empty editor still counts as one line
+                }
+                else
+                {
+                    // Count '\n' characters; RichTextBox normalizes line endings to \n internally.
+                    int newlineCount = 0;
+                    for (int i = 0; i < text.Length; i++)
+                        if (text[i] == '\n') newlineCount++;
+                    _totalLines = newlineCount + 1;
+                }
             }
             else
             {
                 _totalLines = 0;
             }
         }
+
 
         private void UpdateVisibleLines()
         {
@@ -412,7 +430,7 @@ namespace MyCrownJewelApp.TextEditor
         {
             if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
 
-            UpdateTotalLines();
+            // Only update viewport; total lines is updated via TextChanged/HandleCreated events
             UpdateViewportFromEditor();
 
             if (!_viewportRect.Equals(_lastPolledViewport))
@@ -466,6 +484,12 @@ namespace MyCrownJewelApp.TextEditor
             using (var g = Graphics.FromImage(_bufferBitmap))
             {
                 g.Clear(BackColor);
+
+                // If editor attached but totalLines is unexpectedly zero, recompute once more
+                if (_attachedEditor != null && _totalLines == 0)
+                {
+                    UpdateTotalLines();
+                }
 
                 if (_attachedEditor == null || _totalLines == 0)
                 {

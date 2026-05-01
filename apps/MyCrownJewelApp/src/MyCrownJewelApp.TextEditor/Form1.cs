@@ -2075,33 +2075,25 @@ namespace MyCrownJewelApp.TextEditor
         #region Minimap Methods
 
         /// <summary>
-        /// Positions the minimap in the table layout and adjusts the minimap column width.
-        /// The minimap occupies column 2 (right sidebar). Its visibility is controlled by _pendingMinimapVisible.
+        /// Positions the minimap as an overlay within the textEditor control, anchored to the right edge.
+        /// The minimap is positioned to the left of the vertical scrollbar (non-client area).
         /// </summary>
         private void PositionMinimap()
         {
-            if (minimapControl == null || mainTable == null) return;
+            if (minimapControl == null || textEditor == null) return;
 
-            // Ensure table has 3 columns (gutter | editor | minimap)
-            if (mainTable.ColumnCount < 3)
-                mainTable.ColumnCount = 3;
+            // Position minimap within textEditor's client area
+            int x = textEditor.ClientSize.Width - minimapControl.MinimapWidth;
+            int y = 0;
+            int width = minimapControl.MinimapWidth;
+            int height = textEditor.ClientSize.Height;
 
-            // Place minimap in column 2, row 0
-            mainTable.SetColumn(minimapControl, 2);
-            mainTable.SetRow(minimapControl, 0);
+            if (x < 0) x = 0;
+            if (width <= 0) width = 1;
+            if (height <= 0) height = 1;
 
-            // Set minimap visibility
+            minimapControl.Bounds = new Rectangle(x, y, width, height);
             minimapControl.Visible = _pendingMinimapVisible;
-
-            // Adjust column 2 width based on visibility
-            // Column 0 = gutter (already managed by ToggleGutter)
-            // Column 1 = editor (percent 100%)
-            // Column 2 = minimap (absolute)
-            if (mainTable.ColumnStyles.Count > 2)
-            {
-                mainTable.ColumnStyles[2].SizeType = SizeType.Absolute;
-                mainTable.ColumnStyles[2].Width = _pendingMinimapVisible ? minimapControl.MinimapWidth : 0;
-            }
         }
 
         #endregion
