@@ -104,11 +104,10 @@ public class GutterPanel : Panel
             int lineY = GetLineY(editor, lineIndex);
             if (lineY == -1) continue;
 
-            // Skip lines that are completely above the viewport (lineY + lineHeight <= 0)
+            // Skip lines that are completely above the viewport
             if (lineY + lineHeight <= 0) continue;
-            // Stop if line starts at or beyond bottom edge
-            // Stop when we've passed the visible client area
-            if (lineY >= editor.ClientSize.Height) break;
+            // Stop only when line starts *past* the bottom edge (> Height), not >=
+            if (lineY > editor.ClientSize.Height) break;
 
             int currentX = 0;
 
@@ -168,9 +167,9 @@ public class GutterPanel : Panel
             }
         }
 
-        // Compute visible line count from client height (include partial at bottom)
+        // Compute visible line count using ceiling to include partial bottom line, +3 safety margin
         int clientHeight = editor.ClientSize.Height;
-        lineCount = (clientHeight / lineHeight) + 2; // +2 for partial top+bottom safety
+        lineCount = (int)Math.Ceiling(clientHeight / (double)lineHeight) + 3;
         if (lineCount < 1) lineCount = 1;
     }
 
