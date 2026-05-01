@@ -268,11 +268,12 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
-        // Main Table Layout (2 columns: gutter | editor)
+        // Main Table Layout (3 columns: gutter | editor | minimap)
         mainTable = new TableLayoutPanel();
-        mainTable.ColumnCount = 2;
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));   // Gutter
-        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F)); // Editor
+        mainTable.ColumnCount = 3;
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));    // Gutter column
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));  // Editor column
+        mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));  // Minimap column (width adjusted at runtime)
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
@@ -300,33 +301,31 @@ partial class Form1
         textEditor.KeyDown += TextEditor_KeyDown;
         textEditor.Resize += TextEditor_Resize;
 
-        // Minimap Overlay
+        // Minimap Control (sidebar)
         minimapControl = new MinimapControl();
-        minimapControl.Width = 100;
         minimapControl.MinimapWidth = 100;
         minimapControl.Scale = 1.0f;
         minimapControl.ShowColors = false;
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
-        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
-        textEditor.Controls.Add(minimapControl);
-        minimapControl.BringToFront();
+        minimapControl.Dock = DockStyle.Fill;
 
-         // Column Guide Overlay
-         guidePanel = new ColumnGuidePanel();
-         guidePanel.LinkedEditor = textEditor;
-         guidePanel.GuideColumn = 80;
-         guidePanel.ShowGuide = true;
-         guidePanel.GuideColor = Color.FromArgb(60, 60, 60);
-         guidePanel.Bounds = textEditor.ClientRectangle;
-         guidePanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-         textEditor.Controls.Add(guidePanel);
-         guidePanel.BringToFront();
+        // Column Guide Overlay (overlays editor, not in table)
+        guidePanel = new ColumnGuidePanel();
+        guidePanel.LinkedEditor = textEditor;
+        guidePanel.GuideColumn = 80;
+        guidePanel.ShowGuide = true;
+        guidePanel.GuideColor = Color.FromArgb(60, 60, 60);
+        guidePanel.Bounds = textEditor.ClientRectangle;
+        guidePanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+        textEditor.Controls.Add(guidePanel);
+        guidePanel.BringToFront();
 
-         // Assemble table
+        // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
         mainTable.Controls.Add(textEditor, 1, 0);
+        mainTable.Controls.Add(minimapControl, 2, 0);
 
         // Status Strip
         statusStrip = new StatusStrip();

@@ -857,12 +857,8 @@ namespace MyCrownJewelApp.TextEditor
 
         private void MinimapMenuItem_Click(object? sender, EventArgs e)
         {
-            bool visible = minimapMenuItem.Checked;
-            if (minimapControl != null)
-            {
-                minimapControl.Visible = visible;
-                if (visible) PositionMinimap();
-            }
+            _pendingMinimapVisible = minimapMenuItem.Checked;
+            PositionMinimap();
             SaveSettings();
         }
 
@@ -2078,21 +2074,33 @@ namespace MyCrownJewelApp.TextEditor
 
         #region Minimap Methods
 
+        /// <summary>
+        /// Positions the minimap in the table layout and adjusts the minimap column width.
+        /// The minimap occupies column 2 (right sidebar). Its visibility is controlled by _pendingMinimapVisible.
+        /// </summary>
         private void PositionMinimap()
         {
-            if (minimapControl != null && mainTable != null)
+            if (minimapControl == null || mainTable == null) return;
+
+            // Ensure table has 3 columns (gutter | editor | minimap)
+            if (mainTable.ColumnCount < 3)
+                mainTable.ColumnCount = 3;
+
+            // Place minimap in column 2, row 0
+            mainTable.SetColumn(minimapControl, 2);
+            mainTable.SetRow(minimapControl, 0);
+
+            // Set minimap visibility
+            minimapControl.Visible = _pendingMinimapVisible;
+
+            // Adjust column 2 width based on visibility
+            // Column 0 = gutter (already managed by ToggleGutter)
+            // Column 1 = editor (percent 100%)
+            // Column 2 = minimap (absolute)
+            if (mainTable.ColumnStyles.Count > 2)
             {
-                // Position minimap in the gutter column
-                // The minimap should be in the first column (gutter) of the table layout
-                if (mainTable.ColumnCount >= 1 && mainTable.RowCount >= 1)
-                {
-                    // Set the minimap to fill the gutter cell
-                    mainTable.SetColumn(minimapControl, 0);
-                    mainTable.SetRow(minimapControl, 0);
-                    
-                    // Make sure the minimap is visible if minimap is enabled
-                    minimapControl.Visible = _pendingMinimapVisible && gutterVisible;
-                }
+                mainTable.ColumnStyles[2].SizeType = SizeType.Absolute;
+                mainTable.ColumnStyles[2].Width = _pendingMinimapVisible ? minimapControl.MinimapWidth : 0;
             }
         }
 
