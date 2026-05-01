@@ -13,7 +13,7 @@ internal static class Program
     private static string _statusMessage = "";
     private static DateTime _statusTime = DateTime.MinValue;
 
-    private static void Main()
+    private static void Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
         Console.Title = "Text Editor";

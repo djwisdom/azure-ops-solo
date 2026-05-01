@@ -2,24 +2,23 @@ using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.TextEditor;
 
-    public class SyntaxDefinition
-    {
-        public string Name { get; set; } = string.Empty;
-        public string[] Extensions { get; set; } = Array.Empty<string>();
-        public string[] Keywords { get; set; } = Array.Empty<string>();
-        public string[] Types { get; set; } = Array.Empty<string>();
-        public string[] Preprocessor { get; set; } = Array.Empty<string>();
-        public string StringPattern { get; set; } = string.Empty;
-        public string CommentPattern { get; set; } = string.Empty;
-        public string NumberPattern { get; set; } = string.Empty;
-        public string[] MultiLineCommentPatterns { get; set; } = Array.Empty<string>();
+/// <summary>
+/// Immutable definition for a language's syntax: keyword lists, regex patterns for tokens.
+/// </summary>
+public sealed record SyntaxDefinition
+{
+    public string Name { get; init; } = string.Empty;
+    public string[] Extensions { get; init; } = Array.Empty<string>();
+    public string[] Keywords { get; init; } = Array.Empty<string>();
+    public string[] Types { get; init; } = Array.Empty<string>();
+    public string[] Preprocessor { get; init; } = Array.Empty<string>();
+    public string StringPattern { get; init; } = string.Empty;
+    public string CommentPattern { get; init; } = string.Empty;
+    public string NumberPattern { get; init; } = string.Empty;
+    public string[] MultiLineCommentPatterns { get; init; } = Array.Empty<string>();
 
-        public SyntaxDefinition()
-        {
-            // Default empty definition
-        }
-
-    public static SyntaxDefinition CSharp => new SyntaxDefinition
+    // Built-in definitions
+    public static SyntaxDefinition CSharp => new()
     {
         Name = "C#",
         Extensions = new[] { ".cs", ".csx" },
@@ -43,7 +42,7 @@ namespace MyCrownJewelApp.TextEditor;
         NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b"
     };
 
-    public static SyntaxDefinition C => new SyntaxDefinition
+    public static SyntaxDefinition C => new()
     {
         Name = "C",
         Extensions = new[] { ".c", ".h" },
@@ -62,7 +61,7 @@ namespace MyCrownJewelApp.TextEditor;
         NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b"
     };
 
-    public static SyntaxDefinition Cpp => new SyntaxDefinition
+    public static SyntaxDefinition Cpp => new()
     {
         Name = "C++",
         Extensions = new[] { ".cpp", ".cxx", ".cc", ".c++", ".hpp", ".hxx", ".hh", ".h++", ".h" },
@@ -88,7 +87,7 @@ namespace MyCrownJewelApp.TextEditor;
         NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b"
     };
 
-    public static SyntaxDefinition Bicep => new SyntaxDefinition
+    public static SyntaxDefinition Bicep => new()
     {
         Name = "Bicep",
         Extensions = new[] { ".bicep" },
@@ -101,14 +100,14 @@ namespace MyCrownJewelApp.TextEditor;
             "properties", "identity", "apiVersion", "scope"
         },
         Types = new[] { "string", "bool", "int", "float", "array", "object", "null" },
-        Preprocessor = new string[0],
+        Preprocessor = Array.Empty<string>(),
         StringPattern = @"""([^""\\]|\\.)*""",
         CommentPattern = @"//.*$",
         MultiLineCommentPatterns = new[] { @"/\*.*?\*/" },
         NumberPattern = @"\b\d+(\.\d+)?\b"
     };
 
-    public static SyntaxDefinition Terraform => new SyntaxDefinition
+    public static SyntaxDefinition Terraform => new()
     {
         Name = "Terraform",
         Extensions = new[] { ".tf", ".tfvars", ".tfstate" },
@@ -122,14 +121,14 @@ namespace MyCrownJewelApp.TextEditor;
             "startswith", "endswith", "contains", "replace", "regex", "split", "trim", "trimspace"
         },
         Types = new[] { "string", "number", "bool", "list", "map", "set", "object", "any" },
-        Preprocessor = new string[0],
+        Preprocessor = Array.Empty<string>(),
         StringPattern = @"""([^""\\]|\\.)*""",
         CommentPattern = @"#.*$",
-        MultiLineCommentPatterns = new string[0],
+        MultiLineCommentPatterns = Array.Empty<string>(),
         NumberPattern = @"\b\d+(\.\d+)?\b"
     };
 
-    public static SyntaxDefinition Yaml => new SyntaxDefinition
+    public static SyntaxDefinition Yaml => new()
     {
         Name = "YAML",
         Extensions = new[] { ".yaml", ".yml", ".yaml.example", ".yml.example" },
@@ -139,14 +138,69 @@ namespace MyCrownJewelApp.TextEditor;
             "!!str", "!!int", "!!float", "!!bool", "!!null", "!!seq", "!!map", "!!set", "!!omap", "!!pairs"
         },
         Types = new[] { "str", "int", "float", "bool", "null", "seq", "map", "set", "omap", "pairs" },
-        Preprocessor = new string[0],
+        Preprocessor = Array.Empty<string>(),
         StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
         CommentPattern = @"#.*$",
-        MultiLineCommentPatterns = new string[0],
+        MultiLineCommentPatterns = Array.Empty<string>(),
         NumberPattern = @"\b\d+(\.\d+)?\b"
     };
 
-    public static SyntaxDefinition PowerShell => new SyntaxDefinition
+    public static SyntaxDefinition Html => new()
+    {
+        Name = "HTML",
+        Extensions = new[] { ".html", ".htm", ".xhtml" },
+        Keywords = new[] { "html", "head", "body", "div", "span", "p", "a", "img", "script", "style", "table", "tr", "td", "th", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "form", "input", "button", "link", "meta", "title" },
+        Types = Array.Empty<string>(),
+        Preprocessor = Array.Empty<string>(),
+        StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
+        CommentPattern = @"<!--.*?-->",
+        MultiLineCommentPatterns = Array.Empty<string>(),
+        NumberPattern = @"\b\d+(\.\d+)?\b"
+    };
+
+    public static SyntaxDefinition Css => new()
+    {
+        Name = "CSS",
+        Extensions = new[] { ".css", ".scss", ".sass", ".less" },
+        Keywords = new[] { "color", "background", "font", "margin", "padding", "border", "width", "height", "display", "position", "flex", "grid", "box-shadow", "transition", "transform", "animation", "media", "import", "url" },
+        Types = new[] { "px", "em", "rem", "vh", "vw", "%", "auto", "inherit", "initial", "unset" },
+        Preprocessor = Array.Empty<string>(),
+        StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
+        CommentPattern = @"/\*.*?\*/",
+        MultiLineCommentPatterns = Array.Empty<string>(),
+        NumberPattern = @"\b\d+(\.\d+)?(px|em|rem|vh|vw|%|pt|pc|in|cm|mm|ex|ch|s|ms|deg|rad|grad|turn)?\b"
+    };
+
+    public static SyntaxDefinition JavaScript => new()
+    {
+        Name = "JavaScript",
+        Extensions = new[] { ".js", ".jsx", ".mjs", ".cjs" },
+        Keywords = new[]
+        {
+            "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export", "extends", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "return", "super", "switch", "this", "throw", "try", "typeof", "var", "void", "while", "with", "let", "static", "yield", "async", "await", "of"
+        },
+        Types = new[] { "string", "number", "boolean", "undefined", "null", "symbol", "bigint", "object", "function", "Array", "Promise", "Map", "Set", "WeakMap", "WeakSet", "Date", "RegExp", "Error", "JSON" },
+        Preprocessor = Array.Empty<string>(),
+        StringPattern = @"""([^""\\]|\\.)*""|'[^']*'|`([^`\\]|\\.)*`",
+        CommentPattern = @"//.*$|/\*.*?\*/",
+        MultiLineCommentPatterns = Array.Empty<string>(),
+        NumberPattern = @"\b\d+\.?\d*(?:[eE][+-]?\d+)?\b"
+    };
+
+    public static SyntaxDefinition Json => new()
+    {
+        Name = "JSON",
+        Extensions = new[] { ".json", ".jsonc" },
+        Keywords = new[] { "true", "false", "null" },
+        Types = Array.Empty<string>(),
+        Preprocessor = Array.Empty<string>(),
+        StringPattern = @"""([^""\\]|\\.)*""",
+        CommentPattern = @"//.*$", // .jsonc supports line comments
+        MultiLineCommentPatterns = new[] { @"/\*.*?\*/" }, // .jsonc supports block comments
+        NumberPattern = @"-?\b\d+(\.\d+)?(?:[eE][+-]?\d+)?\b"
+    };
+
+    public static SyntaxDefinition PowerShell => new()
     {
         Name = "PowerShell",
         Extensions = new[] { ".ps1", ".psm1", ".psd1", ".psrc", ".pssc" },
@@ -161,11 +215,11 @@ namespace MyCrownJewelApp.TextEditor;
         Preprocessor = new[] { "#requires", "#comment", "#commentbasedhelp", "#region", "#endregion", "#if", "#else", "#endif" },
         StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
         CommentPattern = "#.*$",
-        MultiLineCommentPatterns = new string[0],
+        MultiLineCommentPatterns = Array.Empty<string>(),
         NumberPattern = @"\b\d+(\.\d+)?\b"
     };
 
-    public static SyntaxDefinition Bash => new SyntaxDefinition
+    public static SyntaxDefinition Bash => new()
     {
         Name = "Bash",
         Extensions = new[] { ".sh", ".bash", ".zsh", ".ksh", ".csh", ".tcsh", ".fish" },
@@ -181,27 +235,31 @@ namespace MyCrownJewelApp.TextEditor;
         Types = new[] { "string", "int", "bool", "array", "assoc", "null" },
         Preprocessor = new[] { "#!", "#if", "#else", "#elif", "#endif", "#define", "#undef", "#include" },
         StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
-        CommentPattern = @"#.*$",
-        MultiLineCommentPatterns = new string[0],
+        CommentPattern = "#.*$",
+        MultiLineCommentPatterns = Array.Empty<string>(),
         NumberPattern = @"\b\d+(\.\d+)?\b"
     };
 
-        public static SyntaxDefinition? GetDefinitionForFile(string filePath)
-        {
-            if (string.IsNullOrEmpty(filePath)) return CSharp; // default
+    public static SyntaxDefinition? GetDefinitionForFile(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return CSharp;
 
-            string ext = Path.GetExtension(filePath).ToLowerInvariant();
-            return ext switch
-            {
-                ".cs" or ".csx" => CSharp,
-                ".c" or ".h" => C,
-                ".cpp" or ".cxx" or ".cc" or ".c++" or ".hpp" or ".hxx" or ".hh" or ".h++" => Cpp,
-                ".bicep" => Bicep,
-                ".tf" or ".tfvars" or ".tfstate" => Terraform,
-                ".yaml" or ".yml" => Yaml,
-                ".ps1" or ".psm1" or ".psd1" or ".psrc" or ".pssc" => PowerShell,
-                ".sh" or ".bash" or ".zsh" or ".ksh" or ".csh" or ".tcsh" or ".fish" => Bash,
-                _ => null // unsupported - no syntax highlighting
-            };
-        }
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return ext switch
+        {
+            ".cs" or ".csx" => CSharp,
+            ".c" or ".h" => C,
+            ".cpp" or ".cxx" or ".cc" or ".c++" or ".hpp" or ".hxx" or ".hh" or ".h++" => Cpp,
+            ".bicep" => Bicep,
+            ".tf" or ".tfvars" or ".tfstate" => Terraform,
+            ".yaml" or ".yml" => Yaml,
+            ".html" or ".htm" or ".xhtml" => Html,
+            ".css" or ".scss" or ".sass" or ".less" => Css,
+            ".js" or ".jsx" or ".mjs" or ".cjs" => JavaScript,
+            ".json" or ".jsonc" => Json,
+            ".ps1" or ".psm1" or ".psd1" or ".psrc" or ".pssc" => PowerShell,
+            ".sh" or ".bash" or ".zsh" or ".ksh" or ".csh" or ".tcsh" or ".fish" => Bash,
+            _ => null
+        };
+    }
 }

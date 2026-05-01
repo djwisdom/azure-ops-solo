@@ -76,7 +76,7 @@ partial class Form1
         private ToolStripMenuItem col150MenuItem;
         private ToolStripMenuItem colCustomMenuItem;
         private ToolStripMenuItem gutterMenuItem;
-        private ToolStripMenuItem minimapMenuItem;
+        private ToolStripMenuItem vimModeMenuItem;
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
@@ -232,10 +232,13 @@ partial class Form1
           gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
           gutterMenuItem.Checked = false;
 
-         // Minimap toggle (initially unchecked)
-         minimapMenuItem = new ToolStripMenuItem("Minimap", null, MinimapMenuItem_Click);
-         minimapMenuItem.Checked = false; // Start hidden
-         minimapMenuItem.CheckOnClick = true;
+          // Minimap toggle (initially unchecked)
+          minimapMenuItem = new ToolStripMenuItem("Minimap", null, MinimapMenuItem_Click);
+          minimapMenuItem.Checked = false; // Start hidden
+          minimapMenuItem.CheckOnClick = true;
+
+          // Vim mode toggle
+          vimModeMenuItem = new ToolStripMenuItem("&Vim Mode", null, ToggleVimMode) { ShortcutKeys = Keys.Control | Keys.Alt | Keys.V };
 
          // Column Guide menu (checkable with dropdown for widths)
         columnGuideMenuItem = new ToolStripMenuItem("C&olumn Guide", null, ColumnGuide_Click);
@@ -260,7 +263,7 @@ partial class Form1
               zoomMenu, new ToolStripSeparator(), statusBarMenuItem, wordWrapMenuItem,
               syntaxHighlightingMenuItem, currentLineHighlightMenu, insertSpacesMenuItem, tabSizeMenu,
               autoIndentMenuItem, smartTabsMenuItem, elasticTabsMenuItem,
-              gutterMenuItem, columnGuideMenuItem, minimapMenuItem, new ToolStripSeparator(), themeMenu
+              gutterMenuItem, columnGuideMenuItem, minimapMenuItem, vimModeMenuItem, new ToolStripSeparator(), themeMenu
           });
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });

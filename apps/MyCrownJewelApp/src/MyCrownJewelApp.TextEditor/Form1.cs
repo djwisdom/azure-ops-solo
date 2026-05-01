@@ -26,6 +26,19 @@ namespace MyCrownJewelApp.TextEditor
 
         private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
+        // Win32 API for non-client area file drop (title bar, etc.)
+        [DllImport("shell32.dll")]
+        private static extern void DragAcceptFiles(IntPtr hWnd, bool fAccept);
+
+        [DllImport("shell32.dll")]
+        private static extern uint DragQueryFile(IntPtr hDrop, uint iFile,
+            [Out] char[]? lpszFile, uint cch);
+
+        [DllImport("shell32.dll")]
+        private static extern void DragFinish(IntPtr hDrop);
+
+        private const int WM_DROPFILES = 0x0233;
+
         private void ApplyScrollbarTheme()
         {
             if (textEditor != null && textEditor.IsHandleCreated)
@@ -52,10 +65,18 @@ namespace MyCrownJewelApp.TextEditor
         private float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
-        private bool isFullScreen = false;
-        private Rectangle normalBounds;
-        private FormWindowState normalWindowState;
-        private FormBorderStyle normalBorderStyle;
+        
+        // Vim mode state
+        private bool vimModeEnabled = false;
+        private VimEngine? vimEngine;
+        
+        // Minimap state
+        private ToolStripMenuItem minimapMenuItem = null!;
+        private bool _pendingMinimapVisible = false;
+        
+        // Properties for GutterPanel
+        public CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
+        public bool IsDarkTheme => isDarkTheme;
         
         // Tab behavior settings
         private bool autoIndentEnabled = true;
@@ -152,7 +173,11 @@ namespace MyCrownJewelApp.TextEditor
         this.KeyDown += Form1_KeyDown;
         this.FormClosing += Form1_FormClosing;
         this.Activated += Form1_Activated;
-            zoomFactor = 1.0f;
+
+        // Enable file drop support (client area + non-client area)
+        EnableFileDrop();
+
+        zoomFactor = 1.0f;
             // Set flat border for editor
             textEditor.BorderStyle = BorderStyle.None;
             
@@ -266,18 +291,208 @@ namespace MyCrownJewelApp.TextEditor
             elasticTabTimer.Interval = 250; // 250ms after last change
             elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
 
-            // Initialize incremental highlighter (after colors are loaded)
-            CreateIncrementalHighlighter();
+             // Initialize incremental highlighter (after colors are loaded)
+             CreateIncrementalHighlighter();
 
-            // Apply syntax highlighting state after timer is created
-            if (syntaxHighlightingEnabled)
+             // Apply syntax highlighting state after timer is created
+             if (syntaxHighlightingEnabled)
+             {
+                 highlightTimer.Start();
+             }
+
+              // Initialize Vim engine
+              vimEngine = new VimEngine(textEditor!);
+
+             // Ensure initial dirty flag is clear after all initialization
+             isModified = false;
+         }
+
+        #region File Drop Support
+
+        /// <summary>
+        /// Enables file drop support on the form and editor control.
+        /// Supports both client area (standard OLE) and non-client area (title bar) via WM_DROPFILES.
+        /// </summary>
+        private void EnableFileDrop()
+        {
+            // Standard WinForms drag-drop (client area: form and editor control)
+            this.AllowDrop = true;
+            this.DragEnter += MainForm_DragEnter;
+            this.DragDrop += MainForm_DragDrop;
+
+            // Also enable on the editor control for precise targeting
+            if (textEditor != null)
             {
-                highlightTimer.Start();
+                textEditor.AllowDrop = true;
+                textEditor.DragEnter += MainForm_DragEnter;
+                textEditor.DragDrop += MainForm_DragDrop;
             }
 
-            // Ensure initial dirty flag is clear after all initialization
-            isModified = false;
+            // Non-client area drop (title bar, borders) handled via WM_DROPFILES in WndProc
         }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            // Enable file drop on non-client area (title bar, etc.)
+            DragAcceptFiles(this.Handle, true);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_DROPFILES)
+            {
+                HandleWmDropFiles(m.WParam);
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        private void MainForm_DragEnter(object? sender, DragEventArgs e)
+        {
+            // Accept only file drops
+            if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true)
+            {
+                string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (files != null && files.Length > 0)
+                {
+                    // Optional: restrict to text-like extensions
+                    string ext = Path.GetExtension(files[0]);
+                    bool isTextFile = string.IsNullOrEmpty(ext) ||
+                        ext.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".log", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".csv", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".c", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".cpp", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".h", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".hpp", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".bicep", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".tf", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".yml", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".sh", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".bash", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".ts", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".htm", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".css", StringComparison.OrdinalIgnoreCase) ||
+                        ext.Equals(".jsonc", StringComparison.OrdinalIgnoreCase);
+
+                    if (isTextFile)
+                    {
+                        e.Effect = DragDropEffects.Copy;
+                        return;
+                    }
+                }
+            }
+
+            e.Effect = DragDropEffects.None;
+        }
+
+        private void MainForm_DragDrop(object? sender, DragEventArgs e)
+        {
+            try
+            {
+                if (e.Data?.GetDataPresent(DataFormats.FileDrop) != true) return;
+                string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (files == null || files.Length == 0) return;
+
+                string filePath = files[0]; // Handle first file (ignore additional)
+
+                // Security: validate path exists and is not a directory
+                if (!File.Exists(filePath))
+                {
+                    MessageBox.Show("The file does not exist.", "File Drop Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Security: validate path is absolute (not relative or UNC traversal)
+                try
+                {
+                    string fullPath = Path.GetFullPath(filePath);
+                    if (!fullPath.StartsWith(Path.GetFullPath(Environment.CurrentDirectory)) &&
+                        !fullPath.StartsWith(Path.GetPathRoot(fullPath) ?? fullPath))
+                    {
+                        // Path is suspicious; reject
+                        MessageBox.Show("Invalid file path.", "File Drop Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                }
+                catch { }
+
+                // Optional: file size limit (10MB)
+                try
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    const long maxSize = 10L * 1024 * 1024; // 10 MB
+                    if (fileInfo.Length > maxSize)
+                    {
+                        MessageBox.Show($"File is too large ({fileInfo.Length / 1024 / 1024}MB). Maximum allowed is 10MB.",
+                            "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException)
+                {
+                    MessageBox.Show($"Cannot access file: {ex.Message}", "File Access Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Load file content
+                LoadFile(filePath);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open dropped file: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void HandleWmDropFiles(IntPtr hDrop)
+        {
+            try
+            {
+                uint fileCount = DragQueryFile(hDrop, 0xFFFFFFFF, null, 0);
+
+                if (fileCount > 0)
+                {
+                    char[] fileName = new char[260]; // MAX_PATH
+                    DragQueryFile(hDrop, 0, fileName, 260);
+                    string path = new string(fileName).TrimEnd('\0');
+
+                    // Validate and load on UI thread
+                    if (this.InvokeRequired)
+                    {
+                        this.BeginInvoke(new Action(() => LoadFile(path)));
+                    }
+                    else
+                    {
+                        LoadFile(path);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to open dropped file: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                DragFinish(hDrop);
+            }
+        }
+
+        #endregion
 
         private void MinimapControl_ViewportChanged(object? sender, ViewportChangedEventArgs e)
         {
@@ -590,12 +805,10 @@ namespace MyCrownJewelApp.TextEditor
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
             }
-            catch { /* ignore settings save errors */ }
-        }
+             catch { /* ignore settings save errors */ }
+         }
 
-        private bool _pendingMinimapVisible = false; // set by LoadSettings, applied after controls exist
-
-        private void ToggleGutter()
+         private void ToggleGutter()
         {
             gutterVisible = !gutterVisible;
             gutterMenuItem.Checked = gutterVisible;
@@ -619,7 +832,30 @@ namespace MyCrownJewelApp.TextEditor
             SaveSettings();
         }
 
-        private void ToggleMinimap()
+        private void ToggleVimMode(object? sender, EventArgs e)
+        {
+            vimModeEnabled = !vimModeEnabled;
+            if (vimEngine != null)
+            {
+                if (vimModeEnabled)
+                {
+                    vimEngine.Enabled = true;
+                    vimEngine.EnterMode(VimMode.Normal);
+                }
+                else
+                {
+                    vimEngine.Enabled = false;
+                    // Return to normal insert mode when disabling vim
+                    // (this is handled by the engine disabling)
+                }
+            }
+            
+            // Update status bar to show Vim mode indicator
+            UpdateStatusBar();
+            SaveSettings();
+        }
+
+        private void MinimapMenuItem_Click(object? sender, EventArgs e)
         {
             bool visible = minimapMenuItem.Checked;
             if (minimapControl != null)
@@ -627,30 +863,6 @@ namespace MyCrownJewelApp.TextEditor
                 minimapControl.Visible = visible;
                 if (visible) PositionMinimap();
             }
-            SaveSettings();
-        }
-
-        private void PositionMinimap()
-        {
-            if (minimapControl == null || !minimapControl.Visible) return;
-            
-            int scrollbarWidth = SystemInformation.VerticalScrollBarWidth;
-            int x = textEditor.ClientSize.Width - scrollbarWidth - minimapControl.Width;
-            if (x < 0) x = 0;
-            minimapControl.Location = new Point(x, 0);
-            minimapControl.Height = textEditor.ClientSize.Height;
-        }
-
-        private void MinimapMenuItem_Click(object? sender, EventArgs e)
-        {
-            ToggleMinimap();
-        }
-
-        private void ToggleWordWrap()
-        {
-            wordWrapEnabled = !wordWrapEnabled;
-            wordWrapMenuItem.Checked = wordWrapEnabled;
-            ApplyWordWrap();
             SaveSettings();
         }
 
@@ -1008,19 +1220,11 @@ namespace MyCrownJewelApp.TextEditor
 
             col72MenuItem.Checked = (guideColumn == 72);
             col80MenuItem.Checked = (guideColumn == 80);
-            col100MenuItem.Checked = (guideColumn == 100);
-            col120MenuItem.Checked = (guideColumn == 120);
-            col150MenuItem.Checked = (guideColumn == 150);
-            colCustomMenuItem.Checked = !(guideColumn == 72 || guideColumn == 80 || guideColumn == 100 || guideColumn == 120 || guideColumn == 150);
-        }
-
-        private void ApplyWordWrap()
-        {
-            if (textEditor == null) return;
-            textEditor.WordWrap = wordWrapEnabled;
-            textEditor.ScrollBars = wordWrapEnabled ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.Both;
-            if (gutterPanel != null) gutterPanel.RefreshGutter();
-        }
+             col100MenuItem.Checked = (guideColumn == 100);
+             col120MenuItem.Checked = (guideColumn == 120);
+             col150MenuItem.Checked = (guideColumn == 150);
+             colCustomMenuItem.Checked = !(guideColumn == 72 || guideColumn == 80 || guideColumn == 100 || guideColumn == 120 || guideColumn == 150);
+         }
 
         #endregion
 
@@ -1834,7 +2038,122 @@ namespace MyCrownJewelApp.TextEditor
 
             // Encoding
             encodingLabel.Text = "UTF-8";
+
+             // Vim mode indicator
+             if (vimModeEnabled)
+             {
+                 // Insert vim mode indicator at the beginning of the status bar
+                 // We'll add it as a separate label or modify an existing one
+                 // For simplicity, we'll prepend it to the lineColLabel
+                 string modeIndicator = vimEngine?.CurrentMode switch
+                 {
+                     VimMode.Normal => "-- NORMAL --",
+                     VimMode.Insert => "-- INSERT --",
+                     VimMode.Visual => "-- VISUAL --",
+                     VimMode.VisualLine => "-- VISUAL LINE --",
+                     VimMode.VisualBlock => "-- VISUAL BLOCK --",
+                     VimMode.Command => "-- COMMAND --",
+                     VimMode.OperatorPending => "-- OPERATOR PENDING --",
+                     _ => "-- VIM --"
+                 };
+                 
+                 // Prepend the mode indicator to the line and column label
+                 lineColLabel.Text = $"{modeIndicator} | Ln {line}, Col {col}";
+             }
+             else
+             {
+                 // Remove vim mode indicator if present
+                 if (lineColLabel.Text.StartsWith("-- ") && lineColLabel.Text.Contains("|"))
+                 {
+                     int pipeIndex = lineColLabel.Text.IndexOf("|");
+                     if (pipeIndex > 0)
+                     {
+                         lineColLabel.Text = lineColLabel.Text.Substring(pipeIndex + 2); // Skip " | "
+                     }
+                 }
+             }
+         }
+
+        #endregion
+
+        #region Minimap Methods
+
+        private void PositionMinimap()
+        {
+            if (minimapControl != null && mainTable != null)
+            {
+                // Position minimap in the gutter column
+                // The minimap should be in the first column (gutter) of the table layout
+                if (mainTable.ColumnCount >= 1 && mainTable.RowCount >= 1)
+                {
+                    // Set the minimap to fill the gutter cell
+                    mainTable.SetColumn(minimapControl, 0);
+                    mainTable.SetRow(minimapControl, 0);
+                    
+                    // Make sure the minimap is visible if minimap is enabled
+                    minimapControl.Visible = _pendingMinimapVisible && gutterVisible;
+                }
+            }
         }
+
+        #endregion
+
+        #region Word Wrap Methods
+
+        private void ApplyWordWrap()
+        {
+            if (textEditor != null)
+            {
+                textEditor.WordWrap = wordWrapEnabled;
+            }
+        }
+
+        private void ToggleWordWrap()
+        {
+             wordWrapEnabled = !wordWrapEnabled;
+             wordWrapMenuItem.Checked = wordWrapEnabled;
+             ApplyWordWrap();
+             SaveSettings();
+         }
+
+        #endregion
+
+        #region External Change Methods
+
+        private void CheckExternalChange()
+        {
+            if (string.IsNullOrEmpty(currentFilePath) || !File.Exists(currentFilePath))
+                return;
+
+            try
+            {
+                var lastWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
+                if (lastFileWriteTime.HasValue && lastWriteTime > lastFileWriteTime.Value)
+                {
+                    // File has been modified externally
+                    var result = MessageBox.Show(
+                        $"The file '{Path.GetFileName(currentFilePath)}' has been modified outside of the editor.\n" +
+                        "Do you want to reload it?",
+                        "External File Change",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        LoadFile(currentFilePath);
+                    }
+                    else
+                    {
+                        // Update our stored timestamp to prevent repeated prompts
+                        lastFileWriteTime = lastWriteTime;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore errors accessing the file
+             }
+         }
 
         #endregion
 
@@ -2225,6 +2544,11 @@ namespace MyCrownJewelApp.TextEditor
             }
         }
 
+        private void ToggleFullScreen()
+        {
+            // Fullscreen toggle not yet implemented
+        }
+
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
             if (IsModified())
@@ -2242,78 +2566,22 @@ namespace MyCrownJewelApp.TextEditor
 
         private void Form1_Activated(object? sender, EventArgs e)
         {
-            if (CheckExternalChange())
-            {
-                var result = MessageBox.Show(
-                    "The file has been modified by an external program. Reload?",
-                    "External Change Detected",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
-
-                if (result == DialogResult.Yes)
-                {
-                    LoadFile(currentFilePath!);
-                }
-                else
-                {
-                    // Update our stored timestamp to the current file time to suppress further prompts
-                    try { lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath!); } catch { }
-                }
-            }
+            CheckExternalChange();
         }
 
-        internal bool CheckExternalChange()
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            if (currentFilePath == null || !File.Exists(currentFilePath) || lastFileWriteTime == null)
-                return false;
-
-            try
+            if (vimModeEnabled && vimEngine != null)
             {
-                var currentWrite = File.GetLastWriteTimeUtc(currentFilePath);
-                return currentWrite != lastFileWriteTime;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private void ToggleFullScreen()
-        {
-            if (isFullScreen)
-            {
-                // Restore previous state
-                this.FormBorderStyle = normalBorderStyle;
-                this.WindowState = FormWindowState.Normal;
-                if (normalWindowState == FormWindowState.Maximized)
+                // Let vim engine handle the key first
+                if (vimEngine.ProcessKey(keyData))
                 {
-                    this.WindowState = FormWindowState.Maximized;
+                    return true; // Indicate we handled the key
                 }
-                else
-                {
-                    this.Bounds = normalBounds;
-                }
-                this.TopMost = false;
-                isFullScreen = false;
             }
-            else
-            {
-                // Save current state
-                normalBounds = this.Bounds;
-                normalWindowState = this.WindowState;
-                normalBorderStyle = this.FormBorderStyle;
-                // Enter fullscreen: borderless, covers working area
-                this.FormBorderStyle = FormBorderStyle.None;
-                this.WindowState = FormWindowState.Normal;
-                this.Bounds = Screen.GetWorkingArea(this);
-                this.TopMost = true;
-                isFullScreen = true;
-            }
+            
+            return base.ProcessCmdKey(ref msg, keyData);
         }
-
-        internal CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
-
-        public bool IsDarkTheme => isDarkTheme;
 
         #endregion
 
