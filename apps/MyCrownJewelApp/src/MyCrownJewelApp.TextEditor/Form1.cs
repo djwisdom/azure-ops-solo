@@ -39,6 +39,15 @@ namespace MyCrownJewelApp.TextEditor
 
         private const int WM_DROPFILES = 0x0233;
 
+        // DWM API for title bar dark mode
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Win10 20H1+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19; // earlier Win10
+        private const int DWMWA_CAPTION_COLOR = 35; // Win11+
+        private const int DWMWA_BORDER_COLOR = 34;  // Win11+
+
         private void ApplyScrollbarTheme()
         {
             if (textEditor != null && textEditor.IsHandleCreated)
@@ -47,6 +56,40 @@ namespace MyCrownJewelApp.TextEditor
                     SetWindowTheme(textEditor.Handle, DARK_MODE_SCROLLBAR, null);
                 else
                     SetWindowTheme(textEditor.Handle, null, null);
+            }
+        }
+
+        private void ApplyTitleBarTheme()
+        {
+            if (!this.IsHandleCreated) return;
+
+            try
+            {
+                int darkMode = isDarkTheme ? 1 : 0;
+                int color = isDarkTheme ? unchecked((int)0xFF2D2D2D) : unchecked((int)0xFFF5F5F5); // ARGB dark/light gray
+
+                // Windows 10 20H1+ (build 19041+)
+                if (Environment.OSVersion.Version.Major >= 10 && Environment.OSVersion.Version.Build >= 19041)
+                {
+                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+                }
+                else
+                {
+                    // Older Windows 10
+                    int oldAttr = isDarkTheme ? 1 : 0;
+                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref oldAttr, sizeof(int));
+                }
+
+                // Windows 11+: also set caption and border colors
+                if (Environment.OSVersion.Version.Build >= 22000)
+                {
+                    DwmSetWindowAttribute(this.Handle, DWMWA_CAPTION_COLOR, ref color, sizeof(int));
+                    DwmSetWindowAttribute(this.Handle, DWMWA_BORDER_COLOR, ref color, sizeof(int));
+                }
+            }
+            catch
+            {
+                // DWM not available or attribute not supported — ignore
             }
         }
 
@@ -336,6 +379,7 @@ namespace MyCrownJewelApp.TextEditor
             base.OnHandleCreated(e);
             // Enable file drop on non-client area (title bar, etc.)
             DragAcceptFiles(this.Handle, true);
+            ApplyTitleBarTheme();
         }
 
         protected override void WndProc(ref Message m)
@@ -707,6 +751,8 @@ namespace MyCrownJewelApp.TextEditor
             {
                 ApplyScrollbarTheme();
             }
+
+            ApplyTitleBarTheme();
             
             if (syntaxHighlightingEnabled && incrementalHighlighter != null)
             {
