@@ -20,11 +20,9 @@ namespace MyCrownJewelApp.Pfpad
         private readonly RichTextBox _tb;
         private readonly StringBuilder _cmdBuffer = new();
         private string? _lastYank;
-        private string? _lastCommand;
         private int _repeatCount = 1;
 
         public event Action? SaveRequested;
-        public event Action? SaveAsRequested;
         public event Action? CloseRequested;
 
         private static readonly HashSet<Keys> MotionKeys = new()

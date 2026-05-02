@@ -391,7 +391,7 @@ private List<Document> documents = new();
 
             // Initialize folding manager and scan regions
             _foldingManager = new FoldingManager(textEditor!);
-            textEditor.TextChanged += (s, e) => _foldingManager?.ScanRegions();
+            textEditor!.TextChanged += (s, e) => _foldingManager?.ScanRegions();
             _foldingManager.ScanRegions();
             
             // Initialize syntax highlighting debounce timer
@@ -1982,7 +1982,7 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (sender is ToolStripMenuItem item)
             {
-                string text = item.Text.Replace("&", "");
+                string text = item.Text?.Replace("&", "") ?? "";
                 if (text == "Custom...")
                 {
                     OpenCustomColumnDialog();
