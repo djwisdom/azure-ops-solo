@@ -3076,13 +3076,11 @@ darkThemeMenuItem.Checked = isDark;
             // Encoding
             encodingLabel.Text = "UTF-8";
 
-             // Vim mode indicator
+             // Vim mode indicator — dedicated bold label
               if (vimModeEnabled)
               {
-                  // Insert vim mode indicator at the beginning of the status bar
-                  // We'll add it as a separate label or modify an existing one
-                  // For simplicity, we'll prepend it to the lineColLabel
-                  string modeIndicator = vimEngine?.CurrentMode switch
+                  vimModeLabel.Visible = true;
+                  vimModeLabel.Text = vimEngine?.CurrentMode switch
                   {
                       VimMode.Normal => "-- NORMAL --",
                       VimMode.Insert => "-- INSERT --",
@@ -3092,21 +3090,10 @@ darkThemeMenuItem.Checked = isDark;
                       VimMode.Command => "-- COMMAND --",
                       _ => "-- VIM --"
                   };
-                  
-                  // Prepend the mode indicator to the line and column label
-                  lineColLabel.Text = $"{modeIndicator} | Ln {line}, Col {col}";
               }
               else
               {
-                  // Remove vim mode indicator if present
-                  if (lineColLabel.Text.StartsWith("-- ") && lineColLabel.Text.Contains("|"))
-                  {
-                      int pipeIndex = lineColLabel.Text.IndexOf("|");
-                      if (pipeIndex > 0)
-                      {
-                          lineColLabel.Text = lineColLabel.Text.Substring(pipeIndex + 2); // Skip " | "
-                      }
-                  }
+                  vimModeLabel.Visible = false;
               }
 
             // File type

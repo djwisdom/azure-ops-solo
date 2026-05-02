@@ -101,6 +101,7 @@ partial class Form1
     private ToolStripStatusLabel encodingLabel;
     private ToolStripDropDownButton themeDropDown;
         internal ToolStripStatusLabel fileTypeLabel;
+    internal ToolStripStatusLabel vimModeLabel;
     private ToolStripStatusLabel gitBranchLabel;
     private ToolStripStatusLabel gitDirtyLabel;
     private ToolStripStatusLabel gitSyncLabel;
@@ -402,6 +403,9 @@ partial class Form1
         statusStrip.RenderMode = ToolStripRenderMode.Professional;
         statusStrip.Padding = new Padding(4, 1, 4, 1);
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
+        vimModeLabel = new ToolStripStatusLabel("");
+        vimModeLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);
+        vimModeLabel.Visible = false;
         charCountLabel = new ToolStripStatusLabel("0 characters");
         tabSizeDropDown = new ToolStripDropDownButton();
         tabSizeDropDown.Text = "Tab: 4";
@@ -444,6 +448,7 @@ partial class Form1
         fileTypeLabel.Alignment = ToolStripItemAlignment.Right;
 
         statusStrip.Items.Add(lineColLabel);
+        statusStrip.Items.Add(vimModeLabel);
         statusStrip.Items.Add(charCountLabel);
         statusStrip.Items.Add(tabSizeDropDown);
         statusStrip.Items.Add(gitBranchLabel);
