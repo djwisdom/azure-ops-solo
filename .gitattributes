@@ -1,0 +1,44 @@
+# Auto-detect text files and normalize to LF in the repository
+* text=auto
+
+# C# source files
+*.cs text=auto
+
+# Solution and project files
+*.sln text=auto
+*.csproj text=auto
+
+# Configuration files
+*.json text=auto
+*.xml text=auto
+*.config text=auto
+*.props text=auto
+*.targets text=auto
+
+# Markdown documentation
+*.md text=auto
+
+# YAML
+*.yml text=auto
+*.yaml text=auto
+
+# PowerShell
+*.ps1 text=auto
+*.psm1 text=auto
+*.psd1 text=auto
+
+# Shell scripts — keep LF even on Windows
+*.sh text eol=lf
+
+# Batch files — keep CRLF on Windows
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files — do not normalize
+*.exe binary
+*.dll binary
+*.pdb binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
