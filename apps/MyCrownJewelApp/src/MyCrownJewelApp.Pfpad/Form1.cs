@@ -2881,6 +2881,25 @@ darkThemeMenuItem.Checked = isDark;
             // TODO: implement mouse handling if needed
         }
 
+        private void TextEditor_MouseWheel(object? sender, MouseEventArgs e)
+        {
+            if ((Control.ModifierKeys & Keys.Control) != 0)
+            {
+                // Ctrl+MouseWheel changes ZoomFactor natively — sync the gutter after it's applied
+                this.BeginInvoke(new Action(() =>
+                {
+                    float newZoom = textEditor.ZoomFactor;
+                    if (Math.Abs(newZoom - zoomFactor) > 0.01f)
+                    {
+                        zoomFactor = newZoom;
+                        zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
+                        gutterPanel?.RefreshGutter();
+                        guidePanel?.Invalidate();
+                    }
+                }));
+            }
+        }
+
          private void TextEditor_Resize(object? sender, EventArgs e)
          {
              if (gutterPanel != null) gutterPanel.RefreshGutter();

@@ -349,6 +349,7 @@ partial class Form1
         textEditor.VScroll += TextEditor_VScroll;
         textEditor.KeyDown += TextEditor_KeyDown;
         textEditor.MouseDown += TextEditor_MouseDown;
+        textEditor.MouseWheel += TextEditor_MouseWheel;
 
         // Column Guide Overlay (overlays editor, not in table)
         guidePanel = new ColumnGuidePanel();
