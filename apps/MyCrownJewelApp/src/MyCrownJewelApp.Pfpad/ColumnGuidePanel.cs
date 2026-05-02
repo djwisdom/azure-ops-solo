@@ -4,15 +4,13 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-/// <summary>
-/// Thin vertical rule drawn behind text at a specified character column.
-/// Lightweight — no caches, no background threads, no CreateGraphics calls.
-/// </summary>
-public sealed class ColumnGuidePanel : Panel
+public sealed class ColumnGuidePanel : Control
 {
     private RichTextBox? _editor;
     private int _guideColumn = 80;
     private bool _showGuide = true;
+
+    private const int WM_ERASEBKGND = 0x0014;
 
     public ColumnGuidePanel()
     {
@@ -31,9 +29,19 @@ public sealed class ColumnGuidePanel : Panel
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT
+            cp.ExStyle |= 0x00000020;
             return cp;
         }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_ERASEBKGND)
+        {
+            m.Result = (IntPtr)1;
+            return;
+        }
+        base.WndProc(ref m);
     }
 
     protected override void OnPaintBackground(PaintEventArgs e) { }
@@ -72,7 +80,6 @@ public sealed class ColumnGuidePanel : Panel
     {
         if (!_showGuide || _editor == null || !_editor.IsHandleCreated) return;
 
-        // Compute pixel X of the guide column using the editor's own position API
         int charIndex = _editor.GetFirstCharIndexFromLine(0);
         if (charIndex < 0) return;
         int col = Math.Min(_guideColumn - 1, Math.Max(0, _editor.TextLength - 1));

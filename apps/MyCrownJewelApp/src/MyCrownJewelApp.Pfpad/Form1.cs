@@ -1450,11 +1450,8 @@ darkThemeMenuItem.Checked = isDark;
         private void SyncGuidePanelBounds()
         {
             if (guidePanel == null || textEditor == null) return;
-            if (showGuide)
-            {
-                guidePanel.Bounds = textEditor.Bounds;
-                guidePanel.Invalidate();
-            }
+            guidePanel.Bounds = textEditor.ClientRectangle;
+            guidePanel.Invalidate();
         }
 
         private void UpdateColumnGuideMenuChecked()

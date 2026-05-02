@@ -370,13 +370,15 @@ partial class Form1
         textEditor.MouseWheel += TextEditor_MouseWheel;
         textEditor.Resize += TextEditor_Resize;
 
-        // Column Guide Panel (sibling of textEditor inside editorPanel, no background)
+        // Column Guide Panel (child of textEditor for coordinate alignment; draws via parent paint)
         guidePanel = new ColumnGuidePanel();
         guidePanel.LinkedEditor = textEditor;
         guidePanel.GuideColumn = 80;
         guidePanel.ShowGuide = true;
         guidePanel.GuideColor = Color.FromArgb(100, 120, 120, 120);
         guidePanel.BackColor = Color.Transparent;
+        textEditor.Controls.Add(guidePanel);
+        guidePanel.SendToBack();
 
         // Minimap Control (docked right inside editorPanel, hidden by default)
         minimapControl = new MinimapControl();
@@ -387,11 +389,9 @@ partial class Form1
         minimapControl.MinimapWidth = 100;
         minimapControl.Visible = false;
 
-        // Assemble editor panel with textEditor + minimap + guide
+        // Assemble editor panel with textEditor + minimap
         editorPanel.Controls.Add(textEditor);
         editorPanel.Controls.Add(minimapControl);
-        editorPanel.Controls.Add(guidePanel);
-        guidePanel.BringToFront();
 
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
