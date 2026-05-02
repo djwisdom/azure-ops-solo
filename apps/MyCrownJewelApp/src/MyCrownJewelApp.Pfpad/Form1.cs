@@ -1385,8 +1385,12 @@ darkThemeMenuItem.Checked = isDark;
             guideColumn = column;
             showGuide = true;
             columnGuideMenuItem.Checked = true;
+            if (guidePanel != null)
+            {
+                guidePanel.ShowGuide = true;
+                guidePanel.GuideColumn = column;
+            }
             UpdateColumnGuideMenuChecked();
-            guidePanel?.Invalidate();
             SaveSettings();
         }
 
@@ -1958,11 +1962,19 @@ darkThemeMenuItem.Checked = isDark;
 
         private void ColumnGuide_Click(object? sender, EventArgs e)
         {
-            // Menu item's Checked state is the new desired state
-            bool visible = columnGuideMenuItem.Checked;
-            showGuide = visible;
-            if (guidePanel != null) guidePanel.ShowGuide = visible;
-            SaveSettings();
+            if (sender is ToolStripMenuItem item)
+            {
+                string text = item.Text.Replace("&", "");
+                if (text == "Custom...")
+                {
+                    OpenCustomColumnDialog();
+                    return;
+                }
+                if (int.TryParse(text, out int col))
+                {
+                    SetGuideColumn(col);
+                }
+            }
         }
 
         private void SyntaxHighlighting_Click(object? sender, EventArgs e) => ToggleSyntaxHighlighting();

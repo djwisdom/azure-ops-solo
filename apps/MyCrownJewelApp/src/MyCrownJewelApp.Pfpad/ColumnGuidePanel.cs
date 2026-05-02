@@ -17,8 +17,10 @@ public sealed class ColumnGuidePanel : Panel
     public ColumnGuidePanel()
     {
         SetStyle(ControlStyles.UserPaint, true);
+        SetStyle(ControlStyles.AllPaintingInWmPaint, true);
         SetStyle(ControlStyles.SupportsTransparentBackColor, true);
         SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.ResizeRedraw, true);
         BackColor = Color.Transparent;
         TabStop = false;
         Enabled = false;
@@ -41,10 +43,16 @@ public sealed class ColumnGuidePanel : Panel
         get => _editor;
         set
         {
+            if (_editor != null)
+                _editor.VScroll -= OnEditorScroll;
             _editor = value;
+            if (_editor != null)
+                _editor.VScroll += OnEditorScroll;
             Invalidate();
         }
     }
+
+    private void OnEditorScroll(object? sender, EventArgs e) => Invalidate();
 
     public int GuideColumn
     {
