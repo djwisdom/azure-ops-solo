@@ -2945,7 +2945,6 @@ darkThemeMenuItem.Checked = isDark;
                       VimMode.VisualLine => "-- VISUAL LINE --",
                       VimMode.VisualBlock => "-- VISUAL BLOCK --",
                       VimMode.Command => "-- COMMAND --",
-                      VimMode.OperatorPending => "-- OPERATOR PENDING --",
                       _ => "-- VIM --"
                   };
                   
