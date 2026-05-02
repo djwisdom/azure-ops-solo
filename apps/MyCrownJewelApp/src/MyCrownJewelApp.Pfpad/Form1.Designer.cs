@@ -82,7 +82,6 @@ partial class Form1
         private ToolStripMenuItem lightThemeMenuItem;
 
         private TabControl tabControl;
-        private TabPage newTabButtonPage;
 
         private GutterPanel gutterPanel;
         private ColumnGuidePanel guidePanel;
@@ -286,14 +285,10 @@ partial class Form1
         tabControl.Padding = new Point(12, 4);
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
         tabControl.MouseDown += TabControl_MouseDown;
+        tabControl.MouseUp += TabControl_MouseUp;
         tabControl.MouseMove += TabControl_MouseMove;
         tabControl.DrawItem += TabControl_DrawItem;
-
-        // "New Tab" button tab - narrow width for 3 characters
-        newTabButtonPage = new TabPage("+");
-        newTabButtonPage.Width = 30;
-        newTabButtonPage.ToolTipText = "New Tab";
-        tabControl.TabPages.Add(newTabButtonPage);
+        tabControl.DoubleClick += TabControl_DoubleClick;
 
         // Main Table Layout (2 columns: gutter | editor)
         mainTable = new TableLayoutPanel();
@@ -409,11 +404,17 @@ partial class Form1
          Controls.Add(mainTable);
          Controls.Add(statusStrip);
 
-        // Set main menu strip
-        MainMenuStrip = menuStrip;
+         // Set main menu strip
+         MainMenuStrip = menuStrip;
 
-        // Ensure layout is performed after all controls added
-        ResumeLayout(false);
-        PerformLayout();
+         // Ensure proper z-order: menuStrip at top (index 0), then tabControl (index 1), then mainTable (index 2), then statusStrip (index 3)
+         Controls.SetChildIndex(menuStrip, 0);
+         Controls.SetChildIndex(tabControl, 1);
+         Controls.SetChildIndex(mainTable, 2);
+         Controls.SetChildIndex(statusStrip, 3);
+
+         // Ensure layout is performed after all controls added
+         ResumeLayout(false);
+         PerformLayout();
     }
 }

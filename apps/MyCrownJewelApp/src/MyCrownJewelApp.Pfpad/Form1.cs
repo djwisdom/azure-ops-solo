@@ -134,6 +134,11 @@ private List<Document> documents = new();
         private int? hoveredTabIndex = null;
         private Rectangle? closeButtonBounds = null;
 
+        // Tab drag state for tear-away
+        private int? _draggedTabIndex = null;
+        private Point? _dragStartPoint = null;
+        private bool _isDragging = false;
+
         // Tab close button state
 
         // Tab close button state
@@ -298,6 +303,7 @@ private List<Document> documents = new();
             UpdateStatusBar();
             UpdateColumnGuideMenuChecked();
             UpdateTabSizeMenu();
+            UpdateTabSizeDropdown();
             UpdateTabStops();
             UpdateCurrentLineHighlightMenu();
             if (textEditor != null)
@@ -2053,10 +2059,9 @@ darkThemeMenuItem.Checked = isDark;
             documents.Add(newDoc);
             int newIndex = documents.Count - 1;
 
-            // Create tab page
+            // Create tab page and add to end
             var tabPage = new TabPage(newDoc.DisplayName) { Tag = newDoc };
-            int plusIdx = tabControl.TabPages.IndexOf(newTabButtonPage);
-            tabControl.TabPages.Insert(plusIdx, tabPage);
+            tabControl.TabPages.Add(tabPage);
 
             // Switch to new tab
             tabControl.SelectedIndex = newIndex;
@@ -2088,8 +2093,7 @@ darkThemeMenuItem.Checked = isDark;
                 documents.Add(doc);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-                int plusIdx = tabControl.TabPages.IndexOf(newTabButtonPage);
-                tabControl.TabPages.Insert(plusIdx, tabPage);
+                tabControl.TabPages.Add(tabPage);
                 tabControl.SelectedIndex = newIndex; // triggers SwitchToTab
             }
             catch (Exception ex)
@@ -2209,14 +2213,16 @@ darkThemeMenuItem.Checked = isDark;
 
         private void TabControl_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            if (tabControl.SelectedTab == newTabButtonPage)
-            {
-                NewFile();
-            }
-            else
+            if (tabControl.SelectedIndex >= 0 && tabControl.SelectedIndex < documents.Count)
             {
                 SwitchToTab(tabControl.SelectedIndex);
             }
+        }
+
+        private void TabControl_DoubleClick(object? sender, EventArgs e)
+        {
+            // Create new tab on double-click anywhere on tab bar
+            NewFile();
         }
 
         private void TabControl_MouseDown(object? sender, MouseEventArgs e)
@@ -2224,20 +2230,94 @@ darkThemeMenuItem.Checked = isDark;
             if (e.Button == MouseButtons.Middle)
             {
                 // Close tab on middle-click
+                CloseTabAtLocation(e.Location);
+            }
+            else if (e.Button == MouseButtons.Left)
+            {
+                // Start potential drag
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
                     var rect = tabControl.GetTabRect(i);
                     if (rect.Contains(e.Location))
                     {
-                        if (tabControl.TabPages[i] != newTabButtonPage)
-                        {
-                            tabControl.SelectedIndex = i;
-                            CloseCurrentTab();
-                        }
+                        _draggedTabIndex = i;
+                        _dragStartPoint = tabControl.PointToScreen(e.Location);
+                        _isDragging = false;
                         break;
                     }
                 }
             }
+        }
+
+        private void TabControl_MouseUp(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                // End drag; if not detached, cancel
+                _draggedTabIndex = null;
+                _isDragging = false;
+            }
+        }
+
+        private void CloseTabAtLocation(Point location)
+        {
+            for (int i = 0; i < tabControl.TabPages.Count; i++)
+            {
+                var rect = tabControl.GetTabRect(i);
+                if (rect.Contains(location))
+                {
+                    tabControl.SelectedIndex = i;
+                    CloseCurrentTab();
+                    break;
+                }
+            }
+        }
+
+        private void DetachTabToNewWindow(int tabIndex, Point dragScreenPos)
+        {
+            if (tabIndex < 0 || tabIndex >= documents.Count) return;
+            var doc = documents[tabIndex];
+
+            // Create a new Form1 instance for the detached document
+            var detachedForm = new Form1();
+
+            // Remove the default untitled document from the new form
+            if (detachedForm.documents.Count > 0)
+            {
+                detachedForm.documents.Clear();
+                detachedForm.tabControl.TabPages.Clear();
+                detachedForm.activeDocIndex = -1;
+            }
+
+            // Add the dragged document to the new form
+            detachedForm.documents.Add(doc);
+            var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+            detachedForm.tabControl.TabPages.Add(tabPage);
+            detachedForm.tabControl.SelectedIndex = 0;
+            detachedForm.activeDocIndex = 0;
+            detachedForm.LoadDocument(doc);
+            detachedForm.UpdateWindowTitle();
+            detachedForm.UpdateTabTitle(0);
+            detachedForm.UpdateTabSizeDropdown();
+
+            // Position near the drag release point
+            detachedForm.StartPosition = FormStartPosition.Manual;
+            detachedForm.Location = new Point(dragScreenPos.X - 100, dragScreenPos.Y - 50);
+
+            // Remove the document from the original window
+            documents.RemoveAt(tabIndex);
+            tabControl.TabPages.RemoveAt(tabIndex);
+
+            // Adjust active index in original window
+            if (activeDocIndex >= documents.Count)
+                activeDocIndex = documents.Count - 1;
+            if (activeDocIndex >= 0)
+                SwitchToTab(activeDocIndex);
+            else if (documents.Count == 0)
+                NewFile(isInitial: true);
+
+            // Show the detached window
+            detachedForm.Show();
         }
 
         private void TabControl_MouseMove(object? sender, MouseEventArgs e)
@@ -2245,13 +2325,14 @@ darkThemeMenuItem.Checked = isDark;
             int oldHoverIndex = hoveredTabIndex ?? -1;
             hoveredTabIndex = null;
             closeButtonBounds = null;
+            bool overAnyTab = false;
 
             for (int i = 0; i < tabControl.TabPages.Count; i++)
             {
-                if (tabControl.TabPages[i] == newTabButtonPage) continue;
                 var rect = tabControl.GetTabRect(i);
                 if (rect.Contains(e.Location))
                 {
+                    overAnyTab = true;
                     hoveredTabIndex = i;
                     // Close button: right-aligned, 12x12 square, 4px from right edge
                     int buttonSize = 12;
@@ -2259,6 +2340,32 @@ darkThemeMenuItem.Checked = isDark;
                     int btnY = rect.Top + (rect.Height - buttonSize) / 2;
                     closeButtonBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
                     break;
+                }
+            }
+
+            // Set cursor to hand when over any tab, default otherwise
+            if (overAnyTab)
+                tabControl.Cursor = Cursors.Hand;
+            else
+                tabControl.Cursor = Cursors.Default;
+
+            // Tab tear-away: if dragging and mouse moved beyond threshold, start drag
+            if (_draggedTabIndex.HasValue && !_isDragging)
+            {
+                var screenPos = tabControl.PointToScreen(e.Location);
+                if (_dragStartPoint.HasValue && (Math.Abs(screenPos.X - _dragStartPoint.Value.X) > 5 || Math.Abs(screenPos.Y - _dragStartPoint.Value.Y) > 5))
+                {
+                    _isDragging = true;
+                }
+            }
+
+            // If dragging, check if outside window to detach
+            if (_isDragging && _draggedTabIndex.HasValue)
+            {
+                var screenPos = tabControl.PointToScreen(e.Location);
+                if (!this.Bounds.Contains(screenPos))
+                {
+                    DetachTabToNewWindow(_draggedTabIndex.Value, screenPos);
                 }
             }
 
@@ -2281,91 +2388,58 @@ darkThemeMenuItem.Checked = isDark;
             var graphics = e.Graphics;
             var tabRect = e.Bounds;
 
-            // Determine if this tab is selected
+            // Determine if this tab is selected or hovered
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
-            bool isNewTabButton = (tabControl.TabPages[e.Index] == newTabButtonPage);
 
             // Background
-            Color backColor;
-            if (isNewTabButton)
-            {
-                backColor = hoveredTabIndex.HasValue && tabControl.TabPages[e.Index] == tabControl.TabPages[hoveredTabIndex.Value]
-                    ? theme.ButtonHoverBackground
-                    : theme.PanelBackground;
-            }
-            else if (isSelected)
-            {
-                backColor = theme.PanelBackground;
-            }
-            else if (isHovered)
-            {
-                backColor = theme.ButtonHoverBackground;
-            }
-            else
-            {
-                backColor = theme.PanelBackground;
-            }
+            Color backColor = isSelected ? theme.PanelBackground : (isHovered ? theme.ButtonHoverBackground : theme.PanelBackground);
             using (var brush = new SolidBrush(backColor))
             {
                 graphics.FillRectangle(brush, tabRect);
             }
 
-            // Border (bottom line for selected, subtle for others)
-            if (isSelected && !isNewTabButton)
+            // Border (bottom line: selected gets accent, others get border)
+            using (var pen = new Pen(isSelected ? theme.Accent : theme.Border, 1))
             {
-                using (var pen = new Pen(theme.Accent, 2))
+                graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+            }
+
+            // Text (tab title)
+            string text = tabControl.TabPages[e.Index].Text;
+            TextRenderer.DrawText(graphics, text, tabControl.Font, tabRect, theme.Text,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+
+            // Close button (X) for all tabs
+            int btnSize = 12;
+            int btnX = tabRect.Right - btnSize - 4;
+            int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
+            var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+
+            bool closeHovered = hoveredTabIndex == e.Index && closeButtonBounds.HasValue && closeButtonBounds.Value.Contains(tabRect.Location);
+
+            if (closeHovered)
+            {
+                using (var hoverBrush = new SolidBrush(theme.Accent))
+                using (var xBrush = new SolidBrush(theme.PanelBackground))
                 {
-                    graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                    graphics.FillRectangle(hoverBrush, btnRect);
+                    graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                    {
+                        Alignment = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Center
+                    });
                 }
             }
             else
             {
-                using (var pen = new Pen(theme.Border))
+                using (var xBrush = new SolidBrush(theme.Muted))
                 {
-                    graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
-                }
-            }
-
-            // Text
-            string text = tabControl.TabPages[e.Index].Text;
-            Color textColor = isNewTabButton && isHovered ? theme.Accent : theme.Text;
-            TextRenderer.DrawText(graphics, text, tabControl.Font, tabRect, textColor,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-
-            // Close button (X) for non-new-tab pages
-            if (!isNewTabButton)
-            {
-                int btnSize = 12;
-                int btnX = tabRect.Right - btnSize - 4;
-                int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
-                var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
-
-                bool closeHovered = hoveredTabIndex == e.Index && closeButtonBounds.HasValue && closeButtonBounds.Value.Contains(tabRect.Location);
-
-                if (closeHovered)
-                {
-                    using (var hoverBrush = new SolidBrush(theme.Accent))
-                    using (var xBrush = new SolidBrush(theme.PanelBackground))
+                    graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
                     {
-                        graphics.FillRectangle(hoverBrush, btnRect);
-                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
-                        {
-                            Alignment = StringAlignment.Center,
-                            LineAlignment = StringAlignment.Center
-                        });
-                    }
-                }
-                else
-                {
-                    using (var xBrush = new SolidBrush(theme.Muted))
-                    {
-                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
-                        {
-                            Alignment = StringAlignment.Center,
-                            LineAlignment = StringAlignment.Center
-                        });
-                    }
+                        Alignment = StringAlignment.Center,
+                        LineAlignment = StringAlignment.Center
+                    });
                 }
             }
         }
