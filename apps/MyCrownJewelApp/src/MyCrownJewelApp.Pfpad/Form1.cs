@@ -2912,6 +2912,10 @@ darkThemeMenuItem.Checked = isDark;
         {
             SetDirty();
 
+            // Recalculate gutter width when line count changes
+            gutterPanel?.UpdateLineNumberWidth();
+            SyncGutterColumnWidth();
+
             // Track which line changed for gutter display
             int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             modifiedLines.Add(lineIndex);
