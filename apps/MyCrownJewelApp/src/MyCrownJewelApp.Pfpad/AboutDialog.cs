@@ -36,9 +36,9 @@ public sealed class AboutDialog : Form
             ? $"Windows_NT {os.Version.Major}.{os.Version.Minor} build {os.Version.Build}"
             : os.VersionString;
 
-        string version = "1.0.0";
+        string version = "0.5.55";
         string commit = GetGitCommitHash();
-        string date = "2026-05-03";
+        string date = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";
 
         int pad = 28;
 
