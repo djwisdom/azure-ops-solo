@@ -1595,9 +1595,8 @@ namespace MyCrownJewelApp.Pfpad
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
                 SaveSettings();
                 
-                // Recompute elastic tab stops with new font
-                elasticTabTimer?.Stop();
-                elasticTabTimer?.Start();
+                // Recompute tab stops with new font metrics
+                UpdateTabStops();
             }
         }
 
