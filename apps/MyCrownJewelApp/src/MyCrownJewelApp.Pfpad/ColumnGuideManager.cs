@@ -6,7 +6,7 @@ using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 using ThreadingTimer = System.Threading.Timer;
 
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
 /// Manages drawing of column guides (vertical rulers) at specified character positions.

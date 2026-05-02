@@ -1,25 +1,25 @@
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.Collections.Concurrent;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Runtime.CompilerServices;
+ using System;
+ using System.Collections.Generic;
+ using System.Drawing;
+ using System.IO;
+ using System.Runtime.InteropServices;
+ using System.Text;
+ using System.Text.Json;
+ using System.Text.RegularExpressions;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using System.Windows.Forms;
+ using System.Collections.Concurrent;
+ using System.Linq;
+ using System.Security.Cryptography;
+ using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
+ [assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
 
-namespace MyCrownJewelApp.TextEditor
-{
-    public partial class Form1 : Form
-    {
+ namespace MyCrownJewelApp.Pfpad
+ {
+     public partial class Form1 : Form
+     {
         // Win32 API for dark scrollbar support
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
         private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
@@ -39,14 +39,16 @@ namespace MyCrownJewelApp.TextEditor
 
         private const int WM_DROPFILES = 0x0233;
 
-        // DWM API for title bar dark mode
+        // RichTextBox messages
+        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+        private const int EM_LINESCROLL = 0x00B6;
+        private const int SB_TOP = 6;
+
+        // DWM API for native title bar dark mode (Windows 10 1809+)
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
-        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Win10 20H1+
-        private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19; // earlier Win10
-        private const int DWMWA_CAPTION_COLOR = 35; // Win11+
-        private const int DWMWA_BORDER_COLOR = 34;  // Win11+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Windows 10 1809+, Windows 11
 
         private void ApplyScrollbarTheme()
         {
@@ -62,35 +64,12 @@ namespace MyCrownJewelApp.TextEditor
         private void ApplyTitleBarTheme()
         {
             if (!this.IsHandleCreated) return;
-
             try
             {
                 int darkMode = isDarkTheme ? 1 : 0;
-                int color = isDarkTheme ? unchecked((int)0xFF2D2D2D) : unchecked((int)0xFFF5F5F5); // ARGB dark/light gray
-
-                // Windows 10 20H1+ (build 19041+)
-                if (Environment.OSVersion.Version.Major >= 10 && Environment.OSVersion.Version.Build >= 19041)
-                {
-                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
-                }
-                else
-                {
-                    // Older Windows 10
-                    int oldAttr = isDarkTheme ? 1 : 0;
-                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref oldAttr, sizeof(int));
-                }
-
-                // Windows 11+: also set caption and border colors
-                if (Environment.OSVersion.Version.Build >= 22000)
-                {
-                    DwmSetWindowAttribute(this.Handle, DWMWA_CAPTION_COLOR, ref color, sizeof(int));
-                    DwmSetWindowAttribute(this.Handle, DWMWA_BORDER_COLOR, ref color, sizeof(int));
-                }
+                DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
             }
-            catch
-            {
-                // DWM not available or attribute not supported — ignore
-            }
+            catch { /* DWM not available or attribute not supported */ }
         }
 
         // State
@@ -108,24 +87,60 @@ namespace MyCrownJewelApp.TextEditor
         private float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
-        
+
         // Vim mode state
         private bool vimModeEnabled = false;
         private VimEngine? vimEngine;
-        
+
         // Minimap state
         private ToolStripMenuItem minimapMenuItem = null!;
         private bool _pendingMinimapVisible = false;
-        
+
         // Properties for GutterPanel
         public CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
         public bool IsDarkTheme => isDarkTheme;
-        
+
         // Tab behavior settings
         private bool autoIndentEnabled = true;
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
-        
+
+        // Document management (tabs)
+        private class Document
+        {
+            public string? FilePath { get; set; }
+            public string Content { get; set; } = "";
+            public bool IsDirty { get; set; }
+            public HashSet<int> ModifiedLines { get; set; } = new();
+            public HashSet<int> Bookmarks { get; set; } = new();
+            public HashSet<int> CollapsedRegions { get; set; } = new();
+            public string? SavedHash { get; set; }
+            public DateTime? LastWriteTime { get; set; }
+            public int SelectionStart { get; set; }
+            public int SelectionLength { get; set; }
+            public int FirstVisibleLine { get; set; }
+            public SyntaxDefinition? Syntax { get; set; }
+            public int? UntitledNumber { get; set; }  // null for non-untitled docs
+
+            public string DisplayName =>
+                string.IsNullOrEmpty(FilePath) && UntitledNumber.HasValue ? $"Untitled{UntitledNumber}" :
+                string.IsNullOrEmpty(FilePath) ? "Untitled" :
+                Path.GetFileName(FilePath);
+        }
+
+private List<Document> documents = new();
+        private int activeDocIndex = -1;
+        private int nextUntitledNumber = 1;
+        private int? hoveredTabIndex = null;
+        private Rectangle? closeButtonBounds = null;
+
+        // Tab close button state
+
+        // Tab close button state
+
+        // Helper to get active document
+        private Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
+
         // Syntax highlighting performance tracking
         private DateTime _lastHighlightTime;
         private int _highlightCountInLastSecond;
@@ -220,15 +235,39 @@ namespace MyCrownJewelApp.TextEditor
         // Enable file drop support (client area + non-client area)
         EnableFileDrop();
 
+        // Initialize document list and process command line args
+        documents = new List<Document>();
+        activeDocIndex = -1;
+
+        // Process command line arguments (files)
+        string[] args = Environment.GetCommandLineArgs();
+        if (args.Length > 1)
+        {
+            for (int i = 1; i < args.Length; i++)
+            {
+                string path = args[i];
+                if (File.Exists(path))
+                {
+                    OpenFileInNewTab(path);
+                }
+            }
+        }
+
+        // If no documents were opened, create a new untitled document
+        if (documents.Count == 0)
+        {
+            NewFile(isInitial: true);
+        }
+
         zoomFactor = 1.0f;
-            // Set flat border for editor
-            textEditor.BorderStyle = BorderStyle.None;
-            
-            // Default feature states (all off)
-            wordWrapEnabled = false;
-            syntaxHighlightingEnabled = false;
-            gutterVisible = false;
-            showGuide = false;
+        // Set flat border for editor
+        textEditor.BorderStyle = BorderStyle.None;
+        
+        // Default feature states (all off)
+        wordWrapEnabled = false;
+        syntaxHighlightingEnabled = false;
+        gutterVisible = false;
+        showGuide = false;
             
             LoadRecentFiles();
             UpdateRecentMenu();
@@ -492,8 +531,18 @@ namespace MyCrownJewelApp.TextEditor
                     return;
                 }
 
-                // Load file content
-                LoadFile(filePath);
+                // Load file content(s) - each in its own tab
+                foreach (string file in files)
+                {
+                    try
+                    {
+                        OpenFileInNewTab(file);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Failed to open '{file}': {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -510,18 +559,24 @@ namespace MyCrownJewelApp.TextEditor
 
                 if (fileCount > 0)
                 {
-                    char[] fileName = new char[260]; // MAX_PATH
-                    DragQueryFile(hDrop, 0, fileName, 260);
-                    string path = new string(fileName).TrimEnd('\0');
+                    for (uint i = 0; i < fileCount; i++)
+                    {
+                        char[] fileName = new char[260];
+                        DragQueryFile(hDrop, i, fileName, 260);
+                        string path = new string(fileName).TrimEnd('\0');
 
-                    // Validate and load on UI thread
-                    if (this.InvokeRequired)
-                    {
-                        this.BeginInvoke(new Action(() => LoadFile(path)));
-                    }
-                    else
-                    {
-                        LoadFile(path);
+                        // Validate file existence
+                        if (!File.Exists(path)) continue;
+
+                        // Open each file in its own tab on UI thread
+                        if (this.InvokeRequired)
+                        {
+                            this.BeginInvoke(new Action(() => OpenFileInNewTab(path)));
+                        }
+                        else
+                        {
+                            OpenFileInNewTab(path);
+                        }
                     }
                 }
             }
@@ -759,8 +814,11 @@ namespace MyCrownJewelApp.TextEditor
                 RequestVisibleHighlight();
             }
 
-            darkThemeMenuItem.Checked = isDark;
+darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
+
+            UpdateThemeDropDown();
+            UpdateTabControlTheme();
 
             CreateIncrementalHighlighter();
 
@@ -1274,33 +1332,17 @@ namespace MyCrownJewelApp.TextEditor
 
         private void NewFile()
         {
-            var result = PromptSaveChanges();
-            if (result == DialogResult.Cancel) return;
-
-            textEditor.Clear();
-            currentFilePath = null;
-            isModified = false;
-            savedContentHash = null;
-            lastFileWriteTime = null;
-             modifiedLines.Clear();
-             UpdateWindowTitle();
-             UpdateStatusBar();
-             
-             // Request highlighting for empty buffer (clears any previous highlights)
-             RequestVisibleHighlight();
-         }
+            NewFile(false);
+        }
 
         private void OpenFile()
         {
-            var result = PromptSaveChanges();
-            if (result == DialogResult.Cancel) return;
-
             using var ofd = new OpenFileDialog();
             ofd.Filter = "Text Files|*.txt|All Files|*.*";
             ofd.Multiselect = false;
             if (ofd.ShowDialog() == DialogResult.OK)
             {
-                LoadFile(ofd.FileName);
+                OpenFileInNewTab(ofd.FileName);
             }
         }
 
@@ -1313,10 +1355,18 @@ namespace MyCrownJewelApp.TextEditor
                  elasticTabTimer?.Stop();
                  highlightTimer?.Stop();
 
-                 textEditor.Text = File.ReadAllText(path);
+                 string content = File.ReadAllText(path);
+                 
+                 // Update fields without triggering dirty
+                 textEditor.TextChanged -= TextEditor_TextChanged;
+                 textEditor.Text = content;
+                 textEditor.TextChanged += TextEditor_TextChanged;
+
                  currentFilePath = path;
+                 currentSyntax = SyntaxDefinition.GetDefinitionForFile(path);
                  if (File.Exists(path))
                      lastFileWriteTime = File.GetLastWriteTimeUtc(path);
+                 
                  ClearDirtyAfterSave();
                  AddToRecentFiles(path);
                  
@@ -1334,6 +1384,9 @@ namespace MyCrownJewelApp.TextEditor
                  }
                  
                  UpdateStatusBar();
+                 
+                 // Recreate syntax highlighter for new file type
+                 CreateIncrementalHighlighter();
                  
                  // Defer syntax highlight request until UI is idle
                  if (textEditor.IsHandleCreated)
@@ -1429,11 +1482,14 @@ namespace MyCrownJewelApp.TextEditor
 
         private void SetDirty()
         {
-            if (isModified) return; // Already dirty
-
+            if (isModified) return;
             isModified = true;
+            if (activeDocIndex >= 0)
+            {
+                ActiveDoc.IsDirty = true;
+            }
             UpdateWindowTitle();
-            // Note: modifiedLines will be updated by TextEditor_TextChanged or selection logic
+            UpdateActiveTabTitle();
         }
 
         internal void ClearDirtyAfterSave()
@@ -1441,7 +1497,18 @@ namespace MyCrownJewelApp.TextEditor
             isModified = false;
             savedContentHash = ComputeContentHash();
             modifiedLines.Clear();
+            if (activeDocIndex >= 0)
+            {
+                ActiveDoc.IsDirty = false;
+                ActiveDoc.SavedHash = savedContentHash;
+                ActiveDoc.ModifiedLines = modifiedLines;
+                ActiveDoc.LastWriteTime = lastFileWriteTime;
+                ActiveDoc.FilePath = currentFilePath;
+                ActiveDoc.Content = textEditor.Text;
+                ActiveDoc.Syntax = currentSyntax;
+            }
             UpdateWindowTitle();
+            UpdateActiveTabTitle();
         }
 
         private void UpdateWindowTitle()
@@ -1543,7 +1610,7 @@ namespace MyCrownJewelApp.TextEditor
                 {
                     string filePath = recentFiles[i];
                     string display = $"{(i + 1)} {Path.GetFileName(filePath)}";
-                    var item = new ToolStripMenuItem(display, null, (s, e) => LoadFile(filePath));
+                    var item = new ToolStripMenuItem(display, null, (s, e) => OpenFileInNewTab(filePath));
                     recentMenuItem.DropDownItems.Add(item);
                 }
                 recentMenuItem.DropDownItems.Add(new ToolStripSeparator());
@@ -1566,7 +1633,7 @@ namespace MyCrownJewelApp.TextEditor
         private void Save_Click(object? sender, EventArgs e) => SaveFile();
         private void SaveAs_Click(object? sender, EventArgs e) => SaveAsFile();
         private void SaveAll_Click(object? sender, EventArgs e) => SaveAllFiles();
-        private void CloseTab_Click(object? sender, EventArgs e) => NewFile();  // For now, clear
+        private void CloseTab_Click(object? sender, EventArgs e) => CloseCurrentTab();
         private void CloseWindow_Click(object? sender, EventArgs e) => this.Close();
         private void CloseAll_Click(object? sender, EventArgs e)
         {
@@ -1639,9 +1706,8 @@ namespace MyCrownJewelApp.TextEditor
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
                 SaveSettings();
                 
-                // Recompute elastic tab stops with new font
-                elasticTabTimer?.Stop();
-                elasticTabTimer?.Start();
+                // Recompute tab stops with new font metrics
+                UpdateTabStops();
             }
         }
 
@@ -1819,6 +1885,7 @@ namespace MyCrownJewelApp.TextEditor
         {
             isDarkTheme = true;
             UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
             SaveSettings();
         }
 
@@ -1826,7 +1893,439 @@ namespace MyCrownJewelApp.TextEditor
         {
             isDarkTheme = false;
             UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
             SaveSettings();
+        }
+
+        private void StatusBarDarkTheme_Click(object? sender, EventArgs e)
+        {
+            isDarkTheme = true;
+            UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
+            SaveSettings();
+        }
+
+        private void StatusBarLightTheme_Click(object? sender, EventArgs e)
+        {
+            isDarkTheme = false;
+            UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
+            SaveSettings();
+        }
+
+        private void UpdateThemeDropDown()
+        {
+            if (themeDropDown != null)
+            {
+                themeDropDown.Text = isDarkTheme ? "Dark" : "Light";
+                // Update menu item checkmarks
+                if (themeDropDown.DropDownItems.Count >= 2)
+                {
+                    themeDropDown.DropDownItems[0].Text = isDarkTheme ? "● Dark" : "Dark";
+                    themeDropDown.DropDownItems[1].Text = !isDarkTheme ? "● Light" : "Light";
+                }
+            }
+        }
+
+        #endregion
+
+        #region Document Management (Tabs)
+
+        // Get first visible line in editor
+        private int GetFirstVisibleLine()
+        {
+            if (!textEditor.IsHandleCreated) return 0;
+            return (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+        }
+
+        // Compute hash of string content
+        private string ComputeContentHash(string content)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+            var hash = sha.ComputeHash(bytes);
+            return Convert.ToHexString(hash);
+        }
+
+        // Save current editor state into the active document
+        private void SaveCurrentDocument()
+        {
+            if (activeDocIndex < 0) return;
+            var doc = documents[activeDocIndex];
+            doc.Content = textEditor.Text;
+            doc.IsDirty = isModified;
+            // modifiedLines, bookmarks, collapsedRegions are already references to doc's collections
+            doc.FilePath = currentFilePath;
+            doc.SavedHash = savedContentHash;
+            doc.LastWriteTime = lastFileWriteTime;
+            doc.Syntax = currentSyntax;
+            doc.SelectionStart = textEditor.SelectionStart;
+            doc.SelectionLength = textEditor.SelectionLength;
+            doc.FirstVisibleLine = GetFirstVisibleLine();
+        }
+
+        // Create a new empty document
+        private Document CreateNewDocument()
+        {
+            return new Document
+            {
+                FilePath = null,
+                Content = "",
+                IsDirty = false,
+                ModifiedLines = new HashSet<int>(),
+                Bookmarks = new HashSet<int>(),
+                CollapsedRegions = new HashSet<int>(),
+                SavedHash = null,
+                LastWriteTime = null,
+                SelectionStart = 0,
+                SelectionLength = 0,
+                FirstVisibleLine = 0,
+                Syntax = null
+            };
+        }
+
+        // New file (untitled) - creates a new tab
+        private void NewFile(bool isInitial = false)
+        {
+            if (!isInitial)
+            {
+                var result = PromptSaveChanges();
+                if (result == DialogResult.Cancel) return;
+            }
+
+            // Save state of current document before switching
+            if (activeDocIndex >= 0)
+            {
+                SaveCurrentDocument();
+            }
+
+            var newDoc = CreateNewDocument();
+            documents.Add(newDoc);
+            int newIndex = documents.Count - 1;
+
+            // Create tab page
+            var tabPage = new TabPage(newDoc.DisplayName) { Tag = newDoc };
+            int plusIdx = tabControl.TabPages.IndexOf(newTabButtonPage);
+            tabControl.TabPages.Insert(plusIdx, tabPage);
+
+            // Switch to new tab
+            tabControl.SelectedIndex = newIndex;
+        }
+
+        // Open an existing file in a new tab
+        private void OpenFileInNewTab(string path)
+        {
+            if (!File.Exists(path)) return;
+            try
+            {
+                string content = File.ReadAllText(path);
+                var syntax = SyntaxDefinition.GetDefinitionForFile(path);
+                var doc = new Document
+                {
+                    FilePath = path,
+                    Content = content,
+                    IsDirty = false,
+                    ModifiedLines = new HashSet<int>(),
+                    Bookmarks = new HashSet<int>(),
+                    CollapsedRegions = new HashSet<int>(),
+                    SavedHash = ComputeContentHash(content),
+                    LastWriteTime = File.GetLastWriteTimeUtc(path),
+                    SelectionStart = 0,
+                    SelectionLength = 0,
+                    FirstVisibleLine = 0,
+                    Syntax = syntax
+                };
+                documents.Add(doc);
+                int newIndex = documents.Count - 1;
+                var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+                int plusIdx = tabControl.TabPages.IndexOf(newTabButtonPage);
+                tabControl.TabPages.Insert(plusIdx, tabPage);
+                tabControl.SelectedIndex = newIndex; // triggers SwitchToTab
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Close current tab
+        private void CloseCurrentTab()
+        {
+            if (documents.Count == 0) return;
+            var result = PromptSaveChanges();
+            if (result == DialogResult.Cancel) return;
+
+            // Remove current document and its tab
+            int closeIndex = activeDocIndex;
+            documents.RemoveAt(closeIndex);
+            tabControl.TabPages.RemoveAt(closeIndex); // remove corresponding tab (excluding +)
+
+            // If there are still documents, select another
+            if (documents.Count == 0)
+            {
+                // No documents left; create a new untitled one
+                NewFile(isInitial: true);
+            }
+            else
+            {
+                // Adjust active index: if we closed last tab, select previous
+                if (activeDocIndex >= documents.Count)
+                    activeDocIndex = documents.Count - 1;
+                // Switch to the new active
+                SwitchToTab(activeDocIndex);
+                tabControl.SelectedIndex = activeDocIndex;
+            }
+        }
+
+        // Switch to document at given index (0-based)
+        private void SwitchToTab(int index)
+        {
+            if (index < 0 || index >= documents.Count) return;
+            if (activeDocIndex == index) return; // already active
+
+            // Save current document state before leaving
+            if (activeDocIndex >= 0)
+            {
+                SaveCurrentDocument();
+            }
+
+            activeDocIndex = index;
+            var doc = documents[activeDocIndex];
+            LoadDocument(doc);
+            UpdateWindowTitle();
+        }
+
+        // Load document state into editor and UI
+        private void LoadDocument(Document doc)
+        {
+            // Update core fields from document
+            currentFilePath = doc.FilePath;
+            isModified = doc.IsDirty;
+            modifiedLines = doc.ModifiedLines;
+            bookmarks = doc.Bookmarks;
+            collapsedRegions = doc.CollapsedRegions;
+            savedContentHash = doc.SavedHash;
+            lastFileWriteTime = doc.LastWriteTime ?? DateTime.MinValue;
+            currentSyntax = doc.Syntax;
+
+            // Load text without triggering dirty flag
+            textEditor.TextChanged -= TextEditor_TextChanged;
+            textEditor.Text = doc.Content ?? "";
+            textEditor.SelectionStart = doc.SelectionStart;
+            textEditor.SelectionLength = doc.SelectionLength;
+            textEditor.TextChanged += TextEditor_TextChanged;
+
+            // Restore scroll position
+            if (doc.FirstVisibleLine > 0)
+            {
+                SendMessage(textEditor.Handle, EM_LINESCROLL, (IntPtr)doc.FirstVisibleLine, IntPtr.Zero);
+            }
+            else
+            {
+                SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
+            }
+
+            // Update UI
+            UpdateStatusBar();
+            UpdateTabTitle(activeDocIndex);
+            UpdateThemeColors(isDarkTheme); // refresh any theme-dependent colors
+
+            // Recreate syntax highlighter based on current syntax
+            CreateIncrementalHighlighter();
+        }
+
+        // Update tab title for document at index
+        private void UpdateTabTitle(int docIndex)
+        {
+            if (docIndex < 0 || docIndex >= documents.Count) return;
+            var doc = documents[docIndex];
+            // The corresponding TabPage is at same index in tabControl.TabPages (excluding + page)
+            if (docIndex < tabControl.TabPages.Count)
+            {
+                var tabPage = tabControl.TabPages[docIndex];
+                tabPage.Text = doc.IsDirty ? "*" + doc.DisplayName : doc.DisplayName;
+            }
+        }
+
+        // Convenience for active tab
+        private void UpdateActiveTabTitle()
+        {
+            UpdateTabTitle(activeDocIndex);
+        }
+
+        #endregion
+
+        #region Tab Control Event Handlers
+
+        private void TabControl_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (tabControl.SelectedTab == newTabButtonPage)
+            {
+                NewFile();
+            }
+            else
+            {
+                SwitchToTab(tabControl.SelectedIndex);
+            }
+        }
+
+        private void TabControl_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Middle)
+            {
+                // Close tab on middle-click
+                for (int i = 0; i < tabControl.TabPages.Count; i++)
+                {
+                    var rect = tabControl.GetTabRect(i);
+                    if (rect.Contains(e.Location))
+                    {
+                        if (tabControl.TabPages[i] != newTabButtonPage)
+                        {
+                            tabControl.SelectedIndex = i;
+                            CloseCurrentTab();
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void TabControl_MouseMove(object? sender, MouseEventArgs e)
+        {
+            int oldHoverIndex = hoveredTabIndex;
+            hoveredTabIndex = null;
+            closeButtonBounds = null;
+
+            for (int i = 0; i < tabControl.TabPages.Count; i++)
+            {
+                if (tabControl.TabPages[i] == newTabButtonPage) continue;
+                var rect = tabControl.GetTabRect(i);
+                if (rect.Contains(e.Location))
+                {
+                    hoveredTabIndex = i;
+                    // Close button: right-aligned, 12x12 square, 4px from right edge
+                    int buttonSize = 12;
+                    int btnX = rect.Right - buttonSize - 4;
+                    int btnY = rect.Top + (rect.Height - buttonSize) / 2;
+                    closeButtonBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
+                    break;
+                }
+            }
+
+            if (oldHoverIndex != hoveredTabIndex || (hoveredTabIndex.HasValue && closeButtonBounds.HasValue && !closeButtonBounds.Value.Contains(e.Location)))
+            {
+                // Redraw if hover changed OR if hovering a tab but mouse left the close button
+                if (hoveredTabIndex.HasValue && closeButtonBounds.HasValue && !closeButtonBounds.Value.Contains(e.Location))
+                {
+                    closeButtonBounds = null; // close button no longer hovered
+                }
+                tabControl.Invalidate();
+            }
+        }
+
+        private void TabControl_DrawItem(object? sender, DrawItemEventArgs e)
+        {
+            if (tabControl.TabPages.Count == 0) return;
+
+            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            var graphics = e.Graphics;
+            var tabRect = e.Bounds;
+
+            // Determine if this tab is selected
+            bool isSelected = (e.Index == tabControl.SelectedIndex);
+            bool isHovered = (e.Index == hoveredTabIndex);
+            bool isNewTabButton = (tabControl.TabPages[e.Index] == newTabButtonPage);
+
+            // Background
+            Color backColor;
+            if (isNewTabButton)
+            {
+                backColor = hoveredTabIndex.HasValue && tabControl.TabPages[e.Index] == tabControl.TabPages[hoveredTabIndex.Value]
+                    ? theme.ButtonHoverBackground
+                    : theme.PanelBackground;
+            }
+            else if (isSelected)
+            {
+                backColor = theme.PanelBackground;
+            }
+            else if (isHovered)
+            {
+                backColor = theme.ButtonHoverBackground;
+            }
+            else
+            {
+                backColor = theme.PanelBackground;
+            }
+            using (var brush = new SolidBrush(backColor))
+            {
+                graphics.FillRectangle(brush, tabRect);
+            }
+
+            // Border (bottom line for selected, subtle for others)
+            if (isSelected && !isNewTabButton)
+            {
+                using (var pen = new Pen(theme.Accent, 2))
+                {
+                    graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                }
+            }
+            else
+            {
+                using (var pen = new Pen(theme.Border))
+                {
+                    graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                }
+            }
+
+            // Text
+            string text = tabControl.TabPages[e.Index].Text;
+            Color textColor = isNewTabButton && isHovered ? theme.Accent : theme.Text;
+            TextRenderer.DrawText(graphics, text, tabControl.Font, tabRect, textColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+
+            // Close button (X) for non-new-tab pages
+            if (!isNewTabButton)
+            {
+                int btnSize = 12;
+                int btnX = tabRect.Right - btnSize - 4;
+                int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
+                var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+
+                bool closeHovered = hoveredTabIndex == e.Index && closeButtonBounds.HasValue && closeButtonBounds.Value.Contains(tabRect.Location);
+
+                if (closeHovered)
+                {
+                    using (var hoverBrush = new SolidBrush(theme.Accent))
+                    using (var xBrush = new SolidBrush(theme.PanelBackground))
+                    {
+                        graphics.FillRectangle(hoverBrush, btnRect);
+                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        {
+                            Alignment = StringAlignment.Center,
+                            LineAlignment = StringAlignment.Center
+                        });
+                    }
+                }
+                else
+                {
+                    using (var xBrush = new SolidBrush(theme.Muted))
+                    {
+                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        {
+                            Alignment = StringAlignment.Center,
+                            LineAlignment = StringAlignment.Center
+                        });
+                    }
+                }
+            }
+        }
+
+        private void NewTabButtonPage_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                NewFile();
+            }
         }
 
         #endregion
@@ -2082,39 +2581,66 @@ namespace MyCrownJewelApp.TextEditor
             encodingLabel.Text = "UTF-8";
 
              // Vim mode indicator
-             if (vimModeEnabled)
-             {
-                 // Insert vim mode indicator at the beginning of the status bar
-                 // We'll add it as a separate label or modify an existing one
-                 // For simplicity, we'll prepend it to the lineColLabel
-                 string modeIndicator = vimEngine?.CurrentMode switch
-                 {
-                     VimMode.Normal => "-- NORMAL --",
-                     VimMode.Insert => "-- INSERT --",
-                     VimMode.Visual => "-- VISUAL --",
-                     VimMode.VisualLine => "-- VISUAL LINE --",
-                     VimMode.VisualBlock => "-- VISUAL BLOCK --",
-                     VimMode.Command => "-- COMMAND --",
-                     VimMode.OperatorPending => "-- OPERATOR PENDING --",
-                     _ => "-- VIM --"
-                 };
-                 
-                 // Prepend the mode indicator to the line and column label
-                 lineColLabel.Text = $"{modeIndicator} | Ln {line}, Col {col}";
-             }
-             else
-             {
-                 // Remove vim mode indicator if present
-                 if (lineColLabel.Text.StartsWith("-- ") && lineColLabel.Text.Contains("|"))
-                 {
-                     int pipeIndex = lineColLabel.Text.IndexOf("|");
-                     if (pipeIndex > 0)
-                     {
-                         lineColLabel.Text = lineColLabel.Text.Substring(pipeIndex + 2); // Skip " | "
-                     }
-                 }
-             }
-         }
+              if (vimModeEnabled)
+              {
+                  // Insert vim mode indicator at the beginning of the status bar
+                  // We'll add it as a separate label or modify an existing one
+                  // For simplicity, we'll prepend it to the lineColLabel
+                  string modeIndicator = vimEngine?.CurrentMode switch
+                  {
+                      VimMode.Normal => "-- NORMAL --",
+                      VimMode.Insert => "-- INSERT --",
+                      VimMode.Visual => "-- VISUAL --",
+                      VimMode.VisualLine => "-- VISUAL LINE --",
+                      VimMode.VisualBlock => "-- VISUAL BLOCK --",
+                      VimMode.Command => "-- COMMAND --",
+                      VimMode.OperatorPending => "-- OPERATOR PENDING --",
+                      _ => "-- VIM --"
+                  };
+                  
+                  // Prepend the mode indicator to the line and column label
+                  lineColLabel.Text = $"{modeIndicator} | Ln {line}, Col {col}";
+              }
+              else
+              {
+                  // Remove vim mode indicator if present
+                  if (lineColLabel.Text.StartsWith("-- ") && lineColLabel.Text.Contains("|"))
+                  {
+                      int pipeIndex = lineColLabel.Text.IndexOf("|");
+                      if (pipeIndex > 0)
+                      {
+                          lineColLabel.Text = lineColLabel.Text.Substring(pipeIndex + 2); // Skip " | "
+                      }
+                  }
+              }
+
+            // File type
+            string fileType = "Plain Text";
+            if (currentSyntax != null && !string.IsNullOrEmpty(currentSyntax.Name))
+            {
+                fileType = currentSyntax.Name;
+            }
+            else if (!string.IsNullOrEmpty(currentFilePath))
+            {
+                var def = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
+                fileType = def?.Name ?? "Plain Text";
+            }
+            fileTypeLabel.Text = fileType;
+}
+
+        private void UpdateTabControlTheme()
+        {
+            if (tabControl == null) return;
+            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            tabControl.BackColor = theme.PanelBackground;
+            tabControl.ForeColor = theme.Text;
+            if (newTabButtonPage != null)
+            {
+                newTabButtonPage.BackColor = theme.PanelBackground;
+                newTabButtonPage.ForeColor = theme.Text;
+            }
+            tabControl.Invalidate();
+        }
 
         #endregion
 
@@ -2379,11 +2905,11 @@ namespace MyCrownJewelApp.TextEditor
         /// <summary>
         /// Returns tokens for a given line index, used by MinimapControl for syntax coloring.
         /// </summary>
-         private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
+         private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> GetTokensForLine(int lineIndex)
          {
-             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-             if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-             if (lineIndex < 0 || lineIndex >= LineCount) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
+             if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
+             if (lineIndex < 0 || lineIndex >= LineCount) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
 
             // Try incremental highlighter cache first
             if (incrementalHighlighter?.GetTokens(lineIndex) is IReadOnlyList<TokenInfo> cached)
@@ -2393,17 +2919,17 @@ namespace MyCrownJewelApp.TextEditor
             return TokenizeLineSynchronously(lineIndex);
         }
 
-        private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> TokenizeLineSynchronously(int lineIndex)
+        private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> TokenizeLineSynchronously(int lineIndex)
         {
             string line = GetLineText(lineIndex);
-            if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+            if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
 
-            var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
+            var tokens = new List<MyCrownJewelApp.Pfpad.TokenInfo>();
             var colored = new bool[line.Length];
 
              var regexes = currentSyntax != null ? GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None) : ((Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor))default;
 
-            void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
+            void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.Pfpad.SyntaxTokenType type)
             {
                 if (regex == null) return;
                 var matches = regex.Matches(line);
@@ -2430,7 +2956,7 @@ namespace MyCrownJewelApp.TextEditor
                     {
                         for (int i = start; i < start + len; i++)
                             colored[i] = true;
-                        tokens.Add(new MyCrownJewelApp.TextEditor.TokenInfo
+                        tokens.Add(new MyCrownJewelApp.Pfpad.TokenInfo
                         {
                             Type = type,
                             Text = line.Substring(start, len),
@@ -2442,12 +2968,12 @@ namespace MyCrownJewelApp.TextEditor
             }
 
             // Priority order
-            AddMatches(regexes.preprocessor, MyCrownJewelApp.TextEditor.SyntaxTokenType.Preprocessor);
-            AddMatches(regexes.comment, MyCrownJewelApp.TextEditor.SyntaxTokenType.Comment);
-            AddMatches(regexes.stringRegex, MyCrownJewelApp.TextEditor.SyntaxTokenType.String);
-            AddMatches(regexes.number, MyCrownJewelApp.TextEditor.SyntaxTokenType.Number);
-            AddMatches(regexes.keywords, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
-            AddMatches(regexes.types, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
+            AddMatches(regexes.preprocessor, MyCrownJewelApp.Pfpad.SyntaxTokenType.Preprocessor);
+            AddMatches(regexes.comment, MyCrownJewelApp.Pfpad.SyntaxTokenType.Comment);
+            AddMatches(regexes.stringRegex, MyCrownJewelApp.Pfpad.SyntaxTokenType.String);
+            AddMatches(regexes.number, MyCrownJewelApp.Pfpad.SyntaxTokenType.Number);
+            AddMatches(regexes.keywords, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
+            AddMatches(regexes.types, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
 
             return tokens;
         }
@@ -2474,12 +3000,9 @@ namespace MyCrownJewelApp.TextEditor
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int WM_SETREDRAW = 0x0B;
-        private const int EM_LINESCROLL = 0xB6;
         private const int WM_VSCROLL = 0x115;
-        private const int SB_TOP = 6;
         private const int EM_STARTUNDOACTION = 0x00B7;
         private const int EM_ENDUNDOACTION = 0x00B8;
-        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
         private const int EM_GETLINE = 0x00C4;
 

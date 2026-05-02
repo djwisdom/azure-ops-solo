@@ -7,7 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
-namespace MyCrownJewelApp.TextEditor
+namespace MyCrownJewelApp.Pfpad
 {
     /// <summary>
     /// MinimapControl provides a scaled vertical overview of an editor's content.

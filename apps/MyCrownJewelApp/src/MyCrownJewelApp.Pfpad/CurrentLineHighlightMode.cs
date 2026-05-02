@@ -1,4 +1,4 @@
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
 /// Specifies how the current line is highlighted.

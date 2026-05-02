@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Windows.Forms;
 
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 static class Program
 {
@@ -15,7 +15,7 @@ static class Program
             string logDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "MyCrownJewelApp",
-                "TextEditor");
+                "Pfpad");
             Directory.CreateDirectory(logDir);
             string logPath = Path.Combine(logDir, "startup.log");
             File.AppendAllText(logPath, $"[{DateTime.UtcNow:u}] Application starting{Environment.NewLine}");
@@ -34,7 +34,7 @@ static class Program
             string logPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "MyCrownJewelApp",
-                "TextEditor",
+                "Pfpad",
                 "crash.log");
             File.WriteAllText(logPath, $"[{DateTime.UtcNow:u}] FATAL: {ex}");
             MessageBox.Show($"Application error: {ex.Message}\n\nSee log at: {logPath}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);

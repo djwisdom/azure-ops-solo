@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 public sealed class ThemeAwareMenuRenderer : ToolStripProfessionalRenderer
 {

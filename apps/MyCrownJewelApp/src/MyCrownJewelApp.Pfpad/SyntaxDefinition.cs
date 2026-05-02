@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
 /// Immutable definition for a language's syntax: keyword lists, regex patterns for tokens.

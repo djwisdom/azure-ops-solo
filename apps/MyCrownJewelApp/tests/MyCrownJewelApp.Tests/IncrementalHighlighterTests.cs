@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using Xunit;
-using MyCrownJewelApp.TextEditor;
+using MyCrownJewelApp.Pfpad;
 
 namespace MyCrownJewelApp.Tests;
 

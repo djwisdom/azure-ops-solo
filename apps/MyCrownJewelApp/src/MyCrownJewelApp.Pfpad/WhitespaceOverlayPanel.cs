@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
 /// Transparent overlay panel that draws whitespace glyphs (spaces, tabs, newlines)

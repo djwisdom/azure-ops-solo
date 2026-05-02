@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 
 namespace TextEditor;
 
@@ -380,3 +380,15 @@ internal static class Program
         Console.Write(message.PadRight(Console.WindowWidth - 2));
     }
 }
+
+    private static void SetStatus(string message) 
+
+	{
+
+		_statusMessage = message;
+
+		_statusTime = DateTime.Now;
+
+		Console.SetCursorPosition(0, 0);
+
+		Console.Write(message.PadRight(Co

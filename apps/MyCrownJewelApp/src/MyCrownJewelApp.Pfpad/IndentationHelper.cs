@@ -1,6 +1,6 @@
 using System;
 
-namespace MyCrownJewelApp.TextEditor
+namespace MyCrownJewelApp.Pfpad
 {
     /// <summary>
     /// Provides static methods for computing indentation strings based on tab size and insert-spaces setting.

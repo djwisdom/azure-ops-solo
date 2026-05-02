@@ -1,4 +1,4 @@
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 #pragma warning disable CS8618 // Fields assigned in InitializeComponent()
 public partial class GoToDialog : Form

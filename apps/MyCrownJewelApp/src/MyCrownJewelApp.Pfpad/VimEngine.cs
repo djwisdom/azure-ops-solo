@@ -1,6 +1,6 @@
 using System.Windows.Forms;
 
-namespace MyCrownJewelApp.TextEditor
+namespace MyCrownJewelApp.Pfpad
 {
     public enum VimMode
     {

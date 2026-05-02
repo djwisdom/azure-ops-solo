@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
 /// Transparent overlay panel that draws a full-width highlight on the current line.

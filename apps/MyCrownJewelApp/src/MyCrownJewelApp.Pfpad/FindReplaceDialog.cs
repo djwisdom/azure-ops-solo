@@ -1,4 +1,4 @@
-namespace MyCrownJewelApp.TextEditor;
+namespace MyCrownJewelApp.Pfpad;
 
 #pragma warning disable CS8618 // All fields assigned in InitializeForm/InitializeComponent
 public partial class FindReplaceDialog : Form

@@ -7,7 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Xunit;
-using MyCrownJewelApp.TextEditor;
+using MyCrownJewelApp.Pfpad;
 using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Tests;
