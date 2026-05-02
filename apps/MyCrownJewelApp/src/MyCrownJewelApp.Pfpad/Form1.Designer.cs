@@ -129,16 +129,16 @@ partial class Form1
         // Menu Strip
         menuStrip = new MenuStrip();
         fileMenu = new ToolStripMenuItem("&File");
-        newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click, "Ctrl+T");
-        newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, "Ctrl+Shift+N");
-        openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, "Ctrl+O");
+        newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click, Keys.Control | Keys.T);
+        newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
+        openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
         recentMenuItem = new ToolStripMenuItem("Recent Files");
-        saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click, "Ctrl+S");
-        saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click);
-        saveAllMenuItem = new ToolStripMenuItem("Save A&ll", null, SaveAll_Click, "Ctrl+Shift+S");
-        closeTabMenuItem = new ToolStripMenuItem("Close Tab", null, CloseTab_Click, "Ctrl+W");
-        closeWindowMenuItem = new ToolStripMenuItem("Close Window", null, CloseWindow_Click);
-        closeAllMenuItem = new ToolStripMenuItem("Close All", null, CloseAll_Click);
+        saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click, Keys.Control | Keys.S);
+        saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click, Keys.Control | Keys.Shift | Keys.S);
+        saveAllMenuItem = new ToolStripMenuItem("Save A&ll", null, SaveAll_Click, Keys.Control | Keys.Alt | Keys.S);
+        closeTabMenuItem = new ToolStripMenuItem("Close Tab", null, CloseTab_Click, Keys.Control | Keys.W);
+        closeWindowMenuItem = new ToolStripMenuItem("Close Window", null, CloseWindow_Click, Keys.Control | Keys.Shift | Keys.W);
+        closeAllMenuItem = new ToolStripMenuItem("Close All", null, CloseAll_Click, Keys.Control | Keys.Alt | Keys.W);
         exitMenuItem = new ToolStripMenuItem("E&xit", null, Exit_Click);
         // Build File menu
         fileMenu.DropDownItems.Add(newTabMenuItem);
@@ -157,19 +157,19 @@ partial class Form1
         fileMenu.DropDownItems.Add(exitMenuItem);
 
         editMenu = new ToolStripMenuItem("&Edit");
-        undoMenuItem = new ToolStripMenuItem("&Undo", null, Undo_Click, "Ctrl+Z");
-        cutMenuItem = new ToolStripMenuItem("Cu&t", null, Cut_Click, "Ctrl+X");
-        copyMenuItem = new ToolStripMenuItem("&Copy", null, Copy_Click, "Ctrl+C");
-        pasteMenuItem = new ToolStripMenuItem("&Paste", null, Paste_Click, "Ctrl+V");
-        deleteMenuItem = new ToolStripMenuItem("&Delete", null, Delete_Click, "Del");
-        findMenuItem = new ToolStripMenuItem("&Find...", null, Find_Click, "Ctrl+F");
-        findNextMenuItem = new ToolStripMenuItem("Find &Next", null, FindNext_Click, "F3");
-        findPreviousMenuItem = new ToolStripMenuItem("Find &Previous", null, FindPrevious_Click, "Shift+F3");
-        replaceMenuItem = new ToolStripMenuItem("&Replace...", null, Replace_Click, "Ctrl+H");
-        gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click, "Ctrl+G");
-        selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, "Ctrl+A");
-        timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, "F5");
-        fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click);
+        undoMenuItem = new ToolStripMenuItem("&Undo", null, Undo_Click, Keys.Control | Keys.Z);
+        cutMenuItem = new ToolStripMenuItem("Cu&t", null, Cut_Click, Keys.Control | Keys.X);
+        copyMenuItem = new ToolStripMenuItem("&Copy", null, Copy_Click, Keys.Control | Keys.C);
+        pasteMenuItem = new ToolStripMenuItem("&Paste", null, Paste_Click, Keys.Control | Keys.V);
+        deleteMenuItem = new ToolStripMenuItem("&Delete", null, Delete_Click, Keys.Delete);
+        findMenuItem = new ToolStripMenuItem("&Find...", null, Find_Click, Keys.Control | Keys.F);
+        findNextMenuItem = new ToolStripMenuItem("Find &Next", null, FindNext_Click, Keys.F3);
+        findPreviousMenuItem = new ToolStripMenuItem("Find &Previous", null, FindPrevious_Click, Keys.Shift | Keys.F3);
+        replaceMenuItem = new ToolStripMenuItem("&Replace...", null, Replace_Click, Keys.Control | Keys.H);
+        gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click, Keys.Control | Keys.G);
+        selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, Keys.Control | Keys.A);
+        timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, Keys.F5);
+        fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click, Keys.Control | Keys.Shift | Keys.F);
         #pragma warning disable CS0169
         bookmarkSeparator = new ToolStripMenuItem();
         foldingSeparator = new ToolStripMenuItem();
@@ -178,8 +178,8 @@ partial class Form1
         nextBookmarkMenuItem = new ToolStripMenuItem("Next Bookmark", null, NextBookmark_Click, "F2");
         prevBookmarkMenuItem = new ToolStripMenuItem("Previous Bookmark", null, PrevBookmark_Click, "Shift+F2");
         clearBookmarksMenuItem = new ToolStripMenuItem("Clear Bookmarks", null, ClearAllBookmarks_Click);
-        toggleFoldMenuItem = new ToolStripMenuItem("Toggle Fold", null, ToggleFold_Click);
-        toggleAllFoldsMenuItem = new ToolStripMenuItem("Toggle All Folds", null, ToggleAllFolds_Click);
+        toggleFoldMenuItem = new ToolStripMenuItem("Toggle Fold", null, ToggleFold_Click, Keys.Control | Keys.Shift | Keys.OemOpenBrackets);
+        toggleAllFoldsMenuItem = new ToolStripMenuItem("Toggle All Folds", null, ToggleAllFolds_Click, Keys.Control | Keys.Alt | Keys.OemOpenBrackets);
         #pragma warning restore CS0169
         // Build Edit menu
         editMenu.DropDownItems.Add(undoMenuItem);
@@ -210,9 +210,9 @@ partial class Form1
 
         viewMenu = new ToolStripMenuItem("&View");
         zoomMenu = new ToolStripMenuItem("&Zoom");
-        zoomInMenuItem = new ToolStripMenuItem("Zoom &In", null, ZoomIn_Click, "Ctrl++");
-        zoomOutMenuItem = new ToolStripMenuItem("Zoom &Out", null, ZoomOut_Click, "Ctrl+-");
-        restoreDefaultZoomMenuItem = new ToolStripMenuItem("&Restore Default Zoom", null, RestoreDefaultZoom_Click, "Ctrl+0");
+        zoomInMenuItem = new ToolStripMenuItem("Zoom &In", null, ZoomIn_Click, Keys.Control | Keys.Oemplus);
+        zoomOutMenuItem = new ToolStripMenuItem("Zoom &Out", null, ZoomOut_Click, Keys.Control | Keys.OemMinus);
+        restoreDefaultZoomMenuItem = new ToolStripMenuItem("&Restore Default Zoom", null, RestoreDefaultZoom_Click, Keys.Control | Keys.D0);
         // Build Zoom menu
         zoomMenu.DropDownItems.Add(zoomInMenuItem);
         zoomMenu.DropDownItems.Add(zoomOutMenuItem);
@@ -266,7 +266,7 @@ partial class Form1
         gutterMenuItem.CheckOnClick = true;
         minimapMenuItem = new ToolStripMenuItem("Minimap", null, MinimapMenuItem_Click);
         minimapMenuItem.CheckOnClick = true;
-        vimModeMenuItem = new ToolStripMenuItem("&Vim Mode", null, ToggleVimMode);
+        vimModeMenuItem = new ToolStripMenuItem("&Vim Mode", null, ToggleVimMode, Keys.Control | Keys.Alt | Keys.V);
         vimModeMenuItem.CheckOnClick = true;
         themeMenu = new ToolStripMenuItem("&Theme");
         darkThemeMenuItem = new ToolStripMenuItem("&Dark", null, DarkTheme_Click);
