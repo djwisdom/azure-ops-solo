@@ -439,6 +439,16 @@ private List<Document> documents = new();
               vimEngine = new VimEngine(textEditor!);
               vimEngine.SaveRequested += () => { if (currentFilePath != null) SaveFile(); else SaveAsFile(); };
               vimEngine.CloseRequested += () => this.Close();
+              vimEngine.VerticalSplitRequested += () =>
+              {
+                  if (documents.Count > 0)
+                      SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Right);
+              };
+              vimEngine.HorizontalSplitRequested += () =>
+              {
+                  if (documents.Count > 0)
+                      SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Bottom);
+              };
 
              // Ensure initial dirty flag is clear after all initialization
              isModified = false;
@@ -824,6 +834,11 @@ private List<Document> documents = new();
                 textEditor.BackColor = theme.EditorBackground;
                 textEditor.ForeColor = theme.Text;
                 textEditor.HighlightColor = isDark ? Color.FromArgb(30, 60, 60, 60) : Color.FromArgb(30, 230, 230, 230);
+            }
+            if (_splitEditor != null)
+            {
+                _splitEditor.BackColor = theme.EditorBackground;
+                _splitEditor.ForeColor = theme.Text;
             }
             if (gutterPanel != null)
             {
@@ -1999,6 +2014,18 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
+        private void SplitVertical_Click(object? sender, EventArgs e)
+        {
+            if (documents.Count > 0)
+                SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Right);
+        }
+
+        private void SplitHorizontal_Click(object? sender, EventArgs e)
+        {
+            if (documents.Count > 0)
+                SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Bottom);
+        }
+
         private void SyntaxHighlighting_Click(object? sender, EventArgs e) => ToggleSyntaxHighlighting();
 
         private void WordWrap_Click(object? sender, EventArgs e) => ToggleWordWrap();
@@ -2503,6 +2530,7 @@ darkThemeMenuItem.Checked = isDark;
                 splitContainer.Panel1.Controls.Add(mainTable);
 
                 // Create a simple RichTextBox for the split pane in Panel2
+                var theme = isDarkTheme ? Theme.Dark : Theme.Light;
                 _splitEditor = new RichTextBox
                 {
                     Dock = DockStyle.Fill,
@@ -2511,8 +2539,8 @@ darkThemeMenuItem.Checked = isDark;
                     AcceptsTab = true,
                     Font = textEditor.Font,
                     BorderStyle = BorderStyle.None,
-                    BackColor = textEditor.BackColor,
-                    ForeColor = textEditor.ForeColor,
+                    BackColor = theme.EditorBackground,
+                    ForeColor = theme.Text,
                     Text = doc.Content ?? ""
                 };
                 splitContainer.Panel2.Controls.Add(_splitEditor);

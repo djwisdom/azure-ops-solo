@@ -77,6 +77,8 @@ partial class Form1
     private ToolStripMenuItem colCustomMenuItem;
     private ToolStripMenuItem gutterMenuItem;
     private ToolStripMenuItem vimModeMenuItem;
+    private ToolStripMenuItem splitVMenuItem;
+    private ToolStripMenuItem splitHMenuItem;
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
@@ -288,6 +290,12 @@ partial class Form1
         viewMenu.DropDownItems.Add(gutterMenuItem);
         viewMenu.DropDownItems.Add(minimapMenuItem);
         viewMenu.DropDownItems.Add(vimModeMenuItem);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        // Split menu items
+        splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Alt | Keys.V);
+        splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
+        viewMenu.DropDownItems.Add(splitVMenuItem);
+        viewMenu.DropDownItems.Add(splitHMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(themeMenu);
 

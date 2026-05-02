@@ -24,6 +24,8 @@ namespace MyCrownJewelApp.Pfpad
 
         public event Action? SaveRequested;
         public event Action? CloseRequested;
+        public event Action? VerticalSplitRequested;
+        public event Action? HorizontalSplitRequested;
 
         private static readonly HashSet<Keys> MotionKeys = new()
         {
@@ -432,6 +434,14 @@ namespace MyCrownJewelApp.Pfpad
                     break;
                 case "e!":
                     // Reload — not implemented
+                    break;
+                case "vsp":
+                case "vsplit":
+                    VerticalSplitRequested?.Invoke();
+                    break;
+                case "sp":
+                case "split":
+                    HorizontalSplitRequested?.Invoke();
                     break;
             }
         }
