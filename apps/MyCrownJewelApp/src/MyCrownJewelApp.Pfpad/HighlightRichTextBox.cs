@@ -109,12 +109,25 @@ public class HighlightRichTextBox : RichTextBox
         if (!_showGuide || !IsHandleCreated || TextLength == 0) return;
         try
         {
-            int col = Math.Min(_guideColumn - 1, TextLength - 1);
-            Point pos = GetPositionFromCharIndex(col);
-            if (pos.X <= 0 || pos.X > ClientSize.Width) return;
+            // Get first character index on line 0 — this is the reference column origin
+            int firstCharIdx = GetFirstCharIndexFromLine(0);
+            if (firstCharIdx < 0) return;
+
+            Point basePos = GetPositionFromCharIndex(firstCharIdx);
+
+            // Measure character width from two adjacent characters on line 0
+            int charWidth = 8;
+            if (firstCharIdx + 1 < TextLength)
+            {
+                Point nextPos = GetPositionFromCharIndex(firstCharIdx + 1);
+                charWidth = Math.Max(1, nextPos.X - basePos.X);
+            }
+
+            int guideX = basePos.X + (_guideColumn - 1) * charWidth;
+            if (guideX <= 0 || guideX > ClientSize.Width) return;
 
             using var pen = new Pen(_guideColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
-            g.DrawLine(pen, pos.X, 0, pos.X, ClientSize.Height);
+            g.DrawLine(pen, guideX, 0, guideX, ClientSize.Height);
         }
         catch { }
     }
