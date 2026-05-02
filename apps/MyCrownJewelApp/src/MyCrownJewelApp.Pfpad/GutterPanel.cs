@@ -7,7 +7,7 @@ namespace MyCrownJewelApp.Pfpad;
 public class GutterPanel : Panel
 {
     private Form1 mainForm;
-    private const int LineNumberMarginWidth = 60;
+    private int LineNumberMarginWidth = 60;
     private const int BookmarkMarginWidth = 20;
     private const int ChangeMarginWidth = 20;
     private const int FoldMarginWidth = 20;
@@ -38,6 +38,36 @@ public class GutterPanel : Panel
         BackColor = Color.FromArgb(45, 45, 45);
         DoubleBuffered = true;
         ResizeRedraw = true;
+    }
+
+    /// <summary>
+    /// Recalculates gutter width to accommodate zoom-scaled line-number text.
+    /// Call when ZoomFactor changes or total line count changes.
+    /// </summary>
+    public void UpdateLineNumberWidth()
+    {
+        int lineNumberWidth = LineNumberMarginWidth; // fallback
+        if (mainForm?.textEditor != null && ShowLineNumbers)
+        {
+            var editor = mainForm.textEditor;
+            if (editor.IsHandleCreated && editor.Lines.Length > 0)
+            {
+                // Compute required pixel width: scaled font width × max digits + padding
+                int maxLineNumber = editor.Lines.Length;
+                int digitCount = maxLineNumber.ToString().Length;
+                float scaledSize = editor.Font.Size * editor.ZoomFactor;
+                using var measureFont = new Font(editor.Font.FontFamily, scaledSize);
+                string sample = new string('8', digitCount); // widest digit
+                int textWidth = TextRenderer.MeasureText(sample, measureFont).Width;
+                lineNumberWidth = textWidth + 10; // 4px right padding + 6px left/remaining
+            }
+        }
+        if (lineNumberWidth < 20) lineNumberWidth = 20;
+        if (lineNumberWidth > 400) lineNumberWidth = 400;
+
+        LineNumberMarginWidth = lineNumberWidth;
+        Width = GetTotalMarginWidth();
+        Invalidate();
     }
 
     private int GetTotalMarginWidth()

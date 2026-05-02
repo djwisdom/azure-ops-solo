@@ -358,8 +358,18 @@ private List<Document> documents = new();
             statusStrip.Visible = statusBarVisible;
             
             // Set initial column widths for visible state
-            if (mainTable.ColumnCount >= 1)
-                mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
+            if (mainTable.ColumnCount >= 1 && gutterPanel != null)
+            {
+                if (gutterVisible)
+                {
+                    gutterPanel.UpdateLineNumberWidth();
+                    mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                }
+                else
+                {
+                    mainTable.ColumnStyles[0].Width = 0;
+                }
+            }
             
             // Attach minimap to editor
             if (minimapControl != null && textEditor != null)
@@ -957,17 +967,23 @@ darkThemeMenuItem.Checked = isDark;
              catch { /* ignore settings save errors */ }
          }
 
-         private void ToggleGutter()
+          private void ToggleGutter()
         {
             gutterVisible = !gutterVisible;
             gutterMenuItem.Checked = gutterVisible;
             gutterPanel.Visible = gutterVisible;
-            // Adjust column width: 60 when visible, 0 when hidden
             if (mainTable.ColumnCount > 0)
             {
-                mainTable.ColumnStyles[0].Width = gutterVisible ? 60 : 0;
+                if (gutterVisible)
+                {
+                    gutterPanel.UpdateLineNumberWidth();
+                    mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                }
+                else
+                {
+                    mainTable.ColumnStyles[0].Width = 0;
+                }
             }
-            // Force redraw after layout change
             gutterPanel.RefreshGutter();
             SaveSettings();
         }
@@ -1905,7 +1921,8 @@ darkThemeMenuItem.Checked = isDark;
                 zoomFactor += 0.1f;
                 textEditor.ZoomFactor = zoomFactor;
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
-                if (gutterPanel != null) gutterPanel.RefreshGutter();
+                gutterPanel?.UpdateLineNumberWidth();
+                SyncGutterColumnWidth();
                 guidePanel?.Invalidate();
             }
         }
@@ -1917,7 +1934,8 @@ darkThemeMenuItem.Checked = isDark;
                 zoomFactor -= 0.1f;
                 textEditor.ZoomFactor = zoomFactor;
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
-                if (gutterPanel != null) gutterPanel.RefreshGutter();
+                gutterPanel?.UpdateLineNumberWidth();
+                SyncGutterColumnWidth();
                 guidePanel?.Invalidate();
             }
         }
@@ -1927,8 +1945,17 @@ darkThemeMenuItem.Checked = isDark;
             zoomFactor = 1.0f;
             textEditor.ZoomFactor = zoomFactor;
             zoomLabel.Text = "100%";
-            if (gutterPanel != null) gutterPanel.RefreshGutter();
+            gutterPanel?.UpdateLineNumberWidth();
+            SyncGutterColumnWidth();
             guidePanel?.Invalidate();
+        }
+
+        private void SyncGutterColumnWidth()
+        {
+            if (mainTable != null && gutterPanel != null)
+            {
+                mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+            }
         }
 
         private void StatusBar_Click(object? sender, EventArgs e) => ToggleStatusBar();
@@ -2893,7 +2920,8 @@ darkThemeMenuItem.Checked = isDark;
                     {
                         zoomFactor = newZoom;
                         zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
-                        gutterPanel?.RefreshGutter();
+                        gutterPanel?.UpdateLineNumberWidth();
+                        SyncGutterColumnWidth();
                         guidePanel?.Invalidate();
                     }
                 }));
