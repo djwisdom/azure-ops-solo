@@ -359,8 +359,8 @@
             gutterPanel.Visible = gutterVisible;
             if (showGuide)
             {
-                textEditor.ShowGuide = true;
-                textEditor.GuideColumn = guideColumn;
+                textEditor!.ShowGuide = true;
+                textEditor!.GuideColumn = guideColumn;
             }
             minimapControl.Visible = _pendingMinimapVisible;
             statusStrip.Visible = statusBarVisible;
@@ -389,7 +389,7 @@
 
             // Initialize folding manager and scan regions
             _foldingManager = new FoldingManager(textEditor!);
-            textEditor.FoldingManager = _foldingManager;
+            textEditor!.FoldingManager = _foldingManager;
             textEditor!.TextChanged += (s, e) =>
             {
                 if (!_suppressFoldRescan) _foldingManager?.ScanRegions();
@@ -851,8 +851,8 @@
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
                 minimapControl.RefreshNow();
             }
-            textEditor.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
-            textEditor.Invalidate();
+            textEditor!.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
+            textEditor!.Invalidate();
             if (textEditor != null)
             {
                 textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
@@ -914,7 +914,7 @@ darkThemeMenuItem.Checked = isDark;
             CreateIncrementalHighlighter();
 
             gutterPanel?.RefreshGutter();
-            textEditor.Invalidate();
+            textEditor!.Invalidate();
         }
 
           private void TextEditor_Resize(object? sender, EventArgs e)
@@ -2071,6 +2071,7 @@ darkThemeMenuItem.Checked = isDark;
         private void DarkTheme_Click(object? sender, EventArgs e)
         {
             isDarkTheme = true;
+            _themeManager.IsDarkMode = true;
             UpdateThemeColors(isDarkTheme);
             UpdateThemeDropDown();
             SaveSettings();
@@ -2079,6 +2080,7 @@ darkThemeMenuItem.Checked = isDark;
         private void LightTheme_Click(object? sender, EventArgs e)
         {
             isDarkTheme = false;
+            _themeManager.IsDarkMode = false;
             UpdateThemeColors(isDarkTheme);
             UpdateThemeDropDown();
             SaveSettings();
@@ -2087,6 +2089,7 @@ darkThemeMenuItem.Checked = isDark;
         private void StatusBarDarkTheme_Click(object? sender, EventArgs e)
         {
             isDarkTheme = true;
+            _themeManager.IsDarkMode = true;
             UpdateThemeColors(isDarkTheme);
             UpdateThemeDropDown();
             SaveSettings();
@@ -2095,6 +2098,7 @@ darkThemeMenuItem.Checked = isDark;
         private void StatusBarLightTheme_Click(object? sender, EventArgs e)
         {
             isDarkTheme = false;
+            _themeManager.IsDarkMode = false;
             UpdateThemeColors(isDarkTheme);
             UpdateThemeDropDown();
             SaveSettings();
@@ -3027,7 +3031,7 @@ darkThemeMenuItem.Checked = isDark;
                         gutterPanel?.UpdateLineNumberWidth();
                         SyncGutterColumnWidth();
                         textEditor.SyncCaretWidth();
-                        textEditor.Invalidate();
+            textEditor!.Invalidate();
                     }
                 }));
             }
