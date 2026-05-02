@@ -1929,17 +1929,6 @@ darkThemeMenuItem.Checked = isDark;
             ToggleFold(currentLine);
         }
 
-        private void ToggleAllFolds_Click(object? sender, EventArgs e)
-        {
-            if (_foldingManager == null) return;
-            // Collapse all, or expand all if all are already collapsed
-            bool allCollapsed = _foldingManager.GetAllRegions().All(r => r.IsCollapsed);
-            foreach (var r in _foldingManager.GetAllRegions().ToList())
-            {
-                _foldingManager.ToggleFold(r.OpenLine);
-            }
-        }
-
         internal void ToggleFold(int line)
         {
             if (_foldingManager != null)
@@ -1957,6 +1946,24 @@ darkThemeMenuItem.Checked = isDark;
                     _suppressFoldRescan = false;
                 }
             }
+        }
+
+        private void ToggleAllFolds_Click(object? sender, EventArgs e)
+        {
+            if (_foldingManager == null) return;
+            bool allCollapsed = _foldingManager.GetAllRegions().All(r => r.IsCollapsed);
+            _suppressFoldRescan = true;
+            try
+            {
+                foreach (var r in _foldingManager.GetAllRegions().ToList())
+                    _foldingManager.ToggleFold(r.OpenLine);
+            }
+            finally
+            {
+                _suppressFoldRescan = false;
+                _foldingManager.ScanRegions();
+            }
+            gutterPanel?.RefreshGutter();
         }
 
         internal void ToggleBookmark(int line)
