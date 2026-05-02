@@ -1977,6 +1977,7 @@ darkThemeMenuItem.Checked = isDark;
             {
                 zoomFactor += 0.1f;
                 textEditor.ZoomFactor = zoomFactor;
+                textEditor.SyncCaretWidth();
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                 gutterPanel?.UpdateLineNumberWidth();
                 SyncGutterColumnWidth();
@@ -1990,6 +1991,7 @@ darkThemeMenuItem.Checked = isDark;
             {
                 zoomFactor -= 0.1f;
                 textEditor.ZoomFactor = zoomFactor;
+                textEditor.SyncCaretWidth();
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                 gutterPanel?.UpdateLineNumberWidth();
                 SyncGutterColumnWidth();
@@ -2001,6 +2003,7 @@ darkThemeMenuItem.Checked = isDark;
         {
             zoomFactor = 1.0f;
             textEditor.ZoomFactor = zoomFactor;
+            textEditor.SyncCaretWidth();
             zoomLabel.Text = "100%";
             gutterPanel?.UpdateLineNumberWidth();
             SyncGutterColumnWidth();
@@ -3005,6 +3008,7 @@ darkThemeMenuItem.Checked = isDark;
                         zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                         gutterPanel?.UpdateLineNumberWidth();
                         SyncGutterColumnWidth();
+                        textEditor.SyncCaretWidth();
                         textEditor.Invalidate();
                     }
                 }));

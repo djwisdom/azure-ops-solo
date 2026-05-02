@@ -37,10 +37,18 @@ public class HighlightRichTextBox : RichTextBox
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        // Set caret width to 2 pixels (0 = default, 1+ = custom width)
-        const int EM_SETCARETWIDTH = 0x01F8;
-        SendMessage(Handle, EM_SETCARETWIDTH, 0, 4);
+        UpdateCaretWidth();
     }
+
+    private void UpdateCaretWidth()
+    {
+        if (!IsHandleCreated) return;
+        const int EM_SETCARETWIDTH = 0x01F8;
+        int width = Math.Max(1, (int)(4 * ZoomFactor));
+        SendMessage(Handle, EM_SETCARETWIDTH, 0, width);
+    }
+
+    public void SyncCaretWidth() => UpdateCaretWidth();
 
     [Category("Appearance")]
     [Description("Current line highlight mode.")]
