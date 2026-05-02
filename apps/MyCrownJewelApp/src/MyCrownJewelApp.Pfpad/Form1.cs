@@ -133,15 +133,17 @@ private List<Document> documents = new();
         private int nextUntitledNumber = 1;
         private int? hoveredTabIndex = null;
         private Rectangle? closeButtonBounds = null;
+        private bool _closeButtonHovered = false;
 
         // Tab drag state for tear-away
         private int? _draggedTabIndex = null;
         private Point? _dragStartPoint = null;
         private bool _isDragging = false;
 
-        // Tab close button state
-
-        // Tab close button state
+        // Split view state
+        private RichTextBox? _splitEditor = null;
+        private Document? _splitDocument = null;
+        private string? _splitDocumentTitle = null;
 
         // Helper to get active document
         private Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
@@ -230,6 +232,14 @@ private List<Document> documents = new();
         private Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> compiledRegexCache = new();
 
     public Form1()
+        : this(skipInitialDocument: false)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor used by tear-away to avoid creating an extra untitled document.
+    /// </summary>
+    internal Form1(bool skipInitialDocument)
     {
         InitializeComponent();
         this.KeyPreview = true;
@@ -244,24 +254,27 @@ private List<Document> documents = new();
         documents = new List<Document>();
         activeDocIndex = -1;
 
-        // Process command line arguments (files)
-        string[] args = Environment.GetCommandLineArgs();
-        if (args.Length > 1)
+        if (!skipInitialDocument)
         {
-            for (int i = 1; i < args.Length; i++)
+            // Process command line arguments (files)
+            string[] args = Environment.GetCommandLineArgs();
+            if (args.Length > 1)
             {
-                string path = args[i];
-                if (File.Exists(path))
+                for (int i = 1; i < args.Length; i++)
                 {
-                    OpenFileInNewTab(path);
+                    string path = args[i];
+                    if (File.Exists(path))
+                    {
+                        OpenFileInNewTab(path);
+                    }
                 }
             }
-        }
 
-        // If no documents were opened, create a new untitled document
-        if (documents.Count == 0)
-        {
-            NewFile(isInitial: true);
+            // If no documents were opened, create a new untitled document
+            if (documents.Count == 0)
+            {
+                NewFile(isInitial: true);
+            }
         }
 
         zoomFactor = 1.0f;
@@ -380,7 +393,7 @@ private List<Document> documents = new();
             elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
 
              // Initialize incremental highlighter (after colors are loaded)
-             CreateIncrementalHighlighter();
+             if (documents.Count > 0) CreateIncrementalHighlighter();
 
              // Apply syntax highlighting state after timer is created
              if (syntaxHighlightingEnabled)
@@ -799,6 +812,7 @@ private List<Document> documents = new();
             }
             if (statusStrip != null)
             {
+                statusStrip.Renderer = new ThemeAwareMenuRenderer(theme);
                 statusStrip.BackColor = theme.PanelBackground;
                 statusStrip.ForeColor = theme.Text;
                 foreach (ToolStripItem item in statusStrip.Items)
@@ -1046,11 +1060,14 @@ darkThemeMenuItem.Checked = isDark;
             if (tabSizeDropDown == null) return;
             tabSizeDropDown.Text = $"Tab: {tabSize}";
             var items = tabSizeDropDown.DropDownItems;
-            if (items.Count >= 3)
+            if (items.Count >= 6)
             {
                 ((ToolStripMenuItem)items[0]).Checked = (tabSize == 2);
                 ((ToolStripMenuItem)items[1]).Checked = (tabSize == 4);
-                ((ToolStripMenuItem)items[2]).Checked = (tabSize == 8);
+                ((ToolStripMenuItem)items[2]).Checked = (tabSize == 6);
+                ((ToolStripMenuItem)items[3]).Checked = (tabSize == 8);
+                ((ToolStripMenuItem)items[4]).Checked = (tabSize == 10);
+                ((ToolStripMenuItem)items[5]).Checked = (tabSize == 12);
             }
         }
         private void ToggleInsertSpaces()
@@ -1565,6 +1582,10 @@ darkThemeMenuItem.Checked = isDark;
 
         private DialogResult PromptSaveChanges()
         {
+            // Only prompt if there are actual unsaved changes
+            if (!isModified && (textEditor == null || string.IsNullOrEmpty(textEditor.Text) || savedContentHash == null))
+                return DialogResult.No;
+
             var result = MessageBox.Show(
                 "This file has unsaved changes. Save before proceeding?",
                 "Unsaved Changes",
@@ -1959,7 +1980,10 @@ darkThemeMenuItem.Checked = isDark;
 
         private void TabSize2_Click(object? sender, EventArgs e) => SetTabSize(2);
         private void TabSize4_Click(object? sender, EventArgs e) => SetTabSize(4);
+        private void TabSize6_Click(object? sender, EventArgs e) => SetTabSize(6);
         private void TabSize8_Click(object? sender, EventArgs e) => SetTabSize(8);
+        private void TabSize10_Click(object? sender, EventArgs e) => SetTabSize(10);
+        private void TabSize12_Click(object? sender, EventArgs e) => SetTabSize(12);
 
         private void UpdateThemeDropDown()
         {
@@ -2105,30 +2129,22 @@ darkThemeMenuItem.Checked = isDark;
         // Close current tab
         private void CloseCurrentTab()
         {
-            if (documents.Count == 0) return;
+            if (documents.Count <= 1) return; // always keep at least one tab
+            if (activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
+
             var result = PromptSaveChanges();
             if (result == DialogResult.Cancel) return;
 
             // Remove current document and its tab
             int closeIndex = activeDocIndex;
+            if (closeIndex >= documents.Count || closeIndex >= tabControl.TabPages.Count) return;
             documents.RemoveAt(closeIndex);
-            tabControl.TabPages.RemoveAt(closeIndex); // remove corresponding tab (excluding +)
+            tabControl.TabPages.RemoveAt(closeIndex);
 
-            // If there are still documents, select another
-            if (documents.Count == 0)
-            {
-                // No documents left; create a new untitled one
-                NewFile(isInitial: true);
-            }
-            else
-            {
-                // Adjust active index: if we closed last tab, select previous
-                if (activeDocIndex >= documents.Count)
-                    activeDocIndex = documents.Count - 1;
-                // Switch to the new active
-                SwitchToTab(activeDocIndex);
-                tabControl.SelectedIndex = activeDocIndex;
-            }
+            // Select another tab
+            if (activeDocIndex >= documents.Count)
+                activeDocIndex = documents.Count - 1;
+            SwitchToTab(activeDocIndex);
         }
 
         // Switch to document at given index (0-based)
@@ -2221,7 +2237,15 @@ darkThemeMenuItem.Checked = isDark;
 
         private void TabControl_DoubleClick(object? sender, EventArgs e)
         {
-            // Create new tab on double-click anywhere on tab bar
+            // Only create new tab if not over an existing tab and no drag in progress
+            if (_draggedTabIndex != null) return;
+            var mousePos = tabControl.PointToClient(Control.MousePosition);
+            for (int i = 0; i < tabControl.TabPages.Count; i++)
+            {
+                if (tabControl.GetTabRect(i).Contains(mousePos))
+                    return; // clicked on a tab, not empty area
+            }
+            // Create new tab on double-click anywhere else on tab bar
             NewFile();
         }
 
@@ -2234,12 +2258,24 @@ darkThemeMenuItem.Checked = isDark;
             }
             else if (e.Button == MouseButtons.Left)
             {
-                // Start potential drag
+                // Check if close button (X) was clicked
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
                     var rect = tabControl.GetTabRect(i);
                     if (rect.Contains(e.Location))
                     {
+                        int btnSize = 12;
+                        int btnX = rect.Right - btnSize - 4;
+                        int btnY = rect.Top + (rect.Height - btnSize) / 2;
+                        var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+                        if (btnRect.Contains(e.Location))
+                        {
+                            // Close this tab on X click
+                            tabControl.SelectedIndex = i;
+                            CloseCurrentTab();
+                            return;
+                        }
+                        // Otherwise start potential drag
                         _draggedTabIndex = i;
                         _dragStartPoint = tabControl.PointToScreen(e.Location);
                         _isDragging = false;
@@ -2259,6 +2295,17 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
+        private void TabControl_MouseLeave(object? sender, EventArgs e)
+        {
+            if (hoveredTabIndex.HasValue || _closeButtonHovered)
+            {
+                hoveredTabIndex = null;
+                closeButtonBounds = null;
+                _closeButtonHovered = false;
+                tabControl.Invalidate();
+            }
+        }
+
         private void CloseTabAtLocation(Point location)
         {
             for (int i = 0; i < tabControl.TabPages.Count; i++)
@@ -2273,58 +2320,220 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
+        private bool IsPointOnAnyTab(Point screenPos)
+        {
+            if (tabControl == null || !tabControl.IsHandleCreated) return false;
+            var clientPos = tabControl.PointToClient(screenPos);
+            for (int i = 0; i < tabControl.TabPages.Count; i++)
+            {
+                if (tabControl.GetTabRect(i).Contains(clientPos))
+                    return true;
+            }
+            return false;
+        }
+
         private void DetachTabToNewWindow(int tabIndex, Point dragScreenPos)
         {
             if (tabIndex < 0 || tabIndex >= documents.Count) return;
-            var doc = documents[tabIndex];
 
-            // Create a new Form1 instance for the detached document
-            var detachedForm = new Form1();
-
-            // Remove the default untitled document from the new form
-            if (detachedForm.documents.Count > 0)
+            try
             {
-                detachedForm.documents.Clear();
+                var doc = documents[tabIndex];
+
+                // Create a new Form1 instance for the detached document (skip default untitled doc)
+                var detachedForm = new Form1(skipInitialDocument: true);
                 detachedForm.tabControl.TabPages.Clear();
                 detachedForm.activeDocIndex = -1;
+
+                // Add the dragged document to the new form
+                detachedForm.documents.Add(doc);
+                var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+                detachedForm.tabControl.TabPages.Add(tabPage);
+                detachedForm.tabControl.SelectedIndex = 0;
+                detachedForm.activeDocIndex = 0;
+                detachedForm.LoadDocument(doc);
+                detachedForm.UpdateWindowTitle();
+                detachedForm.UpdateTabTitle(0);
+                detachedForm.UpdateTabSizeDropdown();
+
+                // Position near the drag release point
+                detachedForm.StartPosition = FormStartPosition.Manual;
+                detachedForm.Location = new Point(dragScreenPos.X - 100, dragScreenPos.Y - 50);
+
+                // Remove the document from the original window
+                if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
+                {
+                    documents.RemoveAt(tabIndex);
+                    tabControl.TabPages.RemoveAt(tabIndex);
+                }
+
+                // Adjust active index in original window
+                if (activeDocIndex >= documents.Count)
+                    activeDocIndex = documents.Count - 1;
+                if (activeDocIndex >= 0)
+                    SwitchToTab(activeDocIndex);
+                else if (documents.Count == 0)
+                    NewFile(isInitial: true);
+
+                // Show the detached window
+                detachedForm.Show();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DetachTabToNewWindow error: {ex.Message}");
+            }
+        }
+
+        private enum DragZone { None, Left, Right, Top, Bottom, Outside }
+
+        private DragZone GetDragZone(Point screenPos)
+        {
+            var bounds = this.Bounds;
+            const double edgeRatio = 0.25;
+            int edgeW = (int)(bounds.Width * edgeRatio);
+            int edgeH = (int)(bounds.Height * edgeRatio);
+
+            if (!bounds.Contains(screenPos))
+                return DragZone.Outside;
+
+            int localX = screenPos.X - bounds.X;
+            int localY = screenPos.Y - bounds.Y;
+
+            if (localX < edgeW) return DragZone.Left;
+            if (localX > bounds.Width - edgeW) return DragZone.Right;
+            if (localY < edgeH) return DragZone.Top;
+            if (localY > bounds.Height - edgeH) return DragZone.Bottom;
+
+            return DragZone.None;
+        }
+
+        private void SplitTabToPane(int tabIndex, DragZone zone)
+        {
+            if (tabIndex < 0 || tabIndex >= documents.Count) return;
+            if (zone is DragZone.None or DragZone.Outside) return;
+
+            try
+            {
+                var doc = documents[tabIndex];
+
+                // If a split is already active, close it first
+                CloseSplit();
+
+                // Store document reference for close/restore
+                _splitDocument = doc;
+                _splitDocumentTitle = doc.DisplayName;
+
+                // Create the SplitContainer and swap mainTable into Panel1
+                splitContainer = new SplitContainer();
+                splitContainer.Dock = DockStyle.Fill;
+                splitContainer.SplitterWidth = 4;
+                splitContainer.Panel1MinSize = 50;
+                splitContainer.Panel2MinSize = 100;
+                splitContainer.TabStop = false;
+
+                if (zone is DragZone.Left or DragZone.Right)
+                    splitContainer.Orientation = Orientation.Vertical;
+                else
+                    splitContainer.Orientation = Orientation.Horizontal;
+
+                // Move mainTable out of mainLayout into Panel1
+                mainLayout.Controls.Remove(mainTable);
+                splitContainer.Panel1.Controls.Add(mainTable);
+
+                // Create a simple RichTextBox for the split pane in Panel2
+                _splitEditor = new RichTextBox
+                {
+                    Dock = DockStyle.Fill,
+                    Multiline = true,
+                    ScrollBars = RichTextBoxScrollBars.Both,
+                    AcceptsTab = true,
+                    Font = textEditor.Font,
+                    BorderStyle = BorderStyle.None,
+                    BackColor = textEditor.BackColor,
+                    ForeColor = textEditor.ForeColor,
+                    Text = doc.Content ?? ""
+                };
+                splitContainer.Panel2.Controls.Add(_splitEditor);
+
+                // Insert splitContainer into mainLayout where mainTable was
+                mainLayout.Controls.Add(splitContainer, 0, 2);
+
+                // Set splitter distance to split evenly (defer to layout)
+                if (splitContainer.Width > 100)
+                    splitContainer.SplitterDistance = splitContainer.Width / 2;
+
+                // Remove the tab page from the tab control (document stays in memory)
+                if (tabIndex >= 0 && tabIndex < tabControl.TabPages.Count)
+                    tabControl.TabPages.RemoveAt(tabIndex);
+                if (tabIndex >= 0 && tabIndex < documents.Count)
+                    documents.RemoveAt(tabIndex);
+
+                // Adjust active index
+                if (activeDocIndex >= documents.Count)
+                    activeDocIndex = documents.Count - 1;
+                if (activeDocIndex >= 0)
+                    SwitchToTab(activeDocIndex);
+                else if (documents.Count == 0)
+                    NewFile(isInitial: true);
+
+                // Reset drag state
+                _draggedTabIndex = null;
+                _isDragging = false;
+                _dragStartPoint = null;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SplitTabToPane error: {ex.Message}");
+            }
+        }
+
+        private void CloseSplit()
+        {
+            if (splitContainer == null) return;
+
+            // Save content back to document
+            if (_splitEditor != null && _splitDocument != null)
+            {
+                _splitDocument.Content = _splitEditor.Text;
+                _splitDocument.ModifiedLines = new HashSet<int>();
+                _splitDocument.IsDirty = false;
             }
 
-            // Add the dragged document to the new form
-            detachedForm.documents.Add(doc);
-            var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-            detachedForm.tabControl.TabPages.Add(tabPage);
-            detachedForm.tabControl.SelectedIndex = 0;
-            detachedForm.activeDocIndex = 0;
-            detachedForm.LoadDocument(doc);
-            detachedForm.UpdateWindowTitle();
-            detachedForm.UpdateTabTitle(0);
-            detachedForm.UpdateTabSizeDropdown();
+            // Move mainTable back to mainLayout, destroy splitContainer
+            if (splitContainer.Panel1.Controls.Contains(mainTable))
+                splitContainer.Panel1.Controls.Remove(mainTable);
+            mainLayout.Controls.Remove(splitContainer);
+            mainLayout.Controls.Add(mainTable, 0, 2);
 
-            // Position near the drag release point
-            detachedForm.StartPosition = FormStartPosition.Manual;
-            detachedForm.Location = new Point(dragScreenPos.X - 100, dragScreenPos.Y - 50);
+            // Clean up split editor
+            if (_splitEditor != null)
+            {
+                splitContainer.Panel2.Controls.Remove(_splitEditor);
+                _splitEditor.Dispose();
+                _splitEditor = null;
+            }
 
-            // Remove the document from the original window
-            documents.RemoveAt(tabIndex);
-            tabControl.TabPages.RemoveAt(tabIndex);
+            splitContainer.Dispose();
+            splitContainer = null;
 
-            // Adjust active index in original window
-            if (activeDocIndex >= documents.Count)
-                activeDocIndex = documents.Count - 1;
-            if (activeDocIndex >= 0)
-                SwitchToTab(activeDocIndex);
-            else if (documents.Count == 0)
-                NewFile(isInitial: true);
+            // Re-add the document and tab page to the main window
+            if (_splitDocument != null)
+            {
+                documents.Add(_splitDocument);
+                int newIndex = documents.Count - 1;
+                var tabPage = new TabPage(_splitDocumentTitle ?? _splitDocument.DisplayName) { Tag = _splitDocument };
+                tabControl.TabPages.Add(tabPage);
+                tabControl.SelectedIndex = newIndex;
+            }
 
-            // Show the detached window
-            detachedForm.Show();
+            _splitDocument = null;
+            _splitDocumentTitle = null;
         }
 
         private void TabControl_MouseMove(object? sender, MouseEventArgs e)
         {
-            int oldHoverIndex = hoveredTabIndex ?? -1;
-            hoveredTabIndex = null;
-            closeButtonBounds = null;
+            int newHoverIndex = -1;
+            Rectangle? newCloseBounds = null;
             bool overAnyTab = false;
 
             for (int i = 0; i < tabControl.TabPages.Count; i++)
@@ -2333,21 +2542,32 @@ darkThemeMenuItem.Checked = isDark;
                 if (rect.Contains(e.Location))
                 {
                     overAnyTab = true;
-                    hoveredTabIndex = i;
-                    // Close button: right-aligned, 12x12 square, 4px from right edge
+                    newHoverIndex = i;
                     int buttonSize = 12;
                     int btnX = rect.Right - buttonSize - 4;
                     int btnY = rect.Top + (rect.Height - buttonSize) / 2;
-                    closeButtonBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
+                    newCloseBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
                     break;
                 }
             }
 
-            // Set cursor to hand when over any tab, default otherwise
-            if (overAnyTab)
-                tabControl.Cursor = Cursors.Hand;
-            else
-                tabControl.Cursor = Cursors.Default;
+            int oldHover = hoveredTabIndex ?? -1;
+            bool oldCloseHovered = closeButtonBounds.HasValue && closeButtonBounds.Value.Contains(e.Location);
+            bool newCloseHovered = newCloseBounds.HasValue && newCloseBounds.Value.Contains(e.Location);
+
+            bool needsRedraw = (newHoverIndex != oldHover) || (newCloseHovered != oldCloseHovered);
+
+            hoveredTabIndex = overAnyTab ? newHoverIndex : null;
+            closeButtonBounds = newCloseBounds;
+            _closeButtonHovered = newCloseHovered;
+
+            // Always show hand cursor on the tab strip — whole strip is interactive
+            tabControl.Cursor = Cursors.Hand;
+
+            if (needsRedraw)
+            {
+                tabControl.Invalidate();
+            }
 
             // Tab tear-away: if dragging and mouse moved beyond threshold, start drag
             if (_draggedTabIndex.HasValue && !_isDragging)
@@ -2359,24 +2579,19 @@ darkThemeMenuItem.Checked = isDark;
                 }
             }
 
-            // If dragging, check if outside window to detach
+            // If dragging, check if outside window to detach, or near edge to split
             if (_isDragging && _draggedTabIndex.HasValue)
             {
                 var screenPos = tabControl.PointToScreen(e.Location);
-                if (!this.Bounds.Contains(screenPos))
+                var zone = GetDragZone(screenPos);
+                if (zone == DragZone.Outside)
                 {
                     DetachTabToNewWindow(_draggedTabIndex.Value, screenPos);
                 }
-            }
-
-            if (oldHoverIndex != hoveredTabIndex || (hoveredTabIndex.HasValue && closeButtonBounds.HasValue && !closeButtonBounds.Value.Contains(e.Location)))
-            {
-                // Redraw if hover changed OR if hovering a tab but mouse left the close button
-                if (hoveredTabIndex.HasValue && closeButtonBounds.HasValue && !closeButtonBounds.Value.Contains(e.Location))
+                else if (zone != DragZone.None)
                 {
-                    closeButtonBounds = null; // close button no longer hovered
+                    SplitTabToPane(_draggedTabIndex.Value, zone);
                 }
-                tabControl.Invalidate();
             }
         }
 
@@ -2388,58 +2603,68 @@ darkThemeMenuItem.Checked = isDark;
             var graphics = e.Graphics;
             var tabRect = e.Bounds;
 
+            // Normalize tab rect height to ItemSize.Height to avoid system 2px height bump on selected
+            tabRect.Height = tabControl.ItemSize.Height;
+
             // Determine if this tab is selected or hovered
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
 
-            // Background
-            Color backColor = isSelected ? theme.PanelBackground : (isHovered ? theme.ButtonHoverBackground : theme.PanelBackground);
+            // Flat background: subtly different for selected, hover, or normal
+            Color backColor;
+            if (isSelected)
+                backColor = theme.EditorBackground;
+            else if (isHovered)
+                backColor = theme.ButtonHoverBackground;
+            else
+                backColor = theme.PanelBackground;
+
             using (var brush = new SolidBrush(backColor))
             {
                 graphics.FillRectangle(brush, tabRect);
             }
 
-            // Border (bottom line: selected gets accent, others get border)
-            using (var pen = new Pen(isSelected ? theme.Accent : theme.Border, 1))
-            {
-                graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
-            }
-
             // Text (tab title)
             string text = tabControl.TabPages[e.Index].Text;
-            TextRenderer.DrawText(graphics, text, tabControl.Font, tabRect, theme.Text,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+            var textRect = tabRect;
+            textRect.X += 4;
+            textRect.Width -= 8;
+            TextRenderer.DrawText(graphics, text, tabControl.Font, textRect, isSelected ? theme.Text : theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
 
-            // Close button (X) for all tabs
-            int btnSize = 12;
-            int btnX = tabRect.Right - btnSize - 4;
-            int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
-            var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
-
-            bool closeHovered = hoveredTabIndex == e.Index && closeButtonBounds.HasValue && closeButtonBounds.Value.Contains(tabRect.Location);
-
-            if (closeHovered)
+            // Close button (X) — only on hovered tab
+            if (isHovered)
             {
-                using (var hoverBrush = new SolidBrush(theme.Accent))
-                using (var xBrush = new SolidBrush(theme.PanelBackground))
+                int btnSize = 12;
+                int btnX = tabRect.Right - btnSize - 4;
+                int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
+                var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+
+                bool closeHovered = _closeButtonHovered;
+
+                if (closeHovered)
                 {
-                    graphics.FillRectangle(hoverBrush, btnRect);
-                    graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                    using (var hoverBrush = new SolidBrush(theme.Accent))
+                    using (var xBrush = new SolidBrush(theme.PanelBackground))
                     {
-                        Alignment = StringAlignment.Center,
-                        LineAlignment = StringAlignment.Center
-                    });
+                        graphics.FillRectangle(hoverBrush, btnRect);
+                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        {
+                            Alignment = StringAlignment.Center,
+                            LineAlignment = StringAlignment.Center
+                        });
+                    }
                 }
-            }
-            else
-            {
-                using (var xBrush = new SolidBrush(theme.Muted))
+                else
                 {
-                    graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                    using (var xBrush = new SolidBrush(theme.Muted))
                     {
-                        Alignment = StringAlignment.Center,
-                        LineAlignment = StringAlignment.Center
-                    });
+                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        {
+                            Alignment = StringAlignment.Center,
+                            LineAlignment = StringAlignment.Center
+                        });
+                    }
                 }
             }
         }
@@ -2646,6 +2871,11 @@ darkThemeMenuItem.Checked = isDark;
             guidePanel?.Invalidate();
         }
 
+        private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
+        {
+            // TODO: implement mouse handling if needed
+        }
+
          private void TextEditor_Resize(object? sender, EventArgs e)
          {
              if (gutterPanel != null) gutterPanel.RefreshGutter();
@@ -2838,11 +3068,79 @@ darkThemeMenuItem.Checked = isDark;
             catch
             {
                 // Ignore errors accessing the file
-             }
-         }
+            }
+        }
+
+        private void TabControl_Paint(object? sender, PaintEventArgs e)
+        {
+            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            e.Graphics.Clear(theme.PanelBackground);
+        }
+
+        private void TabControl_HandleCreated(object? sender, EventArgs e)
+        {
+            // Strip visual styles to remove the 3D raised border from the tab strip
+            if (tabControl.IsHandleCreated)
+                SetWindowTheme(tabControl.Handle, "", "");
+
+            // Hide the dashed focus rectangle on the active tab
+            const int WM_UPDATEUISTATE = 0x0128;
+            const int UIS_SET = 1;
+            const int UISF_HIDEFOCUS = 0x1;
+            int wParam = (UISF_HIDEFOCUS << 16) | UIS_SET;
+            SendMessage(tabControl.Handle, WM_UPDATEUISTATE, wParam, 0);
+
+            _tabStripWindow?.ReleaseHandle();
+            _tabStripWindow = new TabStripBackgroundWindow(this);
+            _tabStripWindow.AssignHandle(tabControl.Handle);
+        }
+
+        private void TabControl_HandleDestroyed(object? sender, EventArgs e)
+        {
+            _tabStripWindow?.ReleaseHandle();
+            _tabStripWindow = null;
+        }
+
+        // Native-window subclass that paints the tab strip background with the current theme.
+        private TabStripBackgroundWindow? _tabStripWindow;
+
+        private sealed class TabStripBackgroundWindow : NativeWindow
+        {
+            private const int WM_ERASEBKGND = 0x0014;
+            private const int WM_LBUTTONDBLCLK = 0x0203;
+            private const int WM_NCLBUTTONDBLCLK = 0x00A3;
+            private readonly Form1 _owner;
+
+            public TabStripBackgroundWindow(Form1 owner) => _owner = owner;
+
+            protected override void WndProc(ref Message m)
+            {
+                switch (m.Msg)
+                {
+                    case WM_ERASEBKGND:
+                        var theme = _owner.isDarkTheme ? Theme.Dark : Theme.Light;
+                        using (var g = Graphics.FromHdc(m.WParam))
+                        using (var brush = new SolidBrush(theme.PanelBackground))
+                        {
+                            g.FillRectangle(brush, _owner.tabControl.ClientRectangle);
+                        }
+                        m.Result = (IntPtr)1;
+                        return;
+
+                    case WM_LBUTTONDBLCLK:
+                    case WM_NCLBUTTONDBLCLK:
+                        // Only create new tab if double-click is NOT on an existing tab
+                        // and no drag is in progress
+                        if (_owner._draggedTabIndex == null && !_owner.IsPointOnAnyTab(Cursor.Position))
+                            _owner.BeginInvoke(() => _owner.NewFile());
+                        return;
+                }
+                base.WndProc(ref m);
+            }
+        }
+
 
         #endregion
-
         #region Syntax Highlighting (async, incremental, visible-range)
 
         private Color GetKeywordColor() => keywordColor;
@@ -3225,11 +3523,56 @@ darkThemeMenuItem.Checked = isDark;
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.KeyCode == Keys.F10)
+            {
+                ToggleMenuVisibility();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape && _isFullScreen)
+            {
+                ToggleFullScreen();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
+
+        private bool _isFullScreen = false;
+        private FormWindowState _preFullScreenWindowState;
+        private FormBorderStyle _preFullScreenBorderStyle;
+        private Rectangle _preFullScreenBounds;
 
         private void ToggleFullScreen()
         {
-            // Fullscreen toggle not yet implemented
+            if (_isFullScreen)
+            {
+                // Restore
+                this.WindowState = _preFullScreenWindowState;
+                this.FormBorderStyle = _preFullScreenBorderStyle;
+                this.Bounds = _preFullScreenBounds;
+                this.TopMost = false;
+                _isFullScreen = false;
+            }
+            else
+            {
+                // Save current state
+                _preFullScreenWindowState = this.WindowState;
+                _preFullScreenBorderStyle = this.FormBorderStyle;
+                _preFullScreenBounds = this.WindowState == FormWindowState.Normal ? this.Bounds : this.RestoreBounds;
+
+                // Go fullscreen
+                this.WindowState = FormWindowState.Normal;
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.Bounds = Screen.FromControl(this).Bounds;
+                this.TopMost = true;
+                _isFullScreen = true;
+            }
+        }
+
+        private void ToggleMenuVisibility()
+        {
+            if (menuStrip != null)
+                menuStrip.Visible = !menuStrip.Visible;
         }
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)

@@ -212,7 +212,7 @@ public class GutterPanel : Panel
 
         using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, style);
         Size textSize = TextRenderer.MeasureText(text, font);
-        int textX = x + (LineNumberMarginWidth - textSize.Width) / 2;
+        int textX = x + LineNumberMarginWidth - textSize.Width - 4; // right-align, 4px right padding
         int textY = y;
 
         TextRenderer.DrawText(g, text, font, new Point(textX, textY), color);
