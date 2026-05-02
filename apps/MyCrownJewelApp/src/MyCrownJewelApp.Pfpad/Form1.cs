@@ -52,13 +52,11 @@
 
         private void ApplyScrollbarTheme()
         {
+            string? themeName = isDarkTheme ? DARK_MODE_SCROLLBAR : null;
             if (textEditor != null && textEditor.IsHandleCreated)
-            {
-                if (isDarkTheme)
-                    SetWindowTheme(textEditor.Handle, DARK_MODE_SCROLLBAR, null);
-                else
-                    SetWindowTheme(textEditor.Handle, null, null);
-            }
+                SetWindowTheme(textEditor.Handle, themeName, null);
+            if (_splitEditor != null && _splitEditor.IsHandleCreated)
+                SetWindowTheme(_splitEditor.Handle, themeName, null);
         }
 
         private void ApplyTitleBarTheme()
@@ -2353,7 +2351,7 @@ darkThemeMenuItem.Checked = isDark;
                     var rect = tabControl.GetTabRect(i);
                     if (rect.Contains(e.Location))
                     {
-                        int btnSize = 12;
+                        int btnSize = 14;
                         int btnX = rect.Right - btnSize - 4;
                         int btnY = rect.Top + (rect.Height - btnSize) / 2;
                         var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
@@ -2543,6 +2541,7 @@ darkThemeMenuItem.Checked = isDark;
                     ForeColor = theme.Text,
                     Text = doc.Content ?? ""
                 };
+                _splitEditor.HandleCreated += (s, e) => ApplyScrollbarTheme();
                 splitContainer.Panel2.Controls.Add(_splitEditor);
 
                 // Insert splitContainer into mainLayout where mainTable was
@@ -2633,7 +2632,7 @@ darkThemeMenuItem.Checked = isDark;
                 {
                     overAnyTab = true;
                     newHoverIndex = i;
-                    int buttonSize = 12;
+                    int buttonSize = 14;
                     int btnX = rect.Right - buttonSize - 4;
                     int btnY = rect.Top + (rect.Height - buttonSize) / 2;
                     newCloseBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
@@ -2714,22 +2713,35 @@ darkThemeMenuItem.Checked = isDark;
                 graphics.FillRectangle(brush, tabRect);
             }
 
-            // Text (tab title)
+            // Text (tab title) — VS Code style: left-aligned with left padding, right margin for X
             string text = tabControl.TabPages[e.Index].Text;
             var textRect = tabRect;
-            textRect.X += 4;
-            textRect.Width -= 8;
-            TextRenderer.DrawText(graphics, text, tabControl.Font, textRect, isSelected ? theme.Text : theme.Muted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
 
-            // Close button (X) — only on hovered tab
+            // Close button (X) — only on hovered tab, takes 16px from the right
+            const int btnSize = 14;
+            const int btnRightPad = 4;
+            int btnX = tabRect.Right - btnSize - btnRightPad;
+            int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
+            var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+
             if (isHovered)
             {
-                int btnSize = 12;
-                int btnX = tabRect.Right - btnSize - 4;
-                int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
-                var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+                // Reserve space for the close button by shrinking text width
+                textRect.Width = btnX - tabRect.Left - 4;
+            }
+            else
+            {
+                textRect.Width -= 8;
+            }
+            textRect.X += 6;
 
+            TextRenderer.DrawText(graphics, text, tabControl.Font, textRect, isSelected ? theme.Text : theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
+                TextFormatFlags.EndEllipsis);
+
+            // Draw close button only on hover
+            if (isHovered)
+            {
                 bool closeHovered = _closeButtonHovered;
 
                 if (closeHovered)
@@ -2738,22 +2750,20 @@ darkThemeMenuItem.Checked = isDark;
                     using (var xBrush = new SolidBrush(theme.PanelBackground))
                     {
                         graphics.FillRectangle(hoverBrush, btnRect);
-                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        using (var xFont = new Font("Segoe UI", 10, FontStyle.Bold))
                         {
-                            Alignment = StringAlignment.Center,
-                            LineAlignment = StringAlignment.Center
-                        });
+                            TextRenderer.DrawText(graphics, "×", xFont, btnRect, theme.PanelBackground,
+                                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                        }
                     }
                 }
                 else
                 {
                     using (var xBrush = new SolidBrush(theme.Muted))
+                    using (var xFont = new Font("Segoe UI", 10, FontStyle.Bold))
                     {
-                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
-                        {
-                            Alignment = StringAlignment.Center,
-                            LineAlignment = StringAlignment.Center
-                        });
+                        TextRenderer.DrawText(graphics, "×", xFont, btnRect, theme.Muted,
+                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
                     }
                 }
             }
