@@ -768,7 +768,7 @@ private List<Document> documents = new();
             {
                 textEditor.BackColor = theme.EditorBackground;
                 textEditor.ForeColor = theme.Text;
-                textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
+                textEditor.HighlightColor = isDark ? Color.FromArgb(30, 60, 60, 60) : Color.FromArgb(30, 230, 230, 230);
             }
             if (gutterPanel != null)
             {
@@ -807,6 +807,18 @@ private List<Document> documents = new();
                     themeDropDown.BackColor = theme.PanelBackground;
                     themeDropDown.ForeColor = theme.Text;
                     foreach (ToolStripItem item in themeDropDown.DropDownItems)
+                    {
+                        item.BackColor = theme.MenuBackground;
+                        item.ForeColor = theme.Text;
+                    }
+                }
+                // Ensure tab size dropdown uses theme-aware renderer
+                if (tabSizeDropDown != null && tabSizeDropDown.DropDown != null)
+                {
+                    tabSizeDropDown.DropDown.Renderer = new ThemeAwareMenuRenderer(theme);
+                    tabSizeDropDown.BackColor = theme.PanelBackground;
+                    tabSizeDropDown.ForeColor = theme.Text;
+                    foreach (ToolStripItem item in tabSizeDropDown.DropDownItems)
                     {
                         item.BackColor = theme.MenuBackground;
                         item.ForeColor = theme.Text;
@@ -1006,6 +1018,7 @@ darkThemeMenuItem.Checked = isDark;
             UpdateTabSizeMenu();
             UpdateTabStops();
             UpdateStatusBar();
+            UpdateTabSizeDropdown();
             SaveSettings();
         }
         private void UpdateTabSizeMenu()
@@ -1019,6 +1032,19 @@ darkThemeMenuItem.Checked = isDark;
                 tab8MenuItem.Checked = (tabSize == 8);
                 tab10MenuItem.Checked = (tabSize == 10);
                 tab12MenuItem.Checked = (tabSize == 12);
+            }
+        }
+
+        private void UpdateTabSizeDropdown()
+        {
+            if (tabSizeDropDown == null) return;
+            tabSizeDropDown.Text = $"Tab: {tabSize}";
+            var items = tabSizeDropDown.DropDownItems;
+            if (items.Count >= 3)
+            {
+                ((ToolStripMenuItem)items[0]).Checked = (tabSize == 2);
+                ((ToolStripMenuItem)items[1]).Checked = (tabSize == 4);
+                ((ToolStripMenuItem)items[2]).Checked = (tabSize == 8);
             }
         }
         private void ToggleInsertSpaces()
@@ -1925,29 +1951,9 @@ darkThemeMenuItem.Checked = isDark;
             SaveSettings();
         }
 
-        private void TabSize2_Click(object? sender, EventArgs e)
-        {
-            tabSize = 2;
-            UpdateTabStops();
-            tabSizeDropDown.Text = "Tab: 2";
-            SaveSettings();
-        }
-
-        private void TabSize4_Click(object? sender, EventArgs e)
-        {
-            tabSize = 4;
-            UpdateTabStops();
-            tabSizeDropDown.Text = "Tab: 4";
-            SaveSettings();
-        }
-
-        private void TabSize8_Click(object? sender, EventArgs e)
-        {
-            tabSize = 8;
-            UpdateTabStops();
-            tabSizeDropDown.Text = "Tab: 8";
-            SaveSettings();
-        }
+        private void TabSize2_Click(object? sender, EventArgs e) => SetTabSize(2);
+        private void TabSize4_Click(object? sender, EventArgs e) => SetTabSize(4);
+        private void TabSize8_Click(object? sender, EventArgs e) => SetTabSize(8);
 
         private void UpdateThemeDropDown()
         {
@@ -2364,13 +2370,7 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-        private void NewTabButtonPage_MouseDown(object? sender, MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                NewFile();
-            }
-        }
+
 
         #endregion
 
@@ -2678,11 +2678,7 @@ darkThemeMenuItem.Checked = isDark;
             var theme = isDarkTheme ? Theme.Dark : Theme.Light;
             tabControl.BackColor = theme.PanelBackground;
             tabControl.ForeColor = theme.Text;
-            if (newTabButtonPage != null)
-            {
-                newTabButtonPage.BackColor = theme.PanelBackground;
-                newTabButtonPage.ForeColor = theme.Text;
-            }
+            // Force redraw to apply themed background in owner-drawn tabs
             tabControl.Invalidate();
         }
 

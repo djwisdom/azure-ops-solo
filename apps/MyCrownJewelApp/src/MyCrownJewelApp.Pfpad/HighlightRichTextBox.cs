@@ -1,7 +1,6 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
@@ -9,7 +8,7 @@ using WinFormsTimer = System.Windows.Forms.Timer;
 namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
-/// RichTextBox that draws a full-width current line highlight and uses a bold caret.
+/// RichTextBox that draws a full-width current line highlight.
 /// </summary>
 public class HighlightRichTextBox : RichTextBox
 {
@@ -54,19 +53,6 @@ public class HighlightRichTextBox : RichTextBox
     {
         get => _highlightColor;
         set { _highlightColor = value; Invalidate(); }
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        // Set caret width to 2 pixels (bold hairline) via reflection
-        try
-        {
-            var baseType = typeof(TextBoxBase);
-            var prop = baseType.GetProperty("CaretWidth", BindingFlags.Instance | BindingFlags.Public);
-            prop?.SetValue(this, 2, null);
-        }
-        catch { /* ignore if not supported */ }
     }
 
     protected override void OnSelectionChanged(EventArgs e)

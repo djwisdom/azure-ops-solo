@@ -293,7 +293,6 @@ partial class Form1
         newTabButtonPage = new TabPage("+");
         newTabButtonPage.Width = 30;
         newTabButtonPage.ToolTipText = "New Tab";
-        newTabButtonPage.MouseDown += NewTabButtonPage_MouseDown;
         tabControl.TabPages.Add(newTabButtonPage);
 
         // Main Table Layout (2 columns: gutter | editor)
