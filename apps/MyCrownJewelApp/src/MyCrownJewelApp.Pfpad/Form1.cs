@@ -1847,6 +1847,12 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
+        private void About_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new AboutDialog();
+            dlg.ShowDialog(this);
+        }
+
         #endregion
 
         #region Find & Replace

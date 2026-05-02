@@ -304,6 +304,11 @@ partial class Form1
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);
         menuStrip.Items.Add(viewMenu);
+        // Help menu
+        var helpMenu = new ToolStripMenuItem("&Help");
+        var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
+        helpMenu.DropDownItems.Add(aboutMenuItem);
+        menuStrip.Items.Add(helpMenu);
         menuStrip.Dock = DockStyle.Fill;
 
         // Tab Control for multi-file editing
