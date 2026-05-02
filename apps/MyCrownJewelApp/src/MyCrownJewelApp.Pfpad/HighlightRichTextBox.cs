@@ -20,6 +20,8 @@ public class HighlightRichTextBox : RichTextBox
     private int _guideColumn = 80;
     private bool _showGuide = false;
     private Color _guideColor = Color.FromArgb(100, 120, 120, 120);
+    private FoldingManager? _foldingManager;
+    private Color _foldLineColor = Color.FromArgb(80, 80, 80);
 
     public event EventHandler? CurrentLineHighlightModeChanged;
 
@@ -140,6 +142,64 @@ public class HighlightRichTextBox : RichTextBox
         catch { }
     }
 
+    private void DrawFoldBracketLines(Graphics g)
+    {
+        if (_foldingManager == null || !IsHandleCreated) return;
+        try
+        {
+            int charWidth = 8;
+            int firstCharIdx = TextLength > 0 ? GetFirstCharIndexFromLine(0) : -1;
+            if (firstCharIdx >= 0 && firstCharIdx + 1 < TextLength)
+            {
+                Point p0 = GetPositionFromCharIndex(firstCharIdx);
+                Point p1 = GetPositionFromCharIndex(firstCharIdx + 1);
+                charWidth = Math.Max(1, p1.X - p0.X);
+                if (charWidth < 1) charWidth = 8;
+            }
+
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+
+            foreach (var region in _foldingManager.GetAllRegions())
+            {
+                if (region.IsCollapsed) continue;
+
+                // Find the brace column on the open line
+                string openText = GetLineTextFromLines(region.OpenLine);
+                int braceCol = openText.LastIndexOf('{');
+                if (braceCol < 0) continue;
+
+                Point openPos = GetPositionFromCharIndex(
+                    GetFirstCharIndexFromLine(region.OpenLine) + braceCol);
+                Point closePos = GetPositionFromCharIndex(
+                    GetFirstCharIndexFromLine(region.CloseLine));
+
+                int x = openPos.X + charWidth / 2;
+                if (x < 0 || x > ClientSize.Width) continue;
+
+                int yTop = openPos.Y;
+                int yBottom = closePos.Y + lineH - 1;
+
+                using var pen = new Pen(_foldLineColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+                g.DrawLine(pen, x, yTop, x, yBottom);
+
+                // Small horizontal cap at bottom
+                g.DrawLine(pen, x, yBottom, x + charWidth / 2, yBottom);
+            }
+        }
+        catch { }
+    }
+
+    private string GetLineTextFromLines(int lineIndex)
+    {
+        try
+        {
+            if (Lines != null && lineIndex < Lines.Length)
+                return Lines[lineIndex] ?? "";
+        }
+        catch { }
+        return "";
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -168,6 +228,20 @@ public class HighlightRichTextBox : RichTextBox
     {
         get => _guideColor;
         set { _guideColor = value; Invalidate(); }
+    }
+
+    [Browsable(false)]
+    public FoldingManager? FoldingManager
+    {
+        get => _foldingManager;
+        set { _foldingManager = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    public Color FoldLineColor
+    {
+        get => _foldLineColor;
+        set { _foldLineColor = value; Invalidate(); }
     }
 
     [DllImport("user32.dll")]
@@ -203,6 +277,7 @@ public class HighlightRichTextBox : RichTextBox
                         using var g = Graphics.FromHdc(hdc);
                         DrawCurrentLineHighlight(g);
                         DrawColumnGuide(g);
+                        DrawFoldBracketLines(g);
                         ReleaseDC(Handle, hdc);
                     }
                     return;

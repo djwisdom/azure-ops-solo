@@ -389,6 +389,7 @@
 
             // Initialize folding manager and scan regions
             _foldingManager = new FoldingManager(textEditor!);
+            textEditor.FoldingManager = _foldingManager;
             textEditor!.TextChanged += (s, e) =>
             {
                 if (!_suppressFoldRescan) _foldingManager?.ScanRegions();

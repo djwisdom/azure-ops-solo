@@ -12,7 +12,7 @@ public class GutterPanel : Panel
     private int LineNumberMarginWidth = 60;
     private const int BookmarkMarginWidth = 20;
     private const int ChangeMarginWidth = 20;
-    private const int FoldMarginWidth = 20;
+    private const int FoldMarginWidth = 14;
 
     private int totalMarginWidth;
 
@@ -277,21 +277,14 @@ public class GutterPanel : Panel
         }
 
         if (!isFoldStart) return;
-        int size = 12;
-        int centerX = x + FoldMarginWidth / 2 - size / 2;
-        int centerY = y + 4;
 
-        using var pen = new Pen(Color.Gray);
-        using var brush = new SolidBrush(Color.FromArgb(60, 60, 60));
-        g.FillRectangle(brush, centerX, centerY, size, size);
-        g.DrawRectangle(pen, centerX, centerY, size, size);
-
-        string symbol = folded ? "+" : "-";
-        using var font = new Font("Marlett", 8);
+        string symbol = folded ? ">" : "v";
+        using var font = new Font("Segoe UI", 9, FontStyle.Bold);
         Size sz = TextRenderer.MeasureText(symbol, font);
-        int tx = centerX + (size - sz.Width) / 2;
-        int ty = centerY + (size - sz.Height) / 2;
-        TextRenderer.DrawText(g, symbol, font, new Point(tx, ty), Color.White);
+        int tx = x + (FoldMarginWidth - sz.Width) / 2;
+        int ty = y + 2;
+        Color col = mainForm.IsDarkTheme ? Color.FromArgb(180, 180, 180) : Color.FromArgb(80, 80, 80);
+        TextRenderer.DrawText(g, symbol, font, new Point(tx, ty), col);
     }
 
     public void RefreshGutter()
