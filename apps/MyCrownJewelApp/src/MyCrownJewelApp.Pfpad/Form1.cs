@@ -110,22 +110,33 @@
         {
             public string? FilePath { get; set; }
             public string Content { get; set; } = "";
-public bool IsDirty { get; set; }
-             public HashSet<int> ModifiedLines { get; set; } = new();
-             public HashSet<int> Bookmarks { get; set; } = new();
-             public HashSet<int> CollapsedRegions { get; set; } = new();
-             public string? SavedHash { get; set; }
+            public bool IsDirty { get; set; }
+            public HashSet<int> ModifiedLines { get; set; } = new();
+            public HashSet<int> Bookmarks { get; set; } = new();
+            public HashSet<int> CollapsedRegions { get; set; } = new();
+            public string? SavedHash { get; set; }
             public DateTime? LastWriteTime { get; set; }
             public int SelectionStart { get; set; }
             public int SelectionLength { get; set; }
             public int FirstVisibleLine { get; set; }
             public SyntaxDefinition? Syntax { get; set; }
+            public int? UntitledNumber { get; set; }  // null for non-untitled docs
 
-            public string DisplayName => string.IsNullOrEmpty(FilePath) ? "Untitled" : Path.GetFileName(FilePath);
+            public string DisplayName =>
+                string.IsNullOrEmpty(FilePath) && UntitledNumber.HasValue ? $"Untitled{UntitledNumber}" :
+                string.IsNullOrEmpty(FilePath) ? "Untitled" :
+                Path.GetFileName(FilePath);
         }
 
-        private List<Document> documents = new();
+private List<Document> documents = new();
         private int activeDocIndex = -1;
+        private int nextUntitledNumber = 1;
+        private int? hoveredTabIndex = null;
+        private Rectangle? closeButtonBounds = null;
+
+        // Tab close button state
+
+        // Tab close button state
 
         // Helper to get active document
         private Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
@@ -803,10 +814,11 @@ public bool IsDirty { get; set; }
                 RequestVisibleHighlight();
             }
 
-            darkThemeMenuItem.Checked = isDark;
+darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
 
             UpdateThemeDropDown();
+            UpdateTabControlTheme();
 
             CreateIncrementalHighlighter();
 
@@ -2178,6 +2190,136 @@ public bool IsDirty { get; set; }
             }
         }
 
+        private void TabControl_MouseMove(object? sender, MouseEventArgs e)
+        {
+            int oldHoverIndex = hoveredTabIndex;
+            hoveredTabIndex = null;
+            closeButtonBounds = null;
+
+            for (int i = 0; i < tabControl.TabPages.Count; i++)
+            {
+                if (tabControl.TabPages[i] == newTabButtonPage) continue;
+                var rect = tabControl.GetTabRect(i);
+                if (rect.Contains(e.Location))
+                {
+                    hoveredTabIndex = i;
+                    // Close button: right-aligned, 12x12 square, 4px from right edge
+                    int buttonSize = 12;
+                    int btnX = rect.Right - buttonSize - 4;
+                    int btnY = rect.Top + (rect.Height - buttonSize) / 2;
+                    closeButtonBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
+                    break;
+                }
+            }
+
+            if (oldHoverIndex != hoveredTabIndex || (hoveredTabIndex.HasValue && closeButtonBounds.HasValue && !closeButtonBounds.Value.Contains(e.Location)))
+            {
+                // Redraw if hover changed OR if hovering a tab but mouse left the close button
+                if (hoveredTabIndex.HasValue && closeButtonBounds.HasValue && !closeButtonBounds.Value.Contains(e.Location))
+                {
+                    closeButtonBounds = null; // close button no longer hovered
+                }
+                tabControl.Invalidate();
+            }
+        }
+
+        private void TabControl_DrawItem(object? sender, DrawItemEventArgs e)
+        {
+            if (tabControl.TabPages.Count == 0) return;
+
+            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            var graphics = e.Graphics;
+            var tabRect = e.Bounds;
+
+            // Determine if this tab is selected
+            bool isSelected = (e.Index == tabControl.SelectedIndex);
+            bool isHovered = (e.Index == hoveredTabIndex);
+            bool isNewTabButton = (tabControl.TabPages[e.Index] == newTabButtonPage);
+
+            // Background
+            Color backColor;
+            if (isNewTabButton)
+            {
+                backColor = hoveredTabIndex.HasValue && tabControl.TabPages[e.Index] == tabControl.TabPages[hoveredTabIndex.Value]
+                    ? theme.ButtonHoverBackground
+                    : theme.PanelBackground;
+            }
+            else if (isSelected)
+            {
+                backColor = theme.PanelBackground;
+            }
+            else if (isHovered)
+            {
+                backColor = theme.ButtonHoverBackground;
+            }
+            else
+            {
+                backColor = theme.PanelBackground;
+            }
+            using (var brush = new SolidBrush(backColor))
+            {
+                graphics.FillRectangle(brush, tabRect);
+            }
+
+            // Border (bottom line for selected, subtle for others)
+            if (isSelected && !isNewTabButton)
+            {
+                using (var pen = new Pen(theme.Accent, 2))
+                {
+                    graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                }
+            }
+            else
+            {
+                using (var pen = new Pen(theme.Border))
+                {
+                    graphics.DrawLine(pen, tabRect.Left, tabRect.Bottom - 1, tabRect.Right, tabRect.Bottom - 1);
+                }
+            }
+
+            // Text
+            string text = tabControl.TabPages[e.Index].Text;
+            Color textColor = isNewTabButton && isHovered ? theme.Accent : theme.Text;
+            TextRenderer.DrawText(graphics, text, tabControl.Font, tabRect, textColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+
+            // Close button (X) for non-new-tab pages
+            if (!isNewTabButton)
+            {
+                int btnSize = 12;
+                int btnX = tabRect.Right - btnSize - 4;
+                int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
+                var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+
+                bool closeHovered = hoveredTabIndex == e.Index && closeButtonBounds.HasValue && closeButtonBounds.Value.Contains(tabRect.Location);
+
+                if (closeHovered)
+                {
+                    using (var hoverBrush = new SolidBrush(theme.Accent))
+                    using (var xBrush = new SolidBrush(theme.PanelBackground))
+                    {
+                        graphics.FillRectangle(hoverBrush, btnRect);
+                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        {
+                            Alignment = StringAlignment.Center,
+                            LineAlignment = StringAlignment.Center
+                        });
+                    }
+                }
+                else
+                {
+                    using (var xBrush = new SolidBrush(theme.Muted))
+                    {
+                        graphics.DrawString("×", tabControl.Font, xBrush, btnRect, new StringFormat
+                        {
+                            Alignment = StringAlignment.Center,
+                            LineAlignment = StringAlignment.Center
+                        });
+                    }
+                }
+            }
+        }
+
         private void NewTabButtonPage_MouseDown(object? sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -2484,7 +2626,21 @@ public bool IsDirty { get; set; }
                 fileType = def?.Name ?? "Plain Text";
             }
             fileTypeLabel.Text = fileType;
-          }
+}
+
+        private void UpdateTabControlTheme()
+        {
+            if (tabControl == null) return;
+            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            tabControl.BackColor = theme.PanelBackground;
+            tabControl.ForeColor = theme.Text;
+            if (newTabButtonPage != null)
+            {
+                newTabButtonPage.BackColor = theme.PanelBackground;
+                newTabButtonPage.ForeColor = theme.Text;
+            }
+            tabControl.Invalidate();
+        }
 
         #endregion
 

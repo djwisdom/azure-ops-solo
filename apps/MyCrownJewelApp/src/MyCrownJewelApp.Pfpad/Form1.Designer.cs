@@ -275,23 +275,26 @@ partial class Form1
 
         // Tab Control for multi-file editing
         tabControl = new TabControl();
-        tabControl.Dock = DockStyle.Fill;
+        tabControl.Dock = DockStyle.Top;
+        tabControl.Height = 30;
         tabControl.Multiline = true;
         tabControl.HotTrack = true;
-        tabControl.DrawMode = TabDrawMode.Normal;
+        tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabControl.Alignment = TabAlignment.Top;
         tabControl.SizeMode = TabSizeMode.Fixed;
         tabControl.ItemSize = new Size(120, 30);
         tabControl.Padding = new Point(12, 4);
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
         tabControl.MouseDown += TabControl_MouseDown;
+        tabControl.MouseMove += TabControl_MouseMove;
+        tabControl.DrawItem += TabControl_DrawItem;
 
-        // "New Tab" button tab
+        // "New Tab" button tab - narrow width for 3 characters
         newTabButtonPage = new TabPage("+");
-        newTabButtonPage.Width = 40;
+        newTabButtonPage.Width = 30;
         newTabButtonPage.ToolTipText = "New Tab";
         newTabButtonPage.MouseDown += NewTabButtonPage_MouseDown;
-        tabControl.Controls.Add(newTabButtonPage);
+        tabControl.TabPages.Add(newTabButtonPage);
 
         // Main Table Layout (2 columns: gutter | editor)
         mainTable = new TableLayoutPanel();
