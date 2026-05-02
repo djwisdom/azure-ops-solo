@@ -3277,7 +3277,7 @@ darkThemeMenuItem.Checked = isDark;
                 textEditor,
                 currentSyntax);
 
-            incrementalHighlighter.PatchReady += ApplyHighlightPatch;
+            incrementalHighlighter.BatchReady += ApplyHighlightBatch;
 
             // Request visible range after creation
             RequestVisibleHighlight();
@@ -3294,21 +3294,9 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-        private void ApplyHighlightPatch(object? sender, HighlightPatch patch)
+        private void ApplyHighlightBatch(object? sender, List<HighlightPatch> patches)
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
-            int line = patch.LineNumber;
-
-            // Get total line count via EM_GETLINECOUNT (cheap)
-            int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
-            if (line < 0 || line >= lineCount) return;
-
-            int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-            if (lineStart < 0) return;
-
-            int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
-            int lineLen = lineEnd - lineStart;
-            if (lineLen <= 0) return;
 
             var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             _suspendSelectionChanged = true;
@@ -3316,21 +3304,37 @@ darkThemeMenuItem.Checked = isDark;
             textEditor.SuspendLayout();
             try
             {
-                // Reset line to base color
-                textEditor.SelectionStart = lineStart;
-                textEditor.SelectionLength = lineLen;
-                textEditor.SelectionColor = baseColor;
-
-                // Apply token colors
-                foreach (var token in patch.Tokens)
+                foreach (var patch in patches)
                 {
-                    int idx = lineStart + token.StartIndex;
-                    int len = token.Length;
-                    if (idx >= lineStart && idx + len <= lineStart + lineLen)
+                    int line = patch.LineNumber;
+
+                    // Get total line count via EM_GETLINECOUNT (cheap)
+                    int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
+                    if (line < 0 || line >= lineCount) continue;
+
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                    if (lineStart < 0) continue;
+
+                    int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
+                    int lineLen = lineEnd - lineStart;
+                    if (lineLen <= 0) continue;
+
+                    // Reset line to base color
+                    textEditor.SelectionStart = lineStart;
+                    textEditor.SelectionLength = lineLen;
+                    textEditor.SelectionColor = baseColor;
+
+                    // Apply token colors
+                    foreach (var token in patch.Tokens)
                     {
-                        textEditor.SelectionStart = idx;
-                        textEditor.SelectionLength = len;
-                        textEditor.SelectionColor = GetColorForToken(token.Type);
+                        int idx = lineStart + token.StartIndex;
+                        int len = token.Length;
+                        if (idx >= lineStart && idx + len <= lineStart + lineLen)
+                        {
+                            textEditor.SelectionStart = idx;
+                            textEditor.SelectionLength = len;
+                            textEditor.SelectionColor = GetColorForToken(token.Type);
+                        }
                     }
                 }
             }

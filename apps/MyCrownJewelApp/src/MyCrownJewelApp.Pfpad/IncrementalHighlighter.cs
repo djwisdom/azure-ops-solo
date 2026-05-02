@@ -43,7 +43,7 @@ public sealed class IncrementalHighlighter : IDisposable
     private const int MaxLinesPerBatch = 50;
     private bool _disposed;
 
-    public event EventHandler<HighlightPatch>? PatchReady;
+    public event EventHandler<List<HighlightPatch>>? BatchReady;
 
     public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax)
     {
@@ -67,10 +67,7 @@ public sealed class IncrementalHighlighter : IDisposable
     public void RequestRange(int startLine, int endLine)
     {
         if (startLine < 0) return;
-
-        // Capture ALL line text in one call to Lines[] to avoid N separate calls
         string[] allLines = _textEditor.Lines;
-
         for (int line = startLine; line <= endLine && line < allLines.Length; line++)
         {
             if (!_tokenCache.ContainsKey(line))
@@ -83,25 +80,18 @@ public sealed class IncrementalHighlighter : IDisposable
         return _tokenCache.TryGetValue(lineIndex, out var entry) ? entry.Tokens : null;
     }
 
-    // Called on UI thread — captures text once for a single line
     public void MarkDirty(int lineNumber)
     {
         if (lineNumber < 0) return;
         _tokenCache.TryRemove(lineNumber, out _);
-
         try
         {
             if (_textEditor.IsDisposed || !_textEditor.IsHandleCreated) return;
             var lines = _textEditor.Lines;
             if (lineNumber < lines.Length)
                 _dirtyLines.Writer.TryWrite((lineNumber, lines[lineNumber]));
-            else
-                _dirtyLines.Writer.TryWrite((lineNumber, ""));
         }
-        catch
-        {
-            _dirtyLines.Writer.TryWrite((lineNumber, ""));
-        }
+        catch { }
     }
 
     private async Task WorkerLoopAsync(CancellationToken ct)
@@ -126,6 +116,7 @@ public sealed class IncrementalHighlighter : IDisposable
             if (startLine > 0 && _tokenCache.TryGetValue(startLine - 1, out var prev))
                 state = prev.StateAfter;
 
+            var patches = new List<HighlightPatch>(batch.Count);
             for (int i = 0; i < batch.Count; i++)
             {
                 if (ct.IsCancellationRequested) break;
@@ -134,13 +125,15 @@ public sealed class IncrementalHighlighter : IDisposable
                 var (tokens, nextState) = TokenizeLine(text, state);
                 state = nextState;
                 _tokenCache[lineNum] = new LineTokens(tokens, state);
-                var patch = new HighlightPatch(lineNum, tokens);
-                _uiContext?.Post(_ =>
-                {
-                    try { PatchReady?.Invoke(this, patch); }
-                    catch { }
-                }, null);
+                patches.Add(new HighlightPatch(lineNum, tokens));
             }
+
+            // Send entire batch as one UI update
+            _uiContext?.Post(_ =>
+            {
+                try { BatchReady?.Invoke(this, patches); }
+                catch { }
+            }, null);
 
             await Task.Delay(1, ct);
         }
@@ -195,8 +188,7 @@ public sealed class IncrementalHighlighter : IDisposable
             if (char.IsDigit(c) || (c == '-' && pos + 1 < line.Length && char.IsDigit(line[pos + 1])))
             {
                 int s = pos; if (c == '-') pos++;
-                while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.'))
-                    pos++;
+                while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.')) pos++;
                 AddToken(tokens, s, pos - s, SyntaxTokenType.Number);
                 continue;
             }
