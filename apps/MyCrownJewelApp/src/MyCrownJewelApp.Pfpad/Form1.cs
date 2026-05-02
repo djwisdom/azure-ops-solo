@@ -1646,8 +1646,8 @@ darkThemeMenuItem.Checked = isDark;
         private void UpdateWindowTitle()
         {
             string baseTitle = currentFilePath != null 
-                ? $"MyCrownJewelApp TextEditor - {Path.GetFileName(currentFilePath)}"
-                : "MyCrownJewelApp TextEditor - Untitled";
+                ? $"Personal Flip Pad - {Path.GetFileName(currentFilePath)}"
+                : "Personal Flip Pad - Untitled";
             this.Text = isModified ? "*" + baseTitle : baseTitle;
         }
 
