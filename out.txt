@@ -1,0 +1,2 @@
+fatal: path 'apps/MyCrownJewelApp/src/MyCrownJewelApp.TextEditor/VimEngine.cs' exists, but not 'src/MyCrownJewelApp.TextEditor/VimEngine.cs'
+hint: Did you mean 'HEAD:apps/MyCrownJewelApp/src/MyCrownJewelApp.TextEditor/VimEngine.cs' aka 'HEAD:./src/MyCrownJewelApp.TextEditor/VimEngine.cs'?

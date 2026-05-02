@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
@@ -58,9 +59,14 @@ public class HighlightRichTextBox : RichTextBox
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        // Set caret width to 2 pixels (bold hairline)
-        const int EM_SETCARETWIDTH = 0x043E;
-        SendMessage(Handle, EM_SETCARETWIDTH, 0, 2);
+        // Set caret width to 2 pixels (bold hairline) via reflection
+        try
+        {
+            var baseType = typeof(TextBoxBase);
+            var prop = baseType.GetProperty("CaretWidth", BindingFlags.Instance | BindingFlags.Public);
+            prop?.SetValue(this, 2, null);
+        }
+        catch { /* ignore if not supported */ }
     }
 
     protected override void OnSelectionChanged(EventArgs e)
@@ -108,9 +114,6 @@ public class HighlightRichTextBox : RichTextBox
         }
         base.Dispose(disposing);
     }
-
-    [DllImport("user32.dll")]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);
