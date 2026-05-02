@@ -1,6 +1,8 @@
+using System;
 using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -29,37 +31,40 @@ public class GutterPanel : Panel
     [DllImport("user32.dll")]
     private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
     private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+    private const int EM_GETLINECOUNT = 0x00BA;
 
     public GutterPanel(Form1 form)
     {
         mainForm = form;
-        Dock = DockStyle.Left;
+        Dock = DockStyle.Fill;
         Width = GetTotalMarginWidth();
         BackColor = Color.FromArgb(45, 45, 45);
         DoubleBuffered = true;
         ResizeRedraw = true;
     }
 
-    /// <summary>
-    /// Recalculates gutter width to accommodate zoom-scaled line-number text.
-    /// Call when ZoomFactor changes or total line count changes.
-    /// </summary>
+    private int GetTotalLineCount()
+    {
+        var editor = mainForm?.textEditor;
+        if (editor == null || !editor.IsHandleCreated) return 1;
+        return Math.Max(1, (int)SendMessage(editor.Handle, EM_GETLINECOUNT, 0, 0));
+    }
+
     public void UpdateLineNumberWidth()
     {
-        int lineNumberWidth = LineNumberMarginWidth; // fallback
+        int lineNumberWidth = LineNumberMarginWidth;
         if (mainForm?.textEditor != null && ShowLineNumbers)
         {
             var editor = mainForm.textEditor;
-            if (editor.IsHandleCreated && editor.Lines.Length > 0)
+            if (editor.IsHandleCreated)
             {
-                // Compute required pixel width: scaled font width × max digits + padding
-                int maxLineNumber = editor.Lines.Length;
+                int maxLineNumber = Math.Max(1, GetTotalLineCount());
                 int digitCount = maxLineNumber.ToString().Length;
                 float scaledSize = editor.Font.Size * editor.ZoomFactor;
                 using var measureFont = new Font(editor.Font.FontFamily, scaledSize);
-                string sample = new string('8', digitCount); // widest digit
+                string sample = new string('8', digitCount);
                 int textWidth = TextRenderer.MeasureText(sample, measureFont).Width;
-                lineNumberWidth = textWidth + 10; // 4px right padding + 6px left/remaining
+                lineNumberWidth = textWidth + 10;
             }
         }
         if (lineNumberWidth < 20) lineNumberWidth = 20;
@@ -93,82 +98,52 @@ public class GutterPanel : Panel
         RichTextBox editor = mainForm.textEditor;
         if (editor.IsDisposed || !editor.Visible) return;
 
-        // Determine visible lines
         GetVisibleLineRange(out int firstVisibleLine, out int visibleLines);
 
         g.Clear(BackColor);
 
-        // Compute line height for partial-line clipping
         int lineHeight = (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor);
         if (lineHeight <= 0) lineHeight = 1;
 
-        // Draw separator vertical lines between margin sections
-        int x = 0;
-        if (ShowLineNumbers)
-        {
-            x += LineNumberMarginWidth;
-            DrawVerticalLine(g, x, Color.FromArgb(60, 60, 60));
-        }
-        if (ShowBookmarks)
-        {
-            x += BookmarkMarginWidth;
-            DrawVerticalLine(g, x, Color.FromArgb(60, 60, 60));
-        }
-        if (ShowChangeHistory)
-        {
-            x += ChangeMarginWidth;
-            DrawVerticalLine(g, x, Color.FromArgb(60, 60, 60));
-        }
-        if (ShowCodeFolds)
-        {
-            x += FoldMarginWidth;
-            DrawVerticalLine(g, x, Color.FromArgb(60, 60, 60));
-        }
+        int totalLines = GetTotalLineCount();
 
-        // Draw content for each visible line
         for (int i = 0; i < visibleLines; i++)
         {
             int lineIndex = firstVisibleLine + i;
-            if (lineIndex >= editor.Lines.Length) break;
+            if (lineIndex >= totalLines) break;
 
             int lineY = GetLineY(editor, lineIndex);
             if (lineY == -1) continue;
 
-            // Skip lines that are completely above the viewport
             if (lineY + lineHeight <= 0) continue;
-            // Stop only when line starts *past* the bottom edge (> Height), not >=
             if (lineY > editor.ClientSize.Height) break;
 
             int currentX = 0;
 
-            // Line Numbers
             if (ShowLineNumbers)
             {
                 DrawLineNumber(g, lineIndex + 1, currentX, lineY);
                 currentX += LineNumberMarginWidth;
             }
 
-            // Bookmarks
             if (ShowBookmarks)
             {
                 DrawBookmark(g, lineIndex, currentX, lineY);
                 currentX += BookmarkMarginWidth;
             }
 
-            // Change History
             if (ShowChangeHistory)
             {
                 DrawChangeIndicator(g, lineIndex, currentX, lineY);
                 currentX += ChangeMarginWidth;
             }
 
-            // Code Folds
             if (ShowCodeFolds)
             {
                 DrawFoldMarker(g, lineIndex, currentX, lineY);
             }
         }
-        }
+    }
 
     private void GetVisibleLineRange(out int firstLine, out int lineCount)
     {
@@ -176,28 +151,15 @@ public class GutterPanel : Panel
         firstLine = 0;
         lineCount = 0;
 
-        if (editor.Lines.Length == 0) return;
         if (editor.IsDisposed || !editor.Visible) return;
 
-        // Use native message: returns first fully visible line index
         int nativeFirst = SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
         if (nativeFirst < 0) nativeFirst = 0;
 
-        // Compute line height from font's Height property (line spacing) with zoom
         int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
 
-        // Find the actual first visible line (including partially visible at top)
         firstLine = nativeFirst;
-        if (nativeFirst > 0)
-        {
-            int yAbove = GetLineY(editor, nativeFirst - 1);
-            if (yAbove != -1 && (yAbove + lineHeight) > 0)
-            {
-                firstLine = nativeFirst - 1;
-            }
-        }
 
-        // Compute visible line count using ceiling to include partial bottom line, +3 safety margin
         int clientHeight = editor.ClientSize.Height;
         lineCount = (int)Math.Ceiling(clientHeight / (double)lineHeight) + 3;
         if (lineCount < 1) lineCount = 1;
@@ -205,9 +167,19 @@ public class GutterPanel : Panel
 
     private int GetLineY(RichTextBox editor, int lineIndex)
     {
-        if (lineIndex >= editor.Lines.Length) return -1;
+        int totalLines = Math.Max(1, GetTotalLineCount());
+        if (lineIndex >= totalLines) return -1;
+        if (lineIndex >= editor.Lines.Length)
+        {
+            int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
+            return lineIndex * lineHeight;
+        }
         int charIndex = editor.GetFirstCharIndexFromLine(lineIndex);
-        if (charIndex < 0) return -1;
+        if (charIndex < 0)
+        {
+            int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
+            return lineIndex * lineHeight;
+        }
         Point charPos = editor.GetPositionFromCharIndex(charIndex);
         return charPos.Y;
     }
@@ -223,7 +195,6 @@ public class GutterPanel : Panel
         string text = lineNumber.ToString();
         RichTextBox editor = mainForm.textEditor;
 
-        // Determine if this line is current and mode is NumberOnly
         bool isCurrentLine = false;
         if (mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly)
         {
@@ -231,9 +202,8 @@ public class GutterPanel : Panel
             isCurrentLine = (lineNumber == currentLineNum);
         }
 
-        // Use editor's font scaled by zoom; bold+yellow (dark) or black (light) if current line in NumberOnly mode
         FontStyle style = editor.Font.Style;
-        Color color = Color.FromArgb(120, 120, 120); // default gray
+        Color color = Color.FromArgb(120, 120, 120);
         if (isCurrentLine)
         {
             style |= FontStyle.Bold;
@@ -242,7 +212,7 @@ public class GutterPanel : Panel
 
         using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, style);
         Size textSize = TextRenderer.MeasureText(text, font);
-        int textX = x + LineNumberMarginWidth - textSize.Width - 4; // right-align, 4px right padding
+        int textX = x + LineNumberMarginWidth - textSize.Width - 4;
         int textY = y;
 
         TextRenderer.DrawText(g, text, font, new Point(textX, textY), color);
@@ -250,7 +220,7 @@ public class GutterPanel : Panel
 
     private void DrawBookmark(Graphics g, int lineIndex, int x, int y)
     {
-        if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
+        if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
 
         bool hasBookmark = mainForm.Bookmarks.Contains(lineIndex);
         int centerX = x + BookmarkMarginWidth / 2;
@@ -266,7 +236,7 @@ public class GutterPanel : Panel
 
     private void DrawChangeIndicator(Graphics g, int lineIndex, int x, int y)
     {
-        if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
+        if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
 
         bool modified = mainForm.ModifiedLines.Contains(lineIndex);
         if (modified)
@@ -280,9 +250,8 @@ public class GutterPanel : Panel
 
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
     {
-        if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
+        if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
 
-        // Determine if this line starts a foldable region (FoldingManager or fallback detection)
         bool isFoldStart;
         bool folded;
 
@@ -293,14 +262,12 @@ public class GutterPanel : Panel
         }
         else
         {
-            // Fallback: detect { or #region at line start
+            if (lineIndex >= mainForm.textEditor.Lines.Length) return;
             string line = mainForm.textEditor.Lines[lineIndex];
             string trimmed = line.TrimStart();
             isFoldStart = trimmed.StartsWith("#region") || trimmed.EndsWith("{") || line.Contains("{");
-            // Check if next line has the matching close
             if (isFoldStart && lineIndex + 1 < mainForm.textEditor.Lines.Length)
             {
-                // Only show marker if there's content after this line (multi-line)
                 string nextLine = mainForm.textEditor.Lines[lineIndex + 1];
                 isFoldStart = !string.IsNullOrWhiteSpace(nextLine);
             }
@@ -317,8 +284,6 @@ public class GutterPanel : Panel
         g.FillRectangle(brush, centerX, centerY, size, size);
         g.DrawRectangle(pen, centerX, centerY, size, size);
 
-        // Draw minus/plus
-        using var textBrush = new SolidBrush(Color.White);
         string symbol = folded ? "+" : "-";
         using var font = new Font("Marlett", 8);
         Size sz = TextRenderer.MeasureText(symbol, font);
