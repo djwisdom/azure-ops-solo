@@ -1428,9 +1428,8 @@ darkThemeMenuItem.Checked = isDark;
          {
              try
              {
-                 // Suspend background workers during file load
-                 guidePanel?.SuspendRequests();
-                 elasticTabTimer?.Stop();
+                  // Suspend background workers during file load
+                  elasticTabTimer?.Stop();
                  highlightTimer?.Stop();
 
                  string content = File.ReadAllText(path);
@@ -1480,15 +1479,12 @@ darkThemeMenuItem.Checked = isDark;
                  }
 
                  // Resume column guide updates after load completes
-                 guidePanel?.ResumeRequests();
-                 if (elasticTabsEnabled) elasticTabTimer?.Start();
-                 if (syntaxHighlightingEnabled) highlightTimer?.Start();
-              }
+                  highlightTimer?.Start();
+                  elasticTabTimer?.Start();
+            }
              catch (Exception ex)
-             {
-                 // Ensure guide is resumed even on error
-                 try { guidePanel?.ResumeRequests(); } catch { }
-                 MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+              {
+                  MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
              }
          }
 
