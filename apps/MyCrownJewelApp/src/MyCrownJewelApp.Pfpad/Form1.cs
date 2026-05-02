@@ -2352,7 +2352,7 @@ darkThemeMenuItem.Checked = isDark;
                     if (rect.Contains(e.Location))
                     {
                         int btnSize = 14;
-                        int btnX = rect.Right - btnSize - 4;
+                        int btnX = rect.Right - btnSize - 6;
                         int btnY = rect.Top + (rect.Height - btnSize) / 2;
                         var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
                         if (btnRect.Contains(e.Location))
@@ -2405,18 +2405,6 @@ darkThemeMenuItem.Checked = isDark;
                     break;
                 }
             }
-        }
-
-        private bool IsPointOnAnyTab(Point screenPos)
-        {
-            if (tabControl == null || !tabControl.IsHandleCreated) return false;
-            var clientPos = tabControl.PointToClient(screenPos);
-            for (int i = 0; i < tabControl.TabPages.Count; i++)
-            {
-                if (tabControl.GetTabRect(i).Contains(clientPos))
-                    return true;
-            }
-            return false;
         }
 
         private void DetachTabToNewWindow(int tabIndex, Point dragScreenPos)
@@ -2633,7 +2621,7 @@ darkThemeMenuItem.Checked = isDark;
                     overAnyTab = true;
                     newHoverIndex = i;
                     int buttonSize = 14;
-                    int btnX = rect.Right - buttonSize - 4;
+                    int btnX = rect.Right - buttonSize - 6;
                     int btnY = rect.Top + (rect.Height - buttonSize) / 2;
                     newCloseBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
                     break;
@@ -2713,27 +2701,29 @@ darkThemeMenuItem.Checked = isDark;
                 graphics.FillRectangle(brush, tabRect);
             }
 
-            // Text (tab title) — VS Code style: left-aligned with left padding, right margin for X
+            // Text (tab title) — VS Code style: left-aligned with generous left padding, right margin for X
             string text = tabControl.TabPages[e.Index].Text;
             var textRect = tabRect;
 
-            // Close button (X) — only on hovered tab, takes 16px from the right
+            // Close button (X) — only on hovered tab
             const int btnSize = 14;
-            const int btnRightPad = 4;
+            const int btnRightPad = 6;
             int btnX = tabRect.Right - btnSize - btnRightPad;
             int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
             var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
 
+            // Left margin: 10px from left edge
+            textRect.X += 10;
             if (isHovered)
             {
-                // Reserve space for the close button by shrinking text width
-                textRect.Width = btnX - tabRect.Left - 4;
+                // Reserve 22px for the close button + right pad
+                textRect.Width = btnX - textRect.X - 4;
             }
             else
             {
-                textRect.Width -= 8;
+                // Not hovered — right margin of 10px
+                textRect.Width = tabRect.Right - 10 - textRect.X;
             }
-            textRect.X += 6;
 
             TextRenderer.DrawText(graphics, text, tabControl.Font, textRect, isSelected ? theme.Text : theme.Muted,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
@@ -3226,8 +3216,6 @@ darkThemeMenuItem.Checked = isDark;
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
             private const int WM_ERASEBKGND = 0x0014;
-            private const int WM_LBUTTONDBLCLK = 0x0203;
-            private const int WM_NCLBUTTONDBLCLK = 0x00A3;
             private readonly Form1 _owner;
 
             public TabStripBackgroundWindow(Form1 owner) => _owner = owner;
@@ -3244,14 +3232,6 @@ darkThemeMenuItem.Checked = isDark;
                             g.FillRectangle(brush, _owner.tabControl.ClientRectangle);
                         }
                         m.Result = (IntPtr)1;
-                        return;
-
-                    case WM_LBUTTONDBLCLK:
-                    case WM_NCLBUTTONDBLCLK:
-                        // Only create new tab if double-click is NOT on an existing tab
-                        // and no drag is in progress
-                        if (_owner._draggedTabIndex == null && !_owner.IsPointOnAnyTab(Cursor.Position))
-                            _owner.BeginInvoke(() => _owner.NewFile());
                         return;
                 }
                 base.WndProc(ref m);
