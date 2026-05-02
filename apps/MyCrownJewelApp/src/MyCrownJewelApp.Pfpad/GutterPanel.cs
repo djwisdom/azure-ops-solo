@@ -282,7 +282,11 @@ public class GutterPanel : Panel
     {
         if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
 
-        bool folded = mainForm.CollapsedRegions.Contains(lineIndex);
+        // Check via FoldingManager if this line is a fold start
+        bool isFoldable = mainForm.FoldingManager?.IsFoldStart(lineIndex) ?? false;
+        if (!isFoldable) return;
+
+        bool folded = mainForm.FoldingManager?.IsCollapsed(lineIndex) ?? false;
         int size = 12;
         int centerX = x + FoldMarginWidth / 2 - size / 2;
         int centerY = y + 4;

@@ -1,0 +1,247 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+
+namespace MyCrownJewelApp.Pfpad;
+
+public sealed class FoldingManager
+{
+    private readonly RichTextBox _editor;
+    private readonly List<FoldRegion> _regions = new();
+    private readonly Stack<UndoFold> _undoStack = new();
+
+    public struct FoldRegion
+    {
+        public int OpenLine;      // original line number of opening marker
+        public int CloseLine;     // original line number of closing marker
+        public int NestLevel;
+        public string OpenText;   // e.g. "{", "#region Name"
+        public bool IsCollapsed;
+    }
+
+    private struct UndoFold
+    {
+        public int StartIndex;
+        public int Length;
+        public string ReplacedText;
+        public int OpenLine;
+        public int CloseLine;
+    }
+
+    public FoldingManager(RichTextBox editor)
+    {
+        _editor = editor;
+    }
+
+    /// <summary>
+    /// Re-scans the editor text for foldable regions.
+    /// </summary>
+    public void ScanRegions()
+    {
+        _regions.Clear();
+        string text = _editor.Text;
+        if (string.IsNullOrEmpty(text)) return;
+
+        var lines = text.Split('\n');
+        var braceStack = new Stack<(int line, int type)>(); // type: 0={, 1=#region
+        int regionDepth = 0;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string trimmed = lines[i].TrimStart();
+            int index = i; // original 0-based line index
+
+            if (trimmed.StartsWith("#endregion"))
+            {
+                regionDepth--;
+                if (braceStack.Count > 0 && braceStack.Peek().type == 1)
+                {
+                    var open = braceStack.Pop();
+                    _regions.Add(new FoldRegion
+                    {
+                        OpenLine = open.line,
+                        CloseLine = i,
+                        NestLevel = regionDepth,
+                        OpenText = lines[open.line].Trim(),
+                        IsCollapsed = false
+                    });
+                }
+            }
+            else if (trimmed.StartsWith("#region"))
+            {
+                braceStack.Push((i, 1));
+                regionDepth++;
+            }
+
+            // Brace matching: { and } at any position (multi-line blocks)
+            // Only match braces that span multiple lines
+            int braceCount = 0;
+            int openBraceLine = -1;
+            for (int c = 0; c < lines[i].Length; c++)
+            {
+                if (lines[i][c] == '{')
+                {
+                    if (braceCount == 0) openBraceLine = i;
+                    braceCount++;
+                }
+                else if (lines[i][c] == '}')
+                {
+                    braceCount--;
+                    if (braceCount == 0 && openBraceLine >= 0 && openBraceLine < i)
+                    {
+                        _regions.Add(new FoldRegion
+                        {
+                            OpenLine = openBraceLine,
+                            CloseLine = i,
+                            NestLevel = 0,
+                            OpenText = lines[openBraceLine].Trim(),
+                            IsCollapsed = false
+                        });
+                        openBraceLine = -1;
+                    }
+                }
+            }
+
+            // Handle unclosed brace that spans multiple lines
+            if (braceCount > 0 && openBraceLine >= 0)
+            {
+                // Check if this is the actual opening brace (we started tracking earlier)
+                if (i != openBraceLine)
+                {
+                    // We found an opening brace but haven't found the closing brace yet
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the fold region at the given line, or null if none.
+    /// Only returns regions where the open line matches (not close lines).
+    /// </summary>
+    public FoldRegion? GetRegionAtLine(int lineIndex)
+    {
+        foreach (var r in _regions)
+        {
+            if (r.OpenLine == lineIndex)
+                return r;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Returns all regions (for fold marker drawing).
+    /// </summary>
+    public IEnumerable<FoldRegion> GetAllRegions() => _regions;
+
+    /// <summary>
+    /// Returns true if the given line index (pre-collapse) is an opening marker for a foldable region.
+    /// </summary>
+    public bool IsFoldStart(int lineIndex) => _regions.Any(r => r.OpenLine == lineIndex);
+
+    /// <summary>
+    /// Returns true if the given line is currently collapsed.
+    /// </summary>
+    public bool IsCollapsed(int lineIndex) => _regions.Any(r => r.OpenLine == lineIndex && r.IsCollapsed);
+
+    /// <summary>
+    /// Toggles the fold state of the region at the given line.
+    /// </summary>
+    public bool ToggleFold(int lineIndex)
+    {
+        for (int i = 0; i < _regions.Count; i++)
+        {
+            var r = _regions[i];
+            if (r.OpenLine != lineIndex) continue;
+
+            if (r.IsCollapsed)
+            {
+                ExpandFold(i);
+            }
+            else
+            {
+                CollapseFold(i);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void CollapseFold(int index)
+    {
+        var r = _regions[index];
+        if (r.IsCollapsed) return;
+
+        try
+        {
+            // Get the start and end positions in the text
+            int startChar = _editor.GetFirstCharIndexFromLine(r.OpenLine);
+            int endCharExclusive;
+            if (r.CloseLine + 1 < _editor.Lines.Length)
+                endCharExclusive = _editor.GetFirstCharIndexFromLine(r.CloseLine + 1);
+            else
+                endCharExclusive = _editor.TextLength;
+
+            if (startChar < 0 || endCharExclusive <= startChar) return;
+
+            // The text to replace (everything between open line and close line inclusive)
+            int length = endCharExclusive - startChar;
+            string originalText = _editor.Text.Substring(startChar, length);
+
+            // Build replacement: keep the opening line but add fold indicator
+            string openLineText = _editor.Lines[r.OpenLine];
+            string replacement = openLineText + " // ...";
+
+            // Store undo info
+            _undoStack.Push(new UndoFold
+            {
+                StartIndex = startChar,
+                Length = replacement.Length, // after replacement
+                ReplacedText = originalText,
+                OpenLine = r.OpenLine,
+                CloseLine = r.CloseLine
+            });
+
+            // Replace in editor
+            _editor.Select(startChar, length);
+            _editor.SelectedText = replacement;
+
+            // Mark as collapsed
+            r.IsCollapsed = true;
+            _regions[index] = r;
+        }
+        catch { }
+    }
+
+    private void ExpandFold(int index)
+    {
+        var r = _regions[index];
+        if (!r.IsCollapsed) return;
+
+        try
+        {
+            // Find the matching undo entry
+            UndoFold? undo = null;
+            foreach (var u in _undoStack)
+            {
+                if (u.OpenLine == r.OpenLine && u.CloseLine == r.CloseLine)
+                {
+                    undo = u;
+                    break;
+                }
+            }
+            if (undo == null) return;
+
+            var u2 = undo.Value;
+            if (u2.StartIndex < 0 || u2.StartIndex > _editor.TextLength) return;
+
+            _editor.Select(u2.StartIndex, u2.ReplacedText.Length);
+            _editor.SelectedText = u2.ReplacedText;
+
+            r.IsCollapsed = false;
+            _regions[index] = r;
+        }
+        catch { }
+    }
+}

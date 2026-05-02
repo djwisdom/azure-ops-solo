@@ -166,6 +166,10 @@ private List<Document> documents = new();
         private string _gitDirtyStatus = "";
         private string _gitSyncStatus = "";
 
+        // Code folding
+        private FoldingManager? _foldingManager;
+        public FoldingManager? FoldingManager => _foldingManager;
+
         // Syntax highlighting
         private SyntaxDefinition? currentSyntax;
         private IncrementalHighlighter? incrementalHighlighter;
@@ -382,8 +386,13 @@ private List<Document> documents = new();
             {
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
                 minimapControl.SetTokenProvider(GetTokensForLine);
-                PositionMinimap(); // handles attach and visibility
+                PositionMinimap();
             }
+
+            // Initialize folding manager and scan regions
+            _foldingManager = new FoldingManager(textEditor!);
+            textEditor.TextChanged += (s, e) => _foldingManager?.ScanRegions();
+            _foldingManager.ScanRegions();
             
             // Initialize syntax highlighting debounce timer
             highlightTimer = new System.Windows.Forms.Timer();
@@ -1889,19 +1898,25 @@ darkThemeMenuItem.Checked = isDark;
 
         private void ToggleAllFolds_Click(object? sender, EventArgs e)
         {
-            // Toggle collapse on all #region/#endregion
-            for (int i = 0; i < LineCount; i++)
+            if (_foldingManager == null) return;
+            // Collapse all, or expand all if all are already collapsed
+            bool allCollapsed = _foldingManager.GetAllRegions().All(r => r.IsCollapsed);
+            foreach (var r in _foldingManager.GetAllRegions().ToList())
             {
-                string line = GetLineText(i);
-                if (line.TrimStart().StartsWith("#region") || line.TrimStart().StartsWith("#endregion"))
+                _foldingManager.ToggleFold(r.OpenLine);
+            }
+        }
+
+        internal void ToggleFold(int line)
+        {
+            if (_foldingManager != null)
+            {
+                if (_foldingManager.ToggleFold(line))
                 {
-                    if (collapsedRegions.Contains(i))
-                        collapsedRegions.Remove(i);
-                    else
-                        collapsedRegions.Add(i);
+                    if (gutterPanel != null) gutterPanel.RefreshGutter();
+                    _foldingManager.ScanRegions();
                 }
             }
-            // In a real editor would collapse/expand text
         }
 
         internal void ToggleBookmark(int line)
@@ -1911,15 +1926,6 @@ darkThemeMenuItem.Checked = isDark;
             else
                 bookmarks.Add(line);
             if (gutterPanel != null) gutterPanel.RefreshGutter();
-        }
-
-        internal void ToggleFold(int line)
-        {
-            if (collapsedRegions.Contains(line))
-                collapsedRegions.Remove(line);
-            else
-                collapsedRegions.Add(line);
-            // In real editor, would collapse code here
         }
 
         #endregion
