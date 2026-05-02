@@ -41,7 +41,6 @@ public sealed class AboutDialog : Form
         string date = "2026-05-03";
 
         int pad = 24;
-        int labelH = 22;
 
         // Draggable title bar
         var titleBar = new Panel
@@ -151,7 +150,7 @@ public sealed class AboutDialog : Form
             BackColor = theme.PanelBackground,
             ForeColor = theme.Text,
             Size = new Size(80, 30),
-            Location = new Point(Width - pad - 80, Height - pad - 40),
+            Location = new Point(Width - pad - 80, Height - titleBar.Height - pad - 40),
             Cursor = Cursors.Hand,
             Anchor = AnchorStyles.Bottom | AnchorStyles.Right
         };
