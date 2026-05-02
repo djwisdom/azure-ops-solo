@@ -252,6 +252,9 @@ partial class Form1
         elasticTabsMenuItem = new ToolStripMenuItem("&Elastic Tabs", null, ElasticTabs_Click);
         elasticTabsMenuItem.CheckOnClick = true;
         columnGuideMenuItem = new ToolStripMenuItem("Column &Guide");
+        columnGuideMenuItem.CheckOnClick = true;
+        columnGuideMenuItem.Checked = true;
+        columnGuideMenuItem.Click += ToggleColumnGuide;
         col72MenuItem = new ToolStripMenuItem("Column &72", null, ColumnGuide_Click);
         col80MenuItem = new ToolStripMenuItem("Column &80", null, ColumnGuide_Click);
         col100MenuItem = new ToolStripMenuItem("Column &100", null, ColumnGuide_Click);
@@ -367,16 +370,13 @@ partial class Form1
         textEditor.MouseWheel += TextEditor_MouseWheel;
         textEditor.Resize += TextEditor_Resize;
 
-        // Column Guide Overlay (overlays editor, not in table)
+        // Column Guide Panel (sibling of textEditor inside editorPanel, no background)
         guidePanel = new ColumnGuidePanel();
         guidePanel.LinkedEditor = textEditor;
         guidePanel.GuideColumn = 80;
         guidePanel.ShowGuide = true;
-        guidePanel.GuideColor = Color.FromArgb(60, 60, 60);
-        guidePanel.Bounds = textEditor.ClientRectangle;
-        guidePanel.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-        textEditor.Controls.Add(guidePanel);
-        guidePanel.BringToFront();
+        guidePanel.GuideColor = Color.FromArgb(100, 120, 120, 120);
+        guidePanel.BackColor = Color.Transparent;
 
         // Minimap Control (docked right inside editorPanel, hidden by default)
         minimapControl = new MinimapControl();
@@ -387,9 +387,11 @@ partial class Form1
         minimapControl.MinimapWidth = 100;
         minimapControl.Visible = false;
 
-        // Assemble editor panel with textEditor + minimap
+        // Assemble editor panel with textEditor + minimap + guide
         editorPanel.Controls.Add(textEditor);
         editorPanel.Controls.Add(minimapControl);
+        editorPanel.Controls.Add(guidePanel);
+        guidePanel.BringToFront();
 
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);

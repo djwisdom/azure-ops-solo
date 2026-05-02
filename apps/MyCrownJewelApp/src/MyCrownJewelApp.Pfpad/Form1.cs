@@ -357,12 +357,13 @@
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
-            guidePanel.Visible = showGuide;
             if (guidePanel != null)
             {
                 guidePanel.ShowGuide = showGuide;
+                guidePanel.Visible = showGuide;
                 guidePanel.GuideColumn = guideColumn;
             }
+            SyncGuidePanelBounds();
             minimapControl.Visible = _pendingMinimapVisible;
             statusStrip.Visible = statusBarVisible;
             
@@ -1431,6 +1432,28 @@ darkThemeMenuItem.Checked = isDark;
             }
             UpdateColumnGuideMenuChecked();
             SaveSettings();
+        }
+
+        private void ToggleColumnGuide(object? sender, EventArgs e)
+        {
+            showGuide = columnGuideMenuItem.Checked;
+            if (guidePanel != null)
+            {
+                guidePanel.ShowGuide = showGuide;
+                guidePanel.Visible = showGuide;
+            }
+            SyncGuidePanelBounds();
+            SaveSettings();
+        }
+
+        private void SyncGuidePanelBounds()
+        {
+            if (guidePanel == null || textEditor == null) return;
+            if (showGuide)
+            {
+                guidePanel.Bounds = textEditor.Bounds;
+                guidePanel.Invalidate();
+            }
         }
 
         private void UpdateColumnGuideMenuChecked()
@@ -2997,18 +3020,18 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-         private void TextEditor_Resize(object? sender, EventArgs e)
-         {
-             if (gutterPanel != null) gutterPanel.RefreshGutter();
+          private void TextEditor_Resize(object? sender, EventArgs e)
+          {
+              if (gutterPanel != null) gutterPanel.RefreshGutter();
             if (syntaxHighlightingEnabled)
             {
                 CreateIncrementalHighlighter();
                 highlightTimer?.Stop();
                 highlightTimer?.Start();
             }
-             guidePanel?.Invalidate();
-             PositionMinimap();
-         }
+             SyncGuidePanelBounds();
+              PositionMinimap();
+          }
 
         internal void UpdateStatusBar()
         {

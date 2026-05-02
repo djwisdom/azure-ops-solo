@@ -79,10 +79,7 @@ public sealed class ColumnGuidePanel : Panel
         Point pos = _editor.GetPositionFromCharIndex(col);
         float x = pos.X;
 
-        if (x < 0 || x > _editor.ClientSize.Width) return;
-
-        // Convert editor-relative X to this panel's coordinate space
-        x -= this.Left;
+        if (x < 0 || x > Width) return;
 
         using var pen = new Pen(GuideColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
         e.Graphics.DrawLine(pen, x, 0, x, Height);
