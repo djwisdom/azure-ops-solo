@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
+    <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MyCrownJewelApp.Core\MyCrownJewelApp.Core.csproj" />
+  </ItemGroup>
+
+</Project>

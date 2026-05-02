@@ -11,7 +11,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyCrownJewelApp.Tests", "te
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyCrownJewelApp.TextEditor", "src\MyCrownJewelApp.TextEditor\MyCrownJewelApp.TextEditor.csproj", "{519C38B4-93F4-48A3-AA05-D8004424D2FA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyCrownJewelApp.Pfpad", "src\MyCrownJewelApp.Pfpad\MyCrownJewelApp.Pfpad.csproj", "{519C38B4-93F4-48A3-AA05-D8004424D2FA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
