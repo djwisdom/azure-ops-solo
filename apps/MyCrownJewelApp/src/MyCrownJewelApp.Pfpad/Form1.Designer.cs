@@ -396,6 +396,7 @@ partial class Form1
         statusStrip = new StatusStrip();
         statusStrip.Dock = DockStyle.Fill;
         statusStrip.RenderMode = ToolStripRenderMode.Professional;
+        statusStrip.Padding = new Padding(4, 1, 4, 1);
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         charCountLabel = new ToolStripStatusLabel("0 characters");
         tabSizeDropDown = new ToolStripDropDownButton();
@@ -412,13 +413,13 @@ partial class Form1
         gitBranchLabel = new ToolStripStatusLabel("");
         gitBranchLabel.AutoSize = true;
         gitBranchLabel.BorderSides = ToolStripStatusLabelBorderSides.None;
-        gitBranchLabel.Padding = new Padding(4, 2, 4, 2);
+        gitBranchLabel.Padding = new Padding(4, 1, 4, 1);
         gitDirtyLabel = new ToolStripStatusLabel("");
         gitDirtyLabel.AutoSize = true;
-        gitDirtyLabel.Padding = new Padding(0, 2, 4, 2);
+        gitDirtyLabel.Padding = new Padding(0, 1, 4, 1);
         gitSyncLabel = new ToolStripStatusLabel("");
         gitSyncLabel.AutoSize = true;
-        gitSyncLabel.Padding = new Padding(0, 2, 4, 2);
+        gitSyncLabel.Padding = new Padding(0, 1, 4, 1);
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
@@ -426,6 +427,7 @@ partial class Form1
         themeDropDown = new ToolStripDropDownButton();
         themeDropDown.Text = "Theme";
         themeDropDown.Width = 60;
+        themeDropDown.Padding = new Padding(4, 1, 4, 1);
         themeDropDown.Alignment = ToolStripItemAlignment.Right;
         themeDropDown.DropDownItems.Add("Dark", null, StatusBarDarkTheme_Click);
         themeDropDown.DropDownItems.Add("Light", null, StatusBarLightTheme_Click);
@@ -433,6 +435,7 @@ partial class Form1
         fileTypeLabel.Spring = false;
         fileTypeLabel.AutoSize = false;
         fileTypeLabel.Width = 60;
+        fileTypeLabel.Padding = new Padding(4, 1, 4, 1);
         fileTypeLabel.TextAlign = ContentAlignment.MiddleRight;
         fileTypeLabel.Alignment = ToolStripItemAlignment.Right;
 
@@ -442,7 +445,7 @@ partial class Form1
         statusStrip.Items.Add(gitBranchLabel);
         statusStrip.Items.Add(gitDirtyLabel);
         statusStrip.Items.Add(gitSyncLabel);
-        statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true });
+        statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true, Padding = new Padding(0, 1, 0, 1) });
         statusStrip.Items.Add(linePositionLabel);
         statusStrip.Items.Add(zoomLabel);
         statusStrip.Items.Add(lineEndingsLabel);
@@ -451,13 +454,13 @@ partial class Form1
         statusStrip.Items.Add(fileTypeLabel);
 
         const int itemPadding = 8;
-        lineColLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        charCountLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        tabSizeDropDown.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        linePositionLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        zoomLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        lineEndingsLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        encodingLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        lineColLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        charCountLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        tabSizeDropDown.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        linePositionLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        zoomLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        lineEndingsLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        encodingLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
 
         // Main layout: explicit row ordering
         mainLayout = new TableLayoutPanel();
