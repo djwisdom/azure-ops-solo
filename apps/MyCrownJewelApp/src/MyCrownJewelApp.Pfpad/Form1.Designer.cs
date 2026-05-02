@@ -77,9 +77,12 @@ partial class Form1
         private ToolStripMenuItem colCustomMenuItem;
         private ToolStripMenuItem gutterMenuItem;
         private ToolStripMenuItem vimModeMenuItem;
-    private ToolStripMenuItem themeMenu;
-    private ToolStripMenuItem darkThemeMenuItem;
-    private ToolStripMenuItem lightThemeMenuItem;
+        private ToolStripMenuItem themeMenu;
+        private ToolStripMenuItem darkThemeMenuItem;
+        private ToolStripMenuItem lightThemeMenuItem;
+
+        private TabControl tabControl;
+        private TabPage newTabButtonPage;
 
         private GutterPanel gutterPanel;
         private ColumnGuidePanel guidePanel;
@@ -270,6 +273,26 @@ partial class Form1
 
         menuStrip.Items.AddRange(new ToolStripItem[] { fileMenu, editMenu, viewMenu });
 
+        // Tab Control for multi-file editing
+        tabControl = new TabControl();
+        tabControl.Dock = DockStyle.Fill;
+        tabControl.Multiline = true;
+        tabControl.HotTrack = true;
+        tabControl.DrawMode = TabDrawMode.Normal;
+        tabControl.Alignment = TabAlignment.Top;
+        tabControl.SizeMode = TabSizeMode.Fixed;
+        tabControl.ItemSize = new Size(120, 30);
+        tabControl.Padding = new Point(12, 4);
+        tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
+        tabControl.MouseDown += TabControl_MouseDown;
+
+        // "New Tab" button tab
+        newTabButtonPage = new TabPage("+");
+        newTabButtonPage.Width = 40;
+        newTabButtonPage.ToolTipText = "New Tab";
+        newTabButtonPage.MouseDown += NewTabButtonPage_MouseDown;
+        tabControl.Controls.Add(newTabButtonPage);
+
         // Main Table Layout (2 columns: gutter | editor)
         mainTable = new TableLayoutPanel();
         mainTable.ColumnCount = 2;
@@ -371,10 +394,11 @@ partial class Form1
         lineEndingsLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
         encodingLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
 
-        // Add controls: Fill first, then Bottom and Top so they claim space before Fill
-        Controls.Add(mainTable);
-        Controls.Add(statusStrip);
-        Controls.Add(menuStrip);
+         // Add controls: Top (menu, tabs), Fill (main table), Bottom (status)
+         Controls.Add(menuStrip);
+         Controls.Add(tabControl);
+         Controls.Add(mainTable);
+         Controls.Add(statusStrip);
 
         // Set main menu strip
         MainMenuStrip = menuStrip;

@@ -1,25 +1,25 @@
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using System.Collections.Concurrent;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Runtime.CompilerServices;
+ using System;
+ using System.Collections.Generic;
+ using System.Drawing;
+ using System.IO;
+ using System.Runtime.InteropServices;
+ using System.Text;
+ using System.Text.Json;
+ using System.Text.RegularExpressions;
+ using System.Threading;
+ using System.Threading.Tasks;
+ using System.Windows.Forms;
+ using System.Collections.Concurrent;
+ using System.Linq;
+ using System.Security.Cryptography;
+ using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
+ [assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
 
-namespace MyCrownJewelApp.Pfpad
-{
-    public partial class Form1 : Form
-    {
+ namespace MyCrownJewelApp.Pfpad
+ {
+     public partial class Form1 : Form
+     {
         // Win32 API for dark scrollbar support
         [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
         private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
@@ -39,6 +39,17 @@ namespace MyCrownJewelApp.Pfpad
 
         private const int WM_DROPFILES = 0x0233;
 
+        // RichTextBox messages
+        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+        private const int EM_LINESCROLL = 0x00B6;
+        private const int SB_TOP = 6;
+
+        // DWM API for native title bar dark mode (Windows 10 1809+)
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Windows 10 1809+, Windows 11
+
         private void ApplyScrollbarTheme()
         {
             if (textEditor != null && textEditor.IsHandleCreated)
@@ -48,6 +59,17 @@ namespace MyCrownJewelApp.Pfpad
                 else
                     SetWindowTheme(textEditor.Handle, null, null);
             }
+        }
+
+        private void ApplyTitleBarTheme()
+        {
+            if (!this.IsHandleCreated) return;
+            try
+            {
+                int darkMode = isDarkTheme ? 1 : 0;
+                DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+            }
+            catch { /* DWM not available or attribute not supported */ }
         }
 
         // State
@@ -65,24 +87,49 @@ namespace MyCrownJewelApp.Pfpad
         private float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
-        
+
         // Vim mode state
         private bool vimModeEnabled = false;
         private VimEngine? vimEngine;
-        
+
         // Minimap state
         private ToolStripMenuItem minimapMenuItem = null!;
         private bool _pendingMinimapVisible = false;
-        
+
         // Properties for GutterPanel
         public CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
         public bool IsDarkTheme => isDarkTheme;
-        
+
         // Tab behavior settings
         private bool autoIndentEnabled = true;
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
-        
+
+        // Document management (tabs)
+        private class Document
+        {
+            public string? FilePath { get; set; }
+            public string Content { get; set; } = "";
+public bool IsDirty { get; set; }
+             public HashSet<int> ModifiedLines { get; set; } = new();
+             public HashSet<int> Bookmarks { get; set; } = new();
+             public HashSet<int> CollapsedRegions { get; set; } = new();
+             public string? SavedHash { get; set; }
+            public DateTime? LastWriteTime { get; set; }
+            public int SelectionStart { get; set; }
+            public int SelectionLength { get; set; }
+            public int FirstVisibleLine { get; set; }
+            public SyntaxDefinition? Syntax { get; set; }
+
+            public string DisplayName => string.IsNullOrEmpty(FilePath) ? "Untitled" : Path.GetFileName(FilePath);
+        }
+
+        private List<Document> documents = new();
+        private int activeDocIndex = -1;
+
+        // Helper to get active document
+        private Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
+
         // Syntax highlighting performance tracking
         private DateTime _lastHighlightTime;
         private int _highlightCountInLastSecond;
@@ -177,15 +224,39 @@ namespace MyCrownJewelApp.Pfpad
         // Enable file drop support (client area + non-client area)
         EnableFileDrop();
 
+        // Initialize document list and process command line args
+        documents = new List<Document>();
+        activeDocIndex = -1;
+
+        // Process command line arguments (files)
+        string[] args = Environment.GetCommandLineArgs();
+        if (args.Length > 1)
+        {
+            for (int i = 1; i < args.Length; i++)
+            {
+                string path = args[i];
+                if (File.Exists(path))
+                {
+                    OpenFileInNewTab(path);
+                }
+            }
+        }
+
+        // If no documents were opened, create a new untitled document
+        if (documents.Count == 0)
+        {
+            NewFile(isInitial: true);
+        }
+
         zoomFactor = 1.0f;
-            // Set flat border for editor
-            textEditor.BorderStyle = BorderStyle.None;
-            
-            // Default feature states (all off)
-            wordWrapEnabled = false;
-            syntaxHighlightingEnabled = false;
-            gutterVisible = false;
-            showGuide = false;
+        // Set flat border for editor
+        textEditor.BorderStyle = BorderStyle.None;
+        
+        // Default feature states (all off)
+        wordWrapEnabled = false;
+        syntaxHighlightingEnabled = false;
+        gutterVisible = false;
+        showGuide = false;
             
             LoadRecentFiles();
             UpdateRecentMenu();
@@ -336,6 +407,7 @@ namespace MyCrownJewelApp.Pfpad
             base.OnHandleCreated(e);
             // Enable file drop on non-client area (title bar, etc.)
             DragAcceptFiles(this.Handle, true);
+            ApplyTitleBarTheme();
         }
 
         protected override void WndProc(ref Message m)
@@ -448,8 +520,18 @@ namespace MyCrownJewelApp.Pfpad
                     return;
                 }
 
-                // Load file content
-                LoadFile(filePath);
+                // Load file content(s) - each in its own tab
+                foreach (string file in files)
+                {
+                    try
+                    {
+                        OpenFileInNewTab(file);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Failed to open '{file}': {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -466,18 +548,24 @@ namespace MyCrownJewelApp.Pfpad
 
                 if (fileCount > 0)
                 {
-                    char[] fileName = new char[260]; // MAX_PATH
-                    DragQueryFile(hDrop, 0, fileName, 260);
-                    string path = new string(fileName).TrimEnd('\0');
+                    for (uint i = 0; i < fileCount; i++)
+                    {
+                        char[] fileName = new char[260];
+                        DragQueryFile(hDrop, i, fileName, 260);
+                        string path = new string(fileName).TrimEnd('\0');
 
-                    // Validate and load on UI thread
-                    if (this.InvokeRequired)
-                    {
-                        this.BeginInvoke(new Action(() => LoadFile(path)));
-                    }
-                    else
-                    {
-                        LoadFile(path);
+                        // Validate file existence
+                        if (!File.Exists(path)) continue;
+
+                        // Open each file in its own tab on UI thread
+                        if (this.InvokeRequired)
+                        {
+                            this.BeginInvoke(new Action(() => OpenFileInNewTab(path)));
+                        }
+                        else
+                        {
+                            OpenFileInNewTab(path);
+                        }
                     }
                 }
             }
@@ -707,6 +795,8 @@ namespace MyCrownJewelApp.Pfpad
             {
                 ApplyScrollbarTheme();
             }
+
+            ApplyTitleBarTheme();
             
             if (syntaxHighlightingEnabled && incrementalHighlighter != null)
             {
@@ -1230,33 +1320,17 @@ namespace MyCrownJewelApp.Pfpad
 
         private void NewFile()
         {
-            var result = PromptSaveChanges();
-            if (result == DialogResult.Cancel) return;
-
-            textEditor.Clear();
-            currentFilePath = null;
-            isModified = false;
-            savedContentHash = null;
-            lastFileWriteTime = null;
-             modifiedLines.Clear();
-             UpdateWindowTitle();
-             UpdateStatusBar();
-             
-             // Request highlighting for empty buffer (clears any previous highlights)
-             RequestVisibleHighlight();
-         }
+            NewFile(false);
+        }
 
         private void OpenFile()
         {
-            var result = PromptSaveChanges();
-            if (result == DialogResult.Cancel) return;
-
             using var ofd = new OpenFileDialog();
             ofd.Filter = "Text Files|*.txt|All Files|*.*";
             ofd.Multiselect = false;
             if (ofd.ShowDialog() == DialogResult.OK)
             {
-                LoadFile(ofd.FileName);
+                OpenFileInNewTab(ofd.FileName);
             }
         }
 
@@ -1269,10 +1343,18 @@ namespace MyCrownJewelApp.Pfpad
                  elasticTabTimer?.Stop();
                  highlightTimer?.Stop();
 
-                 textEditor.Text = File.ReadAllText(path);
+                 string content = File.ReadAllText(path);
+                 
+                 // Update fields without triggering dirty
+                 textEditor.TextChanged -= TextEditor_TextChanged;
+                 textEditor.Text = content;
+                 textEditor.TextChanged += TextEditor_TextChanged;
+
                  currentFilePath = path;
+                 currentSyntax = SyntaxDefinition.GetDefinitionForFile(path);
                  if (File.Exists(path))
                      lastFileWriteTime = File.GetLastWriteTimeUtc(path);
+                 
                  ClearDirtyAfterSave();
                  AddToRecentFiles(path);
                  
@@ -1290,6 +1372,9 @@ namespace MyCrownJewelApp.Pfpad
                  }
                  
                  UpdateStatusBar();
+                 
+                 // Recreate syntax highlighter for new file type
+                 CreateIncrementalHighlighter();
                  
                  // Defer syntax highlight request until UI is idle
                  if (textEditor.IsHandleCreated)
@@ -1385,11 +1470,14 @@ namespace MyCrownJewelApp.Pfpad
 
         private void SetDirty()
         {
-            if (isModified) return; // Already dirty
-
+            if (isModified) return;
             isModified = true;
+            if (activeDocIndex >= 0)
+            {
+                ActiveDoc.IsDirty = true;
+            }
             UpdateWindowTitle();
-            // Note: modifiedLines will be updated by TextEditor_TextChanged or selection logic
+            UpdateActiveTabTitle();
         }
 
         internal void ClearDirtyAfterSave()
@@ -1397,7 +1485,18 @@ namespace MyCrownJewelApp.Pfpad
             isModified = false;
             savedContentHash = ComputeContentHash();
             modifiedLines.Clear();
+            if (activeDocIndex >= 0)
+            {
+                ActiveDoc.IsDirty = false;
+                ActiveDoc.SavedHash = savedContentHash;
+                ActiveDoc.ModifiedLines = modifiedLines;
+                ActiveDoc.LastWriteTime = lastFileWriteTime;
+                ActiveDoc.FilePath = currentFilePath;
+                ActiveDoc.Content = textEditor.Text;
+                ActiveDoc.Syntax = currentSyntax;
+            }
             UpdateWindowTitle();
+            UpdateActiveTabTitle();
         }
 
         private void UpdateWindowTitle()
@@ -1499,7 +1598,7 @@ namespace MyCrownJewelApp.Pfpad
                 {
                     string filePath = recentFiles[i];
                     string display = $"{(i + 1)} {Path.GetFileName(filePath)}";
-                    var item = new ToolStripMenuItem(display, null, (s, e) => LoadFile(filePath));
+                    var item = new ToolStripMenuItem(display, null, (s, e) => OpenFileInNewTab(filePath));
                     recentMenuItem.DropDownItems.Add(item);
                 }
                 recentMenuItem.DropDownItems.Add(new ToolStripSeparator());
@@ -1522,7 +1621,7 @@ namespace MyCrownJewelApp.Pfpad
         private void Save_Click(object? sender, EventArgs e) => SaveFile();
         private void SaveAs_Click(object? sender, EventArgs e) => SaveAsFile();
         private void SaveAll_Click(object? sender, EventArgs e) => SaveAllFiles();
-        private void CloseTab_Click(object? sender, EventArgs e) => NewFile();  // For now, clear
+        private void CloseTab_Click(object? sender, EventArgs e) => CloseCurrentTab();
         private void CloseWindow_Click(object? sender, EventArgs e) => this.Close();
         private void CloseAll_Click(object? sender, EventArgs e)
         {
@@ -1813,6 +1912,277 @@ namespace MyCrownJewelApp.Pfpad
                     themeDropDown.DropDownItems[0].Text = isDarkTheme ? "● Dark" : "Dark";
                     themeDropDown.DropDownItems[1].Text = !isDarkTheme ? "● Light" : "Light";
                 }
+            }
+        }
+
+        #endregion
+
+        #region Document Management (Tabs)
+
+        // Get first visible line in editor
+        private int GetFirstVisibleLine()
+        {
+            if (!textEditor.IsHandleCreated) return 0;
+            return (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+        }
+
+        // Compute hash of string content
+        private string ComputeContentHash(string content)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+            var hash = sha.ComputeHash(bytes);
+            return Convert.ToHexString(hash);
+        }
+
+        // Save current editor state into the active document
+        private void SaveCurrentDocument()
+        {
+            if (activeDocIndex < 0) return;
+            var doc = documents[activeDocIndex];
+            doc.Content = textEditor.Text;
+            doc.IsDirty = isModified;
+            // modifiedLines, bookmarks, collapsedRegions are already references to doc's collections
+            doc.FilePath = currentFilePath;
+            doc.SavedHash = savedContentHash;
+            doc.LastWriteTime = lastFileWriteTime;
+            doc.Syntax = currentSyntax;
+            doc.SelectionStart = textEditor.SelectionStart;
+            doc.SelectionLength = textEditor.SelectionLength;
+            doc.FirstVisibleLine = GetFirstVisibleLine();
+        }
+
+        // Create a new empty document
+        private Document CreateNewDocument()
+        {
+            return new Document
+            {
+                FilePath = null,
+                Content = "",
+                IsDirty = false,
+                ModifiedLines = new HashSet<int>(),
+                Bookmarks = new HashSet<int>(),
+                CollapsedRegions = new HashSet<int>(),
+                SavedHash = null,
+                LastWriteTime = null,
+                SelectionStart = 0,
+                SelectionLength = 0,
+                FirstVisibleLine = 0,
+                Syntax = null
+            };
+        }
+
+        // New file (untitled) - creates a new tab
+        private void NewFile(bool isInitial = false)
+        {
+            if (!isInitial)
+            {
+                var result = PromptSaveChanges();
+                if (result == DialogResult.Cancel) return;
+            }
+
+            // Save state of current document before switching
+            if (activeDocIndex >= 0)
+            {
+                SaveCurrentDocument();
+            }
+
+            var newDoc = CreateNewDocument();
+            documents.Add(newDoc);
+            int newIndex = documents.Count - 1;
+
+            // Create tab page
+            var tabPage = new TabPage(newDoc.DisplayName) { Tag = newDoc };
+            int plusIdx = tabControl.TabPages.IndexOf(newTabButtonPage);
+            tabControl.TabPages.Insert(plusIdx, tabPage);
+
+            // Switch to new tab
+            tabControl.SelectedIndex = newIndex;
+        }
+
+        // Open an existing file in a new tab
+        private void OpenFileInNewTab(string path)
+        {
+            if (!File.Exists(path)) return;
+            try
+            {
+                string content = File.ReadAllText(path);
+                var syntax = SyntaxDefinition.GetDefinitionForFile(path);
+                var doc = new Document
+                {
+                    FilePath = path,
+                    Content = content,
+                    IsDirty = false,
+                    ModifiedLines = new HashSet<int>(),
+                    Bookmarks = new HashSet<int>(),
+                    CollapsedRegions = new HashSet<int>(),
+                    SavedHash = ComputeContentHash(content),
+                    LastWriteTime = File.GetLastWriteTimeUtc(path),
+                    SelectionStart = 0,
+                    SelectionLength = 0,
+                    FirstVisibleLine = 0,
+                    Syntax = syntax
+                };
+                documents.Add(doc);
+                int newIndex = documents.Count - 1;
+                var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+                int plusIdx = tabControl.TabPages.IndexOf(newTabButtonPage);
+                tabControl.TabPages.Insert(plusIdx, tabPage);
+                tabControl.SelectedIndex = newIndex; // triggers SwitchToTab
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // Close current tab
+        private void CloseCurrentTab()
+        {
+            if (documents.Count == 0) return;
+            var result = PromptSaveChanges();
+            if (result == DialogResult.Cancel) return;
+
+            // Remove current document and its tab
+            int closeIndex = activeDocIndex;
+            documents.RemoveAt(closeIndex);
+            tabControl.TabPages.RemoveAt(closeIndex); // remove corresponding tab (excluding +)
+
+            // If there are still documents, select another
+            if (documents.Count == 0)
+            {
+                // No documents left; create a new untitled one
+                NewFile(isInitial: true);
+            }
+            else
+            {
+                // Adjust active index: if we closed last tab, select previous
+                if (activeDocIndex >= documents.Count)
+                    activeDocIndex = documents.Count - 1;
+                // Switch to the new active
+                SwitchToTab(activeDocIndex);
+                tabControl.SelectedIndex = activeDocIndex;
+            }
+        }
+
+        // Switch to document at given index (0-based)
+        private void SwitchToTab(int index)
+        {
+            if (index < 0 || index >= documents.Count) return;
+            if (activeDocIndex == index) return; // already active
+
+            // Save current document state before leaving
+            if (activeDocIndex >= 0)
+            {
+                SaveCurrentDocument();
+            }
+
+            activeDocIndex = index;
+            var doc = documents[activeDocIndex];
+            LoadDocument(doc);
+            UpdateWindowTitle();
+        }
+
+        // Load document state into editor and UI
+        private void LoadDocument(Document doc)
+        {
+            // Update core fields from document
+            currentFilePath = doc.FilePath;
+            isModified = doc.IsDirty;
+            modifiedLines = doc.ModifiedLines;
+            bookmarks = doc.Bookmarks;
+            collapsedRegions = doc.CollapsedRegions;
+            savedContentHash = doc.SavedHash;
+            lastFileWriteTime = doc.LastWriteTime ?? DateTime.MinValue;
+            currentSyntax = doc.Syntax;
+
+            // Load text without triggering dirty flag
+            textEditor.TextChanged -= TextEditor_TextChanged;
+            textEditor.Text = doc.Content ?? "";
+            textEditor.SelectionStart = doc.SelectionStart;
+            textEditor.SelectionLength = doc.SelectionLength;
+            textEditor.TextChanged += TextEditor_TextChanged;
+
+            // Restore scroll position
+            if (doc.FirstVisibleLine > 0)
+            {
+                SendMessage(textEditor.Handle, EM_LINESCROLL, (IntPtr)doc.FirstVisibleLine, IntPtr.Zero);
+            }
+            else
+            {
+                SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
+            }
+
+            // Update UI
+            UpdateStatusBar();
+            UpdateTabTitle(activeDocIndex);
+            UpdateThemeColors(isDarkTheme); // refresh any theme-dependent colors
+
+            // Recreate syntax highlighter based on current syntax
+            CreateIncrementalHighlighter();
+        }
+
+        // Update tab title for document at index
+        private void UpdateTabTitle(int docIndex)
+        {
+            if (docIndex < 0 || docIndex >= documents.Count) return;
+            var doc = documents[docIndex];
+            // The corresponding TabPage is at same index in tabControl.TabPages (excluding + page)
+            if (docIndex < tabControl.TabPages.Count)
+            {
+                var tabPage = tabControl.TabPages[docIndex];
+                tabPage.Text = doc.IsDirty ? "*" + doc.DisplayName : doc.DisplayName;
+            }
+        }
+
+        // Convenience for active tab
+        private void UpdateActiveTabTitle()
+        {
+            UpdateTabTitle(activeDocIndex);
+        }
+
+        #endregion
+
+        #region Tab Control Event Handlers
+
+        private void TabControl_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (tabControl.SelectedTab == newTabButtonPage)
+            {
+                NewFile();
+            }
+            else
+            {
+                SwitchToTab(tabControl.SelectedIndex);
+            }
+        }
+
+        private void TabControl_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Middle)
+            {
+                // Close tab on middle-click
+                for (int i = 0; i < tabControl.TabPages.Count; i++)
+                {
+                    var rect = tabControl.GetTabRect(i);
+                    if (rect.Contains(e.Location))
+                    {
+                        if (tabControl.TabPages[i] != newTabButtonPage)
+                        {
+                            tabControl.SelectedIndex = i;
+                            CloseCurrentTab();
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void NewTabButtonPage_MouseDown(object? sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                NewFile();
             }
         }
 
@@ -2474,12 +2844,9 @@ namespace MyCrownJewelApp.Pfpad
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int WM_SETREDRAW = 0x0B;
-        private const int EM_LINESCROLL = 0xB6;
         private const int WM_VSCROLL = 0x115;
-        private const int SB_TOP = 6;
         private const int EM_STARTUNDOACTION = 0x00B7;
         private const int EM_ENDUNDOACTION = 0x00B8;
-        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
         private const int EM_GETLINE = 0x00C4;
 
