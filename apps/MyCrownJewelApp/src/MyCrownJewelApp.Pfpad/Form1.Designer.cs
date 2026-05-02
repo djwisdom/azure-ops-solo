@@ -83,8 +83,9 @@ partial class Form1
 
     private TabControl tabControl;
     private TableLayoutPanel mainLayout;
-    private SplitContainer? splitContainer;
+    private SplitContainer splitContainer;
     private TableLayoutPanel mainTable;
+    private Panel editorPanel;
     private GutterPanel gutterPanel;
     internal HighlightRichTextBox textEditor;
     private ColumnGuidePanel guidePanel;
@@ -312,7 +313,7 @@ partial class Form1
         tabControl.HandleCreated += TabControl_HandleCreated;
         tabControl.HandleDestroyed += TabControl_HandleDestroyed;
 
-        // Main Table Layout (2 columns: gutter | editor)
+        // Main Table Layout (2 columns: gutter | editor+minimap panel)
         mainTable = new TableLayoutPanel();
         mainTable.ColumnCount = 2;
         mainTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
@@ -323,12 +324,18 @@ partial class Form1
         mainTable.Margin = new Padding(0);
         mainTable.Padding = new Padding(0);
 
+        // Editor panel wraps textEditor + minimap, with minimap docked to right
+        editorPanel = new Panel();
+        editorPanel.Dock = DockStyle.Fill;
+        editorPanel.Margin = new Padding(0);
+        editorPanel.Padding = new Padding(0);
+
         // Gutter Panel
         gutterPanel = new GutterPanel(this);
         gutterPanel.Dock = DockStyle.Fill;
         gutterPanel.Margin = new Padding(0);
 
-        // Text Editor (RichTextBox)
+        // Text Editor (RichTextBox) added to editorPanel
         textEditor = new HighlightRichTextBox();
         textEditor.Dock = DockStyle.Fill;
         textEditor.Multiline = true;
@@ -354,19 +361,22 @@ partial class Form1
         textEditor.Controls.Add(guidePanel);
         guidePanel.BringToFront();
 
-        // Minimap Control
+        // Minimap Control (docked right inside editorPanel, hidden by default)
         minimapControl = new MinimapControl();
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
-        minimapControl.Dock = DockStyle.None;
-        minimapControl.Anchor = AnchorStyles.Top | AnchorStyles.Right | AnchorStyles.Bottom;
-        textEditor.Controls.Add(minimapControl);
-        minimapControl.BringToFront();
+        minimapControl.Dock = DockStyle.Right;
+        minimapControl.MinimapWidth = 100;
+        minimapControl.Visible = false;
 
-        // Assemble table (no split container when inactive)
+        // Assemble editor panel with textEditor + minimap
+        editorPanel.Controls.Add(textEditor);
+        editorPanel.Controls.Add(minimapControl);
+
+        // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);
-        mainTable.Controls.Add(textEditor, 1, 0);
+        mainTable.Controls.Add(editorPanel, 1, 0);
 
         // Status Strip
         statusStrip = new StatusStrip();

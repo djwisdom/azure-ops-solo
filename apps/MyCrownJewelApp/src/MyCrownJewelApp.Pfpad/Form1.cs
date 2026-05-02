@@ -364,10 +364,9 @@ private List<Document> documents = new();
             // Attach minimap to editor
             if (minimapControl != null && textEditor != null)
             {
-                minimapControl.AttachEditor(textEditor);
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
                 minimapControl.SetTokenProvider(GetTokensForLine);
-                PositionMinimap(); // initial placement
+                PositionMinimap(); // handles attach and visibility
             }
             
             // Initialize syntax highlighting debounce timer
@@ -2138,13 +2137,17 @@ darkThemeMenuItem.Checked = isDark;
             // Remove current document and its tab
             int closeIndex = activeDocIndex;
             if (closeIndex >= documents.Count || closeIndex >= tabControl.TabPages.Count) return;
+
+            // Force activeDocIndex to -1 so that SelectedIndexChanged → SwitchToTab does not bail
+            activeDocIndex = -1;
+
             documents.RemoveAt(closeIndex);
             tabControl.TabPages.RemoveAt(closeIndex);
 
             // Select another tab
-            if (activeDocIndex >= documents.Count)
-                activeDocIndex = documents.Count - 1;
-            SwitchToTab(activeDocIndex);
+            int newIndex = closeIndex < documents.Count ? closeIndex : documents.Count - 1;
+            if (newIndex >= 0)
+                SwitchToTab(newIndex);
         }
 
         // Switch to document at given index (0-based)
@@ -2573,7 +2576,7 @@ darkThemeMenuItem.Checked = isDark;
             if (_draggedTabIndex.HasValue && !_isDragging)
             {
                 var screenPos = tabControl.PointToScreen(e.Location);
-                if (_dragStartPoint.HasValue && (Math.Abs(screenPos.X - _dragStartPoint.Value.X) > 5 || Math.Abs(screenPos.Y - _dragStartPoint.Value.Y) > 5))
+                if (_dragStartPoint.HasValue && (Math.Abs(screenPos.X - _dragStartPoint.Value.X) > 20 || Math.Abs(screenPos.Y - _dragStartPoint.Value.Y) > 5))
                 {
                     _isDragging = true;
                 }
@@ -2996,20 +2999,20 @@ darkThemeMenuItem.Checked = isDark;
         /// </summary>
         private void PositionMinimap()
         {
-            if (minimapControl == null || textEditor == null) return;
+            if (minimapControl == null || editorPanel == null) return;
 
-            // Position minimap within textEditor's client area
-            int x = textEditor.ClientSize.Width - minimapControl.MinimapWidth;
-            int y = 0;
-            int width = minimapControl.MinimapWidth;
-            int height = textEditor.ClientSize.Height;
-
-            if (x < 0) x = 0;
-            if (width <= 0) width = 1;
-            if (height <= 0) height = 1;
-
-            minimapControl.Bounds = new Rectangle(x, y, width, height);
-            minimapControl.Visible = _pendingMinimapVisible;
+            if (_pendingMinimapVisible)
+            {
+                minimapControl.Visible = true;
+                minimapControl.BringToFront();
+                if (textEditor != null && textEditor.IsHandleCreated)
+                    minimapControl.AttachEditor(textEditor);
+            }
+            else
+            {
+                minimapControl.Visible = false;
+                minimapControl.DetachEditor();
+            }
         }
 
         #endregion
@@ -3176,13 +3179,7 @@ darkThemeMenuItem.Checked = isDark;
             var baseColorCurrent = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             incrementalHighlighter = new IncrementalHighlighter(
                 textEditor,
-                currentSyntax,
-                baseColorCurrent,
-                GetKeywordColor(),
-                GetStringColor(),
-                GetCommentColor(),
-                GetNumberColor(),
-                GetPreprocessorColor());
+                currentSyntax);
 
             incrementalHighlighter.PatchReady += ApplyHighlightPatch;
 
@@ -3218,6 +3215,7 @@ darkThemeMenuItem.Checked = isDark;
             if (lineLen <= 0) return;
 
             var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
+            _suspendSelectionChanged = true;
             BeginUpdate(textEditor);
             textEditor.SuspendLayout();
             try
@@ -3244,6 +3242,7 @@ darkThemeMenuItem.Checked = isDark;
             {
                 textEditor.ResumeLayout();
                 EndUpdate(textEditor);
+                _suspendSelectionChanged = false;
             }
         }
 
@@ -3284,9 +3283,10 @@ darkThemeMenuItem.Checked = isDark;
          {
              if (textEditor.IsDisposed) return;
              int selStart = textEditor.SelectionStart, selLength = textEditor.SelectionLength;
-             BeginUpdate(textEditor);
-             textEditor.SuspendLayout();
-             try
+              BeginUpdate(textEditor);
+              textEditor.SuspendLayout();
+              _suspendSelectionChanged = true;
+              try
              {
                   var (firstLine, lastLine) = GetVisibleLineRange();
                   if (firstLine <= lastLine)
@@ -3307,11 +3307,12 @@ darkThemeMenuItem.Checked = isDark;
                  textEditor.SelectionLength = selLength;
                  textEditor.SelectionColor = baseColor;
              }
-             finally
-             {
-                 textEditor.ResumeLayout();
-                 EndUpdate(textEditor);
-             }
+              finally
+              {
+                  textEditor.ResumeLayout();
+                  EndUpdate(textEditor);
+                  _suspendSelectionChanged = false;
+              }
          }
 
         /// <summary>

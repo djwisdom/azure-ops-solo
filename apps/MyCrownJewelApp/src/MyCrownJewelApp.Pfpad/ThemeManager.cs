@@ -159,7 +159,7 @@ public readonly struct Theme
         editorBg: Color.White,
         highlight: Color.FromArgb(0, 120, 215, 40),
         disabled: Color.FromArgb(160, 160, 160),
-        buttonHoverBackground: Color.FromArgb(240, 240, 240),
+        buttonHoverBackground: Color.FromArgb(215, 215, 215),
         muted: Color.FromArgb(120, 120, 120)
     );
 
@@ -174,7 +174,7 @@ public readonly struct Theme
         editorBg: Color.FromArgb(30, 30, 30),
         highlight: Color.FromArgb(0, 120, 215, 60),
         disabled: Color.FromArgb(100, 100, 100),
-        buttonHoverBackground: Color.FromArgb(60, 60, 60),
+        buttonHoverBackground: Color.FromArgb(70, 70, 70),
         muted: Color.FromArgb(140, 140, 140)
     );
 

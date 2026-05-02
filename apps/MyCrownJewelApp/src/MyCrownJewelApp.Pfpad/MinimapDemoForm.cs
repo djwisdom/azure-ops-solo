@@ -64,8 +64,6 @@ namespace MyCrownJewelApp.Pfpad
             minimap = new MinimapControl();
             minimap.Dock = DockStyle.Right;
             minimap.MinimapWidth = 100;
-            minimap.Scale = 0.5f;
-            minimap.ShowColors = false; // Set true to enable syntax coloring
             minimap.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
             minimap.ViewportBorderColor = Color.DodgerBlue;
 

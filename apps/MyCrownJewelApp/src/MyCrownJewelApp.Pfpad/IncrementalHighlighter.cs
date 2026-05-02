@@ -2,38 +2,26 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 
-// Performance and safety constants for syntax highlighting
 namespace MyCrownJewelApp.Pfpad;
 
-/// <summary>
-/// Immutable state carried across line boundaries for multi-line constructs.
-/// </summary>
 public sealed record TokenizerState
 {
-    public bool InString { get; init; }
-    public bool InComment { get; init; }  // block comment /* ... */
-    public bool InCharLiteral { get; init; }
-    public bool IsVerbatim { get; init; } // true if inside a verbatim string literal (@"...")
-    public int OpenDelimiterIndex { get; init; }
+    public bool InComment { get; init; }
     public static readonly TokenizerState Initial = new();
 }
 
-/// <summary>
-/// Cached token result for a single line.
-/// </summary>
 internal sealed class LineTokens
 {
     public IReadOnlyList<TokenInfo> Tokens { get; }
     public TokenizerState StateAfter { get; }
-
     public LineTokens(IReadOnlyList<TokenInfo> tokens, TokenizerState stateAfter)
     {
         Tokens = tokens;
@@ -41,38 +29,22 @@ internal sealed class LineTokens
     }
 }
 
-/// <summary>
-/// Patch sent from worker thread to UI thread containing tokens for a line.
-/// </summary>
 public sealed record HighlightPatch(int LineNumber, IReadOnlyList<TokenInfo> Tokens);
 
-/// <summary>
-/// Non-blocking incremental syntax highlighter with worker-based tokenization.
-/// Tokenizes only dirty regions, streams patches to UI, preserves state across lines.
-/// </summary>
 public sealed class IncrementalHighlighter : IDisposable
 {
     private readonly RichTextBox _textEditor;
     private readonly SyntaxDefinition _syntax;
-    private readonly Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> _regexCache;
     private readonly ConcurrentDictionary<int, LineTokens> _tokenCache;
-    // Performance and safety constants
-    private const int MaxParseTimeMs = 16; // Target ~60fps (16ms per frame)
-    private const int MaxIterationsPerLine = 10000; // Prevent infinite loops in tokenization
-    private const int MaxWorkerBatchTimeMs = 50; // Max time worker spends per batch before yielding
-
-    private readonly Channel<(int LineNumber, string Text)> _dirtyLines;
+    private readonly Channel<int> _dirtyLines;
     private readonly CancellationTokenSource _cts;
     private readonly Task? _workerTask;
     private readonly SynchronizationContext? _uiContext;
-    private readonly Color _baseColor;
-    private readonly Color _keywordColor;
-    private readonly Color _stringColor;
-    private readonly Color _commentColor;
-    private readonly Color _numberColor;
-    private readonly Color _preprocessorColor;
-    private readonly bool _useWorker;
-    private int _maxCacheSize;
+
+    private readonly HashSet<string> _keywordSet;
+    private readonly HashSet<string> _preprocessorSet;
+
+    private const int MaxLinesPerBatch = 50;
     private bool _disposed;
 
     public event EventHandler<HighlightPatch>? PatchReady;
@@ -84,488 +56,248 @@ public sealed class IncrementalHighlighter : IDisposable
     private string GetLineText(int lineIndex)
     {
         if (_textEditor.IsDisposed) return string.Empty;
-
         if (_textEditor.IsHandleCreated)
         {
             var sb = new StringBuilder(4096);
             int len = SendMessage(_textEditor.Handle, EM_GETLINE, lineIndex, sb);
-            if (len > 0) return sb.ToString();
-            return string.Empty;
+            return len > 0 ? sb.ToString() : string.Empty;
         }
-        else
-        {
-            // Fallback for scenarios without a window handle (e.g., unit tests)
-            var lines = _textEditor.Lines;
-            if (lineIndex >= 0 && lineIndex < lines.Length) return lines[lineIndex];
-            return string.Empty;
-        }
+        var lines = _textEditor.Lines;
+        return lineIndex >= 0 && lineIndex < lines.Length ? lines[lineIndex] : string.Empty;
     }
 
-    public IncrementalHighlighter(
-        RichTextBox textEditor,
-        SyntaxDefinition syntax,
-        Color baseColor,
-        Color keywordColor,
-        Color stringColor,
-        Color commentColor,
-        Color numberColor,
-        Color preprocessorColor,
-        bool useWorker = true,
-        int maxCacheSize = 5000)
+    public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax)
     {
         _textEditor = textEditor;
         _syntax = syntax;
-        _baseColor = baseColor;
-        _keywordColor = keywordColor;
-        _stringColor = stringColor;
-        _commentColor = commentColor;
-        _numberColor = numberColor;
-        _preprocessorColor = preprocessorColor;
-        _useWorker = useWorker;
-        _maxCacheSize = maxCacheSize;
 
-        _regexCache = new Dictionary<string, (Regex?, Regex?, Regex?, Regex?, Regex?, Regex?)>();
+        _keywordSet = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
+        foreach (var t in syntax.Types)
+            _keywordSet.Add(t);
+        _preprocessorSet = new HashSet<string>(syntax.Preprocessor, StringComparer.Ordinal);
+
         _tokenCache = new ConcurrentDictionary<int, LineTokens>();
-        _dirtyLines = Channel.CreateBounded<(int LineNumber, string Text)>(new BoundedChannelOptions(1000)
+        _dirtyLines = Channel.CreateBounded<int>(new BoundedChannelOptions(2000)
         {
-            FullMode = BoundedChannelFullMode.Wait,
+            FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = false
         });
         _cts = new CancellationTokenSource();
         _uiContext = SynchronizationContext.Current;
 
-        // Compile regexes upfront
-        GetOrCreateCompiledRegexes(syntax);
-
-        // Start background worker if requested
-        if (_useWorker)
-        {
-            _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token), _cts.Token);
-        }
+        _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token), _cts.Token);
     }
 
-    /// <summary>
-    /// Marks a line as requiring re-tokenization (called after text edit).
-    /// Evicts from cache and enqueues dirty line with its text for background processing.
-    /// </summary>
     public void MarkDirty(int lineNumber)
     {
         if (lineNumber < 0) return;
-
-        // Evict from cache — content changed
         _tokenCache.TryRemove(lineNumber, out _);
-        string text = GetLineText(lineNumber);
-        _dirtyLines.Writer.TryWrite((lineNumber, text));
+        _dirtyLines.Writer.TryWrite(lineNumber);
     }
 
-    /// <summary>
-    /// Marks a range of lines as dirty.
-    /// </summary>
     public void MarkDirtyRange(int startLine, int endLine)
     {
         if (startLine < 0) return;
-        if (endLine < startLine) return;
         for (int line = startLine; line <= endLine; line++)
-        {
             MarkDirty(line);
-        }
     }
 
-    /// <summary>
-    /// Requests highlighting for a range of lines (used on viewport change).
-    /// Only enqueues lines that are not already cached.
-    /// Must be called on UI thread.
-    /// </summary>
     public void RequestRange(int startLine, int endLine)
     {
         if (startLine < 0) return;
-        if (endLine < startLine) return;
-
         for (int line = startLine; line <= endLine; line++)
         {
             if (!_tokenCache.ContainsKey(line))
-            {
-                string text = GetLineText(line);
-                _dirtyLines.Writer.TryWrite((line, text));
-            }
+                _dirtyLines.Writer.TryWrite(line);
         }
     }
 
-    /// <summary>
-    /// Gets cached tokens for a line, or null if not yet tokenized.
-    /// </summary>
     public IReadOnlyList<TokenInfo>? GetTokens(int lineIndex)
     {
-        if (_tokenCache.TryGetValue(lineIndex, out var entry))
-            return entry.Tokens;
-        return null;
+        return _tokenCache.TryGetValue(lineIndex, out var entry) ? entry.Tokens : null;
     }
 
-    private (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor) GetOrCreateCompiledRegexes(SyntaxDefinition syntax)
+    private async Task WorkerLoopAsync(CancellationToken ct)
     {
-        string key = syntax.Name;
-        lock (_regexCache)
+        var batch = new List<int>();
+        await foreach (var line in _dirtyLines.Reader.ReadAllAsync(ct))
         {
-            if (_regexCache.TryGetValue(key, out var existing))
-                return existing;
-        }
+            if (ct.IsCancellationRequested) break;
 
-        static Regex? Build(string? pattern, RegexOptions options)
-        {
-            if (string.IsNullOrEmpty(pattern)) return null;
-            return new Regex(pattern, options | RegexOptions.Compiled);
-        }
+            batch.Clear();
+            batch.Add(line);
 
-        var keywords = Build(@"\b(" + string.Join("|", syntax.Keywords.Select(Regex.Escape)) + @")\b", RegexOptions.None);
-        var types = Build(@"\b(" + string.Join("|", syntax.Types.Select(Regex.Escape)) + @")\b", RegexOptions.None);
-        var stringRegex = Build(syntax.StringPattern, RegexOptions.Singleline);
-        var comment = Build(syntax.CommentPattern, RegexOptions.Multiline);
-        var number = Build(syntax.NumberPattern, RegexOptions.None);
-        var preprocessor = syntax.Preprocessor?.Length > 0
-            ? Build(@"^\s*(" + string.Join("|", syntax.Preprocessor.Select(Regex.Escape)) + @")\b", RegexOptions.Multiline)
-            : null;
-
-        var tuple = (keywords, types, stringRegex, comment, number, preprocessor);
-        lock (_regexCache) { _regexCache[key] = tuple; }
-        return tuple;
-    }
-
-    private async Task WorkerLoopAsync(CancellationToken cancellationToken)
-    {
-        var dirtyBatch = new List<(int LineNumber, string Text)>();
-        var dirtySet = new HashSet<int>();
-        var batchStopwatch = Stopwatch.StartNew();
-
-        await foreach (var entry in _dirtyLines.Reader.ReadAllAsync(cancellationToken))
-        {
-            if (cancellationToken.IsCancellationRequested) break;
-
-            // Batch consecutive dirty lines
-            dirtyBatch.Clear();
-            dirtySet.Clear();
-            dirtyBatch.Add(entry);
-            dirtySet.Add(entry.LineNumber);
-
-            // Drain channel into batch but with time limit to prevent starvation
-            batchStopwatch.Restart();
-            while (_dirtyLines.Reader.TryRead(out var next))
+            while (_dirtyLines.Reader.TryRead(out var next) && batch.Count < MaxLinesPerBatch)
             {
-                if (cancellationToken.IsCancellationRequested) break;
-                if (!dirtySet.Contains(next.LineNumber))
-                {
-                    dirtyBatch.Add(next);
-                    dirtySet.Add(next.LineNumber);
-                }
-
-                // Check if we've spent too much time batching - yield to prevent starvation
-                if (batchStopwatch.ElapsedMilliseconds > MaxWorkerBatchTimeMs)
-                {
-                    break;
-                }
+                if (ct.IsCancellationRequested) break;
+                if (!batch.Contains(next))
+                    batch.Add(next);
             }
 
-            // Sort and coalesce into ranges
-            dirtyBatch.Sort((a, b) => a.LineNumber.CompareTo(b.LineNumber));
-            var ranges = CoalesceIntoRanges(dirtyBatch);
+            batch.Sort();
 
-            // Process each range with time checking
-            foreach (var (start, end) in ranges)
+            TokenizerState state = TokenizerState.Initial;
+            int startLine = batch[0];
+            if (startLine > 0 && _tokenCache.TryGetValue(startLine - 1, out var prev))
+                state = prev.StateAfter;
+
+            for (int i = 0; i < batch.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested) break;
-                
-                // Check if we've spent too much time on this batch - yield if needed
-                if (batchStopwatch.ElapsedMilliseconds > MaxWorkerBatchTimeMs)
+                if (ct.IsCancellationRequested) break;
+                int lineNum = batch[i];
+                string text = GetLineText(lineNum);
+                var (tokens, nextState) = TokenizeLine(text, state);
+                state = nextState;
+                _tokenCache[lineNum] = new LineTokens(tokens, state);
+                var patch = new HighlightPatch(lineNum, tokens);
+                _uiContext?.Post(_ =>
                 {
-                    // Yield control back to the system briefly
-                    await Task.Delay(1, cancellationToken);
-                    batchStopwatch.Restart();
-                }
-                
-                TokenizeRange(start, end, dirtyBatch);
+                    try { PatchReady?.Invoke(this, patch); }
+                    catch { }
+                }, null);
             }
+
+            await Task.Delay(1, ct);
         }
     }
 
-    private static List<(int start, int end)> CoalesceIntoRanges(List<(int LineNumber, string Text)> lines)
-    {
-        var ranges = new List<(int, int)>();
-        if (lines.Count == 0) return ranges;
-
-        int rangeStart = lines[0].LineNumber;
-        int prev = lines[0].LineNumber;
-
-        for (int i = 1; i < lines.Count; i++)
-        {
-            int curr = lines[i].LineNumber;
-            if (curr <= prev + 3) // small gap, coalesce (allow slight discontinuity)
-            {
-                prev = curr;
-                continue;
-            }
-            ranges.Add((rangeStart, prev));
-            rangeStart = curr;
-            prev = curr;
-        }
-        ranges.Add((rangeStart, prev));
-        return ranges;
-    }
-
-    private void TokenizeRange(int startLine, int endLine, List<(int LineNumber, string Text)> batch)
-    {
-        // Build quick lookup for line text
-        var textByLine = batch.ToDictionary(b => b.LineNumber, b => b.Text);
-
-        // Get initial state from cache at startLine - 1
-        TokenizerState state = startLine > 0 && _tokenCache.TryGetValue(startLine - 1, out var prevEntry)
-            ? prevEntry.StateAfter
-            : TokenizerState.Initial;
-
-        for (int lineNum = startLine; lineNum <= endLine; lineNum++)
-        {
-            string lineText = textByLine[lineNum];
-            var (tokens, nextState) = TokenizeLine(lineText, state, lineNum);
-            state = nextState;
-
-            var lineTokens = new LineTokens(tokens, state);
-            _tokenCache[lineNum] = lineTokens;
-
-            var patch = new HighlightPatch(lineNum, tokens);
-            _uiContext?.Post(_ =>
-            {
-                try { PatchReady?.Invoke(this, patch); }
-                catch { }
-            }, null);
-        }
-    }
-
-    internal (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(string line, TokenizerState initialState, int lineIndex)
+    internal (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(string line, TokenizerState state)
     {
         var tokens = new List<TokenInfo>();
         if (string.IsNullOrEmpty(line))
-            return (tokens, initialState);
+            return (tokens, state with { InComment = false });
 
-        var (keywords, types, stringRegex, commentRegex, numberRegex, preprocessorRegex) = GetOrCreateCompiledRegexes(_syntax);
-        var colored = new bool[line.Length];
         int pos = 0;
-        int iterations = 0;
-        var stopwatch = Stopwatch.StartNew();
 
-        // ---- Handle multi-line continuation from previous line ----
-        if (initialState.InComment)
+        // Handle multi-line block comment continuation
+        if (state.InComment)
         {
-            // Find end of block comment
-            int endIdx = line.IndexOf("*/", pos);
-            if (endIdx >= 0)
+            int end = line.IndexOf("*/", pos, StringComparison.Ordinal);
+            if (end >= 0)
             {
-                // Entire segment [pos..endIdx+2) is comment
-                AddToken(tokens, colored, SyntaxTokenType.Comment, 0, endIdx + 2);
-                pos = endIdx + 2;
-                // Comment closed
-                initialState = initialState with { InComment = false };
+                AddToken(tokens, pos, end + 2 - pos, SyntaxTokenType.Comment);
+                pos = end + 2;
+                state = state with { InComment = false };
             }
             else
             {
-                // Whole line is comment; state remains InComment
-                AddToken(tokens, colored, SyntaxTokenType.Comment, 0, line.Length);
-                return (tokens, initialState);
+                AddToken(tokens, 0, line.Length, SyntaxTokenType.Comment);
+                return (tokens, state);
             }
         }
 
-        if (initialState.InString)
+        // Preprocessor directive (must be at start of line)
+        if (pos == 0 && _preprocessorSet.Count > 0)
         {
-            // We're inside a string that started on previous line.
-            // Find closing delimiter (respecting escapes)
-            int closePos = FindStringEnd(line, pos, initialState.OpenDelimiterIndex);
-            if (closePos >= 0)
-            {
-                // String from pos to closePos+1
-                AddToken(tokens, colored, SyntaxTokenType.String, pos, closePos + 1 - pos);
-                pos = closePos + 1;
-                // String closed
-                initialState = initialState with { InString = false, IsVerbatim = false, OpenDelimiterIndex = -1 };
-            }
-            else
-            {
-                // Whole line is string continuation
-                AddToken(tokens, colored, SyntaxTokenType.String, 0, line.Length);
-                return (tokens, initialState); // Still in string
-            }
-        }
-
-        // ---- Scan remaining line with priority rules ----
-        // Preprocessor: only at line start (pos should be 0 still)
-        if (pos == 0 && preprocessorRegex != null)
-        {
-            var m = preprocessorRegex.Match(line);
-            if (m.Success && m.Index == 0)
-            {
-                AddToken(tokens, colored, SyntaxTokenType.Preprocessor, m.Index, m.Length);
-                pos = m.Index + m.Length;
-            }
+            ReadPreprocessor(line, ref pos, tokens);
         }
 
         while (pos < line.Length)
         {
-            // Check for timeout or excessive iterations
-            if (stopwatch.ElapsedMilliseconds > MaxParseTimeMs || iterations > MaxIterationsPerLine)
-            {
-                // Timeout or too many iterations - return what we have so far and reset state
-                // This prevents hanging on problematic input
-                return (tokens, TokenizerState.Initial);
-            }
+            char c = line[pos];
 
-            bool matched = false;
-            iterations++;
-
-            // Block comment start (/*) — enable regardless of line comment regex
-            if (pos < line.Length - 1 && line[pos] == '/' && line[pos + 1] == '*')
+            // Block comment start
+            if (c == '/' && pos + 1 < line.Length && line[pos + 1] == '*')
             {
-                int endIdx = line.IndexOf("*/", pos + 2, StringComparison.Ordinal);
-                if (endIdx >= 0)
+                int end = line.IndexOf("*/", pos + 2, StringComparison.Ordinal);
+                if (end >= 0)
                 {
-                    AddToken(tokens, colored, SyntaxTokenType.Comment, pos, endIdx - pos + 2);
-                    pos = endIdx + 2;
+                    AddToken(tokens, pos, end - pos + 2, SyntaxTokenType.Comment);
+                    pos = end + 2;
                 }
                 else
                 {
-                    AddToken(tokens, colored, SyntaxTokenType.Comment, pos, line.Length - pos);
-                    return (tokens, initialState with { InComment = true });
+                    AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                    return (tokens, state with { InComment = true });
                 }
-                matched = true;
                 continue;
             }
 
-            // Line comment (//)
-            if (!matched && commentRegex != null && pos < line.Length - 1 && line[pos] == '/' && line[pos + 1] == '/')
+            // Line comment
+            if (c == '/' && pos + 1 < line.Length && line[pos + 1] == '/')
             {
-                int len = line.Length - pos;
-                AddToken(tokens, colored, SyntaxTokenType.Comment, pos, len);
+                AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
                 pos = line.Length;
-                matched = true;
                 break;
             }
 
-            // String (regular or verbatim)
-            if (!matched && stringRegex != null)
+            // String
+            if (c == '"' || c == '\'')
             {
-                if (line[pos] == '"')
+                int start = pos;
+                char quote = c;
+                pos++;
+                while (pos < line.Length)
                 {
-                    var end = FindStringEnd(line, pos + 1, pos);
-                    if (end >= 0)
-                    {
-                        int len = end - pos + 1;
-                        AddToken(tokens, colored, SyntaxTokenType.String, pos, len);
-                        pos = end + 1;
-                        matched = true;
-                    }
-                    else
-                    {
-                        // Unterminated: rest is string
-                        int len = line.Length - pos;
-                        AddToken(tokens, colored, SyntaxTokenType.String, pos, len);
-                        return (tokens, initialState with { InString = true, OpenDelimiterIndex = pos });
-                    }
+                    if (line[pos] == '\\') { pos += 2; continue; }
+                    if (line[pos] == quote) { pos++; break; }
+                    pos++;
                 }
+                AddToken(tokens, start, pos - start, SyntaxTokenType.String);
+                continue;
             }
 
             // Number
-            if (!matched && numberRegex != null)
+            if (char.IsDigit(c) || (c == '-' && pos + 1 < line.Length && char.IsDigit(line[pos + 1])))
             {
-                var m = numberRegex.Match(line, pos);
-                if (m.Success && m.Index == pos)
-                {
-                    AddToken(tokens, colored, SyntaxTokenType.Number, m.Index, m.Length);
-                    pos = m.Index + m.Length;
-                    matched = true;
-                }
-            }
-
-            // Keywords
-            if (!matched && keywords != null)
-            {
-                var m = keywords.Match(line, pos);
-                if (m.Success && m.Index == pos)
-                {
-                    AddToken(tokens, colored, SyntaxTokenType.Keyword, m.Index, m.Length);
-                    pos = m.Index + m.Length;
-                    matched = true;
-                }
-            }
-
-            // Types (as keywords)
-            if (!matched && types != null)
-            {
-                var m = types.Match(line, pos);
-                if (m.Success && m.Index == pos)
-                {
-                    AddToken(tokens, colored, SyntaxTokenType.Keyword, m.Index, m.Length);
-                    pos = m.Index + m.Length;
-                    matched = true;
-                }
-            }
-
-            // If nothing matched, advance one char
-            if (!matched)
-            {
-                // Check if this position already colored by earlier match
-                if (pos < colored.Length && colored[pos])
-                {
+                int start = pos;
+                if (c == '-') pos++;
+                while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.' || line[pos] == 'f' || line[pos] == 'F' || line[pos] == 'd' || line[pos] == 'D' || line[pos] == 'L' || line[pos] == 'l' || line[pos] == 'u' || line[pos] == 'U'))
                     pos++;
-                }
-                else
-                {
-                    // Not colored, skip ahead to next possible token start or end of line
-                    pos++;
-                }
+                AddToken(tokens, start, pos - start, SyntaxTokenType.Number);
+                continue;
             }
+
+            // Word (keyword / type / identifier)
+            if (char.IsLetter(c) || c == '_' || c == '@' || c == '#')
+            {
+                int start = pos;
+                while (pos < line.Length && (char.IsLetterOrDigit(line[pos]) || line[pos] == '_'))
+                    pos++;
+                string word = line.AsSpan(start, pos - start).ToString();
+
+                if (_keywordSet.Contains(word))
+                    AddToken(tokens, start, pos - start, SyntaxTokenType.Keyword);
+                else if (char.IsUpper(word[0]) && word.Length > 1 && !_keywordSet.Contains(word))
+                {
+                    // Could be a type - highlight as keyword
+                    // For simplicity, just skip
+                }
+                continue;
+            }
+
+            pos++;
         }
 
-        stopwatch.Stop();
-        return (tokens, initialState);
+        return (tokens, state);
     }
 
-    private static void AddToken(List<TokenInfo> tokens, bool[] colored, SyntaxTokenType type, int start, int length)
+    private void ReadPreprocessor(string line, ref int pos, List<TokenInfo> tokens)
     {
-        if (start < 0 || start >= colored.Length) return;
-        int end = Math.Min(start + length, colored.Length);
-        // Check if any position in [start, end) already colored
-        bool free = true;
-        for (int i = start; i < end; i++)
+        int start = pos;
+        // Skip leading whitespace
+        while (pos < line.Length && char.IsWhiteSpace(line[pos]))
+            pos++;
+        // Check for '#' at column 0 (after optional whitespace)
+        if (pos < line.Length && line[pos] == '#')
         {
-            if (colored[i])
+            int end = pos;
+            while (end < line.Length && line[end] != '"' && line[end] != '\'')
             {
-                free = false;
-                break;
+                if (end + 1 < line.Length && line[end] == '/' && line[end + 1] == '/')
+                    break;
+                end++;
             }
-        }
-        if (free)
-        {
-            for (int i = start; i < end; i++) colored[i] = true;
-            tokens.Add(new TokenInfo { Type = type, StartIndex = start, Length = end - start, Text = "" });
+            AddToken(tokens, start, end - start, SyntaxTokenType.Preprocessor);
+            pos = end;
         }
     }
 
-    private static int FindStringEnd(string line, int startPos, int openDelimiterPos)
+    private static void AddToken(List<TokenInfo> tokens, int start, int length, SyntaxTokenType type)
     {
-        // openDelimiterPos is position of opening " within the line on previous line (if any)
-        // For regular strings: scan for unescaped " (not preceded by \)
-        // For verbatim strings (@"..."): scan for "" (double quote) which escapes
-        // Simplify: we'll scan for " not preceded by \ (for regular). For verbatim, detect from syntax.
-        for (int i = startPos; i < line.Length; i++)
-        {
-            if (line[i] == '"')
-            {
-                // Check escape: if previous char is \, count preceding backslashes
-                if (i > 0 && line[i - 1] == '\\')
-                {
-                    // escaped, skip
-                    continue;
-                }
-                return i;
-            }
-        }
-        return -1;
+        if (length <= 0) return;
+        tokens.Add(new TokenInfo { Type = type, StartIndex = start, Length = length, Text = "" });
     }
 
     public void Dispose()
@@ -573,7 +305,7 @@ public sealed class IncrementalHighlighter : IDisposable
         if (_disposed) return;
         _cts.Cancel();
         _dirtyLines.Writer.Complete();
-        try { _workerTask?.Wait(1000); } catch { }
+        try { _workerTask?.Wait(500); } catch { }
         _cts.Dispose();
         _disposed = true;
     }
