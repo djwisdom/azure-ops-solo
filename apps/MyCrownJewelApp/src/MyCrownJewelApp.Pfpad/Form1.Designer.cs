@@ -88,20 +88,20 @@ partial class Form1
     private SplitContainer splitContainer;
     private TableLayoutPanel mainTable;
     private Panel editorPanel;
-    private GutterPanel gutterPanel;
+    internal GutterPanel gutterPanel;
     internal HighlightRichTextBox textEditor;
-    private ColumnGuidePanel guidePanel;
+    internal ColumnGuidePanel guidePanel;
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
-    private ToolStripStatusLabel lineColLabel;
-    private ToolStripStatusLabel charCountLabel;
+    internal ToolStripStatusLabel lineColLabel;
+    internal ToolStripStatusLabel charCountLabel;
     private ToolStripDropDownButton tabSizeDropDown;
-    private ToolStripStatusLabel linePositionLabel;
-    private ToolStripStatusLabel zoomLabel;
+    internal ToolStripStatusLabel linePositionLabel;
+    internal ToolStripStatusLabel zoomLabel;
     private ToolStripStatusLabel lineEndingsLabel;
     private ToolStripStatusLabel encodingLabel;
     private ToolStripDropDownButton themeDropDown;
-    private ToolStripStatusLabel fileTypeLabel;
+        internal ToolStripStatusLabel fileTypeLabel;
     private ToolStripStatusLabel gitBranchLabel;
     private ToolStripStatusLabel gitDirtyLabel;
     private ToolStripStatusLabel gitSyncLabel;
@@ -318,6 +318,7 @@ partial class Form1
         tabControl.Cursor = Cursors.Hand;
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
         tabControl.MouseDown += TabControl_MouseDown;
+        tabControl.MouseUp += TabControl_MouseUp;
         tabControl.MouseMove += TabControl_MouseMove;
         tabControl.MouseLeave += TabControl_MouseLeave;
         tabControl.DrawItem += TabControl_DrawItem;
@@ -361,8 +362,10 @@ partial class Form1
         textEditor.TextChanged += TextEditor_TextChanged;
         textEditor.VScroll += TextEditor_VScroll;
         textEditor.KeyDown += TextEditor_KeyDown;
+        textEditor.SelectionChanged += TextEditor_SelectionChanged;
         textEditor.MouseDown += TextEditor_MouseDown;
         textEditor.MouseWheel += TextEditor_MouseWheel;
+        textEditor.Resize += TextEditor_Resize;
 
         // Column Guide Overlay (overlays editor, not in table)
         guidePanel = new ColumnGuidePanel();

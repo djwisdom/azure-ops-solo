@@ -35,7 +35,7 @@ public class HighlightRichTextBox : RichTextBox
         base.OnHandleCreated(e);
         // Set caret width to 2 pixels (0 = default, 1+ = custom width)
         const int EM_SETCARETWIDTH = 0x01F8;
-        SendMessage(Handle, EM_SETCARETWIDTH, 0, 2);
+        SendMessage(Handle, EM_SETCARETWIDTH, 0, 4);
     }
 
     [Category("Appearance")]

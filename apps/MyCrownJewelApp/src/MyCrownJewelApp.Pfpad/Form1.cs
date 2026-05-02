@@ -74,15 +74,15 @@
         private HashSet<int> bookmarks = new();
         private HashSet<int> modifiedLines = new();
         private HashSet<int> collapsedRegions = new();
-        private bool gutterVisible = true;
+        internal bool gutterVisible = true;
         private bool statusBarVisible = true;
-        private bool wordWrapEnabled = false;
-        private bool syntaxHighlightingEnabled = false;
+        internal bool wordWrapEnabled = false;
+        internal bool syntaxHighlightingEnabled = false;
         private CurrentLineHighlightMode currentLineHighlightMode = CurrentLineHighlightMode.Off;
-        private int tabSize = 4;
+        internal int tabSize = 4;
         private bool insertSpaces = true;
-        private bool isDarkTheme = true;
-        private float zoomFactor = 1.0f;
+        internal bool isDarkTheme = true;
+        internal float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
 
@@ -104,7 +104,7 @@
         private bool elasticTabsEnabled = true;
 
         // Document management (tabs)
-        private class Document
+        public class Document
         {
             public string? FilePath { get; set; }
             public string Content { get; set; } = "";
@@ -126,8 +126,8 @@
                 Path.GetFileName(FilePath);
         }
 
-private List<Document> documents = new();
-        private int activeDocIndex = -1;
+        internal List<Document> documents = new();
+        internal int activeDocIndex = -1;
         private int nextUntitledNumber = 1;
         private int? hoveredTabIndex = null;
         private Rectangle? closeButtonBounds = null;
@@ -144,7 +144,7 @@ private List<Document> documents = new();
         private string? _splitDocumentTitle = null;
 
         // Helper to get active document
-        private Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
+        internal Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
 
         // Syntax highlighting performance tracking
         private DateTime _lastHighlightTime;
@@ -166,15 +166,16 @@ private List<Document> documents = new();
 
         // Code folding
         private FoldingManager? _foldingManager;
+        private bool _suppressFoldRescan = false;
         public FoldingManager? FoldingManager => _foldingManager;
 
         // Syntax highlighting
-        private SyntaxDefinition? currentSyntax;
+        internal SyntaxDefinition? currentSyntax;
         private IncrementalHighlighter? incrementalHighlighter;
 
         // Column guide state
-        private int guideColumn = 80;
-        private bool showGuide = true;
+        internal int guideColumn = 80;
+        internal bool showGuide = true;
         private readonly Color guideColor = Color.FromArgb(60, 60, 60);
 
         // Theme management
@@ -190,7 +191,7 @@ private List<Document> documents = new();
         private Color preprocessorColor = Color.Gray;
 
         // Current file state
-        private string? currentFilePath;
+        internal string? currentFilePath;
         private bool isModified = false;
         private DateTime? lastFileWriteTime;
 
@@ -391,7 +392,7 @@ private List<Document> documents = new();
             _foldingManager = new FoldingManager(textEditor!);
             textEditor!.TextChanged += (s, e) =>
             {
-                _foldingManager?.ScanRegions();
+                if (!_suppressFoldRescan) _foldingManager?.ScanRegions();
                 gutterPanel?.RefreshGutter();
             };
             _foldingManager.ScanRegions();
@@ -1005,7 +1006,7 @@ darkThemeMenuItem.Checked = isDark;
              catch { /* ignore settings save errors */ }
          }
 
-          private void ToggleGutter()
+          internal void ToggleGutter()
         {
             gutterVisible = !gutterVisible;
             gutterMenuItem.Checked = gutterVisible;
@@ -1065,7 +1066,7 @@ darkThemeMenuItem.Checked = isDark;
             SaveSettings();
         }
 
-        private void ToggleSyntaxHighlighting()
+        internal void ToggleSyntaxHighlighting()
         {
             syntaxHighlightingEnabled = !syntaxHighlightingEnabled;
             syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
@@ -1087,7 +1088,7 @@ darkThemeMenuItem.Checked = isDark;
 
         // Tab handling
         private void InsertSpaces_Click(object? sender, EventArgs e) => ToggleInsertSpaces();
-        private void SetTabSize(int size)
+        internal void SetTabSize(int size)
         {
             tabSize = size;
             UpdateTabSizeMenu();
@@ -1418,7 +1419,7 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-        private void SetGuideColumn(int column)
+        internal void SetGuideColumn(int column)
         {
             guideColumn = column;
             showGuide = true;
@@ -1450,7 +1451,7 @@ darkThemeMenuItem.Checked = isDark;
 
         #region File Operations
 
-        private void NewFile()
+        internal void NewFile()
         {
             NewFile(false);
         }
@@ -1530,7 +1531,7 @@ darkThemeMenuItem.Checked = isDark;
              }
          }
 
-        private void SaveFile()
+        internal void SaveFile()
         {
             if (currentFilePath == null)
             {
@@ -1552,7 +1553,7 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-        private void SaveAsFile()
+        internal void SaveAsFile()
         {
             using var sfd = new SaveFileDialog();
             sfd.Filter = "Text Files|*.txt|All Files|*.*";
@@ -1596,7 +1597,7 @@ darkThemeMenuItem.Checked = isDark;
             return Convert.ToHexString(hash);
         }
 
-        private void SetDirty()
+        internal void SetDirty()
         {
             if (isModified) return;
             isModified = true;
@@ -1928,10 +1929,17 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (_foldingManager != null)
             {
-                if (_foldingManager.ToggleFold(line))
+                _suppressFoldRescan = true;
+                try
                 {
-                    if (gutterPanel != null) gutterPanel.RefreshGutter();
-                    _foldingManager.ScanRegions();
+                    if (_foldingManager.ToggleFold(line))
+                    {
+                        if (gutterPanel != null) gutterPanel.RefreshGutter();
+                    }
+                }
+                finally
+                {
+                    _suppressFoldRescan = false;
                 }
             }
         }
@@ -1949,7 +1957,7 @@ darkThemeMenuItem.Checked = isDark;
 
         #region View Menu Handlers
 
-        private void ZoomIn_Click(object? sender, EventArgs e)
+        internal void ZoomIn_Click(object? sender, EventArgs e)
         {
             if (zoomFactor < 5.0f)
             {
@@ -1962,7 +1970,7 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-        private void ZoomOut_Click(object? sender, EventArgs e)
+        internal void ZoomOut_Click(object? sender, EventArgs e)
         {
             if (zoomFactor > 0.5f)
             {
@@ -2175,7 +2183,7 @@ darkThemeMenuItem.Checked = isDark;
         }
 
         // Open an existing file in a new tab
-        private void OpenFileInNewTab(string path)
+        internal void OpenFileInNewTab(string path)
         {
             if (!File.Exists(path)) return;
             try
@@ -2210,7 +2218,7 @@ darkThemeMenuItem.Checked = isDark;
         }
 
         // Close current tab
-        private void CloseCurrentTab()
+        internal void CloseCurrentTab()
         {
             if (documents.Count <= 1) return; // always keep at least one tab
             if (activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
@@ -2235,7 +2243,7 @@ darkThemeMenuItem.Checked = isDark;
         }
 
         // Switch to document at given index (0-based)
-        private void SwitchToTab(int index)
+        internal void SwitchToTab(int index)
         {
             if (index < 0 || index >= documents.Count) return;
             if (activeDocIndex == index) return; // already active
@@ -2282,13 +2290,13 @@ darkThemeMenuItem.Checked = isDark;
                 SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
             }
 
-            // Update UI
-            UpdateStatusBar();
-            UpdateTabTitle(activeDocIndex);
-            UpdateThemeColors(isDarkTheme); // refresh any theme-dependent colors
-
             // Recreate syntax highlighter based on current syntax
             CreateIncrementalHighlighter();
+
+            // Update UI (must be after CreateIncrementalHighlighter so file type is current)
+            UpdateStatusBar();
+            UpdateTabTitle(activeDocIndex);
+            UpdateThemeColors(isDarkTheme);
         }
 
         // Update tab title for document at index
@@ -2345,22 +2353,25 @@ darkThemeMenuItem.Checked = isDark;
             }
             else if (e.Button == MouseButtons.Left)
             {
-                // Check if close button (X) was clicked
+                // Check if close button (X) was clicked — only on the hovered tab
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
                     var rect = tabControl.GetTabRect(i);
                     if (rect.Contains(e.Location))
                     {
-                        int btnSize = 14;
-                        int btnX = rect.Right - btnSize - 6;
-                        int btnY = rect.Top + (rect.Height - btnSize) / 2;
-                        var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
-                        if (btnRect.Contains(e.Location))
+                        if (i == hoveredTabIndex)
                         {
-                            // Close this tab on X click
-                            tabControl.SelectedIndex = i;
-                            CloseCurrentTab();
-                            return;
+                            int btnSize = 14;
+                            int btnX = rect.Right - btnSize - 6;
+                            int btnY = rect.Top + (rect.Height - btnSize) / 2;
+                            var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+                            if (btnRect.Contains(e.Location))
+                            {
+                                // Close this tab on X click
+                                tabControl.SelectedIndex = i;
+                                CloseCurrentTab();
+                                return;
+                            }
                         }
                         // Otherwise start potential drag
                         _draggedTabIndex = i;
@@ -2999,7 +3010,7 @@ darkThemeMenuItem.Checked = isDark;
              PositionMinimap();
          }
 
-         private void UpdateStatusBar()
+        internal void UpdateStatusBar()
         {
             if (statusStrip == null || textEditor == null) return;
 
@@ -3133,7 +3144,7 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
-        private void ToggleWordWrap()
+        internal void ToggleWordWrap()
         {
              wordWrapEnabled = !wordWrapEnabled;
              wordWrapMenuItem.Checked = wordWrapEnabled;
