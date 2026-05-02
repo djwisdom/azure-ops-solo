@@ -45,13 +45,14 @@ public sealed class FoldingManager
         if (string.IsNullOrEmpty(text)) return;
 
         var lines = text.Split('\n');
-        var braceStack = new Stack<(int line, int type)>(); // type: 0={, 1=#region
+        var braceStack = new Stack<(int line, int type)>();
         int regionDepth = 0;
+        int braceCount = 0;
+        int openBraceLine = -1;
 
         for (int i = 0; i < lines.Length; i++)
         {
             string trimmed = lines[i].TrimStart();
-            int index = i; // original 0-based line index
 
             if (trimmed.StartsWith("#endregion"))
             {
@@ -76,9 +77,7 @@ public sealed class FoldingManager
             }
 
             // Brace matching: { and } at any position (multi-line blocks)
-            // Only match braces that span multiple lines
-            int braceCount = 0;
-            int openBraceLine = -1;
+            // braceCount and openBraceLine persist across lines
             for (int c = 0; c < lines[i].Length; c++)
             {
                 if (lines[i][c] == '{')
@@ -101,16 +100,6 @@ public sealed class FoldingManager
                         });
                         openBraceLine = -1;
                     }
-                }
-            }
-
-            // Handle unclosed brace that spans multiple lines
-            if (braceCount > 0 && openBraceLine >= 0)
-            {
-                // Check if this is the actual opening brace (we started tracking earlier)
-                if (i != openBraceLine)
-                {
-                    // We found an opening brace but haven't found the closing brace yet
                 }
             }
         }
