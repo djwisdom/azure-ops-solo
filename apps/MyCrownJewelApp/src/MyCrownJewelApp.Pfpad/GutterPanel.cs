@@ -282,11 +282,32 @@ public class GutterPanel : Panel
     {
         if (lineIndex < 0 || lineIndex >= mainForm.textEditor.Lines.Length) return;
 
-        // Check via FoldingManager if this line is a fold start
-        bool isFoldable = mainForm.FoldingManager?.IsFoldStart(lineIndex) ?? false;
-        if (!isFoldable) return;
+        // Determine if this line starts a foldable region (FoldingManager or fallback detection)
+        bool isFoldStart;
+        bool folded;
 
-        bool folded = mainForm.FoldingManager?.IsCollapsed(lineIndex) ?? false;
+        if (mainForm.FoldingManager != null)
+        {
+            isFoldStart = mainForm.FoldingManager.IsFoldStart(lineIndex);
+            folded = mainForm.FoldingManager.IsCollapsed(lineIndex);
+        }
+        else
+        {
+            // Fallback: detect { or #region at line start
+            string line = mainForm.textEditor.Lines[lineIndex];
+            string trimmed = line.TrimStart();
+            isFoldStart = trimmed.StartsWith("#region") || trimmed.EndsWith("{") || line.Contains("{");
+            // Check if next line has the matching close
+            if (isFoldStart && lineIndex + 1 < mainForm.textEditor.Lines.Length)
+            {
+                // Only show marker if there's content after this line (multi-line)
+                string nextLine = mainForm.textEditor.Lines[lineIndex + 1];
+                isFoldStart = !string.IsNullOrWhiteSpace(nextLine);
+            }
+            folded = false;
+        }
+
+        if (!isFoldStart) return;
         int size = 12;
         int centerX = x + FoldMarginWidth / 2 - size / 2;
         int centerY = y + 4;

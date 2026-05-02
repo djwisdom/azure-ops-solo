@@ -391,7 +391,11 @@ private List<Document> documents = new();
 
             // Initialize folding manager and scan regions
             _foldingManager = new FoldingManager(textEditor!);
-            textEditor!.TextChanged += (s, e) => _foldingManager?.ScanRegions();
+            textEditor!.TextChanged += (s, e) =>
+            {
+                _foldingManager?.ScanRegions();
+                gutterPanel?.RefreshGutter();
+            };
             _foldingManager.ScanRegions();
             
             // Initialize syntax highlighting debounce timer
