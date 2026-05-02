@@ -158,7 +158,9 @@ public readonly struct Theme
         accent: Color.FromArgb(0, 120, 215),
         editorBg: Color.White,
         highlight: Color.FromArgb(0, 120, 215, 40),
-        disabled: Color.FromArgb(160, 160, 160)
+        disabled: Color.FromArgb(160, 160, 160),
+        buttonHoverBackground: Color.FromArgb(240, 240, 240),
+        muted: Color.FromArgb(120, 120, 120)
     );
 
     public static readonly Theme Dark = new(
@@ -171,7 +173,9 @@ public readonly struct Theme
         accent: Color.FromArgb(0, 120, 215),
         editorBg: Color.FromArgb(30, 30, 30),
         highlight: Color.FromArgb(0, 120, 215, 60),
-        disabled: Color.FromArgb(100, 100, 100)
+        disabled: Color.FromArgb(100, 100, 100),
+        buttonHoverBackground: Color.FromArgb(60, 60, 60),
+        muted: Color.FromArgb(140, 140, 140)
     );
 
     public Color Background { get; }
@@ -184,8 +188,10 @@ public readonly struct Theme
     public Color EditorBackground { get; }
     public Color Highlight { get; }
     public Color Disabled { get; }
+    public Color ButtonHoverBackground { get; }
+    public Color Muted { get; }
 
-    public Theme(Color background, Color text, Color menuBg, Color menuFg, Color panel, Color border, Color accent, Color editorBg, Color highlight, Color disabled)
+    public Theme(Color background, Color text, Color menuBg, Color menuFg, Color panel, Color border, Color accent, Color editorBg, Color highlight, Color disabled, Color buttonHoverBackground, Color muted)
     {
         Background = background;
         Text = text;
@@ -197,5 +203,7 @@ public readonly struct Theme
         EditorBackground = editorBg;
         Highlight = highlight;
         Disabled = disabled;
+        ButtonHoverBackground = buttonHoverBackground;
+        Muted = muted;
     }
 }

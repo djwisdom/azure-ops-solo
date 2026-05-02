@@ -319,7 +319,6 @@ partial class Form1
         textEditor.ScrollBars = RichTextBoxScrollBars.Both;
         textEditor.AcceptsTab = true; // allow Tab key input (we handle it)
         textEditor.Font = new Font("Consolas", 12);
-        textEditor.CaretWidth = 2; // double thickness for bold hairline cursor
         textEditor.BorderStyle = BorderStyle.None;
         textEditor.Margin = new Padding(0);
         textEditor.Padding = new Padding(0);

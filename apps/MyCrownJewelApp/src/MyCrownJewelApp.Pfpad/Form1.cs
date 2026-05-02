@@ -1980,7 +1980,8 @@ darkThemeMenuItem.Checked = isDark;
                 SelectionStart = 0,
                 SelectionLength = 0,
                 FirstVisibleLine = 0,
-                Syntax = null
+                Syntax = null,
+                UntitledNumber = nextUntitledNumber++
             };
         }
 
@@ -2192,7 +2193,7 @@ darkThemeMenuItem.Checked = isDark;
 
         private void TabControl_MouseMove(object? sender, MouseEventArgs e)
         {
-            int oldHoverIndex = hoveredTabIndex;
+            int oldHoverIndex = hoveredTabIndex ?? -1;
             hoveredTabIndex = null;
             closeButtonBounds = null;
 

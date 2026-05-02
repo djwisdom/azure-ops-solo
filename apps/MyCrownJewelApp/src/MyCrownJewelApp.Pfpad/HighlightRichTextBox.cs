@@ -8,7 +8,7 @@ using WinFormsTimer = System.Windows.Forms.Timer;
 namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
-/// RichTextBox that draws a full-width current line highlight.
+/// RichTextBox that draws a full-width current line highlight and uses a bold caret.
 /// </summary>
 public class HighlightRichTextBox : RichTextBox
 {
@@ -55,13 +55,19 @@ public class HighlightRichTextBox : RichTextBox
         set { _highlightColor = value; Invalidate(); }
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        // Set caret width to 2 pixels (bold hairline)
+        const int EM_SETCARETWIDTH = 0x043E;
+        SendMessage(Handle, EM_SETCARETWIDTH, 0, 2);
+    }
+
     protected override void OnSelectionChanged(EventArgs e)
     {
         base.OnSelectionChanged(e);
         Invalidate();
     }
-
-
 
     private void DrawCurrentLineHighlight(Graphics g)
     {
@@ -105,10 +111,10 @@ public class HighlightRichTextBox : RichTextBox
 
     [DllImport("user32.dll")]
     private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);
+
     [DllImport("user32.dll")]
     private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
