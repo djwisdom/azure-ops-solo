@@ -100,11 +100,16 @@ partial class Form1
     private ToolStripStatusLabel encodingLabel;
     private ToolStripDropDownButton themeDropDown;
     private ToolStripStatusLabel fileTypeLabel;
+    private ToolStripStatusLabel gitBranchLabel;
+    private ToolStripStatusLabel gitDirtyLabel;
+    private ToolStripStatusLabel gitSyncLabel;
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _gitPollTimer?.Stop();
+            _gitPollTimer?.Dispose();
             _tabStripWindow?.ReleaseHandle();
             components?.Dispose();
         }
@@ -395,6 +400,17 @@ partial class Form1
         tabSizeDropDown.DropDownItems.Add("8", null, TabSize8_Click);
         tabSizeDropDown.DropDownItems.Add("10", null, TabSize10_Click);
         tabSizeDropDown.DropDownItems.Add("12", null, TabSize12_Click);
+        // Git status labels (inserted after tab section)
+        gitBranchLabel = new ToolStripStatusLabel("");
+        gitBranchLabel.AutoSize = true;
+        gitBranchLabel.BorderSides = ToolStripStatusLabelBorderSides.None;
+        gitBranchLabel.Padding = new Padding(4, 2, 4, 2);
+        gitDirtyLabel = new ToolStripStatusLabel("");
+        gitDirtyLabel.AutoSize = true;
+        gitDirtyLabel.Padding = new Padding(0, 2, 4, 2);
+        gitSyncLabel = new ToolStripStatusLabel("");
+        gitSyncLabel.AutoSize = true;
+        gitSyncLabel.Padding = new Padding(0, 2, 4, 2);
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
@@ -415,6 +431,9 @@ partial class Form1
         statusStrip.Items.Add(lineColLabel);
         statusStrip.Items.Add(charCountLabel);
         statusStrip.Items.Add(tabSizeDropDown);
+        statusStrip.Items.Add(gitBranchLabel);
+        statusStrip.Items.Add(gitDirtyLabel);
+        statusStrip.Items.Add(gitSyncLabel);
         statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true });
         statusStrip.Items.Add(linePositionLabel);
         statusStrip.Items.Add(zoomLabel);

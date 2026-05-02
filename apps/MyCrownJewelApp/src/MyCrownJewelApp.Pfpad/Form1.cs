@@ -160,6 +160,12 @@ private List<Document> documents = new();
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
 
+        // Git integration
+        private System.Windows.Forms.Timer? _gitPollTimer;
+        private string _gitBranchName = "";
+        private string _gitDirtyStatus = "";
+        private string _gitSyncStatus = "";
+
         // Syntax highlighting
         private SyntaxDefinition? currentSyntax;
         private IncrementalHighlighter? incrementalHighlighter;
@@ -400,6 +406,12 @@ private List<Document> documents = new();
             elasticTabTimer = new System.Windows.Forms.Timer();
             elasticTabTimer.Interval = 250; // 250ms after last change
             elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
+
+             // Git status polling (every 3 seconds)
+             _gitPollTimer = new System.Windows.Forms.Timer();
+             _gitPollTimer.Interval = 3000;
+             _gitPollTimer.Tick += (s, e) => PollGitStatus();
+             _gitPollTimer.Start();
 
              // Initialize incremental highlighter (after colors are loaded)
              if (documents.Count > 0) CreateIncrementalHighlighter();
@@ -3570,6 +3582,118 @@ darkThemeMenuItem.Checked = isDark;
                 }
             }
         }
+
+        #region Git Integration
+
+        private void PollGitStatus()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(currentFilePath) && documents.Count == 0) return;
+                string? dir = FindGitRepo();
+                if (dir == null) { ClearGitLabels(); return; }
+
+                string branch = RunGit(dir, "rev-parse --abbrev-ref HEAD");
+                string status = RunGit(dir, "status --porcelain");
+
+                if (string.IsNullOrEmpty(branch) || branch.Contains("fatal"))
+                {
+                    ClearGitLabels();
+                    return;
+                }
+
+                _gitBranchName = branch;
+                bool hasChanges = !string.IsNullOrEmpty(status?.Trim());
+                _gitDirtyStatus = hasChanges ? " ●" : "";
+
+                string? upstream = RunGit(dir, "rev-parse --abbrev-ref --symbolic-full-name @{u}");
+                if (!string.IsNullOrEmpty(upstream) && !upstream.Contains("fatal"))
+                {
+                    string ahead = RunGit(dir, "rev-list --count --right-only HEAD...@{u}");
+                    string behind = RunGit(dir, "rev-list --count --left-only HEAD...@{u}");
+                    int aheadCount = int.TryParse(ahead?.Trim(), out var a) ? a : 0;
+                    int behindCount = int.TryParse(behind?.Trim(), out var b) ? b : 0;
+                    if (aheadCount > 0 && behindCount > 0)
+                        _gitSyncStatus = $" ↓{behindCount} ↑{aheadCount}";
+                    else if (aheadCount > 0)
+                        _gitSyncStatus = $" ↑{aheadCount}";
+                    else if (behindCount > 0)
+                        _gitSyncStatus = $" ↓{behindCount}";
+                    else
+                        _gitSyncStatus = " ✔";
+                }
+                else
+                {
+                    _gitSyncStatus = "";
+                }
+
+                UpdateGitLabels();
+            }
+            catch { ClearGitLabels(); }
+        }
+
+        private string? FindGitRepo()
+        {
+            string? dir = currentFilePath != null ? Path.GetDirectoryName(currentFilePath) : null;
+            if (dir == null && documents.Count > 0 && documents[0].FilePath != null)
+                dir = Path.GetDirectoryName(documents[0].FilePath);
+            if (dir == null) return null;
+
+            var d = new DirectoryInfo(dir);
+            while (d != null)
+            {
+                if (Directory.Exists(Path.Combine(d.FullName, ".git")))
+                    return d.FullName;
+                d = d.Parent;
+            }
+            return null;
+        }
+
+        private string RunGit(string workingDir, string args)
+        {
+            try
+            {
+                using var proc = new System.Diagnostics.Process();
+                proc.StartInfo.FileName = "git";
+                proc.StartInfo.Arguments = args;
+                proc.StartInfo.WorkingDirectory = workingDir;
+                proc.StartInfo.RedirectStandardOutput = true;
+                proc.StartInfo.RedirectStandardError = true;
+                proc.StartInfo.UseShellExecute = false;
+                proc.StartInfo.CreateNoWindow = true;
+                proc.Start();
+                string output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(2000);
+                return output?.TrimEnd('\n', '\r') ?? "";
+            }
+            catch { return ""; }
+        }
+
+        private void UpdateGitLabels()
+        {
+            if (this.IsHandleCreated)
+                this.BeginInvoke(new Action(() =>
+                {
+                    if (gitBranchLabel == null) return;
+                    gitBranchLabel.Text = _gitBranchName;
+                    gitDirtyLabel.Text = _gitDirtyStatus;
+                    gitSyncLabel.Text = _gitSyncStatus;
+                }));
+        }
+
+        private void ClearGitLabels()
+        {
+            if (this.IsHandleCreated)
+                this.BeginInvoke(new Action(() =>
+                {
+                    if (gitBranchLabel == null) return;
+                    gitBranchLabel.Text = "";
+                    gitDirtyLabel.Text = "";
+                    gitSyncLabel.Text = "";
+                }));
+        }
+
+        #endregion
 
         #region Fullscreen Toggle
         private void Form1_KeyDown(object? sender, KeyEventArgs e)
