@@ -255,11 +255,11 @@ partial class Form1
         columnGuideMenuItem.CheckOnClick = true;
         columnGuideMenuItem.Checked = true;
         columnGuideMenuItem.Click += ToggleColumnGuide;
-        col72MenuItem = new ToolStripMenuItem("Column &72", null, ColumnGuide_Click);
-        col80MenuItem = new ToolStripMenuItem("Column &80", null, ColumnGuide_Click);
-        col100MenuItem = new ToolStripMenuItem("Column &100", null, ColumnGuide_Click);
-        col120MenuItem = new ToolStripMenuItem("Column &120", null, ColumnGuide_Click);
-        col150MenuItem = new ToolStripMenuItem("Column &150", null, ColumnGuide_Click);
+        col72MenuItem = new ToolStripMenuItem("72", null, ColumnGuide_Click);
+        col80MenuItem = new ToolStripMenuItem("80", null, ColumnGuide_Click);
+        col100MenuItem = new ToolStripMenuItem("100", null, ColumnGuide_Click);
+        col120MenuItem = new ToolStripMenuItem("120", null, ColumnGuide_Click);
+        col150MenuItem = new ToolStripMenuItem("150", null, ColumnGuide_Click);
         colCustomMenuItem = new ToolStripMenuItem("&Custom...", null, ColumnGuide_Click);
         columnGuideMenuItem.DropDownItems.Add(col72MenuItem);
         columnGuideMenuItem.DropDownItems.Add(col80MenuItem);

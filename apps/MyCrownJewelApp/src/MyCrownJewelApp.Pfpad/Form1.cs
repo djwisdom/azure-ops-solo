@@ -373,7 +373,7 @@
                 if (gutterVisible)
                 {
                     gutterPanel.UpdateLineNumberWidth();
-                    mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                    mainTable.ColumnStyles[0].Width = gutterPanel.DesiredWidth;
                 }
                 else
                 {
@@ -1017,7 +1017,8 @@ darkThemeMenuItem.Checked = isDark;
                 if (gutterVisible)
                 {
                     gutterPanel.UpdateLineNumberWidth();
-                    mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                    mainTable.ColumnStyles[0].Width = gutterPanel.DesiredWidth;
+                    mainTable.PerformLayout();
                 }
                 else
                 {
@@ -2020,7 +2021,7 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (mainTable != null && gutterPanel != null)
             {
-                mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                mainTable.ColumnStyles[0].Width = gutterPanel.DesiredWidth;
             }
         }
 

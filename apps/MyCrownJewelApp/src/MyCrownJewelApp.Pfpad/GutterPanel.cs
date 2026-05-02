@@ -85,6 +85,8 @@ public class GutterPanel : Panel
         return totalMarginWidth;
     }
 
+    public int DesiredWidth => GetTotalMarginWidth();
+
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
