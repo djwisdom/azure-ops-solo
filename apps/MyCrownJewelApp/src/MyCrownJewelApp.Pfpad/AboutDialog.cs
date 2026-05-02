@@ -40,7 +40,7 @@ public sealed class AboutDialog : Form
         string commit = GetGitCommitHash();
         string date = "2026-05-03";
 
-        int pad = 24;
+        int pad = 28;
 
         // Draggable title bar
         var titleBar = new Panel
