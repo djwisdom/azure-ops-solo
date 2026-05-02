@@ -716,6 +716,8 @@ namespace MyCrownJewelApp.Pfpad
             darkThemeMenuItem.Checked = isDark;
             lightThemeMenuItem.Checked = !isDark;
 
+            UpdateThemeDropDown();
+
             CreateIncrementalHighlighter();
 
             gutterPanel?.RefreshGutter();
@@ -1773,6 +1775,7 @@ namespace MyCrownJewelApp.Pfpad
         {
             isDarkTheme = true;
             UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
             SaveSettings();
         }
 
@@ -1780,7 +1783,38 @@ namespace MyCrownJewelApp.Pfpad
         {
             isDarkTheme = false;
             UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
             SaveSettings();
+        }
+
+        private void StatusBarDarkTheme_Click(object? sender, EventArgs e)
+        {
+            isDarkTheme = true;
+            UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
+            SaveSettings();
+        }
+
+        private void StatusBarLightTheme_Click(object? sender, EventArgs e)
+        {
+            isDarkTheme = false;
+            UpdateThemeColors(isDarkTheme);
+            UpdateThemeDropDown();
+            SaveSettings();
+        }
+
+        private void UpdateThemeDropDown()
+        {
+            if (themeDropDown != null)
+            {
+                themeDropDown.Text = isDarkTheme ? "Dark" : "Light";
+                // Update menu item checkmarks
+                if (themeDropDown.DropDownItems.Count >= 2)
+                {
+                    themeDropDown.DropDownItems[0].Text = isDarkTheme ? "● Dark" : "Dark";
+                    themeDropDown.DropDownItems[1].Text = !isDarkTheme ? "● Light" : "Light";
+                }
+            }
         }
 
         #endregion
@@ -2036,39 +2070,52 @@ namespace MyCrownJewelApp.Pfpad
             encodingLabel.Text = "UTF-8";
 
              // Vim mode indicator
-             if (vimModeEnabled)
-             {
-                 // Insert vim mode indicator at the beginning of the status bar
-                 // We'll add it as a separate label or modify an existing one
-                 // For simplicity, we'll prepend it to the lineColLabel
-                 string modeIndicator = vimEngine?.CurrentMode switch
-                 {
-                     VimMode.Normal => "-- NORMAL --",
-                     VimMode.Insert => "-- INSERT --",
-                     VimMode.Visual => "-- VISUAL --",
-                     VimMode.VisualLine => "-- VISUAL LINE --",
-                     VimMode.VisualBlock => "-- VISUAL BLOCK --",
-                     VimMode.Command => "-- COMMAND --",
-                     VimMode.OperatorPending => "-- OPERATOR PENDING --",
-                     _ => "-- VIM --"
-                 };
-                 
-                 // Prepend the mode indicator to the line and column label
-                 lineColLabel.Text = $"{modeIndicator} | Ln {line}, Col {col}";
-             }
-             else
-             {
-                 // Remove vim mode indicator if present
-                 if (lineColLabel.Text.StartsWith("-- ") && lineColLabel.Text.Contains("|"))
-                 {
-                     int pipeIndex = lineColLabel.Text.IndexOf("|");
-                     if (pipeIndex > 0)
-                     {
-                         lineColLabel.Text = lineColLabel.Text.Substring(pipeIndex + 2); // Skip " | "
-                     }
-                 }
-             }
-         }
+              if (vimModeEnabled)
+              {
+                  // Insert vim mode indicator at the beginning of the status bar
+                  // We'll add it as a separate label or modify an existing one
+                  // For simplicity, we'll prepend it to the lineColLabel
+                  string modeIndicator = vimEngine?.CurrentMode switch
+                  {
+                      VimMode.Normal => "-- NORMAL --",
+                      VimMode.Insert => "-- INSERT --",
+                      VimMode.Visual => "-- VISUAL --",
+                      VimMode.VisualLine => "-- VISUAL LINE --",
+                      VimMode.VisualBlock => "-- VISUAL BLOCK --",
+                      VimMode.Command => "-- COMMAND --",
+                      VimMode.OperatorPending => "-- OPERATOR PENDING --",
+                      _ => "-- VIM --"
+                  };
+                  
+                  // Prepend the mode indicator to the line and column label
+                  lineColLabel.Text = $"{modeIndicator} | Ln {line}, Col {col}";
+              }
+              else
+              {
+                  // Remove vim mode indicator if present
+                  if (lineColLabel.Text.StartsWith("-- ") && lineColLabel.Text.Contains("|"))
+                  {
+                      int pipeIndex = lineColLabel.Text.IndexOf("|");
+                      if (pipeIndex > 0)
+                      {
+                          lineColLabel.Text = lineColLabel.Text.Substring(pipeIndex + 2); // Skip " | "
+                      }
+                  }
+              }
+
+            // File type
+            string fileType = "Plain Text";
+            if (currentSyntax != null && !string.IsNullOrEmpty(currentSyntax.Name))
+            {
+                fileType = currentSyntax.Name;
+            }
+            else if (!string.IsNullOrEmpty(currentFilePath))
+            {
+                var def = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
+                fileType = def?.Name ?? "Plain Text";
+            }
+            fileTypeLabel.Text = fileType;
+          }
 
         #endregion
 
@@ -2333,11 +2380,11 @@ namespace MyCrownJewelApp.Pfpad
         /// <summary>
         /// Returns tokens for a given line index, used by MinimapControl for syntax coloring.
         /// </summary>
-         private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
+         private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> GetTokensForLine(int lineIndex)
          {
-             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-             if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
-             if (lineIndex < 0 || lineIndex >= LineCount) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+             if (currentSyntax == null) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
+             if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
+             if (lineIndex < 0 || lineIndex >= LineCount) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
 
             // Try incremental highlighter cache first
             if (incrementalHighlighter?.GetTokens(lineIndex) is IReadOnlyList<TokenInfo> cached)
@@ -2347,17 +2394,17 @@ namespace MyCrownJewelApp.Pfpad
             return TokenizeLineSynchronously(lineIndex);
         }
 
-        private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> TokenizeLineSynchronously(int lineIndex)
+        private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> TokenizeLineSynchronously(int lineIndex)
         {
             string line = GetLineText(lineIndex);
-            if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+            if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
 
-            var tokens = new List<MyCrownJewelApp.TextEditor.TokenInfo>();
+            var tokens = new List<MyCrownJewelApp.Pfpad.TokenInfo>();
             var colored = new bool[line.Length];
 
              var regexes = currentSyntax != null ? GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None) : ((Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor))default;
 
-            void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.TextEditor.SyntaxTokenType type)
+            void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.Pfpad.SyntaxTokenType type)
             {
                 if (regex == null) return;
                 var matches = regex.Matches(line);
@@ -2384,7 +2431,7 @@ namespace MyCrownJewelApp.Pfpad
                     {
                         for (int i = start; i < start + len; i++)
                             colored[i] = true;
-                        tokens.Add(new MyCrownJewelApp.TextEditor.TokenInfo
+                        tokens.Add(new MyCrownJewelApp.Pfpad.TokenInfo
                         {
                             Type = type,
                             Text = line.Substring(start, len),
@@ -2396,12 +2443,12 @@ namespace MyCrownJewelApp.Pfpad
             }
 
             // Priority order
-            AddMatches(regexes.preprocessor, MyCrownJewelApp.TextEditor.SyntaxTokenType.Preprocessor);
-            AddMatches(regexes.comment, MyCrownJewelApp.TextEditor.SyntaxTokenType.Comment);
-            AddMatches(regexes.stringRegex, MyCrownJewelApp.TextEditor.SyntaxTokenType.String);
-            AddMatches(regexes.number, MyCrownJewelApp.TextEditor.SyntaxTokenType.Number);
-            AddMatches(regexes.keywords, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
-            AddMatches(regexes.types, MyCrownJewelApp.TextEditor.SyntaxTokenType.Keyword);
+            AddMatches(regexes.preprocessor, MyCrownJewelApp.Pfpad.SyntaxTokenType.Preprocessor);
+            AddMatches(regexes.comment, MyCrownJewelApp.Pfpad.SyntaxTokenType.Comment);
+            AddMatches(regexes.stringRegex, MyCrownJewelApp.Pfpad.SyntaxTokenType.String);
+            AddMatches(regexes.number, MyCrownJewelApp.Pfpad.SyntaxTokenType.Number);
+            AddMatches(regexes.keywords, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
+            AddMatches(regexes.types, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
 
             return tokens;
         }

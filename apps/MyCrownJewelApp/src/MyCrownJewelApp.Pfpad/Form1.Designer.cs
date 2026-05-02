@@ -87,13 +87,15 @@ partial class Form1
         internal HighlightRichTextBox textEditor;
         private MinimapControl minimapControl;
         private StatusStrip statusStrip;
-    private ToolStripStatusLabel lineColLabel;
-    private ToolStripStatusLabel charCountLabel;
-    private ToolStripStatusLabel tabSizeLabel;
-    private ToolStripStatusLabel linePositionLabel;
-    private ToolStripStatusLabel zoomLabel;
-    private ToolStripStatusLabel lineEndingsLabel;
-    private ToolStripStatusLabel encodingLabel;
+        private ToolStripStatusLabel lineColLabel;
+        private ToolStripStatusLabel charCountLabel;
+        private ToolStripStatusLabel tabSizeLabel;
+        private ToolStripStatusLabel linePositionLabel;
+        private ToolStripStatusLabel zoomLabel;
+        private ToolStripStatusLabel lineEndingsLabel;
+        private ToolStripStatusLabel encodingLabel;
+        private ToolStripDropDownButton themeDropDown;
+        private ToolStripStatusLabel fileTypeLabel;
 
     protected override void Dispose(bool disposing)
     {
@@ -340,9 +342,23 @@ partial class Form1
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
         encodingLabel = new ToolStripStatusLabel("UTF-8");
 
+        // Theme dropdown for status bar
+        themeDropDown = new ToolStripDropDownButton();
+        themeDropDown.Text = "Theme";
+        themeDropDown.Width = 80;
+        themeDropDown.Alignment = ToolStripItemAlignment.Left;
+        themeDropDown.DropDownItems.Add("Dark", null, StatusBarDarkTheme_Click);
+        themeDropDown.DropDownItems.Add("Light", null, StatusBarLightTheme_Click);
+
+        fileTypeLabel = new ToolStripStatusLabel("");
+        fileTypeLabel.Spring = false;
+        fileTypeLabel.AutoSize = false;
+        fileTypeLabel.Width = 80;
+        fileTypeLabel.TextAlign = ContentAlignment.MiddleLeft;
+
         statusStrip.Items.AddRange(new ToolStripItem[] {
             lineColLabel, charCountLabel, tabSizeLabel, new ToolStripStatusLabel { Spring = true },
-            linePositionLabel, zoomLabel, lineEndingsLabel, encodingLabel
+            linePositionLabel, zoomLabel, lineEndingsLabel, encodingLabel, themeDropDown, fileTypeLabel
         });
 
         // Add padding between items for visual separation

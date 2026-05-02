@@ -114,11 +114,11 @@ namespace Demo
         }
 
         // Example token provider - requires linking with your syntax definitions
-        // private IReadOnlyList<MyCrownJewelApp.TextEditor.TokenInfo> GetTokensForLine(int lineIndex)
+        // private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> GetTokensForLine(int lineIndex)
         // {
         //     // Implement using the same tokenization as Form1's syntax highlighter
         //     // or a simplified regex-based tokenizer.
-        //     return Array.Empty<MyCrownJewelApp.TextEditor.TokenInfo>();
+        //     return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
         // }
     }
 }
