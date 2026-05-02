@@ -295,7 +295,7 @@ partial class Form1
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         // Split menu items
-        splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Alt | Keys.V);
+        splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Shift | Keys.V);
         splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
         viewMenu.DropDownItems.Add(splitVMenuItem);
         viewMenu.DropDownItems.Add(splitHMenuItem);
@@ -447,8 +447,8 @@ partial class Form1
         fileTypeLabel.TextAlign = ContentAlignment.MiddleRight;
         fileTypeLabel.Alignment = ToolStripItemAlignment.Right;
 
-        statusStrip.Items.Add(lineColLabel);
         statusStrip.Items.Add(vimModeLabel);
+        statusStrip.Items.Add(lineColLabel);
         statusStrip.Items.Add(charCountLabel);
         statusStrip.Items.Add(tabSizeDropDown);
         statusStrip.Items.Add(gitBranchLabel);

@@ -3080,16 +3080,22 @@ darkThemeMenuItem.Checked = isDark;
               if (vimModeEnabled)
               {
                   vimModeLabel.Visible = true;
-                  vimModeLabel.Text = vimEngine?.CurrentMode switch
+                  if (vimEngine?.CurrentMode == VimMode.Command)
                   {
-                      VimMode.Normal => "-- NORMAL --",
-                      VimMode.Insert => "-- INSERT --",
-                      VimMode.Visual => "-- VISUAL --",
-                      VimMode.VisualLine => "-- VISUAL LINE --",
-                      VimMode.VisualBlock => "-- VISUAL BLOCK --",
-                      VimMode.Command => "-- COMMAND --",
-                      _ => "-- VIM --"
-                  };
+                      vimModeLabel.Text = ":" + vimEngine.CommandText;
+                  }
+                  else
+                  {
+                      vimModeLabel.Text = vimEngine?.CurrentMode switch
+                      {
+                          VimMode.Normal => "-- NORMAL --",
+                          VimMode.Insert => "-- INSERT --",
+                          VimMode.Visual => "-- VISUAL --",
+                          VimMode.VisualLine => "-- VISUAL LINE --",
+                          VimMode.VisualBlock => "-- VISUAL BLOCK --",
+                          _ => "-- VIM --"
+                      };
+                  }
               }
               else
               {

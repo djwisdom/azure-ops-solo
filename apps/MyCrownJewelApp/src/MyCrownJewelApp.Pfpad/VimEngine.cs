@@ -16,6 +16,7 @@ namespace MyCrownJewelApp.Pfpad
     {
         public VimMode CurrentMode { get; private set; } = VimMode.Normal;
         public bool Enabled { get; set; }
+        public string CommandText => _cmdBuffer.ToString();
 
         private readonly RichTextBox _tb;
         private readonly StringBuilder _cmdBuffer = new();
