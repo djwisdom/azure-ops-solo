@@ -398,7 +398,7 @@ partial class Form1
         lineEndingsLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
         encodingLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
 
-         // Add controls: Top (menu, tabs), Fill (main table), Bottom (status)
+         // Add controls in proper docking order: menuStrip (top), tabControl (below), mainTable (fill), statusStrip (bottom)
          Controls.Add(menuStrip);
          Controls.Add(tabControl);
          Controls.Add(mainTable);
@@ -406,12 +406,6 @@ partial class Form1
 
          // Set main menu strip
          MainMenuStrip = menuStrip;
-
-         // Ensure proper z-order: menuStrip at top (index 0), then tabControl (index 1), then mainTable (index 2), then statusStrip (index 3)
-         Controls.SetChildIndex(menuStrip, 0);
-         Controls.SetChildIndex(tabControl, 1);
-         Controls.SetChildIndex(mainTable, 2);
-         Controls.SetChildIndex(statusStrip, 3);
 
          // Ensure layout is performed after all controls added
          ResumeLayout(false);
