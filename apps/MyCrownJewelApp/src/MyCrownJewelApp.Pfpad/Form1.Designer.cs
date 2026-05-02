@@ -92,7 +92,7 @@ partial class Form1
         private StatusStrip statusStrip;
         private ToolStripStatusLabel lineColLabel;
         private ToolStripStatusLabel charCountLabel;
-        private ToolStripStatusLabel tabSizeLabel;
+        private ToolStripDropDownButton tabSizeDropDown;
         private ToolStripStatusLabel linePositionLabel;
         private ToolStripStatusLabel zoomLabel;
         private ToolStripStatusLabel lineEndingsLabel;
@@ -362,7 +362,14 @@ partial class Form1
         statusStrip.RenderMode = ToolStripRenderMode.System; // flat
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         charCountLabel = new ToolStripStatusLabel("0 characters");
-        tabSizeLabel = new ToolStripStatusLabel("Tab: 4");
+        // Tab size dropdown for status bar
+        tabSizeDropDown = new ToolStripDropDownButton();
+        tabSizeDropDown.Text = "Tab: 4";
+        tabSizeDropDown.Width = 60;
+        tabSizeDropDown.Alignment = ToolStripItemAlignment.Left;
+        tabSizeDropDown.DropDownItems.Add("2", null, TabSize2_Click);
+        tabSizeDropDown.DropDownItems.Add("4", null, TabSize4_Click);
+        tabSizeDropDown.DropDownItems.Add("8", null, TabSize8_Click);
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
@@ -383,7 +390,7 @@ partial class Form1
         fileTypeLabel.TextAlign = ContentAlignment.MiddleLeft;
 
         statusStrip.Items.AddRange(new ToolStripItem[] {
-            lineColLabel, charCountLabel, tabSizeLabel, new ToolStripStatusLabel { Spring = true },
+            lineColLabel, charCountLabel, tabSizeDropDown, new ToolStripStatusLabel { Spring = true },
             linePositionLabel, zoomLabel, lineEndingsLabel, encodingLabel, themeDropDown, fileTypeLabel
         });
 
@@ -391,7 +398,7 @@ partial class Form1
         const int itemPadding = 8;
         lineColLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
         charCountLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
-        tabSizeLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
+        tabSizeDropDown.Padding = new Padding(itemPadding, 0, itemPadding, 0);
         linePositionLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
         zoomLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);
         lineEndingsLabel.Padding = new Padding(itemPadding, 0, itemPadding, 0);

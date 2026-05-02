@@ -800,6 +800,18 @@ private List<Document> documents = new();
                     item.BackColor = theme.PanelBackground;
                     item.ForeColor = theme.Text;
                 }
+                // Ensure theme dropdown uses theme-aware renderer
+                if (themeDropDown != null && themeDropDown.DropDown != null)
+                {
+                    themeDropDown.DropDown.Renderer = new ThemeAwareMenuRenderer(theme);
+                    themeDropDown.BackColor = theme.PanelBackground;
+                    themeDropDown.ForeColor = theme.Text;
+                    foreach (ToolStripItem item in themeDropDown.DropDownItems)
+                    {
+                        item.BackColor = theme.MenuBackground;
+                        item.ForeColor = theme.Text;
+                    }
+                }
             }
 
             if (textEditor != null && textEditor.IsHandleCreated)
@@ -1913,6 +1925,30 @@ darkThemeMenuItem.Checked = isDark;
             SaveSettings();
         }
 
+        private void TabSize2_Click(object? sender, EventArgs e)
+        {
+            tabSize = 2;
+            UpdateTabStops();
+            tabSizeDropDown.Text = "Tab: 2";
+            SaveSettings();
+        }
+
+        private void TabSize4_Click(object? sender, EventArgs e)
+        {
+            tabSize = 4;
+            UpdateTabStops();
+            tabSizeDropDown.Text = "Tab: 4";
+            SaveSettings();
+        }
+
+        private void TabSize8_Click(object? sender, EventArgs e)
+        {
+            tabSize = 8;
+            UpdateTabStops();
+            tabSizeDropDown.Text = "Tab: 8";
+            SaveSettings();
+        }
+
         private void UpdateThemeDropDown()
         {
             if (themeDropDown != null)
@@ -1924,6 +1960,13 @@ darkThemeMenuItem.Checked = isDark;
                     themeDropDown.DropDownItems[0].Text = isDarkTheme ? "● Dark" : "Dark";
                     themeDropDown.DropDownItems[1].Text = !isDarkTheme ? "● Light" : "Light";
                 }
+            }
+            // Update tab size dropdown checkmarks
+            if (tabSizeDropDown != null && tabSizeDropDown.DropDownItems.Count >= 3)
+            {
+                tabSizeDropDown.DropDownItems[0].Text = tabSize == 2 ? "● 2" : "2";
+                tabSizeDropDown.DropDownItems[1].Text = tabSize == 4 ? "● 4" : "4";
+                tabSizeDropDown.DropDownItems[2].Text = tabSize == 8 ? "● 8" : "8";
             }
         }
 
@@ -2555,7 +2598,7 @@ darkThemeMenuItem.Checked = isDark;
             charCountLabel.Text = $"{textEditor.Text.Length:N0} characters";
 
             // Tab size
-            tabSizeLabel.Text = $"Tab: {tabSize}";
+            tabSizeDropDown.Text = $"Tab: {tabSize}";
 
             // Current line / total lines
             int currentLineNum = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
