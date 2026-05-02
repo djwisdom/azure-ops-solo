@@ -30,6 +30,14 @@ public class HighlightRichTextBox : RichTextBox
         _invalidateTimer.Tick += (s, e) => { _invalidateTimer.Stop(); Invalidate(); };
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        // Set caret width to 2 pixels (0 = default, 1+ = custom width)
+        const int EM_SETCARETWIDTH = 0x01F8;
+        SendMessage(Handle, EM_SETCARETWIDTH, 0, 2);
+    }
+
     [Category("Appearance")]
     [Description("Current line highlight mode.")]
     public CurrentLineHighlightMode CurrentLineHighlightMode
@@ -106,6 +114,9 @@ public class HighlightRichTextBox : RichTextBox
 
     [DllImport("user32.dll")]
     private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
     protected override void WndProc(ref Message m)
     {
