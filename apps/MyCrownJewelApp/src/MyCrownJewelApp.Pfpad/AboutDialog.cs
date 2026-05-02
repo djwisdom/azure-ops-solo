@@ -38,7 +38,7 @@ public sealed class AboutDialog : Form
 
         string version = "0.5.55";
         string commit = GetGitCommitHash();
-        string date = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";
+        string date = GetCompileDate();
 
         int pad = 28;
 
@@ -186,5 +186,21 @@ public sealed class AboutDialog : Form
         {
             return "unknown";
         }
+    }
+
+    private static string GetCompileDate()
+    {
+        try
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            var loc = asm.Location;
+            if (!string.IsNullOrEmpty(loc) && System.IO.File.Exists(loc))
+            {
+                var utc = System.IO.File.GetLastWriteTimeUtc(loc);
+                return utc.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";
+            }
+        }
+        catch { }
+        return "unknown";
     }
 }
