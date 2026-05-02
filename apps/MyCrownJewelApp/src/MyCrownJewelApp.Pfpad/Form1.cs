@@ -402,6 +402,8 @@ private List<Document> documents = new();
 
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
+              vimEngine.SaveRequested += () => { if (currentFilePath != null) SaveFile(); else SaveAsFile(); };
+              vimEngine.CloseRequested += () => this.Close();
 
              // Ensure initial dirty flag is clear after all initialization
              isModified = false;
@@ -3599,13 +3601,13 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (vimModeEnabled && vimEngine != null)
             {
-                // Let vim engine handle the key first
                 if (vimEngine.ProcessKey(keyData))
                 {
-                    return true; // Indicate we handled the key
+                    UpdateStatusBar(); // refresh mode indicator on status bar
+                    return true;
                 }
             }
-            
+
             return base.ProcessCmdKey(ref msg, keyData);
         }
 

@@ -23,6 +23,10 @@ namespace MyCrownJewelApp.Pfpad
         private string? _lastCommand;
         private int _repeatCount = 1;
 
+        public event Action? SaveRequested;
+        public event Action? SaveAsRequested;
+        public event Action? CloseRequested;
+
         private static readonly HashSet<Keys> MotionKeys = new()
         {
             Keys.H, Keys.J, Keys.K, Keys.L,
@@ -114,10 +118,10 @@ namespace MyCrownJewelApp.Pfpad
                     YankSelection(); _tb.SelectionLength = 0; EnterMode(VimMode.Normal); return true;
                 case Keys.C:
                     CutSelection(); EnterMode(VimMode.Insert); return true;
-                if (key == Keys.OemPeriod)
-                IndentSelection(1); EnterMode(VimMode.Normal); return true;
-            if (key == Keys.Oemcomma)
-                IndentSelection(-1); EnterMode(VimMode.Normal); return true;
+                case Keys.OemPeriod:
+                    IndentSelection(1); EnterMode(VimMode.Normal); return true;
+                case Keys.Oemcomma:
+                    IndentSelection(-1); EnterMode(VimMode.Normal); return true;
                 case Keys.V:
                     if (CurrentMode == VimMode.VisualLine)
                         EnterMode(VimMode.Visual);
@@ -132,12 +136,14 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
+                _cmdBuffer.Clear();
                 EnterMode(VimMode.Normal);
                 return true;
             }
             if (key == Keys.Enter)
             {
                 ExecuteCommand(_cmdBuffer.ToString().Trim());
+                _cmdBuffer.Clear();
                 EnterMode(VimMode.Normal);
                 return true;
             }
@@ -145,9 +151,17 @@ namespace MyCrownJewelApp.Pfpad
             {
                 if (_cmdBuffer.Length > 0)
                     _cmdBuffer.Remove(_cmdBuffer.Length - 1, 1);
-                UpdateCommandLine();
                 return true;
             }
+
+            // Accept typed characters into the command buffer
+            char? ch = KeyToChar(key, shift);
+            if (ch != null && ch >= 32)
+            {
+                _cmdBuffer.Append(ch.Value);
+                return true;
+            }
+
             return false;
         }
 
@@ -181,12 +195,13 @@ namespace MyCrownJewelApp.Pfpad
             {
                 case Keys.I: EnterMode(VimMode.Insert); ResetBuffer(); return true;
                 case Keys.A: MoveRight(); EnterMode(VimMode.Insert); ResetBuffer(); return true;
-                case Keys.ShiftKey when shift:
-                    HandleCapitalI(); return true;
             }
 
             if (shift && ch == 'I') { MoveToLineStart(); EnterMode(VimMode.Insert); ResetBuffer(); return true; }
             if (shift && ch == 'A') { MoveToLineEnd(); EnterMode(VimMode.Insert); ResetBuffer(); return true; }
+
+            // Enter command mode on ':'
+            if (ch == ':') { EnterMode(VimMode.Command); _cmdBuffer.Clear(); return true; }
 
             // Handle the buffer
             bool handled = HandleNormalBuffer(buf, key, shift);
@@ -194,9 +209,14 @@ namespace MyCrownJewelApp.Pfpad
 
             // If buffer doesn't match any command, reset it
             if (!IsPrefixOfCommand(buf))
+            {
                 ResetBuffer();
+                return false;
+            }
 
-            return handled;
+            // Buffer is a valid prefix of a multi-key command (e.g. "g" waiting for "gg").
+            // Consume the key to prevent it from being typed into the editor.
+            return true;
         }
 
         private bool HandleNormalBuffer(string buf, Keys key, bool shift)
@@ -278,8 +298,8 @@ namespace MyCrownJewelApp.Pfpad
                 case ".": RepeatLast(); return true;
 
                 // Search
-                case "/": EnterMode(VimMode.Command); _cmdBuffer.Clear().Append('/'); UpdateCommandLine(); return true;
-                case "?": EnterMode(VimMode.Command); _cmdBuffer.Clear().Append('?'); UpdateCommandLine(); return true;
+                case "/": _cmdBuffer.Clear(); _cmdBuffer.Append('/'); return true;
+                case "?": _cmdBuffer.Clear(); _cmdBuffer.Append('?'); return true;
                 case "n": FindNext(); return true;
                 case "N": FindPrevious(); return true;
 
@@ -385,7 +405,38 @@ namespace MyCrownJewelApp.Pfpad
             return false;
         }
 
-        private void ExecuteCommand(string cmd) { /* future: :w, :q, :wq, etc. */ }
+        private void ExecuteCommand(string cmd)
+        {
+            switch (cmd)
+            {
+                case "w":
+                case "write":
+                    SaveRequested?.Invoke();
+                    break;
+                case "wq":
+                case "x":
+                    SaveRequested?.Invoke();
+                    CloseRequested?.Invoke();
+                    break;
+                case "q":
+                    CloseRequested?.Invoke();
+                    break;
+                case "q!":
+                case "quit":
+                    CloseRequested?.Invoke();
+                    break;
+                case "w!":
+                    SaveRequested?.Invoke();
+                    break;
+                case "wq!":
+                    SaveRequested?.Invoke();
+                    CloseRequested?.Invoke();
+                    break;
+                case "e!":
+                    // Reload — not implemented
+                    break;
+            }
+        }
 
         #region Movement
         private int GetCurrentLine() => _tb.GetLineFromCharIndex(_tb.SelectionStart);
@@ -797,6 +848,7 @@ namespace MyCrownJewelApp.Pfpad
             if (key == Keys.Escape) return '\x1B';
             return null;
         }
+
         private static Keys KeyFromChar(char c)
         {
             return c switch
@@ -807,13 +859,7 @@ namespace MyCrownJewelApp.Pfpad
                 'G' => Keys.G, 'g' => Keys.G, _ => Keys.None
             };
         }
-        #endregion
 
-        private void HandleCapitalI()
-        {
-            // I in normal mode = move to first non-blank and insert
-            MoveToFirstNonBlank();
-            EnterMode(VimMode.Insert);
-        }
+        #endregion
     }
 }
