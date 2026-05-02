@@ -357,13 +357,11 @@
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
-            if (guidePanel != null)
+            if (showGuide)
             {
-                guidePanel.ShowGuide = showGuide;
-                guidePanel.Visible = showGuide;
-                guidePanel.GuideColumn = guideColumn;
+                textEditor.ShowGuide = true;
+                textEditor.GuideColumn = guideColumn;
             }
-            SyncGuidePanelBounds();
             minimapControl.Visible = _pendingMinimapVisible;
             statusStrip.Visible = statusBarVisible;
             
@@ -852,11 +850,8 @@
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
                 minimapControl.RefreshNow();
             }
-            if (guidePanel != null)
-            {
-                guidePanel.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
-                guidePanel.Invalidate();
-            }
+            textEditor.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
+            textEditor.Invalidate();
             if (textEditor != null)
             {
                 textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
@@ -918,8 +913,20 @@ darkThemeMenuItem.Checked = isDark;
             CreateIncrementalHighlighter();
 
             gutterPanel?.RefreshGutter();
-            textEditor?.Invalidate();
+            textEditor.Invalidate();
         }
+
+          private void TextEditor_Resize(object? sender, EventArgs e)
+          {
+              if (gutterPanel != null) gutterPanel.RefreshGutter();
+            if (syntaxHighlightingEnabled)
+            {
+                CreateIncrementalHighlighter();
+                highlightTimer?.Stop();
+                highlightTimer?.Start();
+            }
+              PositionMinimap();
+          }
 
         private void ToggleTheme()
         {
@@ -1426,11 +1433,8 @@ darkThemeMenuItem.Checked = isDark;
             guideColumn = column;
             showGuide = true;
             columnGuideMenuItem.Checked = true;
-            if (guidePanel != null)
-            {
-                guidePanel.ShowGuide = true;
-                guidePanel.GuideColumn = column;
-            }
+            textEditor.ShowGuide = true;
+            textEditor.GuideColumn = column;
             UpdateColumnGuideMenuChecked();
             SaveSettings();
         }
@@ -1438,20 +1442,9 @@ darkThemeMenuItem.Checked = isDark;
         private void ToggleColumnGuide(object? sender, EventArgs e)
         {
             showGuide = columnGuideMenuItem.Checked;
-            if (guidePanel != null)
-            {
-                guidePanel.ShowGuide = showGuide;
-                guidePanel.Visible = showGuide;
-            }
-            SyncGuidePanelBounds();
+            textEditor.ShowGuide = showGuide;
+            textEditor.Invalidate();
             SaveSettings();
-        }
-
-        private void SyncGuidePanelBounds()
-        {
-            if (guidePanel == null || textEditor == null) return;
-            guidePanel.Bounds = textEditor.ClientRectangle;
-            guidePanel.Invalidate();
         }
 
         private void UpdateColumnGuideMenuChecked()
@@ -1987,7 +1980,7 @@ darkThemeMenuItem.Checked = isDark;
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                 gutterPanel?.UpdateLineNumberWidth();
                 SyncGutterColumnWidth();
-                guidePanel?.Invalidate();
+                textEditor.Invalidate();
             }
         }
 
@@ -2000,7 +1993,7 @@ darkThemeMenuItem.Checked = isDark;
                 zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                 gutterPanel?.UpdateLineNumberWidth();
                 SyncGutterColumnWidth();
-                guidePanel?.Invalidate();
+                textEditor.Invalidate();
             }
         }
 
@@ -2011,7 +2004,7 @@ darkThemeMenuItem.Checked = isDark;
             zoomLabel.Text = "100%";
             gutterPanel?.UpdateLineNumberWidth();
             SyncGutterColumnWidth();
-            guidePanel?.Invalidate();
+            textEditor.Invalidate();
         }
 
         private void SyncGutterColumnWidth()
@@ -2990,7 +2983,7 @@ darkThemeMenuItem.Checked = isDark;
                 highlightTimer?.Stop();
                 highlightTimer?.Start();
             }
-            guidePanel?.Invalidate();
+            textEditor.Invalidate();
         }
 
         private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
@@ -3012,24 +3005,11 @@ darkThemeMenuItem.Checked = isDark;
                         zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
                         gutterPanel?.UpdateLineNumberWidth();
                         SyncGutterColumnWidth();
-                        guidePanel?.Invalidate();
+                        textEditor.Invalidate();
                     }
                 }));
             }
         }
-
-          private void TextEditor_Resize(object? sender, EventArgs e)
-          {
-              if (gutterPanel != null) gutterPanel.RefreshGutter();
-            if (syntaxHighlightingEnabled)
-            {
-                CreateIncrementalHighlighter();
-                highlightTimer?.Stop();
-                highlightTimer?.Start();
-            }
-             SyncGuidePanelBounds();
-              PositionMinimap();
-          }
 
         internal void UpdateStatusBar()
         {

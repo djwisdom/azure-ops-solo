@@ -90,7 +90,6 @@ partial class Form1
     private Panel editorPanel;
     internal GutterPanel gutterPanel;
     internal HighlightRichTextBox textEditor;
-    internal ColumnGuidePanel guidePanel;
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
     internal ToolStripStatusLabel lineColLabel;
@@ -370,15 +369,10 @@ partial class Form1
         textEditor.MouseWheel += TextEditor_MouseWheel;
         textEditor.Resize += TextEditor_Resize;
 
-        // Column Guide Panel (child of textEditor for coordinate alignment; draws via parent paint)
-        guidePanel = new ColumnGuidePanel();
-        guidePanel.LinkedEditor = textEditor;
-        guidePanel.GuideColumn = 80;
-        guidePanel.ShowGuide = true;
-        guidePanel.GuideColor = Color.FromArgb(100, 120, 120, 120);
-        guidePanel.BackColor = Color.Transparent;
-        textEditor.Controls.Add(guidePanel);
-        guidePanel.SendToBack();
+        // Guide properties handled directly on textEditor
+        textEditor.ShowGuide = true;
+        textEditor.GuideColumn = 80;
+        textEditor.GuideColor = Color.FromArgb(100, 120, 120, 120);
 
         // Minimap Control (docked right inside editorPanel, hidden by default)
         minimapControl = new MinimapControl();

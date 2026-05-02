@@ -17,6 +17,10 @@ public class HighlightRichTextBox : RichTextBox
     private WinFormsTimer? _invalidateTimer;
     private int _lastLine = -1;
 
+    private int _guideColumn = 80;
+    private bool _showGuide = false;
+    private Color _guideColor = Color.FromArgb(100, 120, 120, 120);
+
     public event EventHandler? CurrentLineHighlightModeChanged;
 
     public HighlightRichTextBox()
@@ -100,6 +104,21 @@ public class HighlightRichTextBox : RichTextBox
         catch { }
     }
 
+    private void DrawColumnGuide(Graphics g)
+    {
+        if (!_showGuide || !IsHandleCreated || TextLength == 0) return;
+        try
+        {
+            int col = Math.Min(_guideColumn - 1, TextLength - 1);
+            Point pos = GetPositionFromCharIndex(col);
+            if (pos.X <= 0 || pos.X > ClientSize.Width) return;
+
+            using var pen = new Pen(_guideColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            g.DrawLine(pen, pos.X, 0, pos.X, ClientSize.Height);
+        }
+        catch { }
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -107,6 +126,27 @@ public class HighlightRichTextBox : RichTextBox
             _invalidateTimer?.Dispose();
         }
         base.Dispose(disposing);
+    }
+
+    [Category("Appearance")]
+    public int GuideColumn
+    {
+        get => _guideColumn;
+        set { _guideColumn = Math.Max(1, value); Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    public bool ShowGuide
+    {
+        get => _showGuide;
+        set { _showGuide = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    public Color GuideColor
+    {
+        get => _guideColor;
+        set { _guideColor = value; Invalidate(); }
     }
 
     [DllImport("user32.dll")]
@@ -141,6 +181,7 @@ public class HighlightRichTextBox : RichTextBox
                     {
                         using var g = Graphics.FromHdc(hdc);
                         DrawCurrentLineHighlight(g);
+                        DrawColumnGuide(g);
                         ReleaseDC(Handle, hdc);
                     }
                     return;
