@@ -2270,8 +2270,9 @@ darkThemeMenuItem.Checked = isDark;
             var tabPage = new TabPage(newDoc.DisplayName) { Tag = newDoc };
             tabControl.TabPages.Add(tabPage);
 
-            // Switch to new tab
+            // Switch to new tab and ensure visible
             tabControl.SelectedIndex = newIndex;
+            EnsureSelectedTabVisible();
         }
 
         // Open an existing file in a new tab
@@ -2302,6 +2303,7 @@ darkThemeMenuItem.Checked = isDark;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
                 tabControl.TabPages.Add(tabPage);
                 tabControl.SelectedIndex = newIndex; // triggers SwitchToTab
+                EnsureSelectedTabVisible();
             }
             catch (Exception ex)
             {
@@ -2537,14 +2539,8 @@ darkThemeMenuItem.Checked = isDark;
                 {
                     if (tabControl != null && idx < tabControl.TabCount && !tabControl.IsDisposed)
                     {
-                        SuspendLayout();
-                        tabControl.SuspendLayout();
-                        tabControl.Multiline = false;
                         tabControl.SelectedIndex = idx;
-                        tabControl.Multiline = true;
-                        tabControl.ResumeLayout();
-                        ResumeLayout();
-                        tabControl.Invalidate();
+                        EnsureSelectedTabVisible();
                     }
                 });
                 if (i == tabControl.SelectedIndex)
@@ -2553,6 +2549,17 @@ darkThemeMenuItem.Checked = isDark;
             cm.Show(_tabDropdownButton, new Point(_tabDropdownButton.Width / 2, _tabDropdownButton.Height / 2));
         }
 
+        private void EnsureSelectedTabVisible()
+        {
+            if (tabControl == null || tabControl.IsDisposed) return;
+            SuspendLayout();
+            tabControl.SuspendLayout();
+            tabControl.Multiline = false;
+            tabControl.Multiline = true;
+            tabControl.ResumeLayout();
+            ResumeLayout();
+            tabControl.Invalidate();
+        }
         private void CloseTabAtLocation(Point location)
         {
             for (int i = 0; i < tabControl.TabPages.Count; i++)
