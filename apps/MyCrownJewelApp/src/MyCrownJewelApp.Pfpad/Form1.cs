@@ -261,18 +261,6 @@
         this.Shown += (s, e) =>
         {
             PositionTabDropdownButton();
-            if (textEditor?.Font is Font f)
-            {
-                int charW = TextRenderer.MeasureText("X", f).Width;
-                int lineH = TextRenderer.MeasureText("X", f).Height;
-                int menuH = menuStrip?.Height ?? 0;
-                int statusH = statusStrip?.Height ?? 0;
-                int frameH = SystemInformation.FrameBorderSize.Height * 2;
-                int captionH = SystemInformation.CaptionHeight;
-                MinimumSize = new Size(
-                    charW * 30 + SystemInformation.VerticalScrollBarWidth + 70,
-                    lineH * 15 + menuH + tabControl.Height + statusH + frameH + captionH);
-            }
         };
 
         // Enable file drop support (client area + non-client area)
