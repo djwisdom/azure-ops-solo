@@ -190,6 +190,7 @@ public readonly struct Theme
     public Color CommentColor { get; }
     public Color NumberColor { get; }
     public Color PreprocessorColor { get; }
+    public Color TypeColor { get; }
 
     // Terminal colors
     public Color TerminalBackground { get; }
@@ -203,7 +204,7 @@ public readonly struct Theme
         Color panel, Color border, Color accent, Color editorBg,
         Color highlight, Color disabled, Color buttonHoverBackground, Color muted,
         Color keywordColor, Color stringColor, Color commentColor,
-        Color numberColor, Color preprocessorColor,
+        Color numberColor, Color preprocessorColor, Color typeColor,
         Color terminalBg, Color terminalFg, Color terminalInputBg, Color terminalHeaderBg)
     {
         Name = name;
@@ -225,6 +226,7 @@ public readonly struct Theme
         CommentColor = commentColor;
         NumberColor = numberColor;
         PreprocessorColor = preprocessorColor;
+        TypeColor = typeColor;
         TerminalBackground = terminalBg;
         TerminalForeground = terminalFg;
         TerminalInputBackground = terminalInputBg;
@@ -250,6 +252,7 @@ public readonly struct Theme
         commentColor: Color.Green,
         numberColor: Color.FromArgb(9, 134, 88),
         preprocessorColor: Color.FromArgb(121, 94, 38),
+        typeColor: Color.FromArgb(38, 127, 153),
         terminalBg: Color.FromArgb(248, 248, 248),
         terminalFg: Color.FromArgb(20, 20, 20),
         terminalInputBg: Color.FromArgb(235, 235, 235),
@@ -275,6 +278,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(106, 153, 85),
         numberColor: Color.FromArgb(181, 206, 168),
         preprocessorColor: Color.FromArgb(197, 134, 192),
+        typeColor: Color.FromArgb(78, 201, 176),
         terminalBg: Color.FromArgb(30, 30, 30),
         terminalFg: Color.FromArgb(220, 220, 220),
         terminalInputBg: Color.FromArgb(60, 60, 60),
@@ -300,6 +304,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(156, 160, 176),   // overlay0
         numberColor: Color.FromArgb(254, 100, 11),     // peach
         preprocessorColor: Color.FromArgb(234, 118, 203), // pink
+        typeColor: Color.FromArgb(30, 102, 245),
         terminalBg: Color.FromArgb(230, 233, 239),
         terminalFg: Color.FromArgb(76, 79, 105),
         terminalInputBg: Color.FromArgb(204, 208, 218),
@@ -325,6 +330,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(115, 121, 148),   // overlay0
         numberColor: Color.FromArgb(239, 159, 118),    // peach
         preprocessorColor: Color.FromArgb(244, 184, 228), // pink
+        typeColor: Color.FromArgb(140, 170, 238),
         terminalBg: Color.FromArgb(41, 44, 60),
         terminalFg: Color.FromArgb(198, 208, 245),
         terminalInputBg: Color.FromArgb(65, 69, 89),
@@ -350,6 +356,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(108, 112, 134),   // overlay0
         numberColor: Color.FromArgb(245, 169, 127),    // peach
         preprocessorColor: Color.FromArgb(245, 189, 230), // pink
+        typeColor: Color.FromArgb(138, 173, 244),
         terminalBg: Color.FromArgb(36, 39, 58),
         terminalFg: Color.FromArgb(202, 211, 245),
         terminalInputBg: Color.FromArgb(54, 58, 79),
@@ -375,6 +382,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(108, 112, 134),   // overlay0
         numberColor: Color.FromArgb(250, 179, 135),    // peach
         preprocessorColor: Color.FromArgb(245, 194, 231), // pink
+        typeColor: Color.FromArgb(137, 180, 250),
         terminalBg: Color.FromArgb(24, 24, 37),
         terminalFg: Color.FromArgb(205, 214, 244),
         terminalInputBg: Color.FromArgb(49, 50, 68),
@@ -404,6 +412,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(98, 114, 164),   // comment
         numberColor: Color.FromArgb(255, 184, 108),   // orange
         preprocessorColor: Color.FromArgb(139, 233, 253), // cyan
+        typeColor: Color.FromArgb(139, 233, 253),
         terminalBg: Color.FromArgb(40, 42, 54),
         terminalFg: Color.FromArgb(248, 248, 242),
         terminalInputBg: Color.FromArgb(68, 71, 90),
@@ -429,6 +438,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(92, 99, 112),    // lightDark
         numberColor: Color.FromArgb(209, 154, 102),   // whiskey (orange)
         preprocessorColor: Color.FromArgb(86, 182, 194), // fountainBlue (cyan)
+        typeColor: Color.FromArgb(86, 182, 194),
         terminalBg: Color.FromArgb(40, 44, 52),
         terminalFg: Color.FromArgb(171, 178, 191),
         terminalInputBg: Color.FromArgb(50, 54, 62),
@@ -454,6 +464,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(86, 95, 137),    // comment
         numberColor: Color.FromArgb(255, 158, 100),   // orange
         preprocessorColor: Color.FromArgb(125, 207, 255), // cyan
+        typeColor: Color.FromArgb(125, 207, 255),
         terminalBg: Color.FromArgb(26, 27, 38),
         terminalFg: Color.FromArgb(169, 177, 214),
         terminalInputBg: Color.FromArgb(36, 40, 59),
@@ -479,6 +490,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(99, 119, 119),   // slate
         numberColor: Color.FromArgb(247, 140, 108),   // peach
         preprocessorColor: Color.FromArgb(199, 146, 234), // pink
+        typeColor: Color.FromArgb(130, 170, 255),
         terminalBg: Color.FromArgb(1, 22, 39),
         terminalFg: Color.FromArgb(214, 222, 235),
         terminalInputBg: Color.FromArgb(17, 38, 48),
@@ -504,6 +516,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(179, 98, 255),   // purple
         numberColor: Color.FromArgb(255, 98, 140),    // pink (constants)
         preprocessorColor: Color.FromArgb(158, 255, 255), // cyan (other)
+        typeColor: Color.FromArgb(250, 208, 0),
         terminalBg: Color.FromArgb(45, 43, 85),
         terminalFg: Color.FromArgb(165, 153, 233),
         terminalInputBg: Color.FromArgb(50, 48, 95),
@@ -533,6 +546,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(160, 161, 167),  // gray
         numberColor: Color.FromArgb(208, 125, 56),    // orange
         preprocessorColor: Color.FromArgb(180, 142, 173), // pinkish
+        typeColor: Color.FromArgb(38, 127, 153),
         terminalBg: Color.FromArgb(250, 250, 250),
         terminalFg: Color.FromArgb(56, 58, 66),
         terminalInputBg: Color.FromArgb(232, 232, 232),
@@ -558,6 +572,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(149, 157, 165),  // gray
         numberColor: Color.FromArgb(9, 105, 218),     // blue
         preprocessorColor: Color.FromArgb(130, 80, 223), // purple
+        typeColor: Color.FromArgb(9, 105, 218),
         terminalBg: Color.FromArgb(255, 255, 255),
         terminalFg: Color.FromArgb(36, 41, 47),
         terminalInputBg: Color.FromArgb(234, 238, 242),
@@ -583,6 +598,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(147, 161, 161),  // gray
         numberColor: Color.FromArgb(218, 170, 1),     // yellow
         preprocessorColor: Color.FromArgb(40, 158, 215), // cyan
+        typeColor: Color.FromArgb(42, 162, 152),
         terminalBg: Color.FromArgb(246, 246, 246),
         terminalFg: Color.FromArgb(64, 63, 83),
         terminalInputBg: Color.FromArgb(230, 230, 230),
@@ -608,6 +624,7 @@ public readonly struct Theme
         commentColor: Color.FromArgb(153, 158, 163),  // gray
         numberColor: Color.FromArgb(250, 157, 77),    // light orange
         preprocessorColor: Color.FromArgb(115, 175, 225), // blue
+        typeColor: Color.FromArgb(115, 175, 225),
         terminalBg: Color.FromArgb(252, 252, 252),
         terminalFg: Color.FromArgb(92, 97, 102),
         terminalInputBg: Color.FromArgb(230, 230, 230),
@@ -633,9 +650,11 @@ public readonly struct Theme
         commentColor: Color.FromArgb(158, 158, 168),  // gray
         numberColor: Color.FromArgb(207, 120, 53),    // orange
         preprocessorColor: Color.FromArgb(144, 94, 209), // purple
+        typeColor: Color.FromArgb(36, 137, 219),
         terminalBg: Color.FromArgb(249, 249, 249),
         terminalFg: Color.FromArgb(56, 58, 66),
         terminalInputBg: Color.FromArgb(228, 228, 228),
         terminalHeaderBg: Color.FromArgb(238, 238, 238)
     );
 }
+

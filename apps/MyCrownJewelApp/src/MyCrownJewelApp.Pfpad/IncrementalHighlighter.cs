@@ -31,6 +31,7 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _worker;
     private readonly HashSet<string> _keywords;
+    private readonly HashSet<string> _types;
     private readonly HashSet<string> _preprocs;
     private bool _disposed;
 
@@ -47,7 +48,7 @@ public sealed class IncrementalHighlighter : IDisposable
     {
         _editor = editor;
         _keywords = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
-        foreach (var t in syntax.Types) _keywords.Add(t);
+        _types = new HashSet<string>(syntax.Types, StringComparer.Ordinal);
         _preprocs = new HashSet<string>(syntax.Preprocessor, StringComparer.Ordinal);
 
         _channel = Channel.CreateBounded<(int, string)>(new BoundedChannelOptions(2000)
@@ -236,8 +237,11 @@ public sealed class IncrementalHighlighter : IDisposable
                 int start = pos;
                 while (pos < line.Length && (char.IsLetterOrDigit(line[pos]) || line[pos] == '_'))
                     pos++;
-                if (_keywords.Contains(line.Slice(start, pos - start).ToString()))
+                string word = line.Slice(start, pos - start).ToString();
+                if (_keywords.Contains(word))
                     AddToken(tokens, start, pos - start, SyntaxTokenType.Keyword);
+                else if (_types.Contains(word))
+                    AddToken(tokens, start, pos - start, SyntaxTokenType.Type);
                 continue;
             }
 

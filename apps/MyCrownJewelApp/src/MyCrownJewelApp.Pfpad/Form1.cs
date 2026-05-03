@@ -3676,6 +3676,7 @@
         private Color GetCommentColor() => _currentTheme.CommentColor;
         private Color GetNumberColor() => _currentTheme.NumberColor;
         private Color GetPreprocessorColor() => _currentTheme.PreprocessorColor;
+        private Color GetTypeColor() => _currentTheme.TypeColor;
 
         private void CreateIncrementalHighlighter()
         {
@@ -3749,7 +3750,7 @@
                             int len = Math.Min(token.Length, lineLen - token.StartIndex);
                             if (len <= 0) continue;
                             cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
-                            cf.dwEffects = token.Type == SyntaxTokenType.Comment ? CFE_ITALIC : 0;
+                            cf.dwEffects = (token.Type == SyntaxTokenType.Comment || token.Type == SyntaxTokenType.Type || token.Type == SyntaxTokenType.Preprocessor) ? CFE_ITALIC : 0;
                             Marshal.StructureToPtr(cf, cfPtr, false);
                             SendMessage(textEditor.Handle, EM_SETSEL, (IntPtr)idx, (IntPtr)(idx + len));
                             SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
@@ -3777,6 +3778,7 @@
             SyntaxTokenType.Comment => GetCommentColor(),
             SyntaxTokenType.Number => GetNumberColor(),
             SyntaxTokenType.Preprocessor => GetPreprocessorColor(),
+            SyntaxTokenType.Type => GetTypeColor(),
             _ => (_currentTheme.Text)
         };
 

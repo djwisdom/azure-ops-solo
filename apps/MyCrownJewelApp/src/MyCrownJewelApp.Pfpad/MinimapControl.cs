@@ -324,6 +324,7 @@ namespace MyCrownJewelApp.Pfpad
                         SyntaxTokenType.Comment => theme.CommentColor,
                         SyntaxTokenType.Number => theme.NumberColor,
                         SyntaxTokenType.Preprocessor => theme.PreprocessorColor,
+                        SyntaxTokenType.Type => theme.TypeColor,
                         _ => theme.Text
                     };
                 }
@@ -429,7 +430,7 @@ namespace MyCrownJewelApp.Pfpad
 
     public enum SyntaxTokenType
     {
-        Identifier, Keyword, String, Comment, Number, Operator, Preprocessor
+        Identifier, Keyword, String, Comment, Number, Operator, Preprocessor, Type
     }
 
     public class ViewportChangedEventArgs : EventArgs
