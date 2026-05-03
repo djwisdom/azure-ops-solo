@@ -43,7 +43,7 @@ public class HighlightRichTextBox : RichTextBox
     {
         if (!IsHandleCreated) return;
         const int EM_SETCARETWIDTH = 0x01F8;
-        int width = Math.Max(1, (int)(4 * ZoomFactor));
+        int width = Math.Max(1, (int)(6 * ZoomFactor));
         SendMessage(Handle, EM_SETCARETWIDTH, 0, width);
     }
 
