@@ -8,23 +8,10 @@ namespace MyCrownJewelApp.Pfpad;
 
 public class GutterPanel : Panel
 {
-    private static readonly Font _foldFont;
+    private static readonly Font _foldFont = new Font("Segoe UI", 8, FontStyle.Regular);
 
-    static GutterPanel()
-    {
-        Font? font = null;
-        try { font = new Font("Segoe MDL2 Assets", 9, FontStyle.Regular); }
-        catch { }
-        if (font == null || font.Name != "Segoe MDL2 Assets")
-        {
-            font?.Dispose();
-            font = new Font("Segoe UI", 9, FontStyle.Bold);
-        }
-        _foldFont = font;
-    }
-
-    private const string ChevronDown = "\uE70E"; // expanded
-    private const string ChevronRight = "\uE70D"; // collapsed
+    private const string ChevronDown = "\u25BC"; // ▼ expanded (open fold)
+    private const string ChevronRight = "\u25B6"; // ▶ collapsed (folded fold)
 
     private Form1 mainForm;
     private int LineNumberMarginWidth = 60;
