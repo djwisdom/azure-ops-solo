@@ -46,6 +46,11 @@ public sealed class IncrementalHighlighter : IDisposable
     public event EventHandler<List<HighlightPatch>>? BatchReady;
 
     public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax)
+        : this(textEditor, syntax, SynchronizationContext.Current)
+    {
+    }
+
+    public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax, SynchronizationContext? uiContext)
     {
         _textEditor = textEditor;
         _keywordSet = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
@@ -60,7 +65,7 @@ public sealed class IncrementalHighlighter : IDisposable
             SingleWriter = false
         });
         _cts = new CancellationTokenSource();
-        _uiContext = SynchronizationContext.Current;
+        _uiContext = uiContext;
         _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token), _cts.Token);
     }
 

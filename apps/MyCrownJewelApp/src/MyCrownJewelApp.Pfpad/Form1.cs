@@ -471,11 +471,12 @@
              // Initialize incremental highlighter (after colors are loaded)
              if (documents.Count > 0) CreateIncrementalHighlighter();
 
-             // Apply syntax highlighting state after timer is created
-             if (syntaxHighlightingEnabled)
-             {
-                 highlightTimer.Start();
-             }
+              // Apply syntax highlighting state after timer is created
+              if (syntaxHighlightingEnabled)
+              {
+                  _highlightApplyTimer?.Start();
+                  highlightTimer.Start();
+              }
 
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
@@ -3465,7 +3466,8 @@ darkThemeMenuItem.Checked = isDark;
             var baseColorCurrent = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             incrementalHighlighter = new IncrementalHighlighter(
                 textEditor,
-                currentSyntax);
+                currentSyntax,
+                SynchronizationContext.Current);
 
             incrementalHighlighter.BatchReady += ApplyHighlightBatch;
 
