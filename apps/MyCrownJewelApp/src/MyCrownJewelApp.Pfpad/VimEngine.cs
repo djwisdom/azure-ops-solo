@@ -209,12 +209,17 @@ namespace MyCrownJewelApp.Pfpad
             // Enter command mode on ':'
             if (ch == ':') { EnterMode(VimMode.Command); _cmdBuffer.Clear(); return true; }
 
+            // Strip leading digit prefix (repeat count) before matching commands
+            string stripped = buf;
+            while (stripped.Length > 0 && char.IsDigit(stripped[0]))
+                stripped = stripped[1..];
+
             // Handle the buffer
-            bool handled = HandleNormalBuffer(buf, key, shift);
+            bool handled = HandleNormalBuffer(stripped, key, shift);
             if (handled) { ResetBuffer(); return true; }
 
             // If buffer doesn't match any command, reset it
-            if (!IsPrefixOfCommand(buf))
+            if (!IsPrefixOfCommand(stripped))
             {
                 ResetBuffer();
                 return false;
