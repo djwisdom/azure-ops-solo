@@ -125,6 +125,7 @@ partial class Form1
         AutoScaleMode = AutoScaleMode.Font;
         Padding = new Padding(0);
         ClientSize = new Size(1000, 600);
+        MinimumSize = new Size(400, 250);
         Text = "Personal Flip Pad";
         StartPosition = FormStartPosition.CenterScreen;
 
@@ -403,7 +404,7 @@ partial class Form1
         statusStrip.Dock = DockStyle.Fill;
         statusStrip.RenderMode = ToolStripRenderMode.Professional;
         statusStrip.SizingGrip = false;
-        statusStrip.Padding = new Padding(0);
+        statusStrip.Padding = new Padding(4, 1, 4, 1);
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         vimModeLabel = new ToolStripStatusLabel("");
         vimModeLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);
