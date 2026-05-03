@@ -8,10 +8,29 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
+    <ApplicationVersion>1.0.0.0</ApplicationVersion>
+    <Version>1.0.0.0</Version>
+    <Company>Personal Flip Pad</Company>
+    <Description>A full-featured code editor with syntax highlighting, minimap, vim mode, git integration, and code folding.</Description>
+    <Copyright>Copyright (c) 2026</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MyCrownJewelApp.Core\MyCrownJewelApp.Core.csproj" />
   </ItemGroup>
+
+  <Target Name="GenerateBuildMetadata" BeforeTargets="CoreCompile">
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
+    </Exec>
+    <PropertyGroup>
+      <BuildDate>$([System.DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss'))</BuildDate>
+      <_MetadataOutputPath>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'BuildMetadata.g.cs'))</_MetadataOutputPath>
+    </PropertyGroup>
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\GenerateBuildMetadata.ps1&quot; -OutputPath &quot;$(_MetadataOutputPath)&quot; -CommitHash &quot;$(GitCommitHash)&quot; -BuildDate &quot;$(BuildDate)&quot;" />
+    <ItemGroup>
+      <Compile Include="$(_MetadataOutputPath)" />
+    </ItemGroup>
+  </Target>
 
 </Project>

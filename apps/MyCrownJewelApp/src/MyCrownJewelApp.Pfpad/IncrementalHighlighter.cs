@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Text;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -43,6 +43,11 @@ public sealed class IncrementalHighlighter : IDisposable
     private const int MaxLinesPerBatch = 50;
     private bool _disposed;
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
+    private const int EM_GETLINE = 0xC4;
+    private const int EM_GETLINECOUNT = 0xBA;
+
     public event EventHandler<List<HighlightPatch>>? BatchReady;
 
     public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax)
@@ -71,8 +76,13 @@ public sealed class IncrementalHighlighter : IDisposable
 
     public void RequestRange(int startLine, int endLine)
     {
-        if (startLine < 0) return;
-        for (int line = startLine; line <= endLine; line++)
+        if (startLine < 0 || _textEditor.IsDisposed) return;
+        if (!_textEditor.IsHandleCreated)
+        {
+            var unused = _textEditor.Handle;
+        }
+        int lineCount = SendMessage(_textEditor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
+        for (int line = startLine; line <= endLine && line < lineCount; line++)
         {
             if (!_tokenCache.ContainsKey(line))
             {
@@ -81,25 +91,6 @@ public sealed class IncrementalHighlighter : IDisposable
                     _dirtyLines.Writer.TryWrite((line, text));
             }
         }
-    }
-
-    private string? GetLineText(int lineIndex)
-    {
-        try
-        {
-            if (_textEditor.IsDisposed) return null;
-            if (!_textEditor.IsHandleCreated)
-            {
-                var unused = _textEditor.Handle;
-            }
-            string text = _textEditor.Text;
-            int lineStart = _textEditor.GetFirstCharIndexFromLine(lineIndex);
-            if (lineStart < 0) return null;
-            int lineEnd = _textEditor.GetFirstCharIndexFromLine(lineIndex + 1);
-            if (lineEnd < 0) lineEnd = text.Length;
-            return text.Substring(lineStart, lineEnd - lineStart).TrimEnd('\r', '\n');
-        }
-        catch { return null; }
     }
 
     public IReadOnlyList<TokenInfo>? GetTokens(int lineIndex)
@@ -114,6 +105,24 @@ public sealed class IncrementalHighlighter : IDisposable
         string? text = GetLineText(lineNumber);
         if (text != null)
             _dirtyLines.Writer.TryWrite((lineNumber, text));
+    }
+
+    private string? GetLineText(int lineIndex)
+    {
+        try
+        {
+            int lineCount = SendMessage(_textEditor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
+            if (lineIndex < 0 || lineIndex >= lineCount) return null;
+            IntPtr ptr = Marshal.AllocCoTaskMem(4096 * 2);
+            try
+            {
+                Marshal.WriteInt16(ptr, (short)4096);
+                int len = SendMessage(_textEditor.Handle, EM_GETLINE, lineIndex, ptr);
+                return len > 0 ? Marshal.PtrToStringUni(ptr, len).TrimEnd('\r', '\n') : null;
+            }
+            finally { Marshal.FreeCoTaskMem(ptr); }
+        }
+        catch { return null; }
     }
 
     private async Task WorkerLoopAsync(CancellationToken ct)

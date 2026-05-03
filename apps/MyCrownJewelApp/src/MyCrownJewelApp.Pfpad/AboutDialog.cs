@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
@@ -171,25 +170,15 @@ public sealed class AboutDialog : Form
     {
         try
         {
-            using var proc = new Process();
-            proc.StartInfo.FileName = "git";
-            proc.StartInfo.Arguments = "rev-parse HEAD";
-            proc.StartInfo.UseShellExecute = false;
-            proc.StartInfo.RedirectStandardOutput = true;
-            proc.StartInfo.CreateNoWindow = true;
-            proc.Start();
-            if (!proc.WaitForExit(2000))
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            foreach (var attr in asm.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false))
             {
-                try { proc.Kill(); } catch { }
-                return "timeout";
+                if (attr is System.Reflection.AssemblyMetadataAttribute m && m.Key == "CommitHash" && !string.IsNullOrEmpty(m.Value))
+                    return m.Value;
             }
-            string hash = proc.StandardOutput.ReadToEnd().Trim();
-            return !string.IsNullOrEmpty(hash) ? hash : "unknown";
         }
-        catch
-        {
-            return "unknown";
-        }
+        catch { }
+        return "unknown";
     }
 
     private static string GetCompileDate()
@@ -197,11 +186,10 @@ public sealed class AboutDialog : Form
         try
         {
             var asm = System.Reflection.Assembly.GetExecutingAssembly();
-            var loc = asm.Location;
-            if (!string.IsNullOrEmpty(loc) && System.IO.File.Exists(loc))
+            foreach (var attr in asm.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false))
             {
-                var utc = System.IO.File.GetLastWriteTimeUtc(loc);
-                return utc.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";
+                if (attr is System.Reflection.AssemblyMetadataAttribute m && m.Key == "BuildDate" && !string.IsNullOrEmpty(m.Value))
+                    return m.Value + " UTC";
             }
         }
         catch { }

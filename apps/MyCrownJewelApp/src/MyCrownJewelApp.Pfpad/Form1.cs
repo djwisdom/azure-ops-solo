@@ -436,22 +436,51 @@
             _highlightApplyTimer.Interval = 5;
             _highlightApplyTimer.Tick += (s, e) =>
             {
-                const int batchSize = 5;
-                for (int i = 0; i < batchSize; i++)
+                const int batchSize = 50;
+                bool hadWork = false;
+                _suspendSelectionChanged = true;
+                BeginUpdate(textEditor);
+                try
                 {
-                    HighlightPatch? patch = null;
-                    lock (_highlightApplyQueue)
+                    for (int i = 0; i < batchSize; i++)
                     {
-                        if (_highlightApplyQueue.Count > 0)
-                            patch = _highlightApplyQueue.Dequeue();
-                        else
-                            break;
+                        HighlightPatch? patch = null;
+                        lock (_highlightApplyQueue)
+                        {
+                            if (_highlightApplyQueue.Count > 0)
+                                patch = _highlightApplyQueue.Peek();
+                            else
+                                break;
+                        }
+                        if (patch != null)
+                        {
+                            try
+                            {
+                                if (ApplyOneLine(patch.LineNumber, patch.Tokens))
+                                {
+                                    lock (_highlightApplyQueue)
+                                    {
+                                        _highlightApplyQueue.Dequeue();
+                                    }
+                                    hadWork = true;
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                            catch { break; }
+                        }
                     }
-                    if (patch != null)
-                    {
-                        try { ApplyOneLine(patch.LineNumber, patch.Tokens); }
-                        catch { }
-                    }
+                }
+                finally
+                {
+                    EndUpdate(textEditor);
+                }
+                _suspendSelectionChanged = false;
+                if (!hadWork)
+                {
+                    _highlightApplyTimer.Stop();
                 }
             };
 
@@ -484,6 +513,30 @@
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
               vimEngine.SaveRequested += () => { if (currentFilePath != null) SaveFile(); else SaveAsFile(); };
+              vimEngine.SaveAsRequested += (filename) =>
+              {
+                  string dir = currentFilePath != null ? Path.GetDirectoryName(currentFilePath)!
+                      : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                  string fullPath = Path.GetFullPath(Path.Combine(dir, filename));
+                  try
+                  {
+                      File.WriteAllText(fullPath, textEditor.Text);
+                      currentFilePath = fullPath;
+                      lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
+                      currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
+                      ClearDirtyAfterSave();
+                      modifiedLines.Clear();
+                      AddToRecentFiles(currentFilePath);
+                      UpdateStatusBar();
+                      if (syntaxHighlightingEnabled)
+                          CreateIncrementalHighlighter();
+                  }
+                  catch (Exception ex)
+                  {
+                      MessageBox.Show($"Error saving file: {ex.Message}", "Save Error",
+                          MessageBoxButtons.OK, MessageBoxIcon.Error);
+                  }
+              };
               vimEngine.CloseRequested += () => this.Close();
               vimEngine.VerticalSplitRequested += () =>
               {
@@ -977,17 +1030,17 @@ darkThemeMenuItem.Checked = isDark;
             textEditor!.Invalidate();
         }
 
-          private void TextEditor_Resize(object? sender, EventArgs e)
-          {
-              if (gutterPanel != null) gutterPanel.RefreshGutter();
+        private void TextEditor_Resize(object? sender, EventArgs e)
+        {
+            if (gutterPanel != null) gutterPanel.RefreshGutter();
             if (syntaxHighlightingEnabled)
             {
-                CreateIncrementalHighlighter();
+                RequestVisibleHighlight();
                 highlightTimer?.Stop();
                 highlightTimer?.Start();
             }
-              PositionMinimap();
-          }
+            PositionMinimap();
+        }
 
         private void ToggleTheme()
         {
@@ -3176,16 +3229,31 @@ darkThemeMenuItem.Checked = isDark;
                     }
                 }));
             }
+            else
+            {
+                if (syntaxHighlightingEnabled)
+                {
+                    highlightTimer?.Stop();
+                    highlightTimer?.Start();
+                }
+            }
         }
+
+        private int _lastStatusLine = -1;
+        private int _lastStatusCol = -1;
 
         internal void UpdateStatusBar()
         {
             if (statusStrip == null || textEditor == null) return;
 
-            // Line and column (1-based)
             int line = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
             int col = textEditor.SelectionStart - textEditor.GetFirstCharIndexFromLine(textEditor.GetLineFromCharIndex(textEditor.SelectionStart)) + 1;
-            lineColLabel.Text = $"Ln {line}, Col {col}";
+            if (line != _lastStatusLine || col != _lastStatusCol)
+            {
+                _lastStatusLine = line;
+                _lastStatusCol = col;
+                lineColLabel.Text = $"Ln {line}, Col {col}";
+            }
 
             // Character count
             charCountLabel.Text = $"{textEditor.Text.Length:N0} characters";
@@ -3501,29 +3569,28 @@ darkThemeMenuItem.Checked = isDark;
             _highlightApplyTimer?.Start();
         }
 
-        private void ApplyOneLine(int line, IReadOnlyList<TokenInfo> tokens)
+        private bool ApplyOneLine(int line, IReadOnlyList<TokenInfo> tokens)
         {
-            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
+            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return false;
             var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             _suspendSelectionChanged = true;
             int savedStart = textEditor.SelectionStart;
             int savedLength = textEditor.SelectionLength;
-            BeginUpdate(textEditor);
             try
             {
                 int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                if (line < 0 || line >= lineCount) return;
+                if (line < 0 || line >= lineCount) return false;
 
                 int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-                if (lineStart < 0) return;
+                if (lineStart < 0) return false;
 
                 int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
                 int lineLen = lineEnd - lineStart;
-                if (lineLen <= 0) return;
+                if (lineLen <= 0) return false;
 
                 textEditor.SelectionStart = lineStart;
                 textEditor.SelectionLength = lineLen;
-                textEditor.SelectionColor = baseColor;
+                SetSelectionColorRich(baseColor);
 
                 foreach (var token in tokens)
                 {
@@ -3533,16 +3600,15 @@ darkThemeMenuItem.Checked = isDark;
                     {
                         textEditor.SelectionStart = idx;
                         textEditor.SelectionLength = len;
-                        textEditor.SelectionColor = GetColorForToken(token.Type);
+                        SetSelectionColorRich(GetColorForToken(token.Type));
                     }
                 }
+                return true;
             }
             finally
             {
-                EndUpdate(textEditor);
                 textEditor.SelectionStart = savedStart;
                 textEditor.SelectionLength = savedLength;
-                _suspendSelectionChanged = false;
             }
         }
 
@@ -3728,6 +3794,55 @@ darkThemeMenuItem.Checked = isDark;
         private const int EM_ENDUNDOACTION = 0x00B8;
         private const int EM_GETLINECOUNT = 0x00BA;
         private const int EM_GETLINE = 0x00C4;
+        private const int EM_SETCHARFORMAT = 0x0444;
+        private const int SCF_SELECTION = 0x0001;
+        private const int CFM_COLOR = 0x40000000;
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct CHARFORMAT2W
+        {
+            public int cbSize;
+            public int dwMask;
+            public int dwEffects;
+            public int yHeight;
+            public int yOffset;
+            public int crTextColor;
+            public byte bCharSet;
+            public byte bPitchAndFamily;
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValArray, SizeConst = 32)]
+            public char[] szFaceName;
+            public short wWeight;
+            public short sSpacing;
+            public int crBackColor;
+            public int lcid;
+            public int dwReserved;
+            public short sStyle;
+            public short wKerning;
+            public byte bUnderlineType;
+            public byte bAnimation;
+            public byte bRevAuthor;
+            public byte bReserved1;
+        }
+
+        private void SetSelectionColorRich(Color color)
+        {
+            var cf = new CHARFORMAT2W
+            {
+                cbSize = System.Runtime.InteropServices.Marshal.SizeOf<CHARFORMAT2W>(),
+                dwMask = CFM_COLOR,
+                crTextColor = System.Drawing.ColorTranslator.ToWin32(color)
+            };
+            IntPtr ptr = System.Runtime.InteropServices.Marshal.AllocCoTaskMem(cf.cbSize);
+            try
+            {
+                System.Runtime.InteropServices.Marshal.StructureToPtr(cf, ptr, false);
+                SendMessage(textEditor.Handle, EM_SETCHARFORMAT, new IntPtr(SCF_SELECTION), ptr);
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FreeCoTaskMem(ptr);
+            }
+        }
 
         // Get a single line without allocating the entire .Lines array
         private string GetLineText(int lineIndex)

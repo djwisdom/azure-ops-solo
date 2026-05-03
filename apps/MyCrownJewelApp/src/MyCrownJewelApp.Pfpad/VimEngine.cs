@@ -24,6 +24,7 @@ namespace MyCrownJewelApp.Pfpad
         private int _repeatCount = 1;
 
         public event Action? SaveRequested;
+        public event Action<string>? SaveAsRequested;
         public event Action? CloseRequested;
         public event Action? VerticalSplitRequested;
         public event Action? HorizontalSplitRequested;
@@ -458,14 +459,28 @@ namespace MyCrownJewelApp.Pfpad
                 case "e!":
                     // Reload — not implemented
                     break;
-                case "vsp":
-                case "vsplit":
-                    VerticalSplitRequested?.Invoke();
-                    break;
-                case "sp":
-                case "split":
-                    HorizontalSplitRequested?.Invoke();
-                    break;
+            }
+
+            // Handle :w filename and :write filename (save as)
+            if (cmd.StartsWith("w ") || cmd.StartsWith("write "))
+            {
+                string filename = cmd[(cmd[0] == 'w' ? 2 : 6)..].Trim();
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    SaveAsRequested?.Invoke(filename);
+                    return;
+                }
+            }
+
+            // Handle :wq filename (save as then close)
+            if (cmd.StartsWith("wq ") && cmd.Length > 3)
+            {
+                string filename = cmd[3..].Trim();
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    SaveAsRequested?.Invoke(filename);
+                    CloseRequested?.Invoke();
+                }
             }
         }
 
