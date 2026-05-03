@@ -3691,14 +3691,20 @@
 
         private void CoalesceHighlightPatches(List<HighlightPatch> patches)
         {
+            bool doFlush = false;
             lock (_pendingPatches)
             {
                 _pendingPatches.AddRange(patches);
                 if (!_highlightPending)
                 {
                     _highlightPending = true;
-                    BeginInvoke(FlushHighlightPatches);
+                    doFlush = true;
                 }
+            }
+            if (doFlush)
+            {
+                try { BeginInvoke(FlushHighlightPatches); }
+                catch { _highlightPending = false; }
             }
         }
 
