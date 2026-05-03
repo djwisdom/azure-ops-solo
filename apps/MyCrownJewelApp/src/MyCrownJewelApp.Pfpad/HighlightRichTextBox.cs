@@ -22,6 +22,17 @@ public class HighlightRichTextBox : RichTextBox
     private FoldingManager? _foldingManager;
     private Color _foldLineColor = Color.FromArgb(80, 80, 80);
 
+    private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
+    private static readonly Dictionary<char, char> _bracePairs = new()
+    {
+        ['{'] = '}',
+        ['['] = ']',
+        ['('] = ')',
+        ['}'] = '{',
+        [']'] = '[',
+        [')'] = '('
+    };
+
     public event EventHandler? CurrentLineHighlightModeChanged;
 
     public HighlightRichTextBox()
@@ -221,6 +232,84 @@ public class HighlightRichTextBox : RichTextBox
         return "";
     }
 
+    private static int? FindMatchingBrace(string text, int pos)
+    {
+        if (pos < 0 || pos >= text.Length) return null;
+        char c = text[pos];
+        if (!_bracePairs.ContainsKey(c)) return null;
+
+        char open, close;
+        int dir;
+        if (_openBraces.Contains(c))
+        {
+            open = c;
+            close = _bracePairs[c];
+            dir = 1;
+        }
+        else
+        {
+            close = c;
+            open = _bracePairs[c];
+            dir = -1;
+        }
+
+        int depth = 0;
+        int i = pos;
+        while (i >= 0 && i < text.Length)
+        {
+            if (text[i] == open)
+            {
+                if (dir == 1) depth++;
+                else { depth--; if (depth == 0) return i; }
+            }
+            else if (text[i] == close)
+            {
+                if (dir == -1) depth++;
+                else { depth--; if (depth == 0) return i; }
+            }
+            i += dir;
+        }
+        return null;
+    }
+
+    private void DrawMatchingBraces(Graphics g)
+    {
+        if (!Focused || !IsHandleCreated || TextLength == 0) return;
+        try
+        {
+            int pos = SelectionStart;
+            if (pos < 0 || pos >= TextLength) return;
+
+            int? match = FindMatchingBrace(Text, pos);
+            if (match == null || match.Value == pos) return;
+
+            var theme = ThemeManager.Instance.CurrentTheme;
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+
+            Color rectColor = theme.IsLight ? Color.FromArgb(180, 0, 0, 0) : Color.FromArgb(200, 255, 255, 255);
+
+            DrawBraceRect(g, pos, lineH, rectColor);
+            DrawBraceRect(g, match.Value, lineH, rectColor);
+        }
+        catch { }
+    }
+
+    private void DrawBraceRect(Graphics g, int pos, int lineH, Color color)
+    {
+        Point pt = GetPositionFromCharIndex(pos);
+        if (pt.IsEmpty) return;
+
+        int charW = 1;
+        if (pos + 1 < TextLength)
+        {
+            Point nextPt = GetPositionFromCharIndex(pos + 1);
+            charW = Math.Max(1, nextPt.X - pt.X);
+        }
+
+        using var pen = new Pen(color, 2);
+        g.DrawRectangle(pen, pt.X, pt.Y, charW - 1, lineH - 1);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -343,6 +432,7 @@ public class HighlightRichTextBox : RichTextBox
 
                         DrawColumnGuide(g);
                         DrawFoldBracketLines(g);
+                        DrawMatchingBraces(g);
 
                         if (_caretVisible && Focused && IsHandleCreated && !IsDisposed)
                             DrawBlockCursor(g);
