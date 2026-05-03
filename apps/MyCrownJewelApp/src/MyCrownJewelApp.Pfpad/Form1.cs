@@ -243,8 +243,7 @@
         public HashSet<int> CollapsedRegions => collapsedRegions;
 
         private Button _tabDropdownButton = null!;
-        private readonly List<HighlightPatch> _pendingPatches = new();
-        private bool _highlightPending;
+        private bool _applyingHighlight;
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -3308,6 +3307,7 @@
 
         private void TextEditor_TextChanged(object? sender, EventArgs e)
         {
+            if (_applyingHighlight) return;
             SetDirty();
 
             // Recalculate gutter width when line count changes
@@ -3685,88 +3685,39 @@
             }
 
             incrementalHighlighter = new IncrementalHighlighter(textEditor, currentSyntax);
-            incrementalHighlighter.PatchReady += CoalesceHighlightPatches;
+            incrementalHighlighter.PatchReady += ApplyHighlightPatches;
             RequestVisibleHighlight();
-        }
-
-        private void CoalesceHighlightPatches(List<HighlightPatch> patches)
-        {
-            bool doFlush = false;
-            lock (_pendingPatches)
-            {
-                _pendingPatches.AddRange(patches);
-                if (!_highlightPending)
-                {
-                    _highlightPending = true;
-                    doFlush = true;
-                }
-            }
-            if (doFlush)
-            {
-                try { BeginInvoke(FlushHighlightPatches); }
-                catch { _highlightPending = false; }
-            }
-        }
-
-        private void FlushHighlightPatches()
-        {
-            List<HighlightPatch> batch;
-            lock (_pendingPatches)
-            {
-                batch = new List<HighlightPatch>(_pendingPatches);
-                _pendingPatches.Clear();
-                _highlightPending = false;
-            }
-            if (batch.Count > 0) ApplyHighlightPatches(batch);
         }
 
         private void ApplyHighlightPatches(List<HighlightPatch> patches)
         {
-            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
-            _suspendSelectionChanged = true;
-            BeginUpdate(textEditor);
+            if (textEditor.IsDisposed || !textEditor.IsHandleCreated || _applyingHighlight) return;
+            _applyingHighlight = true;
             try
             {
-                int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                var cf = new CHARFORMAT2W
+                int lineCount = textEditor.Lines.Length;
+                foreach (var patch in patches)
                 {
-                    cbSize = Marshal.SizeOf<CHARFORMAT2W>(),
-                    dwMask = CFM_COLOR
-                };
-                IntPtr cfPtr = Marshal.AllocCoTaskMem(cf.cbSize);
-                try
-                {
-                    foreach (var patch in patches)
+                    int line = patch.LineNumber;
+                    if (line < 0 || line >= lineCount) continue;
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                    if (lineStart < 0) continue;
+                    int lineEnd = (line + 1 < lineCount)
+                        ? textEditor.GetFirstCharIndexFromLine(line + 1)
+                        : textEditor.TextLength;
+                    int lineLen = lineEnd - lineStart;
+                    if (lineLen <= 0) continue;
+                    foreach (var token in patch.Tokens)
                     {
-                        int line = patch.LineNumber;
-                        if (line < 0 || line >= lineCount) continue;
-                        int lineStart = (int)SendMessage(textEditor.Handle, EM_LINEINDEX, line, IntPtr.Zero);
-                        if (lineStart < 0) continue;
-                        int lineEnd = (line + 1 < lineCount)
-                            ? (int)SendMessage(textEditor.Handle, EM_LINEINDEX, line + 1, IntPtr.Zero)
-                            : (int)SendMessage(textEditor.Handle, WM_GETTEXTLENGTH, 0, IntPtr.Zero);
-                        int lineLen = lineEnd - lineStart;
-                        if (lineLen <= 0) continue;
-
-                        foreach (var token in patch.Tokens)
-                        {
-                            int idx = lineStart + token.StartIndex;
-                            int len = Math.Min(token.Length, lineLen - token.StartIndex);
-                            if (len <= 0) continue;
-                            cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
-                            Marshal.StructureToPtr(cf, cfPtr, false);
-                            SendMessage(textEditor.Handle, EM_SETSEL, (IntPtr)idx, (IntPtr)(idx + len));
-                            SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
-                        }
+                        int idx = lineStart + token.StartIndex;
+                        int len = Math.Min(token.Length, lineLen - token.StartIndex);
+                        if (len <= 0) continue;
+                        textEditor.Select(idx, len);
+                        textEditor.SelectionColor = GetColorForToken(token.Type);
                     }
                 }
-                finally { Marshal.FreeCoTaskMem(cfPtr); }
             }
-            finally
-            {
-                EndUpdate(textEditor);
-                _suspendSelectionChanged = false;
-            }
+            finally { _applyingHighlight = false; }
         }
 
         private void RequestVisibleHighlight()
