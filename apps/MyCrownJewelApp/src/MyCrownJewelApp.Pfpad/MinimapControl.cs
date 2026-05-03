@@ -285,7 +285,7 @@ namespace MyCrownJewelApp.Pfpad
                     Color color = GetCharColor(tokens, pos, text.Length);
                     if (color.A > 0)
                     {
-                        int renderAlpha = ThemeManager.Instance.CurrentTheme.IsLight ? 140 : 180;
+                        int renderAlpha = 200;
                         color = Color.FromArgb(renderAlpha, color);
                         int charW = 1;
                         int endX = Math.Min(x + charW, mapW);
