@@ -52,8 +52,10 @@ namespace MyCrownJewelApp.Pfpad
             SetStyle(ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.AllPaintingInWmPaint |
                      ControlStyles.UserPaint |
-                     ControlStyles.ResizeRedraw, true);
+                     ControlStyles.ResizeRedraw |
+                     ControlStyles.SupportsTransparentBackColor, true);
             DoubleBuffered = true;
+            BackColor = Color.Transparent;
             TabStop = false;
             Width = MinimapWidth;
             MinimumSize = new Size(40, 0);
@@ -192,10 +194,6 @@ namespace MyCrownJewelApp.Pfpad
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
-            g.Clear(BackColor);
-
-            using (var borderPen = new Pen(BorderColor, 1))
-                g.DrawLine(borderPen, 0, 0, 0, Height);
 
             if (_attachedEditor == null || _totalLines == 0) return;
 
@@ -242,7 +240,9 @@ namespace MyCrownJewelApp.Pfpad
 
             _fullMap = new Bitmap(mapW, mapH, PixelFormat.Format32bppArgb);
             using var mg = Graphics.FromImage(_fullMap);
-            mg.Clear(BackColor);
+            var theme = ThemeManager.Instance.CurrentTheme;
+            Color bg = Color.FromArgb(102, theme.EditorBackground);
+            mg.Clear(bg);
 
             float rowScale = mapH / (float)_totalLines;
             int minRowH = Math.Max(1, (int)Math.Floor(rowScale));
