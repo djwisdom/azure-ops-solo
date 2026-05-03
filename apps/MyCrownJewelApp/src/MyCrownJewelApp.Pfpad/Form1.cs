@@ -258,6 +258,7 @@
         this.KeyDown += Form1_KeyDown;
         this.FormClosing += Form1_FormClosing;
         this.Activated += Form1_Activated;
+        this.Shown += (s, e) => PositionTabDropdownButton();
 
         // Enable file drop support (client area + non-client area)
         EnableFileDrop();
@@ -407,7 +408,6 @@
             {
                 this.Controls.Add(_tabDropdownButton);
                 _tabDropdownButton.BringToFront();
-                PositionTabDropdownButton();
                 tabControl.Resize += (s, e) => PositionTabDropdownButton();
                 tabControl.ControlAdded += (s, e) => PositionTabDropdownButton();
                 tabControl.ControlRemoved += (s, e) => PositionTabDropdownButton();
