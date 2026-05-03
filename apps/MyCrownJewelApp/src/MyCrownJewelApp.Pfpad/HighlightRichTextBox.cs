@@ -13,6 +13,8 @@ public class HighlightRichTextBox : RichTextBox
     private CurrentLineHighlightMode _highlightMode = CurrentLineHighlightMode.Off;
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
     private WinFormsTimer? _invalidateTimer;
+    private WinFormsTimer? _caretBlinkTimer;
+    private bool _caretVisible = true;
 
     private int _guideColumn = 80;
     private bool _showGuide = false;
@@ -31,22 +33,22 @@ public class HighlightRichTextBox : RichTextBox
 
         _invalidateTimer = new WinFormsTimer { Interval = 16 };
         _invalidateTimer.Tick += (s, e) => { _invalidateTimer.Stop(); Invalidate(); };
+
+        _caretBlinkTimer = new WinFormsTimer { Interval = 500 };
+        _caretBlinkTimer.Tick += (s, e) => { _caretVisible = !_caretVisible; Invalidate(); };
     }
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        UpdateCaretWidth();
+        HideCaret(Handle);
+        _caretBlinkTimer?.Start();
     }
 
     private void UpdateCaretWidth()
     {
         if (!IsHandleCreated) return;
-        int charW = Math.Max(1, (int)(8 * ZoomFactor));
-        int charH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
-        DestroyCaret();
-        CreateCaret(Handle, IntPtr.Zero, charW, charH);
-        ShowCaret(Handle);
+        HideCaret(Handle);
     }
 
     public void SyncCaretWidth() => UpdateCaretWidth();
@@ -54,7 +56,24 @@ public class HighlightRichTextBox : RichTextBox
     protected override void OnGotFocus(EventArgs e)
     {
         base.OnGotFocus(e);
-        UpdateCaretWidth();
+        HideCaret(Handle);
+        _caretBlinkTimer?.Start();
+        Invalidate();
+    }
+
+    protected override void OnLostFocus(EventArgs e)
+    {
+        base.OnLostFocus(e);
+        _caretBlinkTimer?.Stop();
+        _caretVisible = false;
+        Invalidate();
+    }
+
+    protected override void OnSelectionChanged(EventArgs e)
+    {
+        base.OnSelectionChanged(e);
+        HideCaret(Handle);
+        Invalidate();
     }
 
     [Category("Appearance")]
@@ -64,10 +83,10 @@ public class HighlightRichTextBox : RichTextBox
         get => _highlightMode;
         set
         {
-                if (_highlightMode != value)
-                {
-                    _highlightMode = value;
-                    Invalidate();
+            if (_highlightMode != value)
+            {
+                _highlightMode = value;
+                Invalidate();
                 CurrentLineHighlightModeChanged?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -79,12 +98,6 @@ public class HighlightRichTextBox : RichTextBox
     {
         get => _highlightColor;
         set { _highlightColor = value; Invalidate(); }
-    }
-
-    protected override void OnSelectionChanged(EventArgs e)
-    {
-        base.OnSelectionChanged(e);
-        Invalidate();
     }
 
     private Rectangle? GetCurrentLineRect()
@@ -125,6 +138,24 @@ public class HighlightRichTextBox : RichTextBox
 
             using var pen = new Pen(_guideColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
             g.DrawLine(pen, guideX, 0, guideX, ClientSize.Height);
+        }
+        catch { }
+    }
+
+    private void DrawBlockCursor(Graphics g)
+    {
+        try
+        {
+            int pos = SelectionStart;
+            if (pos > TextLength) return;
+            int line = GetLineFromCharIndex(pos);
+            int lineStart = GetFirstCharIndexFromLine(line);
+            Point pt = GetPositionFromCharIndex(pos);
+            if (pt.IsEmpty) return;
+            int charW = Math.Max(1, (int)(8 * ZoomFactor));
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            using var brush = new SolidBrush(ForeColor);
+            g.FillRectangle(brush, pt.X, pt.Y, charW, lineH);
         }
         catch { }
     }
@@ -190,6 +221,7 @@ public class HighlightRichTextBox : RichTextBox
         if (disposing)
         {
             _invalidateTimer?.Dispose();
+            _caretBlinkTimer?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -250,6 +282,9 @@ public class HighlightRichTextBox : RichTextBox
     [DllImport("user32.dll")]
     private static extern bool ShowCaret(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool HideCaret(IntPtr hWnd);
+
     private const int SRCCOPY = 0x00CC0020;
 
     protected override void WndProc(ref Message m)
@@ -303,6 +338,9 @@ public class HighlightRichTextBox : RichTextBox
 
                         DrawColumnGuide(g);
                         DrawFoldBracketLines(g);
+
+                        if (_caretVisible && Focused && IsHandleCreated && !IsDisposed)
+                            DrawBlockCursor(g);
                     }
                     finally
                     {
