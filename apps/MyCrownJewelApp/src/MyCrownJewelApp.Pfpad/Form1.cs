@@ -1080,7 +1080,12 @@
             
             if (syntaxHighlightingEnabled && incrementalHighlighter != null)
             {
-                RequestVisibleHighlight();
+                _applyingHighlight = true;
+                ResetVisibleRangeToBase(theme.Text);
+                _applyingHighlight = false;
+                var (first, last) = GetVisibleLineRange();
+                for (int l = first; l <= last; l++)
+                    incrementalHighlighter.MarkDirty(l);
             }
         }
 
