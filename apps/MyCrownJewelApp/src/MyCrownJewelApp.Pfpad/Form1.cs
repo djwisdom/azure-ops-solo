@@ -444,11 +444,8 @@
                     {
                         if (_highlightApplyQueue.Count > 0)
                             patch = _highlightApplyQueue.Dequeue();
-                        if (_highlightApplyQueue.Count == 0)
-                        {
-                            _highlightApplyTimer.Stop();
+                        else
                             break;
-                        }
                     }
                     if (patch != null)
                         ApplyOneLine(patch.LineNumber, patch.Tokens);
@@ -1143,6 +1140,7 @@ darkThemeMenuItem.Checked = isDark;
             {
                 highlightTimer?.Stop();
                 CreateIncrementalHighlighter();
+                _highlightApplyTimer?.Start();
                 highlightTimer?.Start();
             }
             else
