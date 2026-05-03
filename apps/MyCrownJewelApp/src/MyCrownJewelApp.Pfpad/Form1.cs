@@ -3484,6 +3484,8 @@ darkThemeMenuItem.Checked = isDark;
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             _suspendSelectionChanged = true;
+            int savedStart = textEditor.SelectionStart;
+            int savedLength = textEditor.SelectionLength;
             BeginUpdate(textEditor);
             try
             {
@@ -3516,6 +3518,8 @@ darkThemeMenuItem.Checked = isDark;
             finally
             {
                 EndUpdate(textEditor);
+                textEditor.SelectionStart = savedStart;
+                textEditor.SelectionLength = savedLength;
                 _suspendSelectionChanged = false;
             }
         }
