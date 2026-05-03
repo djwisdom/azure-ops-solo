@@ -391,11 +391,10 @@
                 if (gutterVisible)
                 {
                     gutterPanel.UpdateLineNumberWidth();
-                    mainTable.ColumnStyles[0].Width = gutterPanel.DesiredWidth;
                 }
                 else
                 {
-                    mainTable.ColumnStyles[0].Width = 0;
+                    gutterPanel.Visible = false;
                 }
             }
             
@@ -1092,13 +1091,13 @@ darkThemeMenuItem.Checked = isDark;
             {
                 if (gutterVisible)
                 {
+                    gutterPanel.Visible = true;
                     gutterPanel.UpdateLineNumberWidth();
-                    mainTable.ColumnStyles[0].Width = gutterPanel.DesiredWidth;
                     mainTable.PerformLayout();
                 }
                 else
                 {
-                    mainTable.ColumnStyles[0].Width = 0;
+                    gutterPanel.Visible = false;
                 }
             }
             gutterPanel.RefreshGutter();
@@ -2098,10 +2097,8 @@ darkThemeMenuItem.Checked = isDark;
 
         private void SyncGutterColumnWidth()
         {
-            if (mainTable != null && gutterPanel != null)
-            {
-                mainTable.ColumnStyles[0].Width = gutterPanel.DesiredWidth;
-            }
+            if (gutterPanel != null)
+                gutterPanel.UpdateLineNumberWidth();
         }
 
         private void StatusBar_Click(object? sender, EventArgs e) => ToggleStatusBar();
