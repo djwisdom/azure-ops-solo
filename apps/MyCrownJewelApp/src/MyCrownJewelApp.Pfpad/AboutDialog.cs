@@ -19,7 +19,7 @@ public sealed class AboutDialog : Form
 
     public AboutDialog()
     {
-        var theme = ThemeManager.Instance.IsDarkMode ? Theme.Dark : Theme.Light;
+        var theme = ThemeManager.Instance.CurrentTheme;
         BackColor = theme.Background;
         ForeColor = theme.Text;
         FormBorderStyle = FormBorderStyle.None;

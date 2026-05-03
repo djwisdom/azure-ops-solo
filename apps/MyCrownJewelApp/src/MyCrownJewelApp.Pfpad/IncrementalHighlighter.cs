@@ -1,11 +1,6 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -30,94 +25,78 @@ public sealed record HighlightPatch(int LineNumber, IReadOnlyList<TokenInfo> Tok
 
 public sealed class IncrementalHighlighter : IDisposable
 {
-    private readonly RichTextBox _textEditor;
-    private readonly ConcurrentDictionary<int, LineTokens> _tokenCache;
-    private readonly Channel<(int Line, string Text)> _dirtyLines;
-    private readonly CancellationTokenSource _cts;
-    private readonly Task? _workerTask;
-    private readonly SynchronizationContext? _uiContext;
-
-    private readonly HashSet<string> _keywordSet;
-    private readonly HashSet<string> _preprocessorSet;
-
-    private const int MaxLinesPerBatch = 50;
+    private readonly RichTextBox _editor;
+    private readonly ConcurrentDictionary<int, LineTokens> _cache = new();
+    private readonly Channel<(int Line, string Text)> _channel;
+    private readonly CancellationTokenSource _cts = new();
+    private readonly Task _worker;
+    private readonly HashSet<string> _keywords;
+    private readonly HashSet<string> _preprocs;
     private bool _disposed;
+
+    private const int MaxBatch = 50;
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
     private const int EM_GETLINE = 0xC4;
     private const int EM_GETLINECOUNT = 0xBA;
 
-    public event EventHandler<List<HighlightPatch>>? BatchReady;
+    public event Action<List<HighlightPatch>>? PatchReady;
 
-    public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax)
-        : this(textEditor, syntax, SynchronizationContext.Current)
+    public IncrementalHighlighter(RichTextBox editor, SyntaxDefinition syntax)
     {
-    }
+        _editor = editor;
+        _keywords = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
+        foreach (var t in syntax.Types) _keywords.Add(t);
+        _preprocs = new HashSet<string>(syntax.Preprocessor, StringComparer.Ordinal);
 
-    public IncrementalHighlighter(RichTextBox textEditor, SyntaxDefinition syntax, SynchronizationContext? uiContext)
-    {
-        _textEditor = textEditor;
-        _keywordSet = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
-        foreach (var t in syntax.Types) _keywordSet.Add(t);
-        _preprocessorSet = new HashSet<string>(syntax.Preprocessor, StringComparer.Ordinal);
-
-        _tokenCache = new ConcurrentDictionary<int, LineTokens>();
-        _dirtyLines = Channel.CreateBounded<(int, string)>(new BoundedChannelOptions(2000)
+        _channel = Channel.CreateBounded<(int, string)>(new BoundedChannelOptions(2000)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = false
         });
-        _cts = new CancellationTokenSource();
-        _uiContext = uiContext;
-        _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token), _cts.Token);
+
+        _worker = Task.Run(WorkerLoop);
     }
 
     public void RequestRange(int startLine, int endLine)
     {
-        if (startLine < 0 || _textEditor.IsDisposed) return;
-        if (!_textEditor.IsHandleCreated)
-        {
-            var unused = _textEditor.Handle;
-        }
-        int lineCount = SendMessage(_textEditor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
+        if (startLine < 0 || _editor.IsDisposed) return;
+        int lineCount = SendMessage(_editor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
         for (int line = startLine; line <= endLine && line < lineCount; line++)
-        {
-            if (!_tokenCache.ContainsKey(line))
-            {
-                string? text = GetLineText(line);
-                if (text != null)
-                    _dirtyLines.Writer.TryWrite((line, text));
-            }
-        }
+            if (!_cache.ContainsKey(line))
+                EnqueueLine(line);
     }
 
     public IReadOnlyList<TokenInfo>? GetTokens(int lineIndex)
-    {
-        return _tokenCache.TryGetValue(lineIndex, out var entry) ? entry.Tokens : null;
-    }
+        => _cache.TryGetValue(lineIndex, out var entry) ? entry.Tokens : null;
 
     public void MarkDirty(int lineNumber)
     {
         if (lineNumber < 0) return;
-        _tokenCache.TryRemove(lineNumber, out _);
-        string? text = GetLineText(lineNumber);
-        if (text != null)
-            _dirtyLines.Writer.TryWrite((lineNumber, text));
+        _cache.TryRemove(lineNumber, out _);
+        EnqueueLine(lineNumber);
     }
 
-    private string? GetLineText(int lineIndex)
+    private void EnqueueLine(int line)
+    {
+        string? text = GetLineText(line);
+        if (text != null)
+            _channel.Writer.TryWrite((line, text));
+    }
+
+    private string? GetLineText(int line)
     {
         try
         {
-            int lineCount = SendMessage(_textEditor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
-            if (lineIndex < 0 || lineIndex >= lineCount) return null;
+            int count = SendMessage(_editor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
+            if (line < 0 || line >= count) return null;
             IntPtr ptr = Marshal.AllocCoTaskMem(4096 * 2);
             try
             {
                 Marshal.WriteInt16(ptr, (short)4096);
-                int len = SendMessage(_textEditor.Handle, EM_GETLINE, lineIndex, ptr);
+                int len = SendMessage(_editor.Handle, EM_GETLINE, line, ptr);
                 return len > 0 ? Marshal.PtrToStringUni(ptr, len).TrimEnd('\r', '\n') : null;
             }
             finally { Marshal.FreeCoTaskMem(ptr); }
@@ -125,112 +104,141 @@ public sealed class IncrementalHighlighter : IDisposable
         catch { return null; }
     }
 
-    private async Task WorkerLoopAsync(CancellationToken ct)
+    private async Task WorkerLoop()
     {
         var batch = new List<(int Line, string Text)>();
-        await foreach (var entry in _dirtyLines.Reader.ReadAllAsync(ct))
+        await foreach (var entry in _channel.Reader.ReadAllAsync(_cts.Token))
         {
-            if (ct.IsCancellationRequested) break;
-
             batch.Clear();
             batch.Add(entry);
-            while (_dirtyLines.Reader.TryRead(out var next) && batch.Count < MaxLinesPerBatch)
-            {
-                if (ct.IsCancellationRequested) break;
+            while (_channel.Reader.TryRead(out var next) && batch.Count < MaxBatch)
                 batch.Add(next);
-            }
 
             batch.Sort((a, b) => a.Line.CompareTo(b.Line));
 
+            var patches = new List<HighlightPatch>(batch.Count);
             TokenizerState state = TokenizerState.Initial;
-            int startLine = batch[0].Line;
-            if (startLine > 0 && _tokenCache.TryGetValue(startLine - 1, out var prev))
+
+            int firstLine = batch[0].Line;
+            if (firstLine > 0 && _cache.TryGetValue(firstLine - 1, out var prev))
                 state = prev.StateAfter;
 
-            var patches = new List<HighlightPatch>(batch.Count);
             for (int i = 0; i < batch.Count; i++)
             {
-                if (ct.IsCancellationRequested) break;
+                if (_cts.IsCancellationRequested) break;
                 int lineNum = batch[i].Line;
-                string text = batch[i].Text;
-                var (tokens, nextState) = TokenizeLine(text, state);
+                var (tokens, nextState) = TokenizeLine(batch[i].Text.AsSpan(), state);
                 state = nextState;
-                _tokenCache[lineNum] = new LineTokens(tokens, state);
+                _cache[lineNum] = new LineTokens(tokens, state);
                 patches.Add(new HighlightPatch(lineNum, tokens));
             }
 
-            // Send entire batch as one UI update
-            _uiContext?.Post(_ =>
+            if (patches.Count > 0)
             {
-                try { BatchReady?.Invoke(this, patches); }
+                try { _editor.BeginInvoke(() => PatchReady?.Invoke(patches)); }
                 catch { }
-            }, null);
+            }
 
-            await Task.Delay(1, ct);
+            await Task.Delay(1, _cts.Token);
         }
     }
 
-    internal (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(string line, TokenizerState state)
+    internal (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(
+        ReadOnlySpan<char> line, TokenizerState state)
     {
         var tokens = new List<TokenInfo>();
-        if (string.IsNullOrEmpty(line)) return (tokens, state with { InComment = false });
+        if (line.Length == 0)
+            return (tokens, state with { InComment = false });
 
         int pos = 0;
 
         if (state.InComment)
         {
-            int end = line.IndexOf("*/", pos, StringComparison.Ordinal);
-            if (end >= 0) { AddToken(tokens, pos, end + 2 - pos, SyntaxTokenType.Comment); pos = end + 2; state = state with { InComment = false }; }
-            else { AddToken(tokens, 0, line.Length, SyntaxTokenType.Comment); return (tokens, state); }
+            int end = line.Slice(pos).IndexOf("*/".AsSpan());
+            if (end >= 0)
+            {
+                AddToken(tokens, pos, end + 2, SyntaxTokenType.Comment);
+                pos += end + 2;
+                state = state with { InComment = false };
+            }
+            else
+            {
+                AddToken(tokens, 0, line.Length, SyntaxTokenType.Comment);
+                return (tokens, state);
+            }
         }
 
-        if (pos == 0 && _preprocessorSet.Count > 0)
+        if (pos == 0 && _preprocs.Count > 0)
         {
-            int ws = pos; while (ws < line.Length && char.IsWhiteSpace(line[ws])) ws++;
-            if (ws < line.Length && line[ws] == '#') { AddToken(tokens, 0, line.Length, SyntaxTokenType.Preprocessor); return (tokens, state); }
+            int ws = pos;
+            while (ws < line.Length && char.IsWhiteSpace(line[ws])) ws++;
+            if (ws < line.Length && line[ws] == '#')
+            {
+                AddToken(tokens, 0, line.Length, SyntaxTokenType.Preprocessor);
+                return (tokens, state);
+            }
         }
 
         while (pos < line.Length)
         {
             char c = line[pos];
 
-            if (c == '/' && pos + 1 < line.Length && line[pos + 1] == '*')
+            if (c == '/' && pos + 1 < line.Length)
             {
-                int end = line.IndexOf("*/", pos + 2, StringComparison.Ordinal);
-                if (end >= 0) { AddToken(tokens, pos, end - pos + 2, SyntaxTokenType.Comment); pos = end + 2; }
-                else { AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment); return (tokens, state with { InComment = true }); }
-                continue;
+                if (line[pos + 1] == '*')
+                {
+                    int end = line.Slice(pos + 2).IndexOf("*/".AsSpan());
+                    if (end >= 0)
+                    {
+                        AddToken(tokens, pos, end + 4, SyntaxTokenType.Comment);
+                        pos += end + 4;
+                    }
+                    else
+                    {
+                        AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                        return (tokens, state with { InComment = true });
+                    }
+                    continue;
+                }
+                if (line[pos + 1] == '/')
+                {
+                    AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                    break;
+                }
             }
 
-            if (c == '/' && pos + 1 < line.Length && line[pos + 1] == '/')
+            if (c is '"' or '\'')
             {
-                AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
-                break;
-            }
-
-            if (c == '"' || c == '\'')
-            {
-                int s = pos; char q = c; pos++;
-                while (pos < line.Length) { if (line[pos] == '\\') { pos += 2; continue; } if (line[pos] == q) { pos++; break; } pos++; }
-                AddToken(tokens, s, pos - s, SyntaxTokenType.String);
+                int start = pos;
+                char q = c;
+                pos++;
+                while (pos < line.Length)
+                {
+                    if (line[pos] == '\\') { pos += 2; continue; }
+                    if (line[pos] == q) { pos++; break; }
+                    pos++;
+                }
+                AddToken(tokens, start, pos - start, SyntaxTokenType.String);
                 continue;
             }
 
             if (char.IsDigit(c) || (c == '-' && pos + 1 < line.Length && char.IsDigit(line[pos + 1])))
             {
-                int s = pos; if (c == '-') pos++;
-                while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.')) pos++;
-                AddToken(tokens, s, pos - s, SyntaxTokenType.Number);
+                int start = pos;
+                if (c == '-') pos++;
+                while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.'))
+                    pos++;
+                AddToken(tokens, start, pos - start, SyntaxTokenType.Number);
                 continue;
             }
 
             if (char.IsLetter(c) || c == '_' || c == '@')
             {
-                int s = pos;
-                while (pos < line.Length && (char.IsLetterOrDigit(line[pos]) || line[pos] == '_')) pos++;
-                string word = line.AsSpan(s, pos - s).ToString();
-                if (_keywordSet.Contains(word))
-                    AddToken(tokens, s, pos - s, SyntaxTokenType.Keyword);
+                int start = pos;
+                while (pos < line.Length && (char.IsLetterOrDigit(line[pos]) || line[pos] == '_'))
+                    pos++;
+                if (_keywords.Contains(line.Slice(start, pos - start).ToString()))
+                    AddToken(tokens, start, pos - start, SyntaxTokenType.Keyword);
                 continue;
             }
 
@@ -243,15 +251,15 @@ public sealed class IncrementalHighlighter : IDisposable
     private static void AddToken(List<TokenInfo> tokens, int start, int length, SyntaxTokenType type)
     {
         if (length <= 0) return;
-        tokens.Add(new TokenInfo { Type = type, StartIndex = start, Length = length, Text = "" });
+        tokens.Add(new TokenInfo { Type = type, StartIndex = start, Length = length });
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _cts.Cancel();
-        _dirtyLines.Writer.Complete();
-        try { _workerTask?.Wait(500); } catch { }
+        _channel.Writer.TryComplete();
+        try { _worker.Wait(500); } catch { }
         _cts.Dispose();
         _disposed = true;
     }

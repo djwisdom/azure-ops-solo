@@ -79,6 +79,7 @@ partial class Form1
     private ToolStripMenuItem vimModeMenuItem;
     private ToolStripMenuItem splitVMenuItem;
     private ToolStripMenuItem splitHMenuItem;
+    internal ToolStripMenuItem terminalMenuItem;
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
@@ -300,6 +301,10 @@ partial class Form1
         splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
         viewMenu.DropDownItems.Add(splitVMenuItem);
         viewMenu.DropDownItems.Add(splitHMenuItem);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
+        terminalMenuItem.Checked = false;
+        viewMenu.DropDownItems.Add(terminalMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(themeMenu);
 

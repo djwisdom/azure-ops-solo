@@ -230,13 +230,14 @@ namespace MyCrownJewelApp.Pfpad
             var map = new Dictionary<int, Color>();
             if (tokens == null) return map;
 
+            var theme = ThemeManager.Instance.CurrentTheme;
             var tokenColors = new Dictionary<SyntaxTokenType, Color>
             {
-                [SyntaxTokenType.Keyword] = Color.FromArgb(86, 156, 214),
-                [SyntaxTokenType.String] = Color.FromArgb(214, 157, 133),
-                [SyntaxTokenType.Comment] = Color.FromArgb(106, 153, 85),
-                [SyntaxTokenType.Number] = Color.FromArgb(181, 206, 168),
-                [SyntaxTokenType.Preprocessor] = Color.FromArgb(128, 128, 128),
+                [SyntaxTokenType.Keyword] = theme.KeywordColor,
+                [SyntaxTokenType.String] = theme.StringColor,
+                [SyntaxTokenType.Comment] = theme.CommentColor,
+                [SyntaxTokenType.Number] = theme.NumberColor,
+                [SyntaxTokenType.Preprocessor] = theme.PreprocessorColor,
                 [SyntaxTokenType.Identifier] = defaultColor,
             };
 

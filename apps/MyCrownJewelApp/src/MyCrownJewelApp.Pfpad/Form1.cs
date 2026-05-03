@@ -81,7 +81,9 @@
         private CurrentLineHighlightMode currentLineHighlightMode = CurrentLineHighlightMode.Off;
         internal int tabSize = 4;
         private bool insertSpaces = true;
-        internal bool isDarkTheme = true;
+        private Theme _currentTheme = Theme.Dark;
+        internal bool isDarkTheme => !_currentTheme.IsLight;
+        public bool IsDarkTheme => !_currentTheme.IsLight;
         internal float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
@@ -90,13 +92,26 @@
         private bool vimModeEnabled = false;
         private VimEngine? vimEngine;
 
+        // Terminal state
+        private TabControl? _terminalTabControl;
+        private SplitContainer? _terminalSplitContainer;
+        private Button? _terminalNewTabButton;
+        private readonly List<TerminalPanel> _terminalTabs = new();
+        private bool _terminalVisible = false;
+        private int _terminalHeight = 200;
+        private string _terminalShell = "";
+
+        private TerminalPanel? ActiveTerminal =>
+            _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
+                ? _terminalTabs[_terminalTabControl.SelectedIndex]
+                : null;
+
         // Minimap state
         private ToolStripMenuItem minimapMenuItem = null!;
         private bool _pendingMinimapVisible = false;
 
         // Properties for GutterPanel
         public CurrentLineHighlightMode LineHighlightMode => currentLineHighlightMode;
-        public bool IsDarkTheme => isDarkTheme;
 
         // Tab behavior settings
         private bool autoIndentEnabled = true;
@@ -146,11 +161,6 @@
         // Helper to get active document
         internal Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
 
-        // Syntax highlighting performance tracking
-        private DateTime _lastHighlightTime;
-        private int _highlightCountInLastSecond;
-        private Queue<DateTime> _highlightTimes;
-        
         // Suspend selection changed events during internal updates
         private bool _suspendSelectionChanged = false;
 
@@ -198,7 +208,6 @@
 
         // Settings persistence
         private record AppSettings(
-            bool IsDarkTheme,
             bool WordWrapEnabled,
             bool GutterVisible,
             bool StatusBarVisible,
@@ -213,7 +222,11 @@
             bool ElasticTabsEnabled,
             CurrentLineHighlightMode CurrentLineHighlightMode,
             bool SyntaxHighlightingEnabled,
-            bool MinimapVisible
+            bool MinimapVisible,
+            bool TerminalVisible = false,
+            int TerminalHeight = 200,
+            string TerminalShellPath = "",
+            string ThemeName = "Dark"
         );
 
         private string SettingsFilePath =>
@@ -229,13 +242,7 @@
         public HashSet<int> ModifiedLines => modifiedLines;
         public HashSet<int> CollapsedRegions => collapsedRegions;
 
-        private System.Windows.Forms.Timer? highlightTimer;
-        private Queue<HighlightPatch> _highlightApplyQueue = new();
-        private System.Windows.Forms.Timer? _highlightApplyTimer;
         private Button _tabDropdownButton = null!;
-
-        // Incremental highlight cache
-        private Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> compiledRegexCache = new();
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -322,7 +329,18 @@
                 incrementalHighlighter = null;
             };
             
-            UpdateThemeColors(isDarkTheme);
+            UpdateThemeColors(_currentTheme);
+
+            // Add Catppuccin themes to View > Theme menu
+            themeMenu.DropDownItems.Add(new ToolStripSeparator());
+            foreach (var name in ThemeManager.ThemeNames)
+            {
+                if (name == "Dark" || name == "Light") continue;
+                var item = new ToolStripMenuItem(name.Replace("Catppuccin ", ""));
+                item.Tag = name;
+                item.Click += CatppuccinTheme_Click;
+                themeMenu.DropDownItems.Add(item);
+            }
             ApplyWordWrap();
             UpdateStatusBar();
             UpdateColumnGuideMenuChecked();
@@ -345,11 +363,6 @@
             autoIndentMenuItem.Checked = autoIndentEnabled;
             smartTabsMenuItem.Checked = smartTabsEnabled;
             elasticTabsMenuItem.Checked = elasticTabsEnabled;
-
-            // Initialize syntax highlighting performance tracking
-            _lastHighlightTime = DateTime.Now;
-            _highlightCountInLastSecond = 0;
-            _highlightTimes = new Queue<DateTime>();
 
             // Initialize incremental syntax highlighter if enabled
             if (syntaxHighlightingEnabled)
@@ -419,76 +432,6 @@
             };
             _foldingManager.ScanRegions();
             
-            // Initialize syntax highlighting debounce timer
-            highlightTimer = new System.Windows.Forms.Timer();
-            highlightTimer.Interval = 150;
-            highlightTimer.Tick += (s, e) =>
-            {
-                highlightTimer.Stop();
-                if (syntaxHighlightingEnabled)
-                {
-                    RequestVisibleHighlight();
-                }
-            };
-
-            // Incremental highlight apply timer (queues and applies one line per tick)
-            _highlightApplyTimer = new System.Windows.Forms.Timer();
-            _highlightApplyTimer.Interval = 5;
-            _highlightApplyTimer.Tick += (s, e) =>
-            {
-                const int batchSize = 50;
-                bool hadWork = false;
-                _suspendSelectionChanged = true;
-                BeginUpdate(textEditor);
-                try
-                {
-                    for (int i = 0; i < batchSize; i++)
-                    {
-                        HighlightPatch? patch = null;
-                        lock (_highlightApplyQueue)
-                        {
-                            if (_highlightApplyQueue.Count > 0)
-                                patch = _highlightApplyQueue.Peek();
-                            else
-                                break;
-                        }
-                        if (patch != null)
-                        {
-                            try
-                            {
-                                if (ApplyOneLine(patch.LineNumber, patch.Tokens))
-                                {
-                                    lock (_highlightApplyQueue)
-                                    {
-                                        _highlightApplyQueue.Dequeue();
-                                    }
-                                    hadWork = true;
-                                }
-                                else
-                                {
-                                    break;
-                                }
-                            }
-                            catch { break; }
-                        }
-                    }
-                }
-                finally
-                {
-                    EndUpdate(textEditor);
-                }
-                _suspendSelectionChanged = false;
-                if (!hadWork)
-                {
-                    _highlightApplyTimer.Stop();
-                }
-            };
-
-            // Performance tracking for adaptive debouncing
-            _lastHighlightTime = DateTime.Now;
-            _highlightCountInLastSecond = 0;
-            _highlightTimes = new Queue<DateTime>();
-
             // Elastic tab stops debounce timer
             elasticTabTimer = new System.Windows.Forms.Timer();
             elasticTabTimer.Interval = 250; // 250ms after last change
@@ -502,13 +445,6 @@
 
              // Initialize incremental highlighter (after colors are loaded)
              if (documents.Count > 0) CreateIncrementalHighlighter();
-
-              // Apply syntax highlighting state after timer is created
-              if (syntaxHighlightingEnabled)
-              {
-                  _highlightApplyTimer?.Start();
-                  highlightTimer.Start();
-              }
 
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
@@ -553,6 +489,131 @@
               vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) ToggleAutoIndent(); };
               vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) ToggleSmartTabs(); };
               vimEngine.GoToLineRequested += (line) => GoToLine(line);
+
+             // Initialize integrated terminal with tab support
+             var defaultShell = string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell;
+
+             // Tab control for multiple terminal sessions
+             _terminalTabControl = new TabControl
+             {
+                 Dock = DockStyle.Fill,
+                 Padding = new Point(12, 4),
+                 Margin = new Padding(0),
+                 ItemSize = new Size(140, 26),
+                 HotTrack = true,
+                 DrawMode = TabDrawMode.OwnerDrawFixed,
+                 Alignment = TabAlignment.Top,
+                 BackColor = _currentTheme.MenuBackground
+             };
+             _terminalTabControl.HandleCreated += (s, e) =>
+             {
+                 SetWindowTheme(_terminalTabControl.Handle, "", "");
+                 int style = GetWindowLong(_terminalTabControl.Handle, GWL_STYLE);
+                 style = style & ~WS_BORDER;
+                 const int TCS_FLATBUTTONS = 0x0008;
+                 style |= TCS_FLATBUTTONS;
+                 SetWindowLong(_terminalTabControl.Handle, GWL_STYLE, style);
+                 int exStyle = GetWindowLong(_terminalTabControl.Handle, GWL_EXSTYLE);
+                 exStyle &= ~WS_EX_CLIENTEDGE;
+                 SetWindowLong(_terminalTabControl.Handle, GWL_EXSTYLE, exStyle);
+                 const uint SWP_FRAMECHANGED = 0x0020;
+                 const uint SWP_NOACTIVATE = 0x0010;
+                 const uint SWP_NOMOVE = 0x0002;
+                 const uint SWP_NOSIZE = 0x0001;
+                 const uint SWP_NOZORDER = 0x0004;
+                 SetWindowPos(_terminalTabControl.Handle, IntPtr.Zero, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+                 var theme = _currentTheme;
+                 SendMessage(_terminalTabControl.Handle, TCM_SETBKCOLOR, IntPtr.Zero,
+                     ColorTranslator.ToWin32(theme.MenuBackground));
+                 const int WM_UPDATEUISTATE = 0x0128;
+                 const int UIS_SET = 1;
+                 const int UISF_HIDEFOCUS = 0x1;
+                 SendMessage(_terminalTabControl.Handle, WM_UPDATEUISTATE,
+                     (UISF_HIDEFOCUS << 16) | UIS_SET, IntPtr.Zero);
+                 _terminalTabStripWindow?.ReleaseHandle();
+                 _terminalTabStripWindow = new TabStripBackgroundWindow(this, _terminalTabControl);
+                 _terminalTabStripWindow.AssignHandle(_terminalTabControl.Handle);
+             };
+             _terminalTabControl.HandleDestroyed += (s, e) =>
+             {
+                 _terminalTabStripWindow?.ReleaseHandle();
+                 _terminalTabStripWindow = null;
+             };
+             _terminalTabControl.DrawItem += TerminalTabControl_DrawItem;
+             _terminalTabControl.MouseDown += TerminalTabControl_MouseDown;
+             _terminalTabControl.SelectedIndexChanged += TerminalTabControl_SelectedIndexChanged;
+             _terminalTabControl.Resize += (s, e) => PositionTerminalNewTabButton();
+
+             // Create first terminal tab
+             AddTerminalTab(defaultShell);
+
+             // "+" button positioned in the tab strip area
+             _terminalNewTabButton = new Button
+             {
+                 Text = "+",
+                 Font = new Font("Segoe UI", 11, FontStyle.Bold),
+                 FlatStyle = FlatStyle.Flat,
+                 Size = new Size(22, 26),
+                 Cursor = Cursors.Hand,
+                 TabStop = false,
+                 UseVisualStyleBackColor = false,
+                 BackColor = _currentTheme.MenuBackground,
+                 ForeColor = _currentTheme.Text
+             };
+             _terminalNewTabButton.FlatAppearance.BorderSize = 0;
+             _terminalNewTabButton.Click += (s, e) => AddTerminalTab(defaultShell);
+
+             // Replace editor row with a draggable SplitContainer (editor top, terminal bottom)
+             _terminalSplitContainer = new SplitContainer
+             {
+                 Dock = DockStyle.Fill,
+                 Orientation = Orientation.Horizontal,
+                 Panel1MinSize = 100,
+                 Panel2MinSize = 60,
+                 SplitterWidth = 4,
+                 SplitterIncrement = 8,
+                 Panel2Collapsed = !_terminalVisible,
+                 BorderStyle = BorderStyle.None
+             };
+             _terminalSplitContainer.HandleCreated += (s, e) =>
+                 SetWindowTheme(_terminalSplitContainer.Handle, "", "");
+             _terminalSplitContainer.SplitterMoved += (s, e) =>
+                 _terminalHeight = Math.Max(60, _terminalSplitContainer.Height
+                     - _terminalSplitContainer.SplitterDistance
+                     - _terminalSplitContainer.SplitterWidth);
+
+             // Panel1: existing editor (mainTable with gutter, editor, minimap)
+             mainLayout.SuspendLayout();
+             mainLayout.Controls.Remove(mainTable);
+             _terminalSplitContainer.Panel1.Controls.Add(mainTable);
+             mainTable.Dock = DockStyle.Fill;
+             _terminalSplitContainer.Panel1.BackColor = _currentTheme.EditorBackground;
+
+             // Panel2: tab control + new-tab button
+             _terminalSplitContainer.Panel2.BackColor = _currentTheme.MenuBackground;
+             _terminalSplitContainer.Panel2.Controls.Add(_terminalTabControl);
+             _terminalSplitContainer.Panel2.Controls.Add(_terminalNewTabButton);
+
+             // Insert split container into row 2, shift status up
+             mainLayout.Controls.Add(_terminalSplitContainer, 0, 2);
+             mainLayout.SetRow(statusStrip, 3);
+             mainLayout.RowCount = 4;
+             mainLayout.RowStyles.Clear();
+             mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 0: menu
+             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));   // 1: tabs
+             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));  // 2: editor + terminal (split)
+             mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 3: status
+             mainLayout.ResumeLayout(true);
+
+             // Set initial splitter position if terminal should be visible
+             if (_terminalVisible)
+             {
+                 ShowTerminal();
+             }
+
+             // Apply terminal theme to match editor
+             UpdateTerminalTheme();
 
              // Ensure initial dirty flag is clear after all initialization
              isModified = false;
@@ -920,11 +981,10 @@
 
         #region Theme & Toggles
 
-        private void UpdateThemeColors(bool isDark)
+        private void UpdateThemeColors(Theme theme)
         {
-            _themeManager.IsDarkMode = isDark;
-            var theme = isDark ? Theme.Dark : Theme.Light;
-            _themeManager.CurrentTheme = theme;
+            _currentTheme = theme;
+            _themeManager.SetTheme(theme.Name);
             
             this.BackColor = theme.Background;
             this.ForeColor = theme.Text;
@@ -938,7 +998,7 @@
             {
                 textEditor.BackColor = theme.EditorBackground;
                 textEditor.ForeColor = theme.Text;
-                textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
+                textEditor.HighlightColor = theme.IsLight ? Color.FromArgb(80, 230, 230, 230) : Color.FromArgb(80, 60, 60, 60);
             }
             if (_splitEditor != null)
             {
@@ -950,25 +1010,28 @@
                 gutterPanel.BackColor = theme.EditorBackground;
                 gutterPanel.ForeColor = theme.Text;
             }
+            if (tabControl != null)
+            {
+                tabControl.BackColor = theme.MenuBackground;
+            }
             if (minimapControl != null)
             {
                 minimapControl.BackColor = theme.EditorBackground;
-                minimapControl.ViewportColor = isDark ? Color.FromArgb(100, Color.DodgerBlue) : Color.FromArgb(80, Color.LightBlue);
+                minimapControl.ViewportColor = theme.IsLight ? Color.FromArgb(80, Color.LightBlue) : Color.FromArgb(100, Color.DodgerBlue);
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
                 minimapControl.RefreshNow();
             }
-            textEditor!.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
+            textEditor!.GuideColor = Color.FromArgb(120, 120, 120);
             if (_tabDropdownButton != null)
             {
-                var ddTheme = isDark ? Theme.Dark : Theme.Light;
-                _tabDropdownButton.BackColor = ddTheme.MenuBackground;
-                _tabDropdownButton.ForeColor = ddTheme.Muted;
-                _tabDropdownButton.FlatAppearance.MouseOverBackColor = ddTheme.ButtonHoverBackground;
+                _tabDropdownButton.BackColor = theme.MenuBackground;
+                _tabDropdownButton.ForeColor = theme.Muted;
+                _tabDropdownButton.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
             }
             textEditor!.Invalidate();
             if (textEditor != null)
             {
-                textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
+                textEditor.HighlightColor = theme.IsLight ? Color.FromArgb(80, 230, 230, 230) : Color.FromArgb(80, 60, 60, 60);
             }
             if (statusStrip != null)
             {
@@ -1017,17 +1080,6 @@
             {
                 RequestVisibleHighlight();
             }
-
-darkThemeMenuItem.Checked = isDark;
-            lightThemeMenuItem.Checked = !isDark;
-
-            UpdateThemeDropDown();
-            UpdateTabControlTheme();
-
-            CreateIncrementalHighlighter();
-
-            gutterPanel?.RefreshGutter();
-            textEditor!.Invalidate();
         }
 
         private void TextEditor_Resize(object? sender, EventArgs e)
@@ -1036,20 +1088,21 @@ darkThemeMenuItem.Checked = isDark;
             if (syntaxHighlightingEnabled)
             {
                 RequestVisibleHighlight();
-                highlightTimer?.Stop();
-                highlightTimer?.Start();
             }
             PositionMinimap();
         }
 
         private void ToggleTheme()
         {
-            _themeManager.ToggleTheme();
-            isDarkTheme = _themeManager.IsDarkMode;
-            UpdateThemeColors(isDarkTheme);
-            // Update theme menu checkmarks
-            darkThemeMenuItem.Checked = isDarkTheme;
-            lightThemeMenuItem.Checked = !isDarkTheme;
+            var names = ThemeManager.ThemeNames;
+            int idx = Array.IndexOf(names, _currentTheme.Name);
+            idx = (idx + 1) % names.Length;
+            string next = names[idx];
+            _currentTheme = ThemeManager.Themes[next];
+            _themeManager.SetTheme(next);
+            UpdateThemeColors(_currentTheme);
+            UpdateTerminalTheme();
+            UpdateThemeDropDown();
         }
 
         private void OnThemeChanged(Theme theme)
@@ -1058,10 +1111,10 @@ darkThemeMenuItem.Checked = isDark;
                 this.Invoke(new Action(() => OnThemeChanged(theme)));
             else
             {
-                isDarkTheme = theme.Equals(Theme.Dark);
-                UpdateThemeColors(isDarkTheme);
-                darkThemeMenuItem.Checked = isDarkTheme;
-                lightThemeMenuItem.Checked = !isDarkTheme;
+                _currentTheme = theme;
+                UpdateThemeColors(_currentTheme);
+                UpdateTerminalTheme();
+                UpdateThemeDropDown();
             }
         }
 
@@ -1076,7 +1129,10 @@ darkThemeMenuItem.Checked = isDark;
                     var settings = JsonSerializer.Deserialize<AppSettings>(json);
                     if (settings != null)
                     {
-                        isDarkTheme = settings.IsDarkTheme;
+                        string themeName = settings.ThemeName;
+                        if (string.IsNullOrEmpty(themeName) || !ThemeManager.Themes.ContainsKey(themeName))
+                            themeName = "Dark";
+                        _currentTheme = ThemeManager.Themes.TryGetValue(themeName, out var t) ? t : Theme.Dark;
                         wordWrapEnabled = settings.WordWrapEnabled;
                         gutterVisible = settings.GutterVisible;
                         statusBarVisible = settings.StatusBarVisible;
@@ -1092,6 +1148,9 @@ darkThemeMenuItem.Checked = isDark;
                         currentLineHighlightMode = settings.CurrentLineHighlightMode;
                         syntaxHighlightingEnabled = settings.SyntaxHighlightingEnabled;
                         _pendingMinimapVisible = settings.MinimapVisible;
+                        _terminalVisible = settings.TerminalVisible;
+                        _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
+                        _terminalShell = settings.TerminalShellPath ?? "";
                     }
                 }
             }
@@ -1105,7 +1164,7 @@ darkThemeMenuItem.Checked = isDark;
                 string path = SettingsFilePath;
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                  var settings = new AppSettings(
-                     IsDarkTheme: isDarkTheme,
+                     ThemeName: _currentTheme.Name,
                      WordWrapEnabled: wordWrapEnabled,
                      GutterVisible: gutterVisible,
                      StatusBarVisible: statusBarVisible,
@@ -1120,7 +1179,10 @@ darkThemeMenuItem.Checked = isDark;
                      ElasticTabsEnabled: elasticTabsEnabled,
                      CurrentLineHighlightMode: currentLineHighlightMode,
                      SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
-                    MinimapVisible: minimapMenuItem?.Checked ?? false
+                     MinimapVisible: minimapMenuItem?.Checked ?? false,
+                     TerminalVisible: _terminalVisible,
+                     TerminalHeight: _terminalHeight,
+                     TerminalShellPath: _terminalShell
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -1182,6 +1244,196 @@ darkThemeMenuItem.Checked = isDark;
             SaveSettings();
         }
 
+        private void ToggleTerminal_Click(object? sender, EventArgs e)
+        {
+            ToggleTerminal();
+        }
+
+        private void ToggleTerminal()
+        {
+            _terminalVisible = !_terminalVisible;
+            terminalMenuItem.Checked = _terminalVisible;
+            if (_terminalVisible)
+                ShowTerminal();
+            else
+                HideTerminal();
+            SaveSettings();
+        }
+
+        private void ShowTerminal()
+        {
+            if (_terminalSplitContainer == null) return;
+            _terminalVisible = true;
+            terminalMenuItem.Checked = true;
+
+            foreach (var t in _terminalTabs)
+                t.Start();
+
+            _terminalSplitContainer.Panel2Collapsed = false;
+
+            int available = _terminalSplitContainer.Height - _terminalSplitContainer.SplitterWidth;
+            if (_terminalHeight >= available)
+                _terminalHeight = Math.Min(available / 2, 400);
+            _terminalSplitContainer.SplitterDistance = available - _terminalHeight;
+
+            _terminalSplitContainer.PerformLayout();
+            ActiveTerminal?.FocusInput();
+            PositionTerminalNewTabButton();
+        }
+
+        private void HideTerminal()
+        {
+            if (_terminalSplitContainer == null) return;
+            _terminalVisible = false;
+            terminalMenuItem.Checked = false;
+
+            _terminalHeight = Math.Max(60,
+                _terminalSplitContainer.Height - _terminalSplitContainer.SplitterDistance - _terminalSplitContainer.SplitterWidth);
+
+            _terminalSplitContainer.Panel2Collapsed = true;
+            _terminalSplitContainer.PerformLayout();
+            textEditor?.Focus();
+        }
+
+        private void UpdateTerminalTheme()
+        {
+            foreach (var t in _terminalTabs)
+                t.SetTheme(_currentTheme);
+            var theme = _currentTheme;
+            if (_terminalSplitContainer != null)
+            {
+                _terminalSplitContainer.BackColor = theme.MenuBackground;
+                _terminalSplitContainer.Panel1.BackColor = theme.EditorBackground;
+                _terminalSplitContainer.Panel2.BackColor = theme.MenuBackground;
+            }
+            if (_terminalTabControl != null)
+            {
+                _terminalTabControl.BackColor = theme.MenuBackground;
+                if (_terminalTabControl.IsHandleCreated)
+                    SendMessage(_terminalTabControl.Handle, TCM_SETBKCOLOR, IntPtr.Zero,
+                        (IntPtr)ColorTranslator.ToWin32(theme.MenuBackground));
+            }
+            if (_terminalNewTabButton != null)
+            {
+                _terminalNewTabButton.BackColor = theme.MenuBackground;
+                _terminalNewTabButton.ForeColor = theme.Text;
+            }
+        }
+
+        private TerminalPanel AddTerminalTab(string? shellPath)
+        {
+            var terminal = new TerminalPanel(shellPath);
+            terminal.SetTheme(_currentTheme);
+
+            int tabNumber = _terminalTabs.Count + 1;
+            var page = new TabPage($"Terminal {tabNumber}")
+            {
+                BackColor = _currentTheme.EditorBackground,
+                ToolTipText = shellPath ?? "Default shell"
+            };
+            terminal.Dock = DockStyle.Fill;
+            terminal.HideTerminalRequested += () => CloseTerminalTab(terminal);
+            page.Controls.Add(terminal);
+
+            _terminalTabControl?.TabPages.Insert(
+                _terminalTabControl.TabPages.Count, page);
+            _terminalTabs.Add(terminal);
+            if (_terminalTabControl != null)
+                _terminalTabControl.SelectedTab = page;
+
+            if (_terminalVisible)
+                terminal.Start();
+
+            PositionTerminalNewTabButton();
+            return terminal;
+        }
+
+        private void CloseTerminalTab(TerminalPanel terminal)
+        {
+            int index = _terminalTabs.IndexOf(terminal);
+            if (index < 0) return;
+
+            terminal.Kill();
+            _terminalTabControl?.TabPages.RemoveAt(index);
+            _terminalTabs.RemoveAt(index);
+            terminal.Dispose();
+
+            if (_terminalTabs.Count == 0)
+            {
+                AddTerminalTab(string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell);
+            }
+            PositionTerminalNewTabButton();
+        }
+
+        private void TerminalTabControl_DrawItem(object? sender, DrawItemEventArgs e)
+        {
+            var tc = (TabControl)sender!;
+            if (e.Index < 0 || e.Index >= tc.TabPages.Count) return;
+            var page = tc.TabPages[e.Index];
+            var bounds = tc.GetTabRect(e.Index);
+            bounds.Height = tc.ItemSize.Height;
+
+            var theme = _currentTheme;
+            bool isSelected = (e.Index == tc.SelectedIndex);
+
+            Color backColor = isSelected
+                ? theme.EditorBackground
+                : theme.MenuBackground;
+
+            using var bgBrush = new SolidBrush(backColor);
+            e.Graphics.FillRectangle(bgBrush, bounds);
+
+            TextRenderer.DrawText(e.Graphics, page.Text, e.Font ?? tc.Font,
+                new Rectangle(bounds.X + 4, bounds.Y + 3, bounds.Width - 22, bounds.Height - 4),
+                isSelected ? theme.Text : theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+            var closeRect = new Rectangle(bounds.Right - 17, bounds.Y + 5, 14, 14);
+            TextRenderer.DrawText(e.Graphics, "\u00D7", e.Font ?? tc.Font,
+                closeRect, theme.Muted,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
+        private void TerminalTabControl_MouseDown(object? sender, MouseEventArgs e)
+        {
+            var tc = (TabControl)sender!;
+            for (int i = 0; i < tc.TabPages.Count; i++)
+            {
+                var bounds = tc.GetTabRect(i);
+                var closeRect = new Rectangle(bounds.Right - 17, bounds.Y + 5, 14, 14);
+                if (closeRect.Contains(e.Location) && i < _terminalTabs.Count)
+                {
+                    CloseTerminalTab(_terminalTabs[i]);
+                    return;
+                }
+            }
+        }
+
+        private void TerminalTabControl_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            var active = ActiveTerminal;
+            if (active != null && _terminalSplitContainer is { Panel2Collapsed: false })
+            {
+                active.Start();
+                active.FocusInput();
+            }
+            PositionTerminalNewTabButton();
+        }
+
+        private void PositionTerminalNewTabButton()
+        {
+            if (_terminalNewTabButton == null || _terminalTabControl == null) return;
+            if (_terminalTabControl.Parent == null) return;
+
+            var strip = _terminalTabControl;
+            int x = strip.Left + strip.Width - _terminalNewTabButton.Width - 2;
+            int y = strip.Top + 2;
+            if (x < strip.Left) x = strip.Left;
+            _terminalNewTabButton.Location = new Point(x, y);
+            _terminalNewTabButton.BringToFront();
+            _terminalNewTabButton.Visible = true;
+        }
+
         private void MinimapMenuItem_Click(object? sender, EventArgs e)
         {
             _pendingMinimapVisible = minimapMenuItem.Checked;
@@ -1195,18 +1447,13 @@ darkThemeMenuItem.Checked = isDark;
             syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
             if (syntaxHighlightingEnabled)
             {
-                highlightTimer?.Stop();
                 CreateIncrementalHighlighter();
-                _highlightApplyTimer?.Start();
-                highlightTimer?.Start();
             }
             else
             {
-                _highlightApplyTimer?.Stop();
-                lock (_highlightApplyQueue) _highlightApplyQueue.Clear();
                 incrementalHighlighter?.Dispose();
                 incrementalHighlighter = null;
-                var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
+                var baseColor = _currentTheme.Text;
                 ResetVisibleRangeToBase(baseColor);
             }
             SaveSettings();
@@ -1616,11 +1863,10 @@ darkThemeMenuItem.Checked = isDark;
 
          internal void LoadFile(string path)
          {
-             try
-             {
-                  // Suspend background workers during file load
-                  elasticTabTimer?.Stop();
-                 highlightTimer?.Stop();
+              try
+              {
+                   // Suspend background workers during file load
+                   elasticTabTimer?.Stop();
 
                  string content = File.ReadAllText(path);
                  
@@ -1668,9 +1914,8 @@ darkThemeMenuItem.Checked = isDark;
                      catch { }
                  }
 
-                 // Resume column guide updates after load completes
-                  highlightTimer?.Start();
-                  elasticTabTimer?.Start();
+                // Resume column guide updates after load completes
+                   elasticTabTimer?.Start();
             }
              catch (Exception ex)
               {
@@ -2198,40 +2443,25 @@ darkThemeMenuItem.Checked = isDark;
         private void WordWrap_Click(object? sender, EventArgs e) => ToggleWordWrap();
         private void GutterMenuItem_Click(object? sender, EventArgs e) => ToggleGutter();
 
-        private void DarkTheme_Click(object? sender, EventArgs e)
+        private void ApplyThemeByName(string name)
         {
-            isDarkTheme = true;
-            _themeManager.IsDarkMode = true;
-            UpdateThemeColors(isDarkTheme);
+            if (!ThemeManager.Themes.TryGetValue(name, out var theme)) return;
+            _currentTheme = theme;
+            _themeManager.SetTheme(name);
+            UpdateThemeColors(_currentTheme);
+            UpdateTerminalTheme();
             UpdateThemeDropDown();
             SaveSettings();
         }
 
-        private void LightTheme_Click(object? sender, EventArgs e)
+        private void DarkTheme_Click(object? sender, EventArgs e) => ApplyThemeByName("Dark");
+        private void LightTheme_Click(object? sender, EventArgs e) => ApplyThemeByName("Light");
+        private void StatusBarDarkTheme_Click(object? sender, EventArgs e) => ApplyThemeByName("Dark");
+        private void StatusBarLightTheme_Click(object? sender, EventArgs e) => ApplyThemeByName("Light");
+        private void CatppuccinTheme_Click(object? sender, EventArgs e)
         {
-            isDarkTheme = false;
-            _themeManager.IsDarkMode = false;
-            UpdateThemeColors(isDarkTheme);
-            UpdateThemeDropDown();
-            SaveSettings();
-        }
-
-        private void StatusBarDarkTheme_Click(object? sender, EventArgs e)
-        {
-            isDarkTheme = true;
-            _themeManager.IsDarkMode = true;
-            UpdateThemeColors(isDarkTheme);
-            UpdateThemeDropDown();
-            SaveSettings();
-        }
-
-        private void StatusBarLightTheme_Click(object? sender, EventArgs e)
-        {
-            isDarkTheme = false;
-            _themeManager.IsDarkMode = false;
-            UpdateThemeColors(isDarkTheme);
-            UpdateThemeDropDown();
-            SaveSettings();
+            var item = sender as ToolStripMenuItem;
+            if (item?.Tag is string name) ApplyThemeByName(name);
         }
 
         private void TabSize2_Click(object? sender, EventArgs e) => SetTabSize(2);
@@ -2245,12 +2475,16 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (themeDropDown != null)
             {
-                themeDropDown.Text = isDarkTheme ? "Dark" : "Light";
-                // Update menu item checkmarks
-                if (themeDropDown.DropDownItems.Count >= 2)
+                themeDropDown.Text = _currentTheme.Name;
+                // Rebuild theme items from the registry
+                themeDropDown.DropDownItems.Clear();
+                foreach (var name in ThemeManager.ThemeNames)
                 {
-                    themeDropDown.DropDownItems[0].Text = isDarkTheme ? "● Dark" : "Dark";
-                    themeDropDown.DropDownItems[1].Text = !isDarkTheme ? "● Light" : "Light";
+                    var item = new ToolStripMenuItem(name);
+                    item.Click += (s, e) => ApplyThemeByName(name);
+                    if (name == _currentTheme.Name)
+                        item.Text = "\u25CF " + name;
+                    themeDropDown.DropDownItems.Add(item);
                 }
             }
             // Update tab size dropdown checkmarks
@@ -2463,7 +2697,7 @@ darkThemeMenuItem.Checked = isDark;
             // Update UI (must be after CreateIncrementalHighlighter so file type is current)
             UpdateStatusBar();
             UpdateTabTitle(activeDocIndex);
-            UpdateThemeColors(isDarkTheme);
+            UpdateThemeColors(_currentTheme);
         }
 
         // Update tab title for document at index
@@ -2515,30 +2749,25 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (e.Button == MouseButtons.Middle)
             {
-                // Close tab on middle-click
                 CloseTabAtLocation(e.Location);
             }
             else if (e.Button == MouseButtons.Left)
             {
-                // Check if close button (X) was clicked — only on the hovered tab
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
                     var rect = tabControl.GetTabRect(i);
                     if (rect.Contains(e.Location))
                     {
-                        if (i == hoveredTabIndex)
+                        // Check close button (×) — always visible, same position as draw
+                        int btnSize = 14;
+                        int btnX = rect.Right - 17;
+                        int btnY = rect.Top + 5;
+                        var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
+                        if (btnRect.Contains(e.Location))
                         {
-                            int btnSize = 14;
-                            int btnX = rect.Right - btnSize - 6;
-                            int btnY = rect.Top + (rect.Height - btnSize) / 2;
-                            var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
-                            if (btnRect.Contains(e.Location))
-                            {
-                                // Close this tab on X click
-                                tabControl.SelectedIndex = i;
-                                CloseCurrentTab();
-                                return;
-                            }
+                            tabControl.SelectedIndex = i;
+                            CloseCurrentTab();
+                            return;
                         }
                         // Otherwise start potential drag
                         _draggedTabIndex = i;
@@ -2598,7 +2827,7 @@ darkThemeMenuItem.Checked = isDark;
         private void TabDropdownButton_Click(object? sender, EventArgs e)
         {
             if (tabControl == null || tabControl.TabCount == 0 || _tabDropdownButton == null) return;
-            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            var theme = _currentTheme;
             var cm = new ContextMenuStrip();
             cm.Font = new Font("Segoe UI", 10);
             cm.BackColor = theme.MenuBackground;
@@ -2756,7 +2985,7 @@ darkThemeMenuItem.Checked = isDark;
                 splitContainer.Panel1.Controls.Add(mainTable);
 
                 // Create a simple RichTextBox for the split pane in Panel2
-                var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+                var theme = _currentTheme;
                 _splitEditor = new RichTextBox
                 {
                     Dock = DockStyle.Fill,
@@ -2861,11 +3090,11 @@ darkThemeMenuItem.Checked = isDark;
                     overAnyTab = true;
                     newHoverIndex = i;
                     int buttonSize = 14;
-                    int btnX = rect.Right - buttonSize - 6;
-                    int btnY = rect.Top + (rect.Height - buttonSize) / 2;
+                    int btnX = rect.Right - 17;
+                    int btnY = rect.Top + 5;
                     newCloseBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
                     break;
-                }
+            }
             }
 
             int oldHover = hoveredTabIndex ?? -1;
@@ -2916,18 +3145,13 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (tabControl.TabPages.Count == 0) return;
 
-            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
-            var graphics = e.Graphics;
+            var theme = _currentTheme;
             var tabRect = e.Bounds;
-
-            // Normalize tab rect height to ItemSize.Height to avoid system 2px height bump on selected
             tabRect.Height = tabControl.ItemSize.Height;
 
-            // Determine if this tab is selected or hovered
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
 
-            // Flat background: menu-background strip, editor-blend active tab
             Color backColor;
             if (isSelected)
                 backColor = theme.EditorBackground;
@@ -2938,68 +3162,28 @@ darkThemeMenuItem.Checked = isDark;
 
             using (var brush = new SolidBrush(backColor))
             {
-                graphics.FillRectangle(brush, tabRect);
+                e.Graphics.FillRectangle(brush, tabRect);
             }
 
-            // Text (tab title) — VS Code style: left-aligned with generous left padding, right margin for X
+            // Tab text — reserve space for close button. Same positioning as terminal tabs.
             string text = tabControl.TabPages[e.Index].Text;
-            var textRect = tabRect;
+            var textRect = new Rectangle(
+                tabRect.X + 4, tabRect.Y + 3,
+                tabRect.Right - 17 - tabRect.X - 10, tabRect.Height - 4);
 
-            // Close button (X) — only on hovered tab
-            const int btnSize = 14;
-            const int btnRightPad = 6;
-            int btnX = tabRect.Right - btnSize - btnRightPad;
-            int btnY = tabRect.Top + (tabRect.Height - btnSize) / 2;
-            var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
-
-            // Left margin: 10px from left edge
-            textRect.X += 10;
-            if (isHovered)
-            {
-                // Reserve 22px for the close button + right pad
-                textRect.Width = btnX - textRect.X - 4;
-            }
-            else
-            {
-                // Not hovered — right margin of 10px
-                textRect.Width = tabRect.Right - 10 - textRect.X;
-            }
-
-            TextRenderer.DrawText(graphics, text, tabControl.Font, textRect, isSelected ? theme.Text : theme.Muted,
+            TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
+                isSelected ? theme.Text : theme.Muted,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
                 TextFormatFlags.EndEllipsis);
 
-            // Draw close button only on hover
-            if (isHovered)
+            // Close button (×) — always visible, same style as terminal tabs
+            var closeRect = new Rectangle(tabRect.Right - 17, tabRect.Y + 5, 14, 14);
+            using (var xFont = new Font("Segoe UI", 10, FontStyle.Bold))
             {
-                bool closeHovered = _closeButtonHovered;
-
-                if (closeHovered)
-                {
-                    using (var hoverBrush = new SolidBrush(theme.Accent))
-                    using (var xBrush = new SolidBrush(theme.PanelBackground))
-                    {
-                        graphics.FillRectangle(hoverBrush, btnRect);
-                        using (var xFont = new Font("Segoe UI", 10, FontStyle.Bold))
-                        {
-                            TextRenderer.DrawText(graphics, "×", xFont, btnRect, theme.PanelBackground,
-                                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-                        }
-                    }
-                }
-                else
-                {
-                    using (var xBrush = new SolidBrush(theme.Muted))
-                    using (var xFont = new Font("Segoe UI", 10, FontStyle.Bold))
-                    {
-                        TextRenderer.DrawText(graphics, "×", xFont, btnRect, theme.Muted,
-                            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
-                    }
-                }
+                TextRenderer.DrawText(e.Graphics, "\u00D7", xFont, closeRect, theme.Muted,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
             }
         }
-
-
 
         #endregion
 
@@ -3140,42 +3324,6 @@ darkThemeMenuItem.Checked = isDark;
             // Restart debounce timer for elastic tab stops recompute
             elasticTabTimer?.Stop();
             elasticTabTimer?.Start();
-
-            // Adaptive debouncing for syntax highlighting based on recent activity
-            if (syntaxHighlightingEnabled && highlightTimer != null)
-            {
-                // Track highlighting frequency for adaptive behavior
-                var now = DateTime.Now;
-                _highlightTimes.Enqueue(now);
-                
-                // Remove entries older than 1 second
-                while (_highlightTimes.Count > 0 && 
-                       (now - _highlightTimes.Peek()).TotalSeconds > 1.0)
-                {
-                    _highlightTimes.Dequeue();
-                }
-                
-                _highlightCountInLastSecond = _highlightTimes.Count;
-                
-                // Adjust debounce interval based on activity level
-                int adaptiveInterval;
-                if (_highlightCountInLastSecond > 20) // Very active typing
-                {
-                    adaptiveInterval = 200; // Longer delay to catch bursts
-                }
-                else if (_highlightCountInLastSecond > 10) // Moderate activity
-                {
-                    adaptiveInterval = 150; // Default delay
-                }
-                else // Low activity
-                {
-                    adaptiveInterval = 50; // Shorter delay for responsiveness
-                }
-                
-                highlightTimer.Interval = adaptiveInterval;
-                highlightTimer.Stop();
-                highlightTimer.Start();
-            }
         }
 
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
@@ -3197,11 +3345,6 @@ darkThemeMenuItem.Checked = isDark;
         private void TextEditor_VScroll(object? sender, EventArgs e)
         {
             if (gutterPanel != null) gutterPanel.RefreshGutter();
-            if (syntaxHighlightingEnabled)
-            {
-                highlightTimer?.Stop();
-                highlightTimer?.Start();
-            }
             textEditor.Invalidate();
         }
 
@@ -3228,14 +3371,6 @@ darkThemeMenuItem.Checked = isDark;
             textEditor!.Invalidate();
                     }
                 }));
-            }
-            else
-            {
-                if (syntaxHighlightingEnabled)
-                {
-                    highlightTimer?.Stop();
-                    highlightTimer?.Start();
-                }
             }
         }
 
@@ -3328,7 +3463,7 @@ darkThemeMenuItem.Checked = isDark;
         private void UpdateTabControlTheme()
         {
             if (tabControl == null) return;
-            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            var theme = _currentTheme;
             tabControl.BackColor = theme.MenuBackground;
             tabControl.ForeColor = theme.Text;
             // Force redraw to apply themed background in owner-drawn tabs
@@ -3432,7 +3567,7 @@ darkThemeMenuItem.Checked = isDark;
 
         private void TabControl_Paint(object? sender, PaintEventArgs e)
         {
-            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            var theme = _currentTheme;
             e.Graphics.Clear(theme.MenuBackground);
         }
 
@@ -3452,6 +3587,20 @@ darkThemeMenuItem.Checked = isDark;
 
             SetWindowLong(tabControl.Handle, GWL_STYLE, style);
 
+            // Remove any extended 3D border style
+            int exStyle = GetWindowLong(tabControl.Handle, GWL_EXSTYLE);
+            exStyle &= ~WS_EX_CLIENTEDGE;
+            SetWindowLong(tabControl.Handle, GWL_EXSTYLE, exStyle);
+
+            // Force non-client area recalculation to apply the border changes
+            const uint SWP_FRAMECHANGED = 0x0020;
+            const uint SWP_NOACTIVATE = 0x0010;
+            const uint SWP_NOMOVE = 0x0002;
+            const uint SWP_NOSIZE = 0x0001;
+            const uint SWP_NOZORDER = 0x0004;
+            SetWindowPos(tabControl.Handle, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+
             // Hide the dashed focus rectangle on the active tab
             const int WM_UPDATEUISTATE = 0x0128;
             const int UIS_SET = 1;
@@ -3460,7 +3609,7 @@ darkThemeMenuItem.Checked = isDark;
             SendMessage(tabControl.Handle, WM_UPDATEUISTATE, wParam, 0);
 
             _tabStripWindow?.ReleaseHandle();
-            _tabStripWindow = new TabStripBackgroundWindow(this);
+            _tabStripWindow = new TabStripBackgroundWindow(this, tabControl);
             _tabStripWindow.AssignHandle(tabControl.Handle);
         }
 
@@ -3472,24 +3621,30 @@ darkThemeMenuItem.Checked = isDark;
 
         // Native-window subclass that paints the tab strip background with the current theme.
         private TabStripBackgroundWindow? _tabStripWindow;
+        private TabStripBackgroundWindow? _terminalTabStripWindow;
 
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
             private const int WM_ERASEBKGND = 0x0014;
             private readonly Form1 _owner;
+            private readonly TabControl _target;
 
-            public TabStripBackgroundWindow(Form1 owner) => _owner = owner;
+            public TabStripBackgroundWindow(Form1 owner, TabControl target)
+            {
+                _owner = owner;
+                _target = target;
+            }
 
             protected override void WndProc(ref Message m)
             {
                 switch (m.Msg)
                 {
                     case WM_ERASEBKGND:
-                        var theme = _owner.isDarkTheme ? Theme.Dark : Theme.Light;
+                        var theme = _owner._currentTheme;
                         using (var g = Graphics.FromHdc(m.WParam))
                         using (var brush = new SolidBrush(theme.MenuBackground))
                         {
-                            g.FillRectangle(brush, _owner.tabControl.ClientRectangle);
+                            g.FillRectangle(brush, _target.ClientRectangle);
                         }
                         m.Result = (IntPtr)1;
                         return;
@@ -3502,114 +3657,87 @@ darkThemeMenuItem.Checked = isDark;
         #endregion
         #region Syntax Highlighting (async, incremental, visible-range)
 
-        private Color GetKeywordColor() => isDarkTheme ? Color.FromArgb(86, 156, 214) : Color.Blue;
-        private Color GetStringColor() => isDarkTheme ? Color.FromArgb(206, 145, 120) : Color.FromArgb(163, 21, 21);
-        private Color GetCommentColor() => isDarkTheme ? Color.FromArgb(106, 153, 85) : Color.Green;
-        private Color GetNumberColor() => isDarkTheme ? Color.FromArgb(181, 206, 168) : Color.FromArgb(9, 134, 88);
-        private Color GetPreprocessorColor() => isDarkTheme ? Color.FromArgb(197, 134, 192) : Color.FromArgb(121, 94, 38);
+        private Color GetKeywordColor() => _currentTheme.KeywordColor;
+        private Color GetStringColor() => _currentTheme.StringColor;
+        private Color GetCommentColor() => _currentTheme.CommentColor;
+        private Color GetNumberColor() => _currentTheme.NumberColor;
+        private Color GetPreprocessorColor() => _currentTheme.PreprocessorColor;
 
         private void CreateIncrementalHighlighter()
         {
-            lock (_highlightApplyQueue) _highlightApplyQueue.Clear();
             incrementalHighlighter?.Dispose();
             incrementalHighlighter = null;
 
             if (!textEditor.IsHandleCreated) return;
 
-            // Detect syntax based on current file path or default
             if (currentFilePath != null)
-            {
                 currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
-            }
             else
-            {
-                currentSyntax = SyntaxDefinition.CSharp; // default
-            }
+                currentSyntax = SyntaxDefinition.CSharp;
 
             if (!syntaxHighlightingEnabled || currentSyntax == null)
             {
-                var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
-                ResetVisibleRangeToBase(baseColor);
+                ResetVisibleRangeToBase(_currentTheme.Text);
                 return;
             }
 
-            var baseColorCurrent = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
-            incrementalHighlighter = new IncrementalHighlighter(
-                textEditor,
-                currentSyntax,
-                SynchronizationContext.Current);
-
-            incrementalHighlighter.BatchReady += ApplyHighlightBatch;
-
-            _highlightApplyTimer?.Start();
-
-            // Request visible range after creation
+            incrementalHighlighter = new IncrementalHighlighter(textEditor, currentSyntax);
+            incrementalHighlighter.PatchReady += ApplyHighlightPatches;
             RequestVisibleHighlight();
         }
 
-        // Request highlighting of currently visible lines
-        private void RequestVisibleHighlight()
-        {
-            if (incrementalHighlighter == null || !syntaxHighlightingEnabled || !textEditor.IsHandleCreated) return;
-            var (first, last) = GetVisibleLineRange();
-            if (first <= last)
-            {
-                incrementalHighlighter.RequestRange(first, last);
-            }
-        }
-
-        private void ApplyHighlightBatch(object? sender, List<HighlightPatch> patches)
+        private void ApplyHighlightPatches(List<HighlightPatch> patches)
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
-            lock (_highlightApplyQueue)
-            {
-                foreach (var p in patches)
-                    _highlightApplyQueue.Enqueue(p);
-            }
-            _highlightApplyTimer?.Start();
-        }
-
-        private bool ApplyOneLine(int line, IReadOnlyList<TokenInfo> tokens)
-        {
-            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return false;
-            var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             _suspendSelectionChanged = true;
+            BeginUpdate(textEditor);
             int savedStart = textEditor.SelectionStart;
             int savedLength = textEditor.SelectionLength;
             try
             {
                 int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                if (line < 0 || line >= lineCount) return false;
-
-                int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-                if (lineStart < 0) return false;
-
-                int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
-                int lineLen = lineEnd - lineStart;
-                if (lineLen <= 0) return false;
-
-                textEditor.SelectionStart = lineStart;
-                textEditor.SelectionLength = lineLen;
-                SetSelectionColorRich(baseColor);
-
-                foreach (var token in tokens)
+                foreach (var patch in patches)
                 {
-                    int idx = lineStart + token.StartIndex;
-                    int len = token.Length;
-                    if (idx >= lineStart && idx + len <= lineStart + lineLen)
+                    int line = patch.LineNumber;
+                    if (line < 0 || line >= lineCount) continue;
+                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                    if (lineStart < 0) continue;
+                    int lineEnd = (line + 1 < lineCount)
+                        ? textEditor.GetFirstCharIndexFromLine(line + 1)
+                        : textEditor.TextLength;
+                    int lineLen = lineEnd - lineStart;
+                    if (lineLen <= 0) continue;
+
+                    foreach (var token in patch.Tokens)
                     {
-                        textEditor.SelectionStart = idx;
-                        textEditor.SelectionLength = len;
-                        SetSelectionColorRich(GetColorForToken(token.Type));
+                        int idx = lineStart + token.StartIndex;
+                        int len = Math.Min(token.Length, lineLen - token.StartIndex);
+                        if (len <= 0) continue;
+                        SetTokenColor(idx, len, GetColorForToken(token.Type));
                     }
                 }
-                return true;
             }
             finally
             {
                 textEditor.SelectionStart = savedStart;
                 textEditor.SelectionLength = savedLength;
+                EndUpdate(textEditor);
+                _suspendSelectionChanged = false;
             }
+        }
+
+        private void SetTokenColor(int start, int length, Color color)
+        {
+            textEditor.Select(start, length);
+            SetSelectionColorRich(color);
+        }
+
+        private void RequestVisibleHighlight()
+        {
+            if (incrementalHighlighter == null || !syntaxHighlightingEnabled || !textEditor.IsHandleCreated) return;
+            var (first, last) = GetVisibleLineRange();
+            if (first <= last)
+                incrementalHighlighter.RequestRange(first, last);
         }
 
         private Color GetColorForToken(SyntaxTokenType type) => type switch
@@ -3619,7 +3747,7 @@ darkThemeMenuItem.Checked = isDark;
             SyntaxTokenType.Comment => GetCommentColor(),
             SyntaxTokenType.Number => GetNumberColor(),
             SyntaxTokenType.Preprocessor => GetPreprocessorColor(),
-            _ => (isDarkTheme ? Theme.Dark.Text : Theme.Light.Text)
+            _ => (_currentTheme.Text)
         };
 
         // Get visible line range in the editor (no buffer — only truly visible lines)
@@ -3694,8 +3822,7 @@ darkThemeMenuItem.Checked = isDark;
             if (incrementalHighlighter?.GetTokens(lineIndex) is IReadOnlyList<TokenInfo> cached)
                 return cached;
 
-            // Fallback: synchronous tokenization (no state)
-            return TokenizeLineSynchronously(lineIndex);
+            return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
         }
 
         private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> TokenizeLineSynchronously(int lineIndex)
@@ -3706,7 +3833,24 @@ darkThemeMenuItem.Checked = isDark;
             var tokens = new List<MyCrownJewelApp.Pfpad.TokenInfo>();
             var colored = new bool[line.Length];
 
-             var regexes = currentSyntax != null ? GetOrCreateCompiledRegexes(currentSyntax, CancellationToken.None) : ((Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor))default;
+             var keywords = currentSyntax?.Keywords != null && currentSyntax.Keywords.Length > 0
+                ? new System.Text.RegularExpressions.Regex($@"\b({string.Join("|", currentSyntax.Keywords.Select(System.Text.RegularExpressions.Regex.Escape))})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : null;
+            var types = currentSyntax?.Types != null && currentSyntax.Types.Length > 0
+                ? new System.Text.RegularExpressions.Regex($@"\b({string.Join("|", currentSyntax.Types.Select(System.Text.RegularExpressions.Regex.Escape))})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : null;
+            var stringRegex = !string.IsNullOrEmpty(currentSyntax?.StringPattern)
+                ? new System.Text.RegularExpressions.Regex(currentSyntax.StringPattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : null;
+            var comment = !string.IsNullOrEmpty(currentSyntax?.CommentPattern)
+                ? new System.Text.RegularExpressions.Regex(currentSyntax.CommentPattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : null;
+            var number = !string.IsNullOrEmpty(currentSyntax?.NumberPattern)
+                ? new System.Text.RegularExpressions.Regex(currentSyntax.NumberPattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : null;
+            var preprocessor = currentSyntax?.Preprocessor != null && currentSyntax.Preprocessor.Length > 0
+                ? new System.Text.RegularExpressions.Regex($@"\b({string.Join("|", currentSyntax.Preprocessor.Select(System.Text.RegularExpressions.Regex.Escape))})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                : null;
 
             void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.Pfpad.SyntaxTokenType type)
             {
@@ -3747,29 +3891,14 @@ darkThemeMenuItem.Checked = isDark;
             }
 
             // Priority order
-            AddMatches(regexes.preprocessor, MyCrownJewelApp.Pfpad.SyntaxTokenType.Preprocessor);
-            AddMatches(regexes.comment, MyCrownJewelApp.Pfpad.SyntaxTokenType.Comment);
-            AddMatches(regexes.stringRegex, MyCrownJewelApp.Pfpad.SyntaxTokenType.String);
-            AddMatches(regexes.number, MyCrownJewelApp.Pfpad.SyntaxTokenType.Number);
-            AddMatches(regexes.keywords, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
-            AddMatches(regexes.types, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
+            AddMatches(preprocessor, MyCrownJewelApp.Pfpad.SyntaxTokenType.Preprocessor);
+            AddMatches(comment, MyCrownJewelApp.Pfpad.SyntaxTokenType.Comment);
+            AddMatches(stringRegex, MyCrownJewelApp.Pfpad.SyntaxTokenType.String);
+            AddMatches(number, MyCrownJewelApp.Pfpad.SyntaxTokenType.Number);
+            AddMatches(keywords, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
+            AddMatches(types, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
 
             return tokens;
-        }
-
-        // Helper: mark a range as colored
-        private static void MarkRange(bool[] colored, int start, int length)
-        {
-            for (int i = start; i < start + length && i < colored.Length; i++)
-                colored[i] = true;
-        }
-
-        // Helper: check if range is free
-        private static bool IsRangeFree(bool[] colored, int start, int length)
-        {
-            for (int i = start; i < start + length && i < colored.Length; i++)
-                if (colored[i]) return false;
-            return true;
         }
 
         // WinForms RichTextBox BeginUpdate/EndUpdate via native API (no forced invalidation)
@@ -3785,8 +3914,14 @@ darkThemeMenuItem.Checked = isDark;
         [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
         private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
         private const int GWL_STYLE = -16;
+        private const int GWL_EXSTYLE = -20;
         private const int WS_BORDER = 0x00800000;
+        private const int WS_EX_CLIENTEDGE = 0x00000200;
+        private const int TCM_SETBKCOLOR = 0x1301;
 
         private const int WM_SETREDRAW = 0x0B;
         private const int WM_VSCROLL = 0x115;
@@ -3882,63 +4017,6 @@ darkThemeMenuItem.Checked = isDark;
         private void EndUndoUnit(RichTextBox rtb)
         {
             SendMessage(rtb.Handle, EM_ENDUNDOACTION, IntPtr.Zero, IntPtr.Zero);
-        }
-
-        // Compile and cache regexes for a syntax definition
-        private static Regex? BuildRegex(string? pattern, RegexOptions options)
-        {
-            if (string.IsNullOrEmpty(pattern)) return null;
-            return new Regex(pattern, options | RegexOptions.Compiled);
-        }
-
-        private (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor) GetOrCreateCompiledRegexes(SyntaxDefinition syntax, CancellationToken token)
-        {
-            string key = syntax.Name; // simple unique key
-            lock (compiledRegexCache)
-            {
-                if (compiledRegexCache.TryGetValue(key, out var existing))
-                {
-                    return existing;
-                }
-            }
-
-            var keywords = BuildRegex(@"\b(" + string.Join("|", syntax.Keywords.Select(Regex.Escape)) + @")\b", RegexOptions.None);
-            var types = BuildRegex(@"\b(" + string.Join("|", syntax.Types.Select(Regex.Escape)) + @")\b", RegexOptions.None);
-            var stringRegex = BuildRegex(syntax.StringPattern, RegexOptions.Singleline);
-            var comment = BuildRegex(syntax.CommentPattern, RegexOptions.Multiline);
-            var number = BuildRegex(syntax.NumberPattern, RegexOptions.None);
-            var preprocessor = syntax.Preprocessor?.Length > 0
-                ? BuildRegex(@"^\s*(" + string.Join("|", syntax.Preprocessor.Select(Regex.Escape)) + @")\b", RegexOptions.Multiline)
-                : null;
-
-            var tuple = (keywords, types, stringRegex, comment, number, preprocessor);
-            lock (compiledRegexCache) { compiledRegexCache[key] = tuple; }
-            return tuple;
-        }
-
-        // Apply token matches to line ranges, respecting priority (colored[] tracks occupied spans)
-        private static void ApplyTokenMatches(MatchCollection matches, bool[] colored, Dictionary<int, List<(int start, int length, Color color)>> ranges, int lineNum, Color color)
-        {
-            foreach (Match m in matches)
-            {
-                if (m.Success && m.Index >= 0)
-                {
-                    int len = Math.Min(m.Length, colored.Length - m.Index);
-                    if (len <= 0) continue;
-                    bool free = true;
-                    for (int i = m.Index; i < m.Index + len && i < colored.Length; i++)
-                    {
-                        if (colored[i]) { free = false; break; }
-                    }
-                    if (free)
-                    {
-                        for (int i = m.Index; i < m.Index + len && i < colored.Length; i++)
-                            colored[i] = true;
-                        if (!ranges.ContainsKey(lineNum)) ranges[lineNum] = new List<(int, int, Color)>();
-                        ranges[lineNum].Add((m.Index, len, color));
-                    }
-                }
-            }
         }
 
         #region Git Integration
@@ -4074,6 +4152,12 @@ darkThemeMenuItem.Checked = isDark;
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.KeyCode == Keys.Oemtilde && e.Control && !e.Shift && !e.Alt)
+            {
+                ToggleTerminal();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
 
         private bool _isFullScreen = false;
@@ -4126,15 +4210,15 @@ darkThemeMenuItem.Checked = isDark;
                 }
             }
             SaveSettings();
-            _highlightApplyTimer?.Stop();
-            _highlightApplyTimer?.Dispose();
-            highlightTimer?.Stop();
-            highlightTimer?.Dispose();
             elasticTabTimer?.Stop();
             elasticTabTimer?.Dispose();
             _gitPollTimer?.Stop();
             _gitPollTimer?.Dispose();
             incrementalHighlighter?.Dispose();
+            foreach (var t in _terminalTabs) t.Dispose();
+            _terminalTabs.Clear();
+            _terminalTabControl?.Dispose();
+            _terminalNewTabButton?.Dispose();
         }
 
         private void Form1_Activated(object? sender, EventArgs e)

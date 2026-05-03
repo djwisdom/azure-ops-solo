@@ -327,11 +327,14 @@ public class ThemeManagerTests
     public void ToggleTheme_SwitchesMode()
     {
         var mgr = ThemeManager.Instance;
-        bool before = mgr.IsDarkMode;
-        mgr.ToggleTheme();
-        Assert.NotEqual(before, mgr.IsDarkMode);
-        mgr.ToggleTheme();
-        Assert.Equal(before, mgr.IsDarkMode);
+        string before = mgr.CurrentTheme.Name;
+        var names = ThemeManager.ThemeNames;
+        int nextIdx = (Array.IndexOf(names, before) + 1) % names.Length;
+        mgr.SetTheme(names[nextIdx]);
+        Assert.NotEqual(before, mgr.CurrentTheme.Name);
+        // Restore
+        mgr.SetTheme(before);
+        Assert.Equal(before, mgr.CurrentTheme.Name);
     }
 
     [Fact]

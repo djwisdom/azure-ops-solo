@@ -459,6 +459,15 @@ namespace MyCrownJewelApp.Pfpad
                 case "e!":
                     // Reload — not implemented
                     break;
+                case "sp":
+                case "split":
+                    HorizontalSplitRequested?.Invoke();
+                    break;
+                case "vsp":
+                case "vs":
+                case "vsplit":
+                    VerticalSplitRequested?.Invoke();
+                    break;
             }
 
             // Handle :w filename and :write filename (save as)
