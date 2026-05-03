@@ -3692,45 +3692,48 @@
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             _suspendSelectionChanged = true;
             BeginUpdate(textEditor);
-            int savedStart = textEditor.SelectionStart;
-            int savedLength = textEditor.SelectionLength;
             try
             {
                 int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                foreach (var patch in patches)
+                var cf = new CHARFORMAT2W
                 {
-                    int line = patch.LineNumber;
-                    if (line < 0 || line >= lineCount) continue;
-                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-                    if (lineStart < 0) continue;
-                    int lineEnd = (line + 1 < lineCount)
-                        ? textEditor.GetFirstCharIndexFromLine(line + 1)
-                        : textEditor.TextLength;
-                    int lineLen = lineEnd - lineStart;
-                    if (lineLen <= 0) continue;
-
-                    foreach (var token in patch.Tokens)
+                    cbSize = Marshal.SizeOf<CHARFORMAT2W>(),
+                    dwMask = CFM_COLOR
+                };
+                IntPtr cfPtr = Marshal.AllocCoTaskMem(cf.cbSize);
+                try
+                {
+                    foreach (var patch in patches)
                     {
-                        int idx = lineStart + token.StartIndex;
-                        int len = Math.Min(token.Length, lineLen - token.StartIndex);
-                        if (len <= 0) continue;
-                        SetTokenColor(idx, len, GetColorForToken(token.Type));
+                        int line = patch.LineNumber;
+                        if (line < 0 || line >= lineCount) continue;
+                        int lineStart = (int)SendMessage(textEditor.Handle, EM_LINEINDEX, line, IntPtr.Zero);
+                        if (lineStart < 0) continue;
+                        int lineEnd = (line + 1 < lineCount)
+                            ? (int)SendMessage(textEditor.Handle, EM_LINEINDEX, line + 1, IntPtr.Zero)
+                            : (int)SendMessage(textEditor.Handle, WM_GETTEXTLENGTH, 0, IntPtr.Zero);
+                        int lineLen = lineEnd - lineStart;
+                        if (lineLen <= 0) continue;
+
+                        foreach (var token in patch.Tokens)
+                        {
+                            int idx = lineStart + token.StartIndex;
+                            int len = Math.Min(token.Length, lineLen - token.StartIndex);
+                            if (len <= 0) continue;
+                            cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
+                            Marshal.StructureToPtr(cf, cfPtr, false);
+                            SendMessage(textEditor.Handle, EM_SETSEL, (IntPtr)idx, (IntPtr)(idx + len));
+                            SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
+                        }
                     }
                 }
+                finally { Marshal.FreeCoTaskMem(cfPtr); }
             }
             finally
             {
-                textEditor.SelectionStart = savedStart;
-                textEditor.SelectionLength = savedLength;
                 EndUpdate(textEditor);
                 _suspendSelectionChanged = false;
             }
-        }
-
-        private void SetTokenColor(int start, int length, Color color)
-        {
-            textEditor.Select(start, length);
-            SetSelectionColorRich(color);
         }
 
         private void RequestVisibleHighlight()
@@ -3819,87 +3822,10 @@
              if (!textEditor.IsHandleCreated) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
              if (lineIndex < 0 || lineIndex >= LineCount) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
 
-            // Try incremental highlighter cache first
             if (incrementalHighlighter?.GetTokens(lineIndex) is IReadOnlyList<TokenInfo> cached)
                 return cached;
 
             return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
-        }
-
-        private IReadOnlyList<MyCrownJewelApp.Pfpad.TokenInfo> TokenizeLineSynchronously(int lineIndex)
-        {
-            string line = GetLineText(lineIndex);
-            if (string.IsNullOrEmpty(line)) return Array.Empty<MyCrownJewelApp.Pfpad.TokenInfo>();
-
-            var tokens = new List<MyCrownJewelApp.Pfpad.TokenInfo>();
-            var colored = new bool[line.Length];
-
-             var keywords = currentSyntax?.Keywords != null && currentSyntax.Keywords.Length > 0
-                ? new System.Text.RegularExpressions.Regex($@"\b({string.Join("|", currentSyntax.Keywords.Select(System.Text.RegularExpressions.Regex.Escape))})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : null;
-            var types = currentSyntax?.Types != null && currentSyntax.Types.Length > 0
-                ? new System.Text.RegularExpressions.Regex($@"\b({string.Join("|", currentSyntax.Types.Select(System.Text.RegularExpressions.Regex.Escape))})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : null;
-            var stringRegex = !string.IsNullOrEmpty(currentSyntax?.StringPattern)
-                ? new System.Text.RegularExpressions.Regex(currentSyntax.StringPattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : null;
-            var comment = !string.IsNullOrEmpty(currentSyntax?.CommentPattern)
-                ? new System.Text.RegularExpressions.Regex(currentSyntax.CommentPattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : null;
-            var number = !string.IsNullOrEmpty(currentSyntax?.NumberPattern)
-                ? new System.Text.RegularExpressions.Regex(currentSyntax.NumberPattern, System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : null;
-            var preprocessor = currentSyntax?.Preprocessor != null && currentSyntax.Preprocessor.Length > 0
-                ? new System.Text.RegularExpressions.Regex($@"\b({string.Join("|", currentSyntax.Preprocessor.Select(System.Text.RegularExpressions.Regex.Escape))})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                : null;
-
-            void AddMatches(System.Text.RegularExpressions.Regex? regex, MyCrownJewelApp.Pfpad.SyntaxTokenType type)
-            {
-                if (regex == null) return;
-                var matches = regex.Matches(line);
-                foreach (System.Text.RegularExpressions.Match m in matches)
-                {
-                    if (!m.Success) continue;
-                    int start = m.Index;
-                    int len = m.Length;
-                    if (start < 0 || start >= colored.Length) continue;
-                    if (start + len > colored.Length) len = colored.Length - start;
-                    if (len <= 0) continue;
-
-                    // Check if region is completely free
-                    bool free = true;
-                    for (int i = start; i < start + len; i++)
-                    {
-                        if (colored[i])
-                        {
-                            free = false;
-                            break;
-                        }
-                    }
-                    if (free)
-                    {
-                        for (int i = start; i < start + len; i++)
-                            colored[i] = true;
-                        tokens.Add(new MyCrownJewelApp.Pfpad.TokenInfo
-                        {
-                            Type = type,
-                            Text = line.Substring(start, len),
-                            StartIndex = start,
-                            Length = len
-                        });
-                    }
-                }
-            }
-
-            // Priority order
-            AddMatches(preprocessor, MyCrownJewelApp.Pfpad.SyntaxTokenType.Preprocessor);
-            AddMatches(comment, MyCrownJewelApp.Pfpad.SyntaxTokenType.Comment);
-            AddMatches(stringRegex, MyCrownJewelApp.Pfpad.SyntaxTokenType.String);
-            AddMatches(number, MyCrownJewelApp.Pfpad.SyntaxTokenType.Number);
-            AddMatches(keywords, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
-            AddMatches(types, MyCrownJewelApp.Pfpad.SyntaxTokenType.Keyword);
-
-            return tokens;
         }
 
         // WinForms RichTextBox BeginUpdate/EndUpdate via native API (no forced invalidation)
@@ -3925,7 +3851,10 @@
         private const int TCM_SETBKCOLOR = 0x1301;
 
         private const int WM_SETREDRAW = 0x0B;
+        private const int WM_GETTEXTLENGTH = 0x000E;
         private const int WM_VSCROLL = 0x115;
+        private const int EM_SETSEL = 0x00B1;
+        private const int EM_LINEINDEX = 0x00BB;
         private const int EM_STARTUNDOACTION = 0x00B7;
         private const int EM_ENDUNDOACTION = 0x00B8;
         private const int EM_GETLINECOUNT = 0x00BA;
