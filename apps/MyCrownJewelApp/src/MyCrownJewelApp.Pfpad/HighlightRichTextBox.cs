@@ -200,8 +200,8 @@ public class HighlightRichTextBox : RichTextBox
                 if (x < 0) x = 0;
                 if (x < 0 || x > ClientSize.Width) continue;
 
-                int yTop = openPos.Y;
-                int yBottom = closePos.Y + lineH - 1;
+                int yTop = openPos.Y + lineH;
+                int yBottom = closePos.Y;
 
                 g.DrawLine(pen, x, yTop, x, yBottom);
                 g.DrawLine(pen, x, yBottom, closePos.X + charWidth / 2, yBottom);

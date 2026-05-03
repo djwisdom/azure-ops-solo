@@ -8,6 +8,24 @@ namespace MyCrownJewelApp.Pfpad;
 
 public class GutterPanel : Panel
 {
+    private static readonly Font _foldFont;
+
+    static GutterPanel()
+    {
+        Font? font = null;
+        try { font = new Font("Segoe MDL2 Assets", 9, FontStyle.Regular); }
+        catch { }
+        if (font == null || font.Name != "Segoe MDL2 Assets")
+        {
+            font?.Dispose();
+            font = new Font("Segoe UI", 9, FontStyle.Bold);
+        }
+        _foldFont = font;
+    }
+
+    private const string ChevronDown = "\uE70E"; // expanded
+    private const string ChevronRight = "\uE70D"; // collapsed
+
     private Form1 mainForm;
     private int LineNumberMarginWidth = 60;
     private const int BookmarkMarginWidth = 20;
@@ -15,7 +33,7 @@ public class GutterPanel : Panel
     private const int FoldMarginWidth = 14;
 
     private int totalMarginWidth;
-    private int _hoveredFoldLine = -1;
+    private bool _showFoldMarkers;
 
     [Category("Appearance")]
     public bool ShowLineNumbers { get; set; } = true;
@@ -70,36 +88,20 @@ public class GutterPanel : Panel
         if (mainForm?.textEditor == null || !ShowCodeFolds || mainForm.FoldingManager == null) return;
 
         int foldX = Width - FoldMarginWidth;
-        if (e.X >= foldX && e.X <= Width)
-        {
-            var editor = mainForm.textEditor;
-            int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
-            int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-            int lineIndex = firstVis + e.Y / lineHeight;
+        bool inFoldMargin = e.X >= foldX && e.X <= Width;
 
-            if (mainForm.FoldingManager.IsFoldStart(lineIndex))
-            {
-                if (_hoveredFoldLine != lineIndex)
-                {
-                    _hoveredFoldLine = lineIndex;
-                    Invalidate();
-                }
-                return;
-            }
-        }
-
-        if (_hoveredFoldLine != -1)
+        if (inFoldMargin != _showFoldMarkers)
         {
-            _hoveredFoldLine = -1;
+            _showFoldMarkers = inFoldMargin;
             Invalidate();
         }
     }
 
     private void GutterPanel_MouseLeave(object? sender, EventArgs e)
     {
-        if (_hoveredFoldLine != -1)
+        if (_showFoldMarkers)
         {
-            _hoveredFoldLine = -1;
+            _showFoldMarkers = false;
             Invalidate();
         }
     }
@@ -316,7 +318,7 @@ public class GutterPanel : Panel
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
-        if (lineIndex != _hoveredFoldLine) return;
+        if (!_showFoldMarkers) return;
 
         bool isFoldStart;
         bool folded;
@@ -342,13 +344,13 @@ public class GutterPanel : Panel
 
         if (!isFoldStart) return;
 
-        string symbol = folded ? ">" : "v";
-        using var font = new Font("Segoe UI", 9, FontStyle.Bold);
-        Size sz = TextRenderer.MeasureText(symbol, font);
+        string symbol = folded ? ChevronRight : ChevronDown;
+        Size sz = Size.Ceiling(g.MeasureString(symbol, _foldFont));
         int tx = x + (FoldMarginWidth - sz.Width) / 2;
         int ty = y + 2;
         Color col = mainForm.IsDarkTheme ? Color.FromArgb(180, 180, 180) : Color.FromArgb(80, 80, 80);
-        TextRenderer.DrawText(g, symbol, font, new Point(tx, ty), col);
+        using var brush = new SolidBrush(col);
+        g.DrawString(symbol, _foldFont, brush, tx, ty);
     }
 
     public void RefreshGutter()
