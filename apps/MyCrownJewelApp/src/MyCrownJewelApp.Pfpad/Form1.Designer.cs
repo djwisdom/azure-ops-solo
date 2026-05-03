@@ -125,6 +125,7 @@ partial class Form1
         AutoScaleMode = AutoScaleMode.Font;
         Padding = new Padding(0);
         ClientSize = new Size(1000, 600);
+        MinimumSize = new Size(200, 200);
         Text = "Personal Flip Pad";
         StartPosition = FormStartPosition.CenterScreen;
 
