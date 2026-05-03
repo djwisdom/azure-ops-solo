@@ -33,7 +33,7 @@ namespace MyCrownJewelApp.Pfpad
         private int _mapGeneration;
 
         [Category("Layout")]
-        public int MinimapWidth { get; set; } = 100;
+        public int MinimapWidth { get; set; } = 200;
 
         [Category("Appearance")]
         public Color ViewportColor { get; set; } = Color.FromArgb(60, 100, 180, 255);
@@ -287,6 +287,8 @@ namespace MyCrownJewelApp.Pfpad
                     Color color = GetCharColor(tokens, pos, text.Length);
                     if (color.A > 0)
                     {
+                        int renderAlpha = ThemeManager.Instance.CurrentTheme.IsLight ? 140 : 180;
+                        color = Color.FromArgb(renderAlpha, color);
                         int charW = 1;
                         int endX = Math.Min(x + charW, mapW);
                         int renderW = endX - x;

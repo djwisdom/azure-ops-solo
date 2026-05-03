@@ -393,7 +393,7 @@ partial class Form1
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
         minimapControl.Dock = DockStyle.None;
-        minimapControl.MinimapWidth = 100;
+        minimapControl.MinimapWidth = 200;
         minimapControl.Visible = false;
 
         // Assemble editor panel with textEditor + minimap
