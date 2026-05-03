@@ -448,7 +448,10 @@
                             break;
                     }
                     if (patch != null)
-                        ApplyOneLine(patch.LineNumber, patch.Tokens);
+                    {
+                        try { ApplyOneLine(patch.LineNumber, patch.Tokens); }
+                        catch { }
+                    }
                 }
             };
 
@@ -3439,7 +3442,6 @@ darkThemeMenuItem.Checked = isDark;
 
         private void CreateIncrementalHighlighter()
         {
-            _highlightApplyTimer?.Stop();
             lock (_highlightApplyQueue) _highlightApplyQueue.Clear();
             incrementalHighlighter?.Dispose();
             incrementalHighlighter = null;
@@ -3470,6 +3472,8 @@ darkThemeMenuItem.Checked = isDark;
                 SynchronizationContext.Current);
 
             incrementalHighlighter.BatchReady += ApplyHighlightBatch;
+
+            _highlightApplyTimer?.Start();
 
             // Request visible range after creation
             RequestVisibleHighlight();
