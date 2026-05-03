@@ -499,6 +499,7 @@
               vimEngine.TabSizeRequested += (s) => SetTabSize(s);
               vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) ToggleAutoIndent(); };
               vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) ToggleSmartTabs(); };
+              vimEngine.GoToLineRequested += (line) => GoToLine(line);
 
              // Ensure initial dirty flag is clear after all initialization
              isModified = false;

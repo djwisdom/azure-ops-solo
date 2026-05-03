@@ -31,6 +31,7 @@ namespace MyCrownJewelApp.Pfpad
         public event Action<int>? TabSizeRequested;
         public event Action<bool>? AutoIndentRequested;
         public event Action<bool>? SmartTabsRequested;
+        public event Action<int>? GoToLineRequested;
 
         private static readonly HashSet<Keys> MotionKeys = new()
         {
@@ -415,6 +416,12 @@ namespace MyCrownJewelApp.Pfpad
             if (cmd.StartsWith("set "))
             {
                 ExecuteSet(cmd[4..].Trim());
+                return;
+            }
+
+            if (int.TryParse(cmd, out int line) && line > 0)
+            {
+                GoToLineRequested?.Invoke(line);
                 return;
             }
 
