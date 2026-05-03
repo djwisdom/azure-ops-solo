@@ -3354,6 +3354,7 @@
         {
             if (gutterPanel != null) gutterPanel.RefreshGutter();
             textEditor.Invalidate();
+            RequestVisibleHighlight();
         }
 
         private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
@@ -3696,7 +3697,7 @@
 
         private void ApplyHighlightPatches(List<HighlightPatch> patches)
         {
-            if (textEditor.IsDisposed || !textEditor.IsHandleCreated || _applyingHighlight) return;
+            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             _applyingHighlight = true;
             try
             {
