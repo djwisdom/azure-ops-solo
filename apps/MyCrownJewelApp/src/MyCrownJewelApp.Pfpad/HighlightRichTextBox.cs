@@ -181,16 +181,16 @@ public class HighlightRichTextBox : RichTextBox
             {
                 if (region.IsCollapsed) continue;
 
-                string openText = GetLineTextFromLines(region.OpenLine);
-                int braceCol = openText.LastIndexOf('{');
+                string closeText = GetLineTextFromLines(region.CloseLine);
+                int braceCol = closeText.LastIndexOf('}');
                 if (braceCol < 0) continue;
 
-                Point openPos = GetPositionFromCharIndex(
-                    GetFirstCharIndexFromLine(region.OpenLine) + braceCol);
                 Point closePos = GetPositionFromCharIndex(
-                    GetFirstCharIndexFromLine(region.CloseLine));
+                    GetFirstCharIndexFromLine(region.CloseLine) + braceCol);
+                Point openPos = GetPositionFromCharIndex(
+                    GetFirstCharIndexFromLine(region.OpenLine));
 
-                int x = openPos.X + charWidth / 2;
+                int x = closePos.X + charWidth / 2;
                 if (x < 0 || x > ClientSize.Width) continue;
 
                 int yTop = openPos.Y;
