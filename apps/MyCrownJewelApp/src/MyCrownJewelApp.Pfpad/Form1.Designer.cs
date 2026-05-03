@@ -124,7 +124,7 @@ partial class Form1
         SuspendLayout();
         AutoScaleMode = AutoScaleMode.Font;
         Padding = new Padding(0);
-        ClientSize = new Size(1000, 600);
+        ClientSize = new Size(780, 540);
         MinimumSize = new Size(400, 250);
         Text = "Personal Flip Pad";
         StartPosition = FormStartPosition.CenterScreen;
