@@ -46,9 +46,8 @@ public sealed class FoldingManager
 
         var lines = text.Split('\n');
         var braceStack = new Stack<(int line, int type)>();
+        var openBraceStack = new Stack<int>();
         int regionDepth = 0;
-        int braceCount = 0;
-        int openBraceLine = -1;
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -76,29 +75,29 @@ public sealed class FoldingManager
                 regionDepth++;
             }
 
-            // Brace matching: { and } at any position (multi-line blocks)
-            // braceCount and openBraceLine persist across lines
+            // Brace matching using a stack for full nesting support
             for (int c = 0; c < lines[i].Length; c++)
             {
                 if (lines[i][c] == '{')
                 {
-                    if (braceCount == 0) openBraceLine = i;
-                    braceCount++;
+                    openBraceStack.Push(i);
                 }
                 else if (lines[i][c] == '}')
                 {
-                    braceCount--;
-                    if (braceCount == 0 && openBraceLine >= 0 && openBraceLine < i)
+                    if (openBraceStack.Count > 0)
                     {
-                        _regions.Add(new FoldRegion
+                        int openLine = openBraceStack.Pop();
+                        if (openLine < i)
                         {
-                            OpenLine = openBraceLine,
-                            CloseLine = i,
-                            NestLevel = 0,
-                            OpenText = lines[openBraceLine].Trim(),
-                            IsCollapsed = false
-                        });
-                        openBraceLine = -1;
+                            _regions.Add(new FoldRegion
+                            {
+                                OpenLine = openLine,
+                                CloseLine = i,
+                                NestLevel = openBraceStack.Count,
+                                OpenText = lines[openLine].Trim(),
+                                IsCollapsed = false
+                            });
+                        }
                     }
                 }
             }
