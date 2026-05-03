@@ -495,6 +495,10 @@
                   if (documents.Count > 0)
                       SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Bottom);
               };
+              vimEngine.InsertSpacesRequested += (v) => { if (insertSpaces != v) ToggleInsertSpaces(); };
+              vimEngine.TabSizeRequested += (s) => SetTabSize(s);
+              vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) ToggleAutoIndent(); };
+              vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) ToggleSmartTabs(); };
 
              // Ensure initial dirty flag is clear after all initialization
              isModified = false;
@@ -1197,6 +1201,20 @@ darkThemeMenuItem.Checked = isDark;
         {
             insertSpaces = !insertSpaces;
             insertSpacesMenuItem.Checked = insertSpaces;
+            SaveSettings();
+        }
+
+        internal void ToggleAutoIndent()
+        {
+            autoIndentEnabled = !autoIndentEnabled;
+            autoIndentMenuItem.Checked = autoIndentEnabled;
+            SaveSettings();
+        }
+
+        internal void ToggleSmartTabs()
+        {
+            smartTabsEnabled = !smartTabsEnabled;
+            smartTabsMenuItem.Checked = smartTabsEnabled;
             SaveSettings();
         }
 

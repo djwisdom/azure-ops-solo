@@ -27,6 +27,10 @@ namespace MyCrownJewelApp.Pfpad
         public event Action? CloseRequested;
         public event Action? VerticalSplitRequested;
         public event Action? HorizontalSplitRequested;
+        public event Action<bool>? InsertSpacesRequested;
+        public event Action<int>? TabSizeRequested;
+        public event Action<bool>? AutoIndentRequested;
+        public event Action<bool>? SmartTabsRequested;
 
         private static readonly HashSet<Keys> MotionKeys = new()
         {
@@ -408,6 +412,12 @@ namespace MyCrownJewelApp.Pfpad
 
         private void ExecuteCommand(string cmd)
         {
+            if (cmd.StartsWith("set "))
+            {
+                ExecuteSet(cmd[4..].Trim());
+                return;
+            }
+
             switch (cmd)
             {
                 case "w":
@@ -444,6 +454,26 @@ namespace MyCrownJewelApp.Pfpad
                 case "split":
                     HorizontalSplitRequested?.Invoke();
                     break;
+            }
+        }
+
+        private void ExecuteSet(string args)
+        {
+            foreach (var part in args.Split(','))
+            {
+                string arg = part.Trim();
+                if (arg == "smartindent") { AutoIndentRequested?.Invoke(true); }
+                else if (arg == "nosmartindent") { AutoIndentRequested?.Invoke(false); }
+                else if (arg == "smarttab") { SmartTabsRequested?.Invoke(true); }
+                else if (arg == "nosmarttab") { SmartTabsRequested?.Invoke(false); }
+                else if (arg == "expandtab") { InsertSpacesRequested?.Invoke(true); }
+                else if (arg == "noexpandtab") { InsertSpacesRequested?.Invoke(false); }
+                else if (arg.StartsWith("tabstop=") || arg.StartsWith("shiftwidth=") || arg.StartsWith("softtabstop="))
+                {
+                    int eq = arg.IndexOf('=');
+                    if (int.TryParse(arg[(eq + 1)..], out int ts) && ts >= 1 && ts <= 20)
+                        TabSizeRequested?.Invoke(ts);
+                }
             }
         }
 
