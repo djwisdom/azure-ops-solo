@@ -453,20 +453,23 @@ namespace MyCrownJewelApp.Pfpad
         private int GetLineEnd(int line)
         {
             int next = _tb.GetFirstCharIndexFromLine(line + 1);
-            return next >= 0 ? next - 1 : _tb.TextLength;
+            if (next >= 0) return Math.Max(0, next - 1);
+            return Math.Max(0, _tb.TextLength);
         }
         private string GetCurrentLineText()
         {
             int l = GetCurrentLine();
             int s = GetLineStart(l);
             int e = GetLineEnd(l);
-            return s >= 0 && e > s ? _tb.Text.Substring(s, e - s) : "";
+            if (s < 0 || e <= s || e > _tb.TextLength) return "";
+            return _tb.Text.Substring(s, e - s);
         }
         private int GetLineLength(int line)
         {
             int s = GetLineStart(line);
             int e = GetLineEnd(line);
-            return e - s;
+            if (s < 0 || e < 0) return 0;
+            return Math.Max(0, e - s);
         }
         private int GetRepeat() => Math.Max(1, _repeatCount);
 
@@ -752,7 +755,9 @@ namespace MyCrownJewelApp.Pfpad
             _tb.SelectedText = dir > 0 ? "\t" : "";
             if (dir < 0)
             {
-                string txt = _tb.Text.Substring(start, Math.Min(GetLineLength(line), 1));
+                int len = Math.Min(GetLineLength(line), 1);
+                if (len <= 0) return;
+                string txt = _tb.Text.Substring(start, len);
                 if (txt == "\t" || txt == " ")
                 {
                     _tb.SelectionStart = start;
@@ -775,7 +780,9 @@ namespace MyCrownJewelApp.Pfpad
                 if (dir > 0) _tb.SelectedText = "\t";
                 else
                 {
-                    string txt = _tb.Text.Substring(ls, Math.Min(GetLineLength(l), 1));
+                    int lineLen = GetLineLength(l);
+                    if (lineLen <= 0) continue;
+                    string txt = _tb.Text.Substring(ls, Math.Min(lineLen, 1));
                     if (txt == "\t" || txt == " ")
                     {
                         _tb.SelectionStart = ls;
@@ -791,15 +798,13 @@ namespace MyCrownJewelApp.Pfpad
         {
             int line = GetCurrentLine();
             int end = GetLineEnd(line);
-            if (end < _tb.TextLength)
+            if (end < 0 || end >= _tb.TextLength) return;
+            int nextStart = end + 1;
+            if (nextStart < _tb.TextLength)
             {
-                int nextStart = end + 1;
-                if (nextStart < _tb.TextLength)
-                {
-                    _tb.SelectionStart = end;
-                    _tb.SelectionLength = nextStart - end;
-                    _tb.SelectedText = " ";
-                }
+                _tb.SelectionStart = end;
+                _tb.SelectionLength = nextStart - end;
+                _tb.SelectedText = " ";
             }
         }
         private void CutSelection()

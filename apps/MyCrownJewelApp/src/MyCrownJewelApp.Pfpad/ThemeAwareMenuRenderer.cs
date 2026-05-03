@@ -61,7 +61,7 @@ public sealed class ThemeAwareMenuRenderer : ToolStripProfessionalRenderer
 
     protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
     {
-        if (e.ToolStrip is MenuStrip) return;
+        if (e.ToolStrip is MenuStrip or StatusStrip) return;
         base.OnRenderToolStripBorder(e);
     }
 

@@ -1,21 +1,18 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 
 namespace MyCrownJewelApp.Pfpad;
 
-/// <summary>
-/// RichTextBox that draws a full-width current line highlight.
-/// </summary>
 public class HighlightRichTextBox : RichTextBox
 {
     private CurrentLineHighlightMode _highlightMode = CurrentLineHighlightMode.Off;
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
     private WinFormsTimer? _invalidateTimer;
-    private int _lastLine = -1;
 
     private int _guideColumn = 80;
     private bool _showGuide = false;
@@ -59,11 +56,10 @@ public class HighlightRichTextBox : RichTextBox
         get => _highlightMode;
         set
         {
-            if (_highlightMode != value)
-            {
-                _highlightMode = value;
-                _lastLine = -1;
-                Invalidate();
+                if (_highlightMode != value)
+                {
+                    _highlightMode = value;
+                    Invalidate();
                 CurrentLineHighlightModeChanged?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -83,35 +79,20 @@ public class HighlightRichTextBox : RichTextBox
         Invalidate();
     }
 
-    private void DrawCurrentLineHighlight(Graphics g)
+    private Rectangle? GetCurrentLineRect()
     {
-        if (_highlightMode != CurrentLineHighlightMode.WholeLine || !Visible || IsDisposed || !Enabled)
-            return;
+        if (_highlightMode != CurrentLineHighlightMode.WholeLine || !Visible || IsDisposed || !Enabled || !Focused)
+            return null;
+        if (Lines == null || Lines.Length == 0 || SelectionStart < 0)
+            return null;
 
-        try
-        {
-            if (Lines == null || Lines.Length == 0 || SelectionStart < 0)
-                return;
+        Point pt = GetPositionFromCharIndex(SelectionStart);
+        if (pt.IsEmpty || pt.Y < 0) return null;
 
-            if (_highlightMode != CurrentLineHighlightMode.WholeLine || !Focused)
-                return;
+        int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
+        if (lineHeight <= 0) lineHeight = 1;
 
-            int currentLine = GetLineFromCharIndex(SelectionStart);
-            _lastLine = currentLine;
-
-            Point pt = GetPositionFromCharIndex(SelectionStart);
-            if (pt.IsEmpty) return;
-
-            int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
-            if (lineHeight <= 0) lineHeight = 1;
-
-            int lineY = pt.Y;
-            if (lineY < 0) return;
-
-            using var brush = new SolidBrush(_highlightColor);
-            g.FillRectangle(brush, 0, lineY, ClientSize.Width, lineHeight);
-        }
-        catch { }
+        return new Rectangle(0, pt.Y, ClientSize.Width, lineHeight);
     }
 
     private void DrawColumnGuide(Graphics g)
@@ -119,13 +100,11 @@ public class HighlightRichTextBox : RichTextBox
         if (!_showGuide || !IsHandleCreated || TextLength == 0) return;
         try
         {
-            // Get first character index on line 0 — this is the reference column origin
             int firstCharIdx = GetFirstCharIndexFromLine(0);
             if (firstCharIdx < 0) return;
 
             Point basePos = GetPositionFromCharIndex(firstCharIdx);
 
-            // Measure character width from two adjacent characters on line 0
             int charWidth = 8;
             if (firstCharIdx + 1 < TextLength)
             {
@@ -163,7 +142,6 @@ public class HighlightRichTextBox : RichTextBox
             {
                 if (region.IsCollapsed) continue;
 
-                // Find the brace column on the open line
                 string openText = GetLineTextFromLines(region.OpenLine);
                 int braceCol = openText.LastIndexOf('{');
                 if (braceCol < 0) continue;
@@ -182,7 +160,6 @@ public class HighlightRichTextBox : RichTextBox
                 using var pen = new Pen(_foldLineColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
                 g.DrawLine(pen, x, yTop, x, yBottom);
 
-                // Small horizontal cap at bottom
                 g.DrawLine(pen, x, yBottom, x + charWidth / 2, yBottom);
             }
         }
@@ -253,6 +230,11 @@ public class HighlightRichTextBox : RichTextBox
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
+    [DllImport("gdi32.dll")]
+    private static extern int BitBlt(IntPtr hdc, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, int rop);
+
+    private const int SRCCOPY = 0x00CC0020;
+
     protected override void WndProc(ref Message m)
     {
         const int WM_PAINT = 0x000F;
@@ -271,13 +253,42 @@ public class HighlightRichTextBox : RichTextBox
             case WM_PAINT:
                 {
                     base.WndProc(ref m);
+                    if (IsDisposed || !IsHandleCreated) return;
+
                     IntPtr hdc = GetDC(Handle);
-                    if (hdc != IntPtr.Zero)
+                    if (hdc == IntPtr.Zero) return;
+
+                    try
                     {
                         using var g = Graphics.FromHdc(hdc);
-                        DrawCurrentLineHighlight(g);
+                        var lineRect = GetCurrentLineRect();
+                        if (lineRect.HasValue)
+                        {
+                            var r = lineRect.Value;
+                            if (r.Height > 0 && r.Width > 0)
+                            {
+                                using var textBmp = new Bitmap(r.Width, r.Height, PixelFormat.Format32bppArgb);
+                                using (var bmpG = Graphics.FromImage(textBmp))
+                                {
+                                    IntPtr bmpHdc = bmpG.GetHdc();
+                                    BitBlt(bmpHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
+                                    bmpG.ReleaseHdc(bmpHdc);
+                                }
+
+                                using var hlBrush = new SolidBrush(_highlightColor);
+                                g.FillRectangle(hlBrush, r);
+
+                                var attrs = new ImageAttributes();
+                                attrs.SetColorKey(BackColor, BackColor);
+                                g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
+                            }
+                        }
+
                         DrawColumnGuide(g);
                         DrawFoldBracketLines(g);
+                    }
+                    finally
+                    {
                         ReleaseDC(Handle, hdc);
                     }
                     return;

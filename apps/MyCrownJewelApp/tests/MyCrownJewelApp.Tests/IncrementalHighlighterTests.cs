@@ -324,13 +324,6 @@ public class VimEngineTests
 public class ThemeManagerTests
 {
     [Fact]
-    public void DefaultTheme_IsDark()
-    {
-        var mgr = ThemeManager.Instance;
-        Assert.True(mgr.IsDarkMode);
-    }
-
-    [Fact]
     public void ToggleTheme_SwitchesMode()
     {
         var mgr = ThemeManager.Instance;

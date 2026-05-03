@@ -23,7 +23,7 @@ namespace MyCrownJewelApp.Pfpad
         private System.Windows.Forms.Timer? _pollTimer;
         private Rectangle _viewportRect = Rectangle.Empty;
         private bool _isDragging;
-        private int _totalLines;
+        private volatile int _totalLines;
         private float _lineScale;
         private Func<int, IReadOnlyList<TokenInfo>?>? _tokenProvider;
 
@@ -138,6 +138,8 @@ namespace MyCrownJewelApp.Pfpad
 
             int vpY = (int)(firstVis * _lineScale);
             int vpH = Math.Max(2, (int)(visibleLines * _lineScale));
+            vpY = Math.Max(0, Math.Min(vpY, Height - vpH));
+            vpH = Math.Min(vpH, Height - vpY);
             var newRect = new Rectangle(0, vpY, Width, vpH);
             if (newRect != _viewportRect) { _viewportRect = newRect; Invalidate(); RaiseViewportChanged(); }
         }
@@ -213,6 +215,8 @@ namespace MyCrownJewelApp.Pfpad
 
             int vpY = (int)(firstVis * _lineScale);
             int vpH = Math.Max(4, (int)(visibleLines * _lineScale));
+            vpY = Math.Max(0, Math.Min(vpY, Height - vpH));
+            vpH = Math.Min(vpH, Height - vpY);
             _viewportRect = new Rectangle(0, vpY, Width, vpH);
 
             using var vpBrush = new SolidBrush(ViewportColor);
@@ -261,7 +265,12 @@ namespace MyCrownJewelApp.Pfpad
             {
                 int targetLine = (int)(e.Y / _lineScale);
                 targetLine = Math.Max(0, Math.Min(_totalLines - 1, targetLine));
-                ScrollToLine(targetLine);
+                // Center the clicked line in the viewport
+                int visHeight = _attachedEditor.ClientSize.Height;
+                int lineH = Math.Max(1, _attachedEditor.Font.Height);
+                int visibleLines = visHeight / lineH;
+                int firstLine = Math.Max(0, targetLine - visibleLines / 2);
+                ScrollToLine(firstLine);
                 RaiseViewportChanged();
                 Invalidate();
             }
@@ -274,7 +283,11 @@ namespace MyCrownJewelApp.Pfpad
 
             int targetLine = (int)(e.Y / _lineScale);
             targetLine = Math.Max(0, Math.Min(_totalLines - 1, targetLine));
-            ScrollToLine(targetLine);
+            int visHeight = _attachedEditor.ClientSize.Height;
+            int lineH = Math.Max(1, _attachedEditor.Font.Height);
+            int visibleLines = visHeight / lineH + 1;
+            int firstLine = Math.Max(0, Math.Min(targetLine, _totalLines - visibleLines));
+            ScrollToLine(firstLine);
             RaiseViewportChanged();
             Invalidate();
         }

@@ -20,10 +20,10 @@ public class GutterPanel : Panel
     public bool ShowLineNumbers { get; set; } = true;
 
     [Category("Appearance")]
-    public bool ShowBookmarks { get; set; } = true;
+    public bool ShowBookmarks { get; set; } = false;
 
     [Category("Appearance")]
-    public bool ShowChangeHistory { get; set; } = true;
+    public bool ShowChangeHistory { get; set; } = false;
 
     [Category("Appearance")]
     public bool ShowCodeFolds { get; set; } = true;
@@ -64,7 +64,7 @@ public class GutterPanel : Panel
                 using var measureFont = new Font(editor.Font.FontFamily, scaledSize);
                 string sample = new string('8', digitCount);
                 int textWidth = TextRenderer.MeasureText(sample, measureFont).Width;
-                lineNumberWidth = textWidth + 10;
+                lineNumberWidth = textWidth + 6;
             }
         }
         if (lineNumberWidth < 20) lineNumberWidth = 20;

@@ -108,7 +108,7 @@ public sealed class AboutDialog : Form
         AddLine("Personal Flip Pad", FontStyle.Bold, theme.Text, 6);
         AddLine($"Version {version}", FontStyle.Regular, theme.Muted);
         AddLine($"Commit: {commit}", FontStyle.Regular, theme.Muted);
-        AddLine($"Date: {date} UTC", FontStyle.Regular, theme.Muted);
+        AddLine($"Date: {date}", FontStyle.Regular, theme.Muted);
 
         // Separator
         var sep = new Label
@@ -178,8 +178,12 @@ public sealed class AboutDialog : Form
             proc.StartInfo.RedirectStandardOutput = true;
             proc.StartInfo.CreateNoWindow = true;
             proc.Start();
+            if (!proc.WaitForExit(2000))
+            {
+                try { proc.Kill(); } catch { }
+                return "timeout";
+            }
             string hash = proc.StandardOutput.ReadToEnd().Trim();
-            proc.WaitForExit(2000);
             return !string.IsNullOrEmpty(hash) ? hash : "unknown";
         }
         catch

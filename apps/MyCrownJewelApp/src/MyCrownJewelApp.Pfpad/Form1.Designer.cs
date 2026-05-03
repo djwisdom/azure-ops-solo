@@ -329,6 +329,7 @@ partial class Form1
         tabControl.MouseUp += TabControl_MouseUp;
         tabControl.MouseMove += TabControl_MouseMove;
         tabControl.MouseLeave += TabControl_MouseLeave;
+        tabControl.MouseWheel += TabControl_MouseWheel;
         tabControl.DrawItem += TabControl_DrawItem;
         tabControl.DoubleClick += TabControl_DoubleClick;
         tabControl.Paint += TabControl_Paint;
@@ -385,7 +386,7 @@ partial class Form1
         minimapControl.ViewportColor = Color.FromArgb(80, Color.DodgerBlue);
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
-        minimapControl.Dock = DockStyle.Right;
+        minimapControl.Dock = DockStyle.None;
         minimapControl.MinimapWidth = 100;
         minimapControl.Visible = false;
 
@@ -401,7 +402,8 @@ partial class Form1
         statusStrip = new StatusStrip();
         statusStrip.Dock = DockStyle.Fill;
         statusStrip.RenderMode = ToolStripRenderMode.Professional;
-        statusStrip.Padding = new Padding(4, 1, 4, 1);
+        statusStrip.SizingGrip = false;
+        statusStrip.Padding = new Padding(0);
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         vimModeLabel = new ToolStripStatusLabel("");
         vimModeLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);

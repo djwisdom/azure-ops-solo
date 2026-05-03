@@ -67,12 +67,34 @@ public sealed class IncrementalHighlighter : IDisposable
     public void RequestRange(int startLine, int endLine)
     {
         if (startLine < 0) return;
-        string[] allLines = _textEditor.Lines;
-        for (int line = startLine; line <= endLine && line < allLines.Length; line++)
+        for (int line = startLine; line <= endLine; line++)
         {
             if (!_tokenCache.ContainsKey(line))
-                _dirtyLines.Writer.TryWrite((line, allLines[line]));
+            {
+                string? text = GetLineText(line);
+                if (text != null)
+                    _dirtyLines.Writer.TryWrite((line, text));
+            }
         }
+    }
+
+    private string? GetLineText(int lineIndex)
+    {
+        try
+        {
+            if (_textEditor.IsDisposed) return null;
+            if (!_textEditor.IsHandleCreated)
+            {
+                var unused = _textEditor.Handle;
+            }
+            string text = _textEditor.Text;
+            int lineStart = _textEditor.GetFirstCharIndexFromLine(lineIndex);
+            if (lineStart < 0) return null;
+            int lineEnd = _textEditor.GetFirstCharIndexFromLine(lineIndex + 1);
+            if (lineEnd < 0) lineEnd = text.Length;
+            return text.Substring(lineStart, lineEnd - lineStart).TrimEnd('\r', '\n');
+        }
+        catch { return null; }
     }
 
     public IReadOnlyList<TokenInfo>? GetTokens(int lineIndex)
@@ -84,14 +106,9 @@ public sealed class IncrementalHighlighter : IDisposable
     {
         if (lineNumber < 0) return;
         _tokenCache.TryRemove(lineNumber, out _);
-        try
-        {
-            if (_textEditor.IsDisposed || !_textEditor.IsHandleCreated) return;
-            var lines = _textEditor.Lines;
-            if (lineNumber < lines.Length)
-                _dirtyLines.Writer.TryWrite((lineNumber, lines[lineNumber]));
-        }
-        catch { }
+        string? text = GetLineText(lineNumber);
+        if (text != null)
+            _dirtyLines.Writer.TryWrite((lineNumber, text));
     }
 
     private async Task WorkerLoopAsync(CancellationToken ct)

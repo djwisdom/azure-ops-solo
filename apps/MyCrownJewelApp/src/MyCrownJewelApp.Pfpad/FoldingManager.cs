@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -164,7 +164,6 @@ public sealed class FoldingManager
 
         try
         {
-            // Get the start and end positions in the text
             int startChar = _editor.GetFirstCharIndexFromLine(r.OpenLine);
             int endCharExclusive;
             if (r.CloseLine + 1 < _editor.Lines.Length)
@@ -174,33 +173,35 @@ public sealed class FoldingManager
 
             if (startChar < 0 || endCharExclusive <= startChar) return;
 
-            // The text to replace (everything between open line and close line inclusive)
             int length = endCharExclusive - startChar;
             string originalText = _editor.Text.Substring(startChar, length);
 
-            // Build replacement: keep the opening line but add fold indicator
             string openLineText = _editor.Lines[r.OpenLine];
             string replacement = openLineText + " // ...";
 
-            // Store undo info
             _undoStack.Push(new UndoFold
             {
                 StartIndex = startChar,
-                Length = replacement.Length, // after replacement
+                Length = replacement.Length,
                 ReplacedText = originalText,
                 OpenLine = r.OpenLine,
                 CloseLine = r.CloseLine
             });
 
-            // Replace in editor
             _editor.Select(startChar, length);
             _editor.SelectedText = replacement;
 
-            // Mark as collapsed
             r.IsCollapsed = true;
             _regions[index] = r;
         }
-        catch { }
+        catch (ArgumentOutOfRangeException)
+        {
+            Debug.WriteLine($"[FoldingManager] CollapseFold: index {index} out of range");
+        }
+        catch (NullReferenceException)
+        {
+            Debug.WriteLine("[FoldingManager] CollapseFold: editor disposed");
+        }
     }
 
     private void ExpandFold(int index)
@@ -210,7 +211,6 @@ public sealed class FoldingManager
 
         try
         {
-            // Find the matching undo entry
             UndoFold? undo = null;
             foreach (var u in _undoStack)
             {
@@ -231,6 +231,13 @@ public sealed class FoldingManager
             r.IsCollapsed = false;
             _regions[index] = r;
         }
-        catch { }
+        catch (ArgumentOutOfRangeException)
+        {
+            Debug.WriteLine($"[FoldingManager] ExpandFold: index {index} out of range");
+        }
+        catch (NullReferenceException)
+        {
+            Debug.WriteLine("[FoldingManager] ExpandFold: editor disposed");
+        }
     }
 }

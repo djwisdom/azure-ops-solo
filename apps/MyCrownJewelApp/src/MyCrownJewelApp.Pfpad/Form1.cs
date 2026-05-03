@@ -236,6 +236,9 @@
         public HashSet<int> CollapsedRegions => collapsedRegions;
 
         private System.Windows.Forms.Timer? highlightTimer;
+        private Queue<HighlightPatch> _highlightApplyQueue = new();
+        private System.Windows.Forms.Timer? _highlightApplyTimer;
+        private Button _tabDropdownButton = null!;
 
         // Incremental highlight cache
         private Dictionary<string, (Regex? keywords, Regex? types, Regex? stringRegex, Regex? comment, Regex? number, Regex? preprocessor)> compiledRegexCache = new();
@@ -309,6 +312,7 @@
             textEditor.HandleCreated += (s, e) =>
             {
                 ApplyScrollbarTheme();
+                PositionMinimap();
                 if (syntaxHighlightingEnabled)
                 {
                     CreateIncrementalHighlighter();
@@ -387,6 +391,30 @@
                 PositionMinimap();
             }
 
+            // Tab dropdown menu button (rightmost corner of tab strip)
+            _tabDropdownButton = new Button
+            {
+                Text = "\u25BC",
+                Font = new Font("Segoe UI", 7),
+                FlatStyle = FlatStyle.Flat,
+                Size = new Size(20, 30),
+                Cursor = Cursors.Hand,
+                TabStop = false
+            };
+            _tabDropdownButton.FlatAppearance.BorderSize = 0;
+            _tabDropdownButton.Click += TabDropdownButton_Click;
+            if (tabControl?.Parent is TableLayoutPanel parent)
+            {
+                _tabDropdownButton.Anchor = AnchorStyles.None;
+                parent.Controls.Add(_tabDropdownButton);
+                parent.SetCellPosition(_tabDropdownButton, parent.GetCellPosition(tabControl));
+                _tabDropdownButton.BringToFront();
+                PositionTabDropdownButton();
+                tabControl.Resize += (s, e) => PositionTabDropdownButton();
+                parent.ControlAdded += (s, e) => PositionTabDropdownButton();
+                parent.ControlRemoved += (s, e) => PositionTabDropdownButton();
+            }
+
             // Initialize folding manager and scan regions
             _foldingManager = new FoldingManager(textEditor!);
             textEditor!.FoldingManager = _foldingManager;
@@ -399,13 +427,32 @@
             
             // Initialize syntax highlighting debounce timer
             highlightTimer = new System.Windows.Forms.Timer();
-            highlightTimer.Interval = 150; // 150ms debounce for responsiveness
+            highlightTimer.Interval = 150;
             highlightTimer.Tick += (s, e) =>
             {
                 highlightTimer.Stop();
                 if (syntaxHighlightingEnabled)
                 {
                     RequestVisibleHighlight();
+                }
+            };
+
+            // Incremental highlight apply timer (queues and applies one line per tick)
+            _highlightApplyTimer = new System.Windows.Forms.Timer();
+            _highlightApplyTimer.Interval = 10;
+            _highlightApplyTimer.Tick += (s, e) =>
+            {
+                HighlightPatch? patch = null;
+                lock (_highlightApplyQueue)
+                {
+                    if (_highlightApplyQueue.Count > 0)
+                        patch = _highlightApplyQueue.Dequeue();
+                    if (_highlightApplyQueue.Count == 0)
+                        _highlightApplyTimer.Stop();
+                }
+                if (patch != null)
+                {
+                    ApplyOneLine(patch.LineNumber, patch.Tokens);
                 }
             };
 
@@ -817,6 +864,7 @@
 
         private void UpdateThemeColors(bool isDark)
         {
+            _themeManager.IsDarkMode = isDark;
             var theme = isDark ? Theme.Dark : Theme.Light;
             _themeManager.CurrentTheme = theme;
             
@@ -832,7 +880,7 @@
             {
                 textEditor.BackColor = theme.EditorBackground;
                 textEditor.ForeColor = theme.Text;
-                textEditor.HighlightColor = isDark ? Color.FromArgb(30, 60, 60, 60) : Color.FromArgb(30, 230, 230, 230);
+                textEditor.HighlightColor = isDark ? Color.FromArgb(80, 60, 60, 60) : Color.FromArgb(80, 230, 230, 230);
             }
             if (_splitEditor != null)
             {
@@ -852,6 +900,13 @@
                 minimapControl.RefreshNow();
             }
             textEditor!.GuideColor = isDark ? Color.FromArgb(120, 120, 120) : Color.FromArgb(120, 120, 120);
+            if (_tabDropdownButton != null)
+            {
+                var ddTheme = isDark ? Theme.Dark : Theme.Light;
+                _tabDropdownButton.BackColor = ddTheme.MenuBackground;
+                _tabDropdownButton.ForeColor = ddTheme.Muted;
+                _tabDropdownButton.FlatAppearance.MouseOverBackColor = ddTheme.ButtonHoverBackground;
+            }
             textEditor!.Invalidate();
             if (textEditor != null)
             {
@@ -1088,6 +1143,8 @@ darkThemeMenuItem.Checked = isDark;
             }
             else
             {
+                _highlightApplyTimer?.Stop();
+                lock (_highlightApplyQueue) _highlightApplyQueue.Clear();
                 incrementalHighlighter?.Dispose();
                 incrementalHighlighter = null;
                 var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
@@ -1246,6 +1303,8 @@ darkThemeMenuItem.Checked = isDark;
                          int lineStartIdx = textEditor.GetFirstCharIndexFromLine(lineIdx);
                          int charsOnLineBeforeCaret = textEditor.SelectionStart - lineStartIdx;
                          string lineText = GetLineText(lineIdx);
+                         if (charsOnLineBeforeCaret > lineText.Length)
+                             charsOnLineBeforeCaret = lineText.Length;
                          string textBeforeCaret = lineText.Substring(0, charsOnLineBeforeCaret);
                         
                         if (string.IsNullOrEmpty(textBeforeCaret) || textBeforeCaret.All(char.IsWhiteSpace))
@@ -1474,7 +1533,7 @@ darkThemeMenuItem.Checked = isDark;
         private void OpenFile()
         {
             using var ofd = new OpenFileDialog();
-            ofd.Filter = "Text Files|*.txt|All Files|*.*";
+            ofd.Filter = "All Files|*.*";
             ofd.Multiselect = false;
             if (ofd.ShowDialog() == DialogResult.OK)
             {
@@ -2439,6 +2498,54 @@ darkThemeMenuItem.Checked = isDark;
             }
         }
 
+        private void TabControl_MouseWheel(object? sender, MouseEventArgs e)
+        {
+            if (tabControl.TabCount <= 1) return;
+            int dir = e.Delta > 0 ? -1 : 1;
+            int next = tabControl.SelectedIndex + dir;
+            if (next >= 0 && next < tabControl.TabCount)
+            {
+                tabControl.SelectedIndex = next;
+                var tabRect = tabControl.GetTabRect(next);
+                tabControl.Invalidate(tabRect);
+            }
+        }
+
+        private void PositionTabDropdownButton()
+        {
+            if (_tabDropdownButton == null || tabControl == null || tabControl.IsDisposed) return;
+            int x = tabControl.Left + tabControl.Width - _tabDropdownButton.Width - 2;
+            int y = tabControl.Top + (tabControl.Height - _tabDropdownButton.Height) / 2;
+            _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(0, y));
+            _tabDropdownButton.Visible = tabControl.TabCount > 0;
+        }
+
+        private void TabDropdownButton_Click(object? sender, EventArgs e)
+        {
+            if (tabControl == null || tabControl.TabCount == 0 || _tabDropdownButton == null) return;
+            var theme = isDarkTheme ? Theme.Dark : Theme.Light;
+            var cm = new ContextMenuStrip();
+            cm.Font = new Font("Segoe UI", 10);
+            cm.BackColor = theme.MenuBackground;
+            cm.ForeColor = theme.Text;
+            cm.Renderer = new ThemeAwareMenuRenderer(theme);
+            for (int i = 0; i < tabControl.TabCount; i++)
+            {
+                int idx = i;
+                var page = tabControl.TabPages[i];
+                var item = cm.Items.Add(page.Text, null, (s, args) =>
+                {
+                    if (tabControl != null && idx < tabControl.TabCount)
+                        tabControl.SelectedIndex = idx;
+                });
+                if (i == tabControl.SelectedIndex)
+                    item.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+            }
+            cm.Show(_tabDropdownButton.Parent ?? _tabDropdownButton,
+                _tabDropdownButton.Left,
+                _tabDropdownButton.Bottom);
+        }
+
         private void CloseTabAtLocation(Point location)
         {
             for (int i = 0; i < tabControl.TabPages.Count; i++)
@@ -2733,14 +2840,14 @@ darkThemeMenuItem.Checked = isDark;
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
 
-            // Flat background: subtly different for selected, hover, or normal
+            // Flat background: menu-background strip, editor-blend active tab
             Color backColor;
             if (isSelected)
                 backColor = theme.EditorBackground;
             else if (isHovered)
                 backColor = theme.ButtonHoverBackground;
             else
-                backColor = theme.PanelBackground;
+                backColor = theme.MenuBackground;
 
             using (var brush = new SolidBrush(backColor))
             {
@@ -3120,7 +3227,7 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (tabControl == null) return;
             var theme = isDarkTheme ? Theme.Dark : Theme.Light;
-            tabControl.BackColor = theme.PanelBackground;
+            tabControl.BackColor = theme.MenuBackground;
             tabControl.ForeColor = theme.Text;
             // Force redraw to apply themed background in owner-drawn tabs
             tabControl.Invalidate();
@@ -3143,7 +3250,17 @@ darkThemeMenuItem.Checked = isDark;
                 minimapControl.Visible = true;
                 minimapControl.BringToFront();
                 if (textEditor != null && textEditor.IsHandleCreated)
+                {
+                    int scrollBarWidth = SystemInformation.VerticalScrollBarWidth;
+                    int mw = Math.Min(minimapControl.MinimapWidth,
+                        textEditor.Width - scrollBarWidth - 10);
+                    int x = textEditor.Right - scrollBarWidth - mw;
+                    x = Math.Max(0, x);
+                    minimapControl.Location = new Point(x, textEditor.Top);
+                    minimapControl.Size = new Size(mw, textEditor.ClientSize.Height);
+                    minimapControl.MinimapWidth = mw;
                     minimapControl.AttachEditor(textEditor);
+                }
             }
             else
             {
@@ -3214,7 +3331,7 @@ darkThemeMenuItem.Checked = isDark;
         private void TabControl_Paint(object? sender, PaintEventArgs e)
         {
             var theme = isDarkTheme ? Theme.Dark : Theme.Light;
-            e.Graphics.Clear(theme.PanelBackground);
+            e.Graphics.Clear(theme.MenuBackground);
         }
 
         private void TabControl_HandleCreated(object? sender, EventArgs e)
@@ -3222,6 +3339,16 @@ darkThemeMenuItem.Checked = isDark;
             // Strip visual styles to remove the 3D raised border from the tab strip
             if (tabControl.IsHandleCreated)
                 SetWindowTheme(tabControl.Handle, "", "");
+
+            // Remove the classic 3D raised border style
+            int style = GetWindowLong(tabControl.Handle, GWL_STYLE);
+            style = style & ~WS_BORDER;
+
+            // Use flat tab buttons (no 3D raised edges per tab)
+            const int TCS_FLATBUTTONS = 0x0008;
+            style |= TCS_FLATBUTTONS;
+
+            SetWindowLong(tabControl.Handle, GWL_STYLE, style);
 
             // Hide the dashed focus rectangle on the active tab
             const int WM_UPDATEUISTATE = 0x0128;
@@ -3247,7 +3374,14 @@ darkThemeMenuItem.Checked = isDark;
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
             private const int WM_ERASEBKGND = 0x0014;
+            private const int WM_NCPAINT = 0x0085;
             private readonly Form1 _owner;
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern IntPtr GetWindowDC(IntPtr hWnd);
+
+            [System.Runtime.InteropServices.DllImport("user32.dll")]
+            private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
             public TabStripBackgroundWindow(Form1 owner) => _owner = owner;
 
@@ -3258,11 +3392,26 @@ darkThemeMenuItem.Checked = isDark;
                     case WM_ERASEBKGND:
                         var theme = _owner.isDarkTheme ? Theme.Dark : Theme.Light;
                         using (var g = Graphics.FromHdc(m.WParam))
-                        using (var brush = new SolidBrush(theme.PanelBackground))
+                        using (var brush = new SolidBrush(theme.MenuBackground))
                         {
                             g.FillRectangle(brush, _owner.tabControl.ClientRectangle);
                         }
                         m.Result = (IntPtr)1;
+                        return;
+                    case WM_NCPAINT:
+                        base.WndProc(ref m);
+                        IntPtr ncHdc = GetWindowDC(Handle);
+                        if (ncHdc != IntPtr.Zero)
+                        {
+                            var ncTheme = _owner.isDarkTheme ? Theme.Dark : Theme.Light;
+                            using (var g = Graphics.FromHdc(ncHdc))
+                            using (var brush = new SolidBrush(ncTheme.MenuBackground))
+                            {
+                                g.FillRectangle(brush, 0, 0,
+                                    _owner.tabControl.Width, _owner.tabControl.Height);
+                            }
+                            ReleaseDC(Handle, ncHdc);
+                        }
                         return;
                 }
                 base.WndProc(ref m);
@@ -3281,6 +3430,8 @@ darkThemeMenuItem.Checked = isDark;
 
         private void CreateIncrementalHighlighter()
         {
+            _highlightApplyTimer?.Stop();
+            lock (_highlightApplyQueue) _highlightApplyQueue.Clear();
             incrementalHighlighter?.Dispose();
             incrementalHighlighter = null;
 
@@ -3328,50 +3479,50 @@ darkThemeMenuItem.Checked = isDark;
         private void ApplyHighlightBatch(object? sender, List<HighlightPatch> patches)
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
+            lock (_highlightApplyQueue)
+            {
+                foreach (var p in patches)
+                    _highlightApplyQueue.Enqueue(p);
+            }
+            _highlightApplyTimer?.Start();
+        }
 
+        private void ApplyOneLine(int line, IReadOnlyList<TokenInfo> tokens)
+        {
+            if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             var baseColor = isDarkTheme ? Theme.Dark.Text : Theme.Light.Text;
             _suspendSelectionChanged = true;
             BeginUpdate(textEditor);
-            textEditor.SuspendLayout();
             try
             {
-                foreach (var patch in patches)
+                int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
+                if (line < 0 || line >= lineCount) return;
+
+                int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                if (lineStart < 0) return;
+
+                int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
+                int lineLen = lineEnd - lineStart;
+                if (lineLen <= 0) return;
+
+                textEditor.SelectionStart = lineStart;
+                textEditor.SelectionLength = lineLen;
+                textEditor.SelectionColor = baseColor;
+
+                foreach (var token in tokens)
                 {
-                    int line = patch.LineNumber;
-
-                    // Get total line count via EM_GETLINECOUNT (cheap)
-                    int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
-                    if (line < 0 || line >= lineCount) continue;
-
-                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-                    if (lineStart < 0) continue;
-
-                    int lineEnd = (line + 1 < lineCount) ? textEditor.GetFirstCharIndexFromLine(line + 1) : textEditor.TextLength;
-                    int lineLen = lineEnd - lineStart;
-                    if (lineLen <= 0) continue;
-
-                    // Reset line to base color
-                    textEditor.SelectionStart = lineStart;
-                    textEditor.SelectionLength = lineLen;
-                    textEditor.SelectionColor = baseColor;
-
-                    // Apply token colors
-                    foreach (var token in patch.Tokens)
+                    int idx = lineStart + token.StartIndex;
+                    int len = token.Length;
+                    if (idx >= lineStart && idx + len <= lineStart + lineLen)
                     {
-                        int idx = lineStart + token.StartIndex;
-                        int len = token.Length;
-                        if (idx >= lineStart && idx + len <= lineStart + lineLen)
-                        {
-                            textEditor.SelectionStart = idx;
-                            textEditor.SelectionLength = len;
-                            textEditor.SelectionColor = GetColorForToken(token.Type);
-                        }
+                        textEditor.SelectionStart = idx;
+                        textEditor.SelectionLength = len;
+                        textEditor.SelectionColor = GetColorForToken(token.Type);
                     }
                 }
             }
             finally
             {
-                textEditor.ResumeLayout();
                 EndUpdate(textEditor);
                 _suspendSelectionChanged = false;
             }
@@ -3543,6 +3694,16 @@ darkThemeMenuItem.Checked = isDark;
 
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        private const int GWL_STYLE = -16;
+        private const int WS_BORDER = 0x00800000;
+
         private const int WM_SETREDRAW = 0x0B;
         private const int WM_VSCROLL = 0x115;
         private const int EM_STARTUNDOACTION = 0x00B7;
@@ -3555,8 +3716,9 @@ darkThemeMenuItem.Checked = isDark;
         {
             if (!textEditor.IsHandleCreated || textEditor.IsDisposed) return string.Empty;
             var sb = new System.Text.StringBuilder(4096);
+            sb.Length = sb.Capacity;
             int len = SendMessage(textEditor.Handle, EM_GETLINE, lineIndex, sb);
-            return len > 0 ? sb.ToString() : string.Empty;
+            return len > 0 ? sb.ToString(0, len) : string.Empty;
         }
 
         // Get total line count
@@ -3831,6 +3993,14 @@ darkThemeMenuItem.Checked = isDark;
                 }
             }
             SaveSettings();
+            _highlightApplyTimer?.Stop();
+            _highlightApplyTimer?.Dispose();
+            highlightTimer?.Stop();
+            highlightTimer?.Dispose();
+            elasticTabTimer?.Stop();
+            elasticTabTimer?.Dispose();
+            _gitPollTimer?.Stop();
+            _gitPollTimer?.Dispose();
             incrementalHighlighter?.Dispose();
         }
 
