@@ -13,6 +13,33 @@ public partial class GoToDialog : Form
     {
         mainForm = form;
         InitializeComponent();
+        ApplyTheme();
+    }
+
+    private void ApplyTheme()
+    {
+        var theme = ThemeManager.Instance.CurrentTheme;
+        BackColor = theme.Background;
+        ForeColor = theme.Text;
+
+        lineLabel.BackColor = Color.Transparent;
+        lineLabel.ForeColor = theme.Text;
+
+        lineTextBox.BackColor = theme.EditorBackground;
+        lineTextBox.ForeColor = theme.Text;
+        lineTextBox.BorderStyle = BorderStyle.FixedSingle;
+
+        void StyleButton(Button btn)
+        {
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.BackColor = theme.PanelBackground;
+            btn.ForeColor = theme.Text;
+            btn.FlatAppearance.BorderColor = theme.Border;
+            btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        }
+
+        StyleButton(goToButton);
+        StyleButton(cancelButton);
     }
 
     private void InitializeComponent()
@@ -61,7 +88,7 @@ public partial class GoToDialog : Form
         }
         else
         {
-            MessageBox.Show("Please enter a valid line number.", "Invalid Input", 
+            ThemedMessageBox.Show("Please enter a valid line number.", "Invalid Input", 
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }

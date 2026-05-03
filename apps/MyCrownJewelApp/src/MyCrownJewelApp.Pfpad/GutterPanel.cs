@@ -15,6 +15,7 @@ public class GutterPanel : Panel
     private const int FoldMarginWidth = 14;
 
     private int totalMarginWidth;
+    private int _hoveredFoldLine = -1;
 
     [Category("Appearance")]
     public bool ShowLineNumbers { get; set; } = true;
@@ -42,6 +43,8 @@ public class GutterPanel : Panel
         DoubleBuffered = true;
         ResizeRedraw = true;
         MouseClick += GutterPanel_MouseClick;
+        MouseMove += GutterPanel_MouseMove;
+        MouseLeave += GutterPanel_MouseLeave;
     }
 
     private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
@@ -59,6 +62,45 @@ public class GutterPanel : Panel
         if (region.HasValue)
         {
             mainForm.ToggleFold(lineIndex);
+        }
+    }
+
+    private void GutterPanel_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (mainForm?.textEditor == null || !ShowCodeFolds || mainForm.FoldingManager == null) return;
+
+        int foldX = Width - FoldMarginWidth;
+        if (e.X >= foldX && e.X <= Width)
+        {
+            var editor = mainForm.textEditor;
+            int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
+            int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+            int lineIndex = firstVis + e.Y / lineHeight;
+
+            if (mainForm.FoldingManager.IsFoldStart(lineIndex))
+            {
+                if (_hoveredFoldLine != lineIndex)
+                {
+                    _hoveredFoldLine = lineIndex;
+                    Invalidate();
+                }
+                return;
+            }
+        }
+
+        if (_hoveredFoldLine != -1)
+        {
+            _hoveredFoldLine = -1;
+            Invalidate();
+        }
+    }
+
+    private void GutterPanel_MouseLeave(object? sender, EventArgs e)
+    {
+        if (_hoveredFoldLine != -1)
+        {
+            _hoveredFoldLine = -1;
+            Invalidate();
         }
     }
 
@@ -134,10 +176,10 @@ public class GutterPanel : Panel
             if (lineIndex >= totalLines) break;
 
             int lineY = GetLineY(editor, lineIndex);
-            if (lineY == -1) continue;
+            if (lineY < 0) continue;
 
             if (lineY + lineHeight <= 0) continue;
-            if (lineY > editor.ClientSize.Height) break;
+            if (lineY > editor.ClientSize.Height + 2) break;
 
             int currentX = 0;
 
@@ -190,19 +232,21 @@ public class GutterPanel : Panel
     {
         int totalLines = Math.Max(1, GetTotalLineCount());
         if (lineIndex >= totalLines) return -1;
-        if (lineIndex >= editor.Lines.Length)
+
+        int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
+
+        try
         {
-            int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
-            return lineIndex * lineHeight;
+            int charIndex = (int)SendMessage(editor.Handle, 0x00BB, lineIndex, 0);
+            if (charIndex >= 0)
+            {
+                Point charPos = editor.GetPositionFromCharIndex(charIndex);
+                return charPos.Y;
+            }
         }
-        int charIndex = editor.GetFirstCharIndexFromLine(lineIndex);
-        if (charIndex < 0)
-        {
-            int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
-            return lineIndex * lineHeight;
-        }
-        Point charPos = editor.GetPositionFromCharIndex(charIndex);
-        return charPos.Y;
+        catch { }
+
+        return lineIndex * lineHeight;
     }
 
     private void DrawVerticalLine(Graphics g, int x, Color color)
@@ -272,6 +316,7 @@ public class GutterPanel : Panel
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
+        if (lineIndex != _hoveredFoldLine) return;
 
         bool isFoldStart;
         bool folded;

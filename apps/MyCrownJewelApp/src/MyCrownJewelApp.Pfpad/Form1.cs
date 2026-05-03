@@ -471,7 +471,7 @@
                   }
                   catch (Exception ex)
                   {
-                      MessageBox.Show($"Error saving file: {ex.Message}", "Save Error",
+                      ThemedMessageBox.Show($"Error saving file: {ex.Message}", "Save Error",
                           MessageBoxButtons.OK, MessageBoxIcon.Error);
                   }
               };
@@ -724,7 +724,7 @@
                 // Security: validate path exists and is not a directory
                 if (!File.Exists(filePath))
                 {
-                    MessageBox.Show("The file does not exist.", "File Drop Error",
+                    ThemedMessageBox.Show("The file does not exist.", "File Drop Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
@@ -737,7 +737,7 @@
                         !fullPath.StartsWith(Path.GetPathRoot(fullPath) ?? fullPath))
                     {
                         // Path is suspicious; reject
-                        MessageBox.Show("Invalid file path.", "File Drop Error",
+                        ThemedMessageBox.Show("Invalid file path.", "File Drop Error",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
@@ -751,14 +751,14 @@
                     const long maxSize = 10L * 1024 * 1024; // 10 MB
                     if (fileInfo.Length > maxSize)
                     {
-                        MessageBox.Show($"File is too large ({fileInfo.Length / 1024 / 1024}MB). Maximum allowed is 10MB.",
+                        ThemedMessageBox.Show($"File is too large ({fileInfo.Length / 1024 / 1024}MB). Maximum allowed is 10MB.",
                             "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
                 }
                 catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException)
                 {
-                    MessageBox.Show($"Cannot access file: {ex.Message}", "File Access Error",
+                    ThemedMessageBox.Show($"Cannot access file: {ex.Message}", "File Access Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
@@ -772,13 +772,13 @@
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Failed to open '{file}': {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        ThemedMessageBox.Show($"Failed to open '{file}': {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to open dropped file: {ex.Message}", "Error",
+                ThemedMessageBox.Show($"Failed to open dropped file: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -814,7 +814,7 @@
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to open dropped file: {ex.Message}", "Error",
+                ThemedMessageBox.Show($"Failed to open dropped file: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
@@ -1021,6 +1021,7 @@
                 minimapControl.BackColor = theme.EditorBackground;
                 minimapControl.ViewportColor = theme.IsLight ? Color.FromArgb(80, Color.LightBlue) : Color.FromArgb(100, Color.DodgerBlue);
                 minimapControl.ViewportBorderColor = Color.DodgerBlue;
+                minimapControl.MarkDirty();
                 minimapControl.RefreshNow();
             }
             textEditor!.GuideColor = Color.FromArgb(120, 120, 120);
@@ -1862,7 +1863,7 @@
             using var ofd = new OpenFileDialog();
             ofd.Filter = "All Files|*.*";
             ofd.Multiselect = false;
-            if (ofd.ShowDialog() == DialogResult.OK)
+            if (ofd.ShowThemed() == DialogResult.OK)
             {
                 OpenFileInNewTab(ofd.FileName);
             }
@@ -1926,7 +1927,7 @@
             }
              catch (Exception ex)
               {
-                  MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                  ThemedMessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
              }
          }
 
@@ -1947,7 +1948,7 @@
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error saving file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    ThemedMessageBox.Show($"Error saving file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -1957,7 +1958,7 @@
             using var sfd = new SaveFileDialog();
             sfd.Filter = "Text Files|*.txt|All Files|*.*";
             sfd.FileName = currentFilePath ?? "untitled.txt";
-            if (sfd.ShowDialog() == DialogResult.OK)
+            if (sfd.ShowThemed() == DialogResult.OK)
             {
                 try
                 {
@@ -1971,7 +1972,7 @@
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error saving file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    ThemedMessageBox.Show($"Error saving file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -2041,7 +2042,7 @@
             if (!isModified && (textEditor == null || string.IsNullOrEmpty(textEditor.Text) || savedContentHash == null))
                 return DialogResult.No;
 
-            var result = MessageBox.Show(
+            var result = ThemedMessageBox.Show(
                 "This file has unsaved changes. Save before proceeding?",
                 "Unsaved Changes",
                 MessageBoxButtons.YesNoCancel,
@@ -2159,9 +2160,13 @@
         {
             if (IsModified())
             {
-                var result = MessageBox.Show("Save changes before closing all?", "Confirm", MessageBoxButtons.YesNoCancel);
+                var result = ThemedMessageBox.Show("Save changes before closing all?", "Confirm", MessageBoxButtons.YesNoCancel);
                 if (result == DialogResult.Cancel) return;
-                if (result == DialogResult.Yes) SaveFile();
+                if (result == DialogResult.Yes)
+                {
+                    SaveFile();
+                    if (IsModified()) return; // save failed or cancelled
+                }
             }
             Application.Exit();
         }
@@ -2250,12 +2255,12 @@
         private void FindNext_Click(object? sender, EventArgs e)
         {
             // Would need to store last search parameters - stub for now
-            MessageBox.Show("Find Next requires storing last search parameters.", "Info");
+            ThemedMessageBox.Show("Find Next requires storing last search parameters.", "Info");
         }
 
         private void FindPrevious_Click(object? sender, EventArgs e)
         {
-            MessageBox.Show("Find Previous requires storing last search parameters.", "Info");
+            ThemedMessageBox.Show("Find Previous requires storing last search parameters.", "Info");
         }
 
         private void Replace_Click(object? sender, EventArgs e)
@@ -2621,7 +2626,7 @@
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedMessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -3252,7 +3257,7 @@
             }
             else
             {
-                MessageBox.Show("Cannot find \"" + text + "\".", "Find", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ThemedMessageBox.Show("Cannot find \"" + text + "\".", "Find", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
 
@@ -3550,7 +3555,7 @@
                 if (lastFileWriteTime.HasValue && lastWriteTime > lastFileWriteTime.Value)
                 {
                     // File has been modified externally
-                    var result = MessageBox.Show(
+                    var result = ThemedMessageBox.Show(
                         $"The file '{Path.GetFileName(currentFilePath)}' has been modified outside of the editor.\n" +
                         "Do you want to reload it?",
                         "External File Change",
@@ -3701,7 +3706,24 @@
             _applyingHighlight = true;
             try
             {
-                int lineCount = textEditor.Lines.Length;
+                int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, IntPtr.Zero, IntPtr.Zero);
+
+                int minLine = int.MaxValue, maxLine = -1;
+                foreach (var patch in patches)
+                {
+                    int ln = patch.LineNumber;
+                    if (ln < minLine) minLine = ln;
+                    if (ln > maxLine) maxLine = ln;
+                }
+                if (minLine > maxLine) return;
+
+                int maxLookup = Math.Min(maxLine + 1, lineCount - 1);
+                int[] lineStarts = new int[maxLookup + 1];
+                for (int l = minLine; l <= maxLookup; l++)
+                    lineStarts[l] = (int)SendMessage(textEditor.Handle, EM_LINEINDEX, (IntPtr)l, IntPtr.Zero);
+
+                int textLength = textEditor.TextLength;
+
                 var cf = new CHARFORMAT2W
                 {
                     cbSize = Marshal.SizeOf<CHARFORMAT2W>(),
@@ -3714,11 +3736,11 @@
                     {
                         int line = patch.LineNumber;
                         if (line < 0 || line >= lineCount) continue;
-                        int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                        int lineStart = lineStarts[line];
                         if (lineStart < 0) continue;
                         int lineEnd = (line + 1 < lineCount)
-                            ? textEditor.GetFirstCharIndexFromLine(line + 1)
-                            : textEditor.TextLength;
+                            ? lineStarts[line + 1]
+                            : textLength;
                         int lineLen = lineEnd - lineStart;
                         if (lineLen <= 0) continue;
                         foreach (var token in patch.Tokens)
@@ -3729,13 +3751,14 @@
                             cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
                             cf.dwEffects = token.Type == SyntaxTokenType.Comment ? CFE_ITALIC : 0;
                             Marshal.StructureToPtr(cf, cfPtr, false);
-                            textEditor.Select(idx, len);
+                            SendMessage(textEditor.Handle, EM_SETSEL, (IntPtr)idx, (IntPtr)(idx + len));
                             SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
                         }
                     }
                 }
                 finally { Marshal.FreeCoTaskMem(cfPtr); }
             }
+            catch { }
             finally { _applyingHighlight = false; }
         }
 

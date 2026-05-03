@@ -196,14 +196,15 @@ public class HighlightRichTextBox : RichTextBox
                 Point openPos = GetPositionFromCharIndex(
                     GetFirstCharIndexFromLine(region.OpenLine));
 
-                int x = closePos.X + charWidth / 2;
+                int x = closePos.X - 1;
+                if (x < 0) x = 0;
                 if (x < 0 || x > ClientSize.Width) continue;
 
                 int yTop = openPos.Y;
                 int yBottom = closePos.Y + lineH - 1;
 
                 g.DrawLine(pen, x, yTop, x, yBottom);
-                g.DrawLine(pen, x, yBottom, x + charWidth / 2, yBottom);
+                g.DrawLine(pen, x, yBottom, closePos.X + charWidth / 2, yBottom);
             }
         }
         catch { }

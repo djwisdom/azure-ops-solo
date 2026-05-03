@@ -26,6 +26,56 @@ public partial class FindReplaceDialog : Form
         mainForm = form;
         isReplace = replaceMode;
         InitializeForm();
+        ApplyTheme();
+    }
+
+    private void ApplyTheme()
+    {
+        var theme = ThemeManager.Instance.CurrentTheme;
+        BackColor = theme.Background;
+        ForeColor = theme.Text;
+
+        void StyleLabel(Label lbl)
+        {
+            lbl.BackColor = Color.Transparent;
+            lbl.ForeColor = theme.Text;
+        }
+        void StyleTextBox(TextBox tb)
+        {
+            tb.BackColor = theme.EditorBackground;
+            tb.ForeColor = theme.Text;
+            tb.BorderStyle = BorderStyle.FixedSingle;
+        }
+        void StyleButton(Button btn)
+        {
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.BackColor = theme.PanelBackground;
+            btn.ForeColor = theme.Text;
+            btn.FlatAppearance.BorderColor = theme.Border;
+            btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        }
+        void StyleCheckBox(CheckBox cb)
+        {
+            cb.BackColor = Color.Transparent;
+            cb.ForeColor = theme.Text;
+        }
+
+        StyleLabel(findLabel);
+        StyleTextBox(findTextBox);
+        StyleCheckBox(caseSensitiveCheckBox);
+        StyleCheckBox(wrapCheckBox);
+
+        directionGroup.BackColor = Color.Transparent;
+        directionGroup.ForeColor = theme.Text;
+        upRadioButton.BackColor = Color.Transparent;
+        upRadioButton.ForeColor = theme.Text;
+        downRadioButton.BackColor = Color.Transparent;
+        downRadioButton.ForeColor = theme.Text;
+
+        StyleButton(findNextButton);
+        StyleButton(replaceButton);
+        StyleButton(replaceAllButton);
+        StyleButton(cancelButton);
     }
 
     private void InitializeForm()

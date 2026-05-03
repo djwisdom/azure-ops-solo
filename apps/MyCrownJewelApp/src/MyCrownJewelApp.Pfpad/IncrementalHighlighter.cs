@@ -34,7 +34,7 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly HashSet<string> _preprocs;
     private bool _disposed;
 
-    private const int MaxBatch = 50;
+    private const int MaxBatch = 500;
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
@@ -139,7 +139,6 @@ public sealed class IncrementalHighlighter : IDisposable
                 catch { }
             }
 
-            await Task.Delay(1, _cts.Token);
         }
     }
 

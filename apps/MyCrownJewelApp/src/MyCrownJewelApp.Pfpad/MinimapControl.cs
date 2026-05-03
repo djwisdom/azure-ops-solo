@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
@@ -27,7 +28,9 @@ namespace MyCrownJewelApp.Pfpad
         private float _lineScale;
         private Func<int, IReadOnlyList<TokenInfo>?>? _tokenProvider;
 
-        private static readonly Color _defaultLineColor = Color.FromArgb(180, 180, 180);
+        private Bitmap? _fullMap;
+        private bool _mapDirty = true;
+        private int _mapGeneration;
 
         [Category("Layout")]
         public int MinimapWidth { get; set; } = 100;
@@ -40,6 +43,9 @@ namespace MyCrownJewelApp.Pfpad
 
         [Category("Appearance")]
         public Color BorderColor { get; set; } = Color.FromArgb(60, 60, 60);
+
+        private bool _mouseHovering;
+        private readonly Dictionary<int, Color> _tokenColorCache = new();
 
         public MinimapControl()
         {
@@ -62,30 +68,59 @@ namespace MyCrownJewelApp.Pfpad
             if (_attachedEditor == editor) return;
             DetachEditor();
             _attachedEditor = editor;
-            editor.TextChanged += (s, e) => { _totalLines = CountLines(); Invalidate(); };
+            editor.TextChanged += OnEditorTextChanged;
             if (editor is RichTextBox rtb)
                 rtb.VScroll += (s, e) => Invalidate();
-            editor.Resize += (s, e) => Invalidate();
-            editor.HandleCreated += (s, e) => { _totalLines = CountLines(); Invalidate(); };
+            editor.Resize += OnEditorResized;
+            editor.HandleCreated += (s, e) => { _totalLines = CountLines(); MarkDirty(); Invalidate(); };
             _totalLines = CountLines();
+            MarkDirty();
             _pollTimer?.Start();
+            Invalidate();
+        }
+
+        private void OnEditorTextChanged(object? s, EventArgs e)
+        {
+            _totalLines = CountLines();
+            MarkDirty();
+            Invalidate();
+        }
+
+        private void OnEditorResized(object? s, EventArgs e)
+        {
+            MarkDirty();
             Invalidate();
         }
 
         public void DetachEditor()
         {
+            if (_attachedEditor != null)
+            {
+                _attachedEditor.TextChanged -= OnEditorTextChanged;
+                _attachedEditor.Resize -= OnEditorResized;
+            }
             _pollTimer?.Stop();
             _attachedEditor = null;
             _totalLines = 0;
+            _fullMap?.Dispose();
+            _fullMap = null;
             Invalidate();
         }
 
         public void SetTokenProvider(Func<int, IReadOnlyList<TokenInfo>?> tokenProvider)
         {
             _tokenProvider = tokenProvider;
+            MarkDirty();
+            Invalidate();
         }
 
-        public void RefreshNow() => Invalidate();
+        public void RefreshNow() { MarkDirty(); Invalidate(); }
+
+        public void MarkDirty()
+        {
+            _mapDirty = true;
+            _mapGeneration++;
+        }
 
         private int CountLines()
         {
@@ -125,7 +160,7 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
             int total = CountLines();
-            if (total != _totalLines) { _totalLines = total; Invalidate(); return; }
+            if (total != _totalLines) { _totalLines = total; MarkDirty(); Invalidate(); return; }
             int firstVis = GetFirstVisibleLine();
             int visHeight = _attachedEditor.ClientSize.Height;
             int lineH = Math.Max(1, _attachedEditor.Font.Height);
@@ -164,91 +199,136 @@ namespace MyCrownJewelApp.Pfpad
 
             if (_attachedEditor == null || _totalLines == 0) return;
 
+            int mapW = Width - 4;
+            int mapH = Height;
+            if (mapW <= 0) return;
+
+            if (_totalLines > 0)
+                _lineScale = Math.Max(0.5f, mapH / (float)_totalLines);
+            else
+                _lineScale = 1.0f;
+
+            if (_mapDirty || _fullMap == null || _fullMap.Width != mapW || _fullMap.Height != mapH)
+                RebuildFullMap(mapW, mapH);
+
+            if (_fullMap != null)
+                g.DrawImage(_fullMap, 2, 0);
+
             int firstVis = GetFirstVisibleLine();
             int visHeight = _attachedEditor.ClientSize.Height;
             int lineH = Math.Max(1, _attachedEditor.Font.Height);
             int visibleLines = visHeight / lineH + 5;
 
-            int startLine = Math.Max(0, firstVis - 3);
-            int endLine = Math.Min(_totalLines - 1, firstVis + visibleLines);
-
-            if (_totalLines > 0)
-                _lineScale = Math.Max(0.5f, Height / (float)_totalLines);
-            else
-                _lineScale = 1.0f;
-
-            int lineHt = Math.Max(2, (int)Math.Ceiling(_lineScale));
-            int contentWidth = Width - 4;
-
-            for (int line = startLine; line <= endLine; line++)
-            {
-                int y = (int)(line * _lineScale);
-                if (y >= Height) break;
-
-                string text = GetLineText(line);
-                if (string.IsNullOrEmpty(text)) continue;
-
-                int maxLen = Math.Min(text.Length, contentWidth / Math.Max(1, lineHt) + 1);
-                if (maxLen <= 0) continue;
-
-                var tokens = _tokenProvider?.Invoke(line);
-                var tokenColors = BuildColorMap(tokens, text.Length, _defaultLineColor);
-
-                int x = 2;
-                for (int i = 0; i < maxLen && x < Width - 2; i++)
-                {
-                    char c = text[i];
-                    if (c == '\r' || c == '\n' || c == '\t')
-                    {
-                        x += lineHt;
-                        continue;
-                    }
-                    int charW = Math.Max(1, lineHt);
-                    if (x + charW > Width - 2) break;
-
-                    var color = tokenColors.TryGetValue(i, out var tc) ? tc : _defaultLineColor;
-                    using var brush = new SolidBrush(Color.FromArgb(200, color));
-                    g.FillRectangle(brush, x, y, charW, lineHt);
-                    x += charW;
-                }
-            }
-
             int vpY = (int)(firstVis * _lineScale);
             int vpH = Math.Max(4, (int)(visibleLines * _lineScale));
             vpY = Math.Max(0, Math.Min(vpY, Height - vpH));
             vpH = Math.Min(vpH, Height - vpY);
-            _viewportRect = new Rectangle(0, vpY, Width, vpH);
+            _viewportRect = new Rectangle(2, vpY, mapW, vpH);
 
-            using var vpBrush = new SolidBrush(ViewportColor);
-            g.FillRectangle(vpBrush, _viewportRect);
-            using var vpPen = new Pen(ViewportBorderColor, 1);
-            g.DrawRectangle(vpPen, _viewportRect.X, _viewportRect.Y, _viewportRect.Width - 1, _viewportRect.Height - 1);
+            if (_mouseHovering || _isDragging)
+            {
+                using var vpBrush = new SolidBrush(ViewportColor);
+                g.FillRectangle(vpBrush, _viewportRect);
+                using var vpPen = new Pen(ViewportBorderColor, 1);
+                g.DrawRectangle(vpPen, _viewportRect.X, _viewportRect.Y, _viewportRect.Width - 1, _viewportRect.Height - 1);
+            }
         }
 
-        private static Dictionary<int, Color> BuildColorMap(IReadOnlyList<TokenInfo>? tokens, int textLength, Color defaultColor)
+        private void RebuildFullMap(int mapW, int mapH)
         {
-            var map = new Dictionary<int, Color>();
-            if (tokens == null) return map;
+            _fullMap?.Dispose();
+            _fullMap = null;
+            if (_totalLines <= 0 || mapW <= 0 || mapH <= 0) return;
 
-            var theme = ThemeManager.Instance.CurrentTheme;
-            var tokenColors = new Dictionary<SyntaxTokenType, Color>
+            _fullMap = new Bitmap(mapW, mapH, PixelFormat.Format32bppArgb);
+            using var mg = Graphics.FromImage(_fullMap);
+            mg.Clear(BackColor);
+
+            float rowScale = mapH / (float)_totalLines;
+            int minRowH = Math.Max(1, (int)Math.Floor(rowScale));
+            double accum = 0;
+
+            for (int line = 0; line < _totalLines; line++)
             {
-                [SyntaxTokenType.Keyword] = theme.KeywordColor,
-                [SyntaxTokenType.String] = theme.StringColor,
-                [SyntaxTokenType.Comment] = theme.CommentColor,
-                [SyntaxTokenType.Number] = theme.NumberColor,
-                [SyntaxTokenType.Preprocessor] = theme.PreprocessorColor,
-                [SyntaxTokenType.Identifier] = defaultColor,
-            };
+                accum += rowScale;
+                int rowH = (int)Math.Round(accum);
+                accum -= rowH;
+                rowH = Math.Max(1, rowH);
+
+                int y = (int)(line * rowScale);
+                if (y >= mapH) break;
+
+                string text = GetLineText(line);
+                if (string.IsNullOrEmpty(text) || rowH <= 0 || y + rowH > mapH) continue;
+
+                int maxChars = Math.Min(text.Length, mapW / 2 + 1);
+                if (maxChars <= 0) continue;
+
+                var tokens = _tokenProvider?.Invoke(line);
+
+                int x = 0;
+                int pos = 0;
+                while (pos < maxChars && x < mapW)
+                {
+                    char c = text[pos];
+                    if (c == '\t')
+                    {
+                        int tabW = Math.Max(1, 2);
+                        pos++;
+                        x += tabW;
+                        continue;
+                    }
+                    if (c == '\r' || c == '\n')
+                    {
+                        pos++;
+                        continue;
+                    }
+
+                    Color color = GetCharColor(tokens, pos, text.Length);
+                    if (color.A > 0)
+                    {
+                        int charW = 1;
+                        int endX = Math.Min(x + charW, mapW);
+                        int renderW = endX - x;
+                        if (renderW > 0)
+                        {
+                            using var brush = new SolidBrush(color);
+                            mg.FillRectangle(brush, x, y, renderW, rowH);
+                        }
+                        x = endX;
+                    }
+                    else
+                    {
+                        x++;
+                    }
+                    pos++;
+                }
+            }
+
+            _mapDirty = false;
+        }
+
+        private Color GetCharColor(IReadOnlyList<TokenInfo>? tokens, int charIndex, int textLength)
+        {
+            var theme = ThemeManager.Instance.CurrentTheme;
+            if (tokens == null) return theme.Text;
 
             foreach (var token in tokens)
             {
-                if (!tokenColors.TryGetValue(token.Type, out var tc))
-                    tc = defaultColor;
-                for (int i = token.StartIndex; i < token.StartIndex + token.Length && i < textLength; i++)
-                    map[i] = tc;
+                if (charIndex >= token.StartIndex && charIndex < token.StartIndex + token.Length)
+                {
+                    return token.Type switch
+                    {
+                        SyntaxTokenType.Keyword => theme.KeywordColor,
+                        SyntaxTokenType.String => theme.StringColor,
+                        SyntaxTokenType.Comment => theme.CommentColor,
+                        SyntaxTokenType.Number => theme.NumberColor,
+                        SyntaxTokenType.Preprocessor => theme.PreprocessorColor,
+                        _ => theme.Text
+                    };
+                }
             }
-            return map;
+            return theme.Text;
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -257,7 +337,8 @@ namespace MyCrownJewelApp.Pfpad
             if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
             if (e.Button != MouseButtons.Left) return;
 
-            if (_viewportRect.Contains(e.Location))
+            var adjusted = new Point(e.X - 2, e.Y);
+            if (_viewportRect.Contains(adjusted))
             {
                 _isDragging = true;
                 Capture = true;
@@ -266,7 +347,6 @@ namespace MyCrownJewelApp.Pfpad
             {
                 int targetLine = (int)(e.Y / _lineScale);
                 targetLine = Math.Max(0, Math.Min(_totalLines - 1, targetLine));
-                // Center the clicked line in the viewport
                 int visHeight = _attachedEditor.ClientSize.Height;
                 int lineH = Math.Max(1, _attachedEditor.Font.Height);
                 int visibleLines = visHeight / lineH;
@@ -303,12 +383,36 @@ namespace MyCrownJewelApp.Pfpad
             }
         }
 
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            _mouseHovering = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            _mouseHovering = false;
+            if (!_isDragging)
+            {
+                Invalidate();
+            }
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            MarkDirty();
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 _pollTimer?.Stop();
                 _pollTimer?.Dispose();
+                _fullMap?.Dispose();
                 DetachEditor();
             }
             base.Dispose(disposing);
