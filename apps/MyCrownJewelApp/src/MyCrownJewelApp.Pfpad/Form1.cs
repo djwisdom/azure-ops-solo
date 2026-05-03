@@ -243,6 +243,8 @@
         public HashSet<int> CollapsedRegions => collapsedRegions;
 
         private Button _tabDropdownButton = null!;
+        private readonly List<HighlightPatch> _pendingPatches = new();
+        private bool _highlightPending;
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -3683,8 +3685,33 @@
             }
 
             incrementalHighlighter = new IncrementalHighlighter(textEditor, currentSyntax);
-            incrementalHighlighter.PatchReady += ApplyHighlightPatches;
+            incrementalHighlighter.PatchReady += CoalesceHighlightPatches;
             RequestVisibleHighlight();
+        }
+
+        private void CoalesceHighlightPatches(List<HighlightPatch> patches)
+        {
+            lock (_pendingPatches)
+            {
+                _pendingPatches.AddRange(patches);
+                if (!_highlightPending)
+                {
+                    _highlightPending = true;
+                    BeginInvoke(FlushHighlightPatches);
+                }
+            }
+        }
+
+        private void FlushHighlightPatches()
+        {
+            List<HighlightPatch> batch;
+            lock (_pendingPatches)
+            {
+                batch = new List<HighlightPatch>(_pendingPatches);
+                _pendingPatches.Clear();
+                _highlightPending = false;
+            }
+            if (batch.Count > 0) ApplyHighlightPatches(batch);
         }
 
         private void ApplyHighlightPatches(List<HighlightPatch> patches)
