@@ -184,12 +184,6 @@
         private float fontSize = 12f;
         
         // Colors - for syntax highlighting
-        private Color keywordColor = Color.Blue;
-        private Color stringColor = Color.Maroon;
-        private Color commentColor = Color.Green;
-        private Color numberColor = Color.DarkRed;
-        private Color preprocessorColor = Color.Gray;
-
         // Current file state
         internal string? currentFilePath;
         private bool isModified = false;
@@ -439,20 +433,25 @@
 
             // Incremental highlight apply timer (queues and applies one line per tick)
             _highlightApplyTimer = new System.Windows.Forms.Timer();
-            _highlightApplyTimer.Interval = 10;
+            _highlightApplyTimer.Interval = 5;
             _highlightApplyTimer.Tick += (s, e) =>
             {
-                HighlightPatch? patch = null;
-                lock (_highlightApplyQueue)
+                const int batchSize = 5;
+                for (int i = 0; i < batchSize; i++)
                 {
-                    if (_highlightApplyQueue.Count > 0)
-                        patch = _highlightApplyQueue.Dequeue();
-                    if (_highlightApplyQueue.Count == 0)
-                        _highlightApplyTimer.Stop();
-                }
-                if (patch != null)
-                {
-                    ApplyOneLine(patch.LineNumber, patch.Tokens);
+                    HighlightPatch? patch = null;
+                    lock (_highlightApplyQueue)
+                    {
+                        if (_highlightApplyQueue.Count > 0)
+                            patch = _highlightApplyQueue.Dequeue();
+                        if (_highlightApplyQueue.Count == 0)
+                        {
+                            _highlightApplyTimer.Stop();
+                            break;
+                        }
+                    }
+                    if (patch != null)
+                        ApplyOneLine(patch.LineNumber, patch.Tokens);
                 }
             };
 
@@ -3433,11 +3432,11 @@ darkThemeMenuItem.Checked = isDark;
         #endregion
         #region Syntax Highlighting (async, incremental, visible-range)
 
-        private Color GetKeywordColor() => keywordColor;
-        private Color GetStringColor() => stringColor;
-        private Color GetCommentColor() => commentColor;
-        private Color GetNumberColor() => numberColor;
-        private Color GetPreprocessorColor() => preprocessorColor;
+        private Color GetKeywordColor() => isDarkTheme ? Color.FromArgb(86, 156, 214) : Color.Blue;
+        private Color GetStringColor() => isDarkTheme ? Color.FromArgb(206, 145, 120) : Color.FromArgb(163, 21, 21);
+        private Color GetCommentColor() => isDarkTheme ? Color.FromArgb(106, 153, 85) : Color.Green;
+        private Color GetNumberColor() => isDarkTheme ? Color.FromArgb(181, 206, 168) : Color.FromArgb(9, 134, 88);
+        private Color GetPreprocessorColor() => isDarkTheme ? Color.FromArgb(197, 134, 192) : Color.FromArgb(121, 94, 38);
 
         private void CreateIncrementalHighlighter()
         {
