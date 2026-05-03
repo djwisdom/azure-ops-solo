@@ -403,16 +403,14 @@
             };
             _tabDropdownButton.FlatAppearance.BorderSize = 0;
             _tabDropdownButton.Click += TabDropdownButton_Click;
-            if (tabControl?.Parent is TableLayoutPanel parent)
+            if (tabControl != null)
             {
-                _tabDropdownButton.Anchor = AnchorStyles.None;
-                parent.Controls.Add(_tabDropdownButton);
-                parent.SetCellPosition(_tabDropdownButton, parent.GetCellPosition(tabControl));
+                this.Controls.Add(_tabDropdownButton);
                 _tabDropdownButton.BringToFront();
                 PositionTabDropdownButton();
                 tabControl.Resize += (s, e) => PositionTabDropdownButton();
-                parent.ControlAdded += (s, e) => PositionTabDropdownButton();
-                parent.ControlRemoved += (s, e) => PositionTabDropdownButton();
+                tabControl.ControlAdded += (s, e) => PositionTabDropdownButton();
+                tabControl.ControlRemoved += (s, e) => PositionTabDropdownButton();
             }
 
             // Initialize folding manager and scan regions
@@ -2514,8 +2512,10 @@ darkThemeMenuItem.Checked = isDark;
         private void PositionTabDropdownButton()
         {
             if (_tabDropdownButton == null || tabControl == null || tabControl.IsDisposed) return;
-            int x = tabControl.Left + tabControl.Width - _tabDropdownButton.Width - 2;
-            int y = tabControl.Top + (tabControl.Height - _tabDropdownButton.Height) / 2;
+            Point tabScreen = tabControl.PointToScreen(Point.Empty);
+            Point formClient = this.PointToClient(tabScreen);
+            int x = formClient.X + tabControl.Width - _tabDropdownButton.Width - 2;
+            int y = formClient.Y + (tabControl.Height - _tabDropdownButton.Height) / 2;
             _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(0, y));
             _tabDropdownButton.Visible = tabControl.TabCount > 0;
         }
@@ -2541,9 +2541,7 @@ darkThemeMenuItem.Checked = isDark;
                 if (i == tabControl.SelectedIndex)
                     item.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             }
-            cm.Show(_tabDropdownButton.Parent ?? _tabDropdownButton,
-                _tabDropdownButton.Left,
-                _tabDropdownButton.Bottom);
+            cm.Show(_tabDropdownButton, new Point(_tabDropdownButton.Width / 2, _tabDropdownButton.Height / 2));
         }
 
         private void CloseTabAtLocation(Point location)
