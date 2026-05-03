@@ -674,9 +674,12 @@ namespace MyCrownJewelApp.Pfpad
         }
         private void DeleteLine()
         {
+            int count = GetRepeat();
             int line = GetCurrentLine();
+            int lastTotal = _tb.GetLineFromCharIndex(Math.Max(0, _tb.TextLength - 1));
+            int endLine = Math.Min(line + count - 1, lastTotal);
             int start = GetLineStart(line);
-            int end = GetLineEnd(line) + 1; // include newline
+            int end = GetLineEnd(endLine) + 1;
             if (end > _tb.TextLength) end = _tb.TextLength;
             int len = end - start;
             if (len <= 0) return;
@@ -723,9 +726,12 @@ namespace MyCrownJewelApp.Pfpad
         }
         private void YankLine()
         {
+            int count = GetRepeat();
             int line = GetCurrentLine();
+            int lastTotal = _tb.GetLineFromCharIndex(Math.Max(0, _tb.TextLength - 1));
+            int endLine = Math.Min(line + count - 1, lastTotal);
             int start = GetLineStart(line);
-            int end = GetLineEnd(line) + 1;
+            int end = GetLineEnd(endLine) + 1;
             if (end > _tb.TextLength) end = _tb.TextLength;
             _lastYank = start >= 0 && end > start ? _tb.Text.Substring(start, end - start) : "";
         }
@@ -739,17 +745,23 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (_lastYank == null) return;
             int p = _tb.SelectionStart;
+            int count = GetRepeat();
+            var sb = new StringBuilder(_lastYank.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(_lastYank);
             _tb.SelectionStart = p;
-            _tb.SelectedText = _lastYank;
+            _tb.SelectedText = sb.ToString();
             _tb.SelectionStart = p;
         }
         private void PasteBefore()
         {
             if (_lastYank == null) return;
             int p = _tb.SelectionStart;
+            int count = GetRepeat();
+            var sb = new StringBuilder(_lastYank.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(_lastYank);
             _tb.SelectionStart = p;
-            _tb.SelectedText = _lastYank;
-            _tb.SelectionStart = p + _lastYank.Length;
+            _tb.SelectedText = sb.ToString();
+            _tb.SelectionStart = p + sb.Length;
         }
         private void OpenLineBelow()
         {
@@ -859,8 +871,8 @@ namespace MyCrownJewelApp.Pfpad
         #endregion
 
         #region Undo/Redo
-        private void SendCtrlZ() { /* RichTextBox has built-in undo */ }
-        private void SendCtrlR() { /* RichTextBox has built-in redo */ }
+        private void SendCtrlZ() { _tb.Undo(); }
+        private void SendCtrlR() { } // RichTextBox has no built-in Redo() method
         #endregion
 
         #region Search
