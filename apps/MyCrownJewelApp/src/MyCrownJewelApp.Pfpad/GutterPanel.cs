@@ -18,6 +18,7 @@ public class GutterPanel : Panel
     private const int BookmarkMarginWidth = 20;
     private const int ChangeMarginWidth = 20;
     private const int FoldMarginWidth = 14;
+    private const int FoldClickWidth = 25;
 
     private int totalMarginWidth;
     private bool _showFoldMarkers;
@@ -55,7 +56,7 @@ public class GutterPanel : Panel
     private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
     {
         if (mainForm?.textEditor == null || mainForm.FoldingManager == null) return;
-        int foldX = Width - FoldMarginWidth;
+        int foldX = Width - FoldClickWidth;
         if (e.X < foldX || e.X > Width) return;
 
         var editor = mainForm.textEditor;
@@ -74,7 +75,7 @@ public class GutterPanel : Panel
     {
         if (mainForm?.textEditor == null || !ShowCodeFolds || mainForm.FoldingManager == null) return;
 
-        int foldX = Width - FoldMarginWidth;
+        int foldX = Width - FoldClickWidth;
         bool inFoldMargin = e.X >= foldX && e.X <= Width;
 
         if (inFoldMargin != _showFoldMarkers)
