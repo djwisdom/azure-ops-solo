@@ -3702,26 +3702,39 @@
             try
             {
                 int lineCount = textEditor.Lines.Length;
-                foreach (var patch in patches)
+                var cf = new CHARFORMAT2W
                 {
-                    int line = patch.LineNumber;
-                    if (line < 0 || line >= lineCount) continue;
-                    int lineStart = textEditor.GetFirstCharIndexFromLine(line);
-                    if (lineStart < 0) continue;
-                    int lineEnd = (line + 1 < lineCount)
-                        ? textEditor.GetFirstCharIndexFromLine(line + 1)
-                        : textEditor.TextLength;
-                    int lineLen = lineEnd - lineStart;
-                    if (lineLen <= 0) continue;
-                    foreach (var token in patch.Tokens)
+                    cbSize = Marshal.SizeOf<CHARFORMAT2W>(),
+                    dwMask = CFM_COLOR | CFM_ITALIC
+                };
+                IntPtr cfPtr = Marshal.AllocCoTaskMem(cf.cbSize);
+                try
+                {
+                    foreach (var patch in patches)
                     {
-                        int idx = lineStart + token.StartIndex;
-                        int len = Math.Min(token.Length, lineLen - token.StartIndex);
-                        if (len <= 0) continue;
-                        textEditor.Select(idx, len);
-                        textEditor.SelectionColor = GetColorForToken(token.Type);
+                        int line = patch.LineNumber;
+                        if (line < 0 || line >= lineCount) continue;
+                        int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+                        if (lineStart < 0) continue;
+                        int lineEnd = (line + 1 < lineCount)
+                            ? textEditor.GetFirstCharIndexFromLine(line + 1)
+                            : textEditor.TextLength;
+                        int lineLen = lineEnd - lineStart;
+                        if (lineLen <= 0) continue;
+                        foreach (var token in patch.Tokens)
+                        {
+                            int idx = lineStart + token.StartIndex;
+                            int len = Math.Min(token.Length, lineLen - token.StartIndex);
+                            if (len <= 0) continue;
+                            cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
+                            cf.dwEffects = token.Type == SyntaxTokenType.Comment ? CFE_ITALIC : 0;
+                            Marshal.StructureToPtr(cf, cfPtr, false);
+                            textEditor.Select(idx, len);
+                            SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
+                        }
                     }
                 }
+                finally { Marshal.FreeCoTaskMem(cfPtr); }
             }
             finally { _applyingHighlight = false; }
         }
@@ -3852,6 +3865,9 @@
         private const int EM_SETCHARFORMAT = 0x0444;
         private const int SCF_SELECTION = 0x0001;
         private const int CFM_COLOR = 0x40000000;
+        private const int CFM_ITALIC = 0x00000002;
+        private const int CFE_ITALIC = 0x00000002;
+        private const int CFM_BOLD = 0x00000001;
 
         [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
         private struct CHARFORMAT2W
