@@ -341,6 +341,7 @@
                 item.Click += CatppuccinTheme_Click;
                 themeMenu.DropDownItems.Add(item);
             }
+            UpdateThemeDropDown();
             ApplyWordWrap();
             UpdateStatusBar();
             UpdateColumnGuideMenuChecked();
