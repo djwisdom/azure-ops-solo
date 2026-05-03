@@ -42,12 +42,20 @@ public class HighlightRichTextBox : RichTextBox
     private void UpdateCaretWidth()
     {
         if (!IsHandleCreated) return;
-        const int EM_SETCARETWIDTH = 0x01F8;
-        int width = Math.Max(1, (int)(6 * ZoomFactor));
-        SendMessage(Handle, EM_SETCARETWIDTH, 1, width);
+        int charW = Math.Max(1, (int)(8 * ZoomFactor));
+        int charH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+        DestroyCaret();
+        CreateCaret(Handle, IntPtr.Zero, charW, charH);
+        ShowCaret(Handle);
     }
 
     public void SyncCaretWidth() => UpdateCaretWidth();
+
+    protected override void OnGotFocus(EventArgs e)
+    {
+        base.OnGotFocus(e);
+        UpdateCaretWidth();
+    }
 
     [Category("Appearance")]
     [Description("Current line highlight mode.")]
@@ -232,6 +240,15 @@ public class HighlightRichTextBox : RichTextBox
 
     [DllImport("gdi32.dll")]
     private static extern int BitBlt(IntPtr hdc, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, int rop);
+
+    [DllImport("user32.dll")]
+    private static extern bool CreateCaret(IntPtr hWnd, IntPtr hBitmap, int nWidth, int nHeight);
+
+    [DllImport("user32.dll")]
+    private static extern bool DestroyCaret();
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowCaret(IntPtr hWnd);
 
     private const int SRCCOPY = 0x00CC0020;
 
