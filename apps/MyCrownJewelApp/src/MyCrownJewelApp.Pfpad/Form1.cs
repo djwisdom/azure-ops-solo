@@ -2535,8 +2535,17 @@ darkThemeMenuItem.Checked = isDark;
                 var page = tabControl.TabPages[i];
                 var item = cm.Items.Add(page.Text, null, (s, args) =>
                 {
-                    if (tabControl != null && idx < tabControl.TabCount)
+                    if (tabControl != null && idx < tabControl.TabCount && !tabControl.IsDisposed)
+                    {
+                        SuspendLayout();
+                        tabControl.SuspendLayout();
+                        tabControl.Multiline = false;
                         tabControl.SelectedIndex = idx;
+                        tabControl.Multiline = true;
+                        tabControl.ResumeLayout();
+                        ResumeLayout();
+                        tabControl.Invalidate();
+                    }
                 });
                 if (i == tabControl.SelectedIndex)
                     item.Font = new Font("Segoe UI", 10, FontStyle.Bold);
@@ -3372,14 +3381,7 @@ darkThemeMenuItem.Checked = isDark;
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
             private const int WM_ERASEBKGND = 0x0014;
-            private const int WM_NCPAINT = 0x0085;
             private readonly Form1 _owner;
-
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern IntPtr GetWindowDC(IntPtr hWnd);
-
-            [System.Runtime.InteropServices.DllImport("user32.dll")]
-            private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
             public TabStripBackgroundWindow(Form1 owner) => _owner = owner;
 
@@ -3395,21 +3397,6 @@ darkThemeMenuItem.Checked = isDark;
                             g.FillRectangle(brush, _owner.tabControl.ClientRectangle);
                         }
                         m.Result = (IntPtr)1;
-                        return;
-                    case WM_NCPAINT:
-                        base.WndProc(ref m);
-                        IntPtr ncHdc = GetWindowDC(Handle);
-                        if (ncHdc != IntPtr.Zero)
-                        {
-                            var ncTheme = _owner.isDarkTheme ? Theme.Dark : Theme.Light;
-                            using (var g = Graphics.FromHdc(ncHdc))
-                            using (var brush = new SolidBrush(ncTheme.MenuBackground))
-                            {
-                                g.FillRectangle(brush, 0, 0,
-                                    _owner.tabControl.Width, _owner.tabControl.Height);
-                            }
-                            ReleaseDC(Handle, ncHdc);
-                        }
                         return;
                 }
                 base.WndProc(ref m);
