@@ -25,6 +25,16 @@ public sealed class ThemeManager : IDisposable
         ["Catppuccin Frappe"] = Theme.CatppuccinFrappe,
         ["Catppuccin Macchiato"] = Theme.CatppuccinMacchiato,
         ["Catppuccin Mocha"] = Theme.CatppuccinMocha,
+        ["Dracula"] = Theme.Dracula,
+        ["One Dark Pro"] = Theme.OneDarkPro,
+        ["Tokyo Night"] = Theme.TokyoNight,
+        ["Night Owl"] = Theme.NightOwl,
+        ["Shades of Purple"] = Theme.ShadesOfPurple,
+        ["Atom One Light"] = Theme.AtomOneLight,
+        ["GitHub Light"] = Theme.GitHubLight,
+        ["Light Owl"] = Theme.LightOwl,
+        ["Ayu Light"] = Theme.AyuLight,
+        ["Bluloco Light"] = Theme.BlulocoLight,
     };
 
     public static string[] ThemeNames => Themes.Keys.ToArray();
@@ -369,5 +379,263 @@ public readonly struct Theme
         terminalFg: Color.FromArgb(205, 214, 244),
         terminalInputBg: Color.FromArgb(49, 50, 68),
         terminalHeaderBg: Color.FromArgb(17, 17, 27)
+    );
+
+    // ════════════════════════════════════════════
+    // Top 5 Dark Themes for 2026
+    // ════════════════════════════════════════════
+
+    public static readonly Theme Dracula = new(
+        name: "Dracula", isLight: false,
+        background: Color.FromArgb(40, 42, 54),
+        text: Color.FromArgb(248, 248, 242),
+        menuBg: Color.FromArgb(33, 34, 44),
+        menuFg: Color.FromArgb(248, 248, 242),
+        panel: Color.FromArgb(68, 71, 90),
+        border: Color.FromArgb(68, 71, 90),
+        accent: Color.FromArgb(189, 147, 249),       // purple
+        editorBg: Color.FromArgb(40, 42, 54),
+        highlight: Color.FromArgb(189, 147, 249, 40),
+        disabled: Color.FromArgb(98, 114, 164),
+        buttonHoverBackground: Color.FromArgb(68, 71, 90),
+        muted: Color.FromArgb(98, 114, 164),          // comment
+        keywordColor: Color.FromArgb(255, 121, 198),  // pink
+        stringColor: Color.FromArgb(80, 250, 123),    // green
+        commentColor: Color.FromArgb(98, 114, 164),   // comment
+        numberColor: Color.FromArgb(255, 184, 108),   // orange
+        preprocessorColor: Color.FromArgb(139, 233, 253), // cyan
+        terminalBg: Color.FromArgb(40, 42, 54),
+        terminalFg: Color.FromArgb(248, 248, 242),
+        terminalInputBg: Color.FromArgb(68, 71, 90),
+        terminalHeaderBg: Color.FromArgb(33, 34, 44)
+    );
+
+    public static readonly Theme OneDarkPro = new(
+        name: "One Dark Pro", isLight: false,
+        background: Color.FromArgb(40, 44, 52),
+        text: Color.FromArgb(171, 178, 191),
+        menuBg: Color.FromArgb(33, 37, 43),
+        menuFg: Color.FromArgb(171, 178, 191),
+        panel: Color.FromArgb(33, 37, 43),
+        border: Color.FromArgb(60, 64, 72),
+        accent: Color.FromArgb(97, 175, 239),         // blue (malibu)
+        editorBg: Color.FromArgb(40, 44, 52),
+        highlight: Color.FromArgb(97, 175, 239, 40),
+        disabled: Color.FromArgb(92, 99, 112),
+        buttonHoverBackground: Color.FromArgb(50, 54, 62),
+        muted: Color.FromArgb(92, 99, 112),
+        keywordColor: Color.FromArgb(198, 120, 221),  // purple
+        stringColor: Color.FromArgb(152, 195, 121),   // green
+        commentColor: Color.FromArgb(92, 99, 112),    // lightDark
+        numberColor: Color.FromArgb(209, 154, 102),   // whiskey (orange)
+        preprocessorColor: Color.FromArgb(86, 182, 194), // fountainBlue (cyan)
+        terminalBg: Color.FromArgb(40, 44, 52),
+        terminalFg: Color.FromArgb(171, 178, 191),
+        terminalInputBg: Color.FromArgb(50, 54, 62),
+        terminalHeaderBg: Color.FromArgb(33, 37, 43)
+    );
+
+    public static readonly Theme TokyoNight = new(
+        name: "Tokyo Night", isLight: false,
+        background: Color.FromArgb(26, 27, 38),
+        text: Color.FromArgb(169, 177, 214),
+        menuBg: Color.FromArgb(20, 21, 31),
+        menuFg: Color.FromArgb(169, 177, 214),
+        panel: Color.FromArgb(36, 40, 59),
+        border: Color.FromArgb(65, 72, 104),
+        accent: Color.FromArgb(122, 162, 247),        // blue
+        editorBg: Color.FromArgb(26, 27, 38),
+        highlight: Color.FromArgb(122, 162, 247, 40),
+        disabled: Color.FromArgb(86, 95, 137),
+        buttonHoverBackground: Color.FromArgb(36, 40, 59),
+        muted: Color.FromArgb(86, 95, 137),           // comment
+        keywordColor: Color.FromArgb(187, 154, 247),  // magenta
+        stringColor: Color.FromArgb(158, 206, 106),   // green
+        commentColor: Color.FromArgb(86, 95, 137),    // comment
+        numberColor: Color.FromArgb(255, 158, 100),   // orange
+        preprocessorColor: Color.FromArgb(125, 207, 255), // cyan
+        terminalBg: Color.FromArgb(26, 27, 38),
+        terminalFg: Color.FromArgb(169, 177, 214),
+        terminalInputBg: Color.FromArgb(36, 40, 59),
+        terminalHeaderBg: Color.FromArgb(20, 21, 31)
+    );
+
+    public static readonly Theme NightOwl = new(
+        name: "Night Owl", isLight: false,
+        background: Color.FromArgb(1, 22, 39),
+        text: Color.FromArgb(214, 222, 235),
+        menuBg: Color.FromArgb(0, 12, 29),
+        menuFg: Color.FromArgb(214, 222, 235),
+        panel: Color.FromArgb(17, 38, 48),
+        border: Color.FromArgb(16, 42, 68),
+        accent: Color.FromArgb(130, 170, 255),        // blue
+        editorBg: Color.FromArgb(1, 22, 39),
+        highlight: Color.FromArgb(130, 170, 255, 40),
+        disabled: Color.FromArgb(99, 119, 119),
+        buttonHoverBackground: Color.FromArgb(17, 38, 48),
+        muted: Color.FromArgb(99, 119, 119),          // slate
+        keywordColor: Color.FromArgb(127, 219, 202),  // paleblue/teal (tags/keywords)
+        stringColor: Color.FromArgb(173, 219, 103),   // green
+        commentColor: Color.FromArgb(99, 119, 119),   // slate
+        numberColor: Color.FromArgb(247, 140, 108),   // peach
+        preprocessorColor: Color.FromArgb(199, 146, 234), // pink
+        terminalBg: Color.FromArgb(1, 22, 39),
+        terminalFg: Color.FromArgb(214, 222, 235),
+        terminalInputBg: Color.FromArgb(17, 38, 48),
+        terminalHeaderBg: Color.FromArgb(0, 12, 29)
+    );
+
+    public static readonly Theme ShadesOfPurple = new(
+        name: "Shades of Purple", isLight: false,
+        background: Color.FromArgb(45, 43, 85),
+        text: Color.FromArgb(165, 153, 233),
+        menuBg: Color.FromArgb(30, 30, 63),
+        menuFg: Color.FromArgb(165, 153, 233),
+        panel: Color.FromArgb(50, 48, 95),
+        border: Color.FromArgb(70, 68, 120),
+        accent: Color.FromArgb(250, 208, 0),          // yellow contrast
+        editorBg: Color.FromArgb(45, 43, 85),
+        highlight: Color.FromArgb(255, 114, 0, 40),   // highlight orange
+        disabled: Color.FromArgb(179, 98, 255),
+        buttonHoverBackground: Color.FromArgb(77, 33, 252),
+        muted: Color.FromArgb(179, 98, 255),          // comment purple
+        keywordColor: Color.FromArgb(255, 157, 0),    // orange
+        stringColor: Color.FromArgb(165, 255, 144),   // green
+        commentColor: Color.FromArgb(179, 98, 255),   // purple
+        numberColor: Color.FromArgb(255, 98, 140),    // pink (constants)
+        preprocessorColor: Color.FromArgb(158, 255, 255), // cyan (other)
+        terminalBg: Color.FromArgb(45, 43, 85),
+        terminalFg: Color.FromArgb(165, 153, 233),
+        terminalInputBg: Color.FromArgb(50, 48, 95),
+        terminalHeaderBg: Color.FromArgb(30, 30, 63)
+    );
+
+    // ════════════════════════════════════════════
+    // Top 5 Light Themes for 2026
+    // ════════════════════════════════════════════
+
+    public static readonly Theme AtomOneLight = new(
+        name: "Atom One Light", isLight: true,
+        background: Color.FromArgb(250, 250, 250),
+        text: Color.FromArgb(56, 58, 66),
+        menuBg: Color.FromArgb(240, 240, 240),
+        menuFg: Color.FromArgb(56, 58, 66),
+        panel: Color.FromArgb(232, 232, 232),
+        border: Color.FromArgb(200, 200, 210),
+        accent: Color.FromArgb(74, 134, 232),         // blue
+        editorBg: Color.FromArgb(250, 250, 250),
+        highlight: Color.FromArgb(74, 134, 232, 30),
+        disabled: Color.FromArgb(160, 161, 167),
+        buttonHoverBackground: Color.FromArgb(224, 224, 228),
+        muted: Color.FromArgb(160, 161, 167),
+        keywordColor: Color.FromArgb(167, 84, 196),   // purple
+        stringColor: Color.FromArgb(80, 161, 79),     // green
+        commentColor: Color.FromArgb(160, 161, 167),  // gray
+        numberColor: Color.FromArgb(208, 125, 56),    // orange
+        preprocessorColor: Color.FromArgb(180, 142, 173), // pinkish
+        terminalBg: Color.FromArgb(250, 250, 250),
+        terminalFg: Color.FromArgb(56, 58, 66),
+        terminalInputBg: Color.FromArgb(232, 232, 232),
+        terminalHeaderBg: Color.FromArgb(240, 240, 240)
+    );
+
+    public static readonly Theme GitHubLight = new(
+        name: "GitHub Light", isLight: true,
+        background: Color.FromArgb(255, 255, 255),
+        text: Color.FromArgb(36, 41, 47),
+        menuBg: Color.FromArgb(246, 248, 250),
+        menuFg: Color.FromArgb(36, 41, 47),
+        panel: Color.FromArgb(234, 238, 242),
+        border: Color.FromArgb(208, 215, 222),
+        accent: Color.FromArgb(9, 105, 218),          // blue
+        editorBg: Color.FromArgb(255, 255, 255),
+        highlight: Color.FromArgb(9, 105, 218, 30),
+        disabled: Color.FromArgb(149, 157, 165),
+        buttonHoverBackground: Color.FromArgb(234, 238, 242),
+        muted: Color.FromArgb(149, 157, 165),
+        keywordColor: Color.FromArgb(207, 34, 46),    // red
+        stringColor: Color.FromArgb(17, 135, 67),     // green
+        commentColor: Color.FromArgb(149, 157, 165),  // gray
+        numberColor: Color.FromArgb(9, 105, 218),     // blue
+        preprocessorColor: Color.FromArgb(130, 80, 223), // purple
+        terminalBg: Color.FromArgb(255, 255, 255),
+        terminalFg: Color.FromArgb(36, 41, 47),
+        terminalInputBg: Color.FromArgb(234, 238, 242),
+        terminalHeaderBg: Color.FromArgb(246, 248, 250)
+    );
+
+    public static readonly Theme LightOwl = new(
+        name: "Light Owl", isLight: true,
+        background: Color.FromArgb(250, 248, 245),
+        text: Color.FromArgb(64, 63, 83),
+        menuBg: Color.FromArgb(240, 240, 240),
+        menuFg: Color.FromArgb(64, 63, 83),
+        panel: Color.FromArgb(230, 230, 230),
+        border: Color.FromArgb(210, 210, 210),
+        accent: Color.FromArgb(42, 162, 152),         // teal
+        editorBg: Color.FromArgb(250, 248, 245),
+        highlight: Color.FromArgb(42, 162, 152, 30),
+        disabled: Color.FromArgb(147, 161, 161),
+        buttonHoverBackground: Color.FromArgb(224, 232, 248),
+        muted: Color.FromArgb(147, 161, 161),
+        keywordColor: Color.FromArgb(153, 76, 195),   // purple
+        stringColor: Color.FromArgb(8, 145, 106),     // green
+        commentColor: Color.FromArgb(147, 161, 161),  // gray
+        numberColor: Color.FromArgb(218, 170, 1),     // yellow
+        preprocessorColor: Color.FromArgb(40, 158, 215), // cyan
+        terminalBg: Color.FromArgb(246, 246, 246),
+        terminalFg: Color.FromArgb(64, 63, 83),
+        terminalInputBg: Color.FromArgb(230, 230, 230),
+        terminalHeaderBg: Color.FromArgb(240, 240, 240)
+    );
+
+    public static readonly Theme AyuLight = new(
+        name: "Ayu Light", isLight: true,
+        background: Color.FromArgb(252, 252, 252),
+        text: Color.FromArgb(92, 97, 102),
+        menuBg: Color.FromArgb(242, 242, 242),
+        menuFg: Color.FromArgb(92, 97, 102),
+        panel: Color.FromArgb(230, 230, 230),
+        border: Color.FromArgb(210, 210, 210),
+        accent: Color.FromArgb(255, 143, 64),         // orange (keyword color in ayu)
+        editorBg: Color.FromArgb(252, 252, 252),
+        highlight: Color.FromArgb(255, 143, 64, 25),
+        disabled: Color.FromArgb(153, 158, 163),
+        buttonHoverBackground: Color.FromArgb(224, 224, 224),
+        muted: Color.FromArgb(153, 158, 163),
+        keywordColor: Color.FromArgb(255, 143, 64),   // orange
+        stringColor: Color.FromArgb(170, 217, 76),    // green
+        commentColor: Color.FromArgb(153, 158, 163),  // gray
+        numberColor: Color.FromArgb(250, 157, 77),    // light orange
+        preprocessorColor: Color.FromArgb(115, 175, 225), // blue
+        terminalBg: Color.FromArgb(252, 252, 252),
+        terminalFg: Color.FromArgb(92, 97, 102),
+        terminalInputBg: Color.FromArgb(230, 230, 230),
+        terminalHeaderBg: Color.FromArgb(242, 242, 242)
+    );
+
+    public static readonly Theme BlulocoLight = new(
+        name: "Bluloco Light", isLight: true,
+        background: Color.FromArgb(249, 249, 249),
+        text: Color.FromArgb(56, 58, 66),
+        menuBg: Color.FromArgb(238, 238, 238),
+        menuFg: Color.FromArgb(56, 58, 66),
+        panel: Color.FromArgb(228, 228, 228),
+        border: Color.FromArgb(206, 206, 216),
+        accent: Color.FromArgb(36, 137, 219),         // blue
+        editorBg: Color.FromArgb(249, 249, 249),
+        highlight: Color.FromArgb(36, 137, 219, 30),
+        disabled: Color.FromArgb(158, 158, 168),
+        buttonHoverBackground: Color.FromArgb(222, 222, 228),
+        muted: Color.FromArgb(158, 158, 168),
+        keywordColor: Color.FromArgb(209, 55, 77),    // red
+        stringColor: Color.FromArgb(45, 147, 103),    // green
+        commentColor: Color.FromArgb(158, 158, 168),  // gray
+        numberColor: Color.FromArgb(207, 120, 53),    // orange
+        preprocessorColor: Color.FromArgb(144, 94, 209), // purple
+        terminalBg: Color.FromArgb(249, 249, 249),
+        terminalFg: Color.FromArgb(56, 58, 66),
+        terminalInputBg: Color.FromArgb(228, 228, 228),
+        terminalHeaderBg: Color.FromArgb(238, 238, 238)
     );
 }
