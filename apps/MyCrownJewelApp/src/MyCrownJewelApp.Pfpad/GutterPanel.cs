@@ -41,6 +41,25 @@ public class GutterPanel : Panel
         BackColor = Color.FromArgb(45, 45, 45);
         DoubleBuffered = true;
         ResizeRedraw = true;
+        MouseClick += GutterPanel_MouseClick;
+    }
+
+    private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
+    {
+        if (mainForm?.textEditor == null || mainForm.FoldingManager == null) return;
+        int foldX = Width - FoldMarginWidth;
+        if (e.X < foldX || e.X > Width) return;
+
+        var editor = mainForm.textEditor;
+        int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
+        int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+        int lineIndex = firstVis + e.Y / lineHeight;
+
+        var region = mainForm.FoldingManager.GetRegionAtLine(lineIndex);
+        if (region.HasValue)
+        {
+            mainForm.ToggleFold(lineIndex);
+        }
     }
 
     private int GetTotalLineCount()

@@ -177,9 +177,15 @@ public class HighlightRichTextBox : RichTextBox
 
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
 
+            int firstVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, 0)));
+            int lastVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, ClientSize.Height)));
+
+            using var pen = new Pen(_foldLineColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
             foreach (var region in _foldingManager.GetAllRegions())
             {
                 if (region.IsCollapsed) continue;
+                if (region.CloseLine < firstVisLine || region.OpenLine > lastVisLine)
+                    continue;
 
                 string closeText = GetLineTextFromLines(region.CloseLine);
                 int braceCol = closeText.LastIndexOf('}');
@@ -196,9 +202,7 @@ public class HighlightRichTextBox : RichTextBox
                 int yTop = openPos.Y;
                 int yBottom = closePos.Y + lineH - 1;
 
-                using var pen = new Pen(_foldLineColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
                 g.DrawLine(pen, x, yTop, x, yBottom);
-
                 g.DrawLine(pen, x, yBottom, x + charWidth / 2, yBottom);
             }
         }
