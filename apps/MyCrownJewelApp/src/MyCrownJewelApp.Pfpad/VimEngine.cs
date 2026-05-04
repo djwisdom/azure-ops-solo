@@ -27,6 +27,7 @@ namespace MyCrownJewelApp.Pfpad
         private readonly StringBuilder _cmdBuffer = new();
         private string? _lastYank;
         private int _repeatCount = 1;
+        private bool _pendingWindowCommand; // after Ctrl+W, waiting for second key
 
         // Search state
         private string _lastSearchPattern = "";
@@ -40,6 +41,8 @@ namespace MyCrownJewelApp.Pfpad
         public event Action? CloseRequested;
         public event Action? VerticalSplitRequested;
         public event Action? HorizontalSplitRequested;
+        public event Action? SplitCloseRequested;
+        public event Action? SplitNextRequested;
         public event Action<bool>? InsertSpacesRequested;
         public event Action<int>? TabSizeRequested;
         public event Action<bool>? AutoIndentRequested;
@@ -66,6 +69,7 @@ namespace MyCrownJewelApp.Pfpad
             CurrentMode = mode;
             _cmdBuffer.Clear();
             _repeatCount = 1;
+            _pendingWindowCommand = false;
             if (mode == VimMode.Normal && _tb.SelectionLength > 0)
                 _tb.SelectionLength = 0;
         }
@@ -80,6 +84,32 @@ namespace MyCrownJewelApp.Pfpad
             bool alt = (keyData & Keys.Alt) != 0;
 
             if (alt) return false;
+
+            // Ctrl+W prefix: consume and wait for the next key
+            if (ctrl && key == Keys.W)
+            {
+                _pendingWindowCommand = true;
+                return true;
+            }
+
+            // If a Ctrl+W window command is pending, handle the second key
+            if (_pendingWindowCommand)
+            {
+                _pendingWindowCommand = false;
+                if (key == Keys.W || key == Keys.Tab)
+                {
+                    SplitNextRequested?.Invoke();
+                    return true;
+                }
+                if (key == Keys.C || key == Keys.Q)
+                {
+                    SplitCloseRequested?.Invoke();
+                    return true;
+                }
+                if (key == Keys.Escape)
+                    return true; // cancel window command
+                // For any other key, fall through to normal processing
+            }
 
             if (CurrentMode == VimMode.Insert)
                 return ProcessInsertMode(key, ctrl, shift);
@@ -549,6 +579,9 @@ namespace MyCrownJewelApp.Pfpad
                 case "q!":
                 case "quit":
                     CloseRequested?.Invoke();
+                    break;
+                case "close":
+                    SplitCloseRequested?.Invoke();
                     break;
                 case "w!":
                     SaveRequested?.Invoke();

@@ -12,7 +12,7 @@ public sealed class NotificationSettingsForm : Form
     private readonly DataGridView _grid;
     private readonly Button _addBtn;
     private readonly Button _removeBtn;
-    private Theme _theme;
+    private readonly Theme _theme;
 
     public NotificationSettingsForm(NotificationFeedService feed)
     {
@@ -276,17 +276,20 @@ public sealed class NotificationSettingsForm : Form
 
     private void Grid_CellPainting(object? sender, DataGridViewCellPaintingEventArgs e)
     {
+        var style = e.CellStyle;
+        if (style is null) return;
+
         if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
         {
-            e.CellStyle.BackColor = _theme.Background;
-            e.CellStyle.ForeColor = _theme.Text;
-            e.CellStyle.SelectionBackColor = _theme.ButtonHoverBackground;
-            e.CellStyle.SelectionForeColor = _theme.Text;
+            style.BackColor = _theme.Background;
+            style.ForeColor = _theme.Text;
+            style.SelectionBackColor = _theme.ButtonHoverBackground;
+            style.SelectionForeColor = _theme.Text;
         }
         if (e.RowIndex == -1 && e.ColumnIndex >= 0)
         {
-            e.CellStyle.BackColor = _theme.PanelBackground;
-            e.CellStyle.ForeColor = _theme.Text;
+            style.BackColor = _theme.PanelBackground;
+            style.ForeColor = _theme.Text;
         }
     }
 

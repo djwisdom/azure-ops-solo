@@ -162,7 +162,7 @@ public sealed class NotificationToastForm : Form
 
     private void PositionNearNotifyIcon()
     {
-        var screen = Screen.PrimaryScreen.WorkingArea;
+        var screen = Screen.PrimaryScreen!.WorkingArea;
         Location = new Point(screen.Right - Width - 16, screen.Bottom - Height - 16);
     }
 

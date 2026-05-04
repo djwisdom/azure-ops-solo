@@ -171,6 +171,7 @@ using System.Linq;
         private RichTextBox? _splitEditor = null;
         private Document? _splitDocument = null;
         private string? _splitDocumentTitle = null;
+        private bool _splitIsHorizontal; // true = uses _terminalSplitContainer.Panel2
 
         // Helper to get active document
         internal Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
@@ -431,8 +432,8 @@ using System.Linq;
 
             // Wire whitespace overlay to editor
             whitespaceOverlay.LinkedEditor = textEditor;
-            textEditor.VScroll += (s, e) => whitespaceOverlay.Invalidate();
-            textEditor.Resize += (s, e) => whitespaceOverlay.Invalidate();
+            textEditor!.VScroll += (s, e) => whitespaceOverlay?.Invalidate();
+            textEditor!.Resize += (s, e) => whitespaceOverlay?.Invalidate();
 
             // Tab dropdown menu button (rightmost corner of tab strip)
             _tabDropdownButton = new Button
@@ -497,6 +498,8 @@ using System.Linq;
                       UpdateStatusBar();
                       if (syntaxHighlightingEnabled)
                           CreateIncrementalHighlighter();
+                      UpdateWindowTitle();
+                      UpdateActiveTabTitle();
                   }
                   catch (Exception ex)
                   {
@@ -520,6 +523,19 @@ using System.Linq;
               vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) ToggleAutoIndent(); };
               vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) ToggleSmartTabs(); };
               vimEngine.GoToLineRequested += (line) => GoToLine(line);
+              vimEngine.SplitCloseRequested += () => CloseSplit();
+              vimEngine.SplitNextRequested += () =>
+              {
+                  if (_splitEditor == null) return;
+                  if (_splitEditor.Focused)
+                  {
+                      if (textEditor.CanFocus) textEditor.Focus();
+                  }
+                  else
+                  {
+                      _splitEditor.Focus();
+                  }
+              };
 
              // Initialize integrated terminal with tab support
              var defaultShell = string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell;
@@ -3453,24 +3469,6 @@ using System.Linq;
                 _splitDocument = doc;
                 _splitDocumentTitle = doc.DisplayName;
 
-                // Create the SplitContainer and swap mainTable into Panel1
-                splitContainer = new SplitContainer();
-                splitContainer.Dock = DockStyle.Fill;
-                splitContainer.SplitterWidth = 4;
-                splitContainer.Panel1MinSize = 50;
-                splitContainer.Panel2MinSize = 100;
-                splitContainer.TabStop = false;
-
-                if (zone is DragZone.Left or DragZone.Right)
-                    splitContainer.Orientation = Orientation.Vertical;
-                else
-                    splitContainer.Orientation = Orientation.Horizontal;
-
-                // Move mainTable out of mainLayout into Panel1
-                mainLayout.Controls.Remove(mainTable);
-                splitContainer.Panel1.Controls.Add(mainTable);
-
-                // Create a simple RichTextBox for the split pane in Panel2
                 var theme = _currentTheme;
                 _splitEditor = new RichTextBox
                 {
@@ -3485,14 +3483,58 @@ using System.Linq;
                     Text = doc.Content ?? ""
                 };
                 _splitEditor.HandleCreated += (s, e) => ApplyScrollbarTheme();
-                splitContainer.Panel2.Controls.Add(_splitEditor);
 
-                // Insert splitContainer into mainLayout where mainTable was
-                mainLayout.Controls.Add(splitContainer, 0, 2);
+                if (zone is DragZone.Left or DragZone.Right)
+                {
+                    // Vertical split: create a new SplitContainer inside _terminalSplitContainer.Panel1
+                    splitContainer = new SplitContainer();
+                    splitContainer.Dock = DockStyle.Fill;
+                    splitContainer.SplitterWidth = 4;
+                    splitContainer.Panel1MinSize = 50;
+                    splitContainer.Panel2MinSize = 100;
+                    splitContainer.TabStop = false;
+                    splitContainer.Orientation = Orientation.Vertical;
 
-                // Set splitter distance to split evenly (defer to layout)
-                if (splitContainer.Width > 100)
-                    splitContainer.SplitterDistance = splitContainer.Width / 2;
+                    var editorPanel = _terminalSplitContainer!.Panel1;
+                    editorPanel.Controls.Remove(mainTable);
+                    splitContainer.Panel1.Controls.Add(mainTable);
+                    splitContainer.Panel2.Controls.Add(_splitEditor);
+
+                    editorPanel.Controls.Add(splitContainer);
+
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (splitContainer == null || splitContainer.IsDisposed) return;
+                        if (splitContainer.Width > 100)
+                            splitContainer.SplitterDistance = splitContainer.Width / 2;
+                    }));
+
+                    _splitEditor.Focus();
+                }
+                else
+                {
+                    // Horizontal split: use _terminalSplitContainer.Panel2 (terminal panel)
+                    _splitIsHorizontal = true;
+
+                    // Hide any terminal content and put the split editor in Panel2
+                    if (_terminalTabControl?.Parent == _terminalSplitContainer!.Panel2)
+                        _terminalTabControl.Visible = false;
+                    if (_terminalNewTabButton?.Parent == _terminalSplitContainer.Panel2)
+                        _terminalNewTabButton.Visible = false;
+
+                    _terminalSplitContainer.Panel2.Controls.Add(_splitEditor);
+                    _terminalSplitContainer.Panel2Collapsed = false;
+
+                    // Split evenly by height
+                    int available = _terminalSplitContainer.Height - _terminalSplitContainer.SplitterWidth;
+                    if (available > 200)
+                        _terminalSplitContainer.SplitterDistance = available / 2;
+                    else if (available > 100)
+                        _terminalSplitContainer.SplitterDistance = available - 100;
+
+                    _splitEditor.Focus();
+                    _terminalSplitContainer.PerformLayout();
+                }
 
                 // Remove the tab page from the tab control (document stays in memory)
                 if (tabIndex >= 0 && tabIndex < tabControl.TabPages.Count)
@@ -3521,32 +3563,57 @@ using System.Linq;
 
         private void CloseSplit()
         {
-            if (splitContainer == null) return;
+            if (_splitEditor == null) return;
 
             // Save content back to document
-            if (_splitEditor != null && _splitDocument != null)
+            if (_splitDocument != null)
             {
                 _splitDocument.Content = _splitEditor.Text;
                 _splitDocument.ModifiedLines = new HashSet<int>();
                 _splitDocument.IsDirty = false;
             }
 
-            // Move mainTable back to mainLayout, destroy splitContainer
-            if (splitContainer.Panel1.Controls.Contains(mainTable))
-                splitContainer.Panel1.Controls.Remove(mainTable);
-            mainLayout.Controls.Remove(splitContainer);
-            mainLayout.Controls.Add(mainTable, 0, 2);
+            if (_splitIsHorizontal && _terminalSplitContainer?.IsDisposed == false)
+            {
+                // Horizontal split: remove _splitEditor from _terminalSplitContainer.Panel2
+                _terminalSplitContainer.Panel2.Controls.Remove(_splitEditor);
+                // Restore terminal visibility
+                if (_terminalTabControl != null) _terminalTabControl.Visible = true;
+                if (_terminalNewTabButton != null) _terminalNewTabButton.Visible = true;
+                // Collapse Panel2 if terminal was not visible before the split
+                if (!_terminalVisible)
+                    _terminalSplitContainer.Panel2Collapsed = true;
+                _terminalSplitContainer.PerformLayout();
+            }
+            else if (splitContainer != null)
+            {
+                // Vertical split: move mainTable back to _terminalSplitContainer.Panel1
+                if (splitContainer.Panel1.Controls.Contains(mainTable))
+                    splitContainer.Panel1.Controls.Remove(mainTable);
+
+                if (_terminalSplitContainer?.IsDisposed == false)
+                {
+                    _terminalSplitContainer.Panel1.Controls.Add(mainTable);
+                    mainTable.Dock = DockStyle.Fill;
+                }
+
+                if (_splitEditor != null)
+                {
+                    splitContainer.Panel2.Controls.Remove(_splitEditor);
+                }
+
+                splitContainer.Dispose();
+                splitContainer = null;
+            }
 
             // Clean up split editor
             if (_splitEditor != null)
             {
-                splitContainer.Panel2.Controls.Remove(_splitEditor);
                 _splitEditor.Dispose();
                 _splitEditor = null;
             }
 
-            splitContainer.Dispose();
-            splitContainer = null;
+            _splitIsHorizontal = false;
 
             // Re-add the document and tab page to the main window
             if (_splitDocument != null)
@@ -4422,6 +4489,8 @@ using System.Linq;
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             _applyingHighlight = true;
+            int savedSelStart = textEditor.SelectionStart;
+            int savedSelLength = textEditor.SelectionLength;
             try
             {
                 int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, IntPtr.Zero, IntPtr.Zero);
@@ -4477,7 +4546,11 @@ using System.Linq;
                 finally { Marshal.FreeCoTaskMem(cfPtr); }
             }
             catch { }
-            finally { _applyingHighlight = false; }
+            finally
+            {
+                textEditor.Select(savedSelStart, savedSelLength);
+                _applyingHighlight = false;
+            }
         }
 
         private void RequestVisibleHighlight()
@@ -4858,6 +4931,27 @@ using System.Linq;
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            // Split navigation: cycle focus between split editor and main editor
+            if (keyData == (Keys.Control | Keys.Tab) && (_splitEditor != null))
+            {
+                if (_splitEditor.Focused)
+                {
+                    if (textEditor.CanFocus) textEditor.Focus();
+                }
+                else
+                {
+                    _splitEditor.Focus();
+                }
+                return true;
+            }
+
+            // Close split: Ctrl+Shift+W
+            if (keyData == (Keys.Control | Keys.Shift | Keys.W) && _splitEditor != null)
+            {
+                CloseSplit();
+                return true;
+            }
+
             if (vimModeEnabled && vimEngine != null)
             {
                 if (vimEngine.ProcessKey(keyData))

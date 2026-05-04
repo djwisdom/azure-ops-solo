@@ -489,11 +489,8 @@ internal sealed class WorkspacePanel : UserControl
         if (e.Button == MouseButtons.Right)
         {
             var hit = _tree.HitTest(e.Location);
-            if (hit.Node != null)
-            {
-                _tree.SelectedNode = hit.Node;
-                _fileContextMenu.Show(_tree, e.Location);
-            }
+            _tree.SelectedNode = hit.Node;
+            _fileContextMenu.Show(_tree, e.Location);
         }
     }
 
@@ -563,7 +560,7 @@ internal sealed class WorkspacePanel : UserControl
         string? dir = GetSelectedDirectory();
         if (dir is null) return;
 
-        string? name = SimpleInputDialog.Show(ParentForm, "File name:", "New File", "newfile.txt");
+        string? name = SimpleInputDialog.Show(ParentForm!, "File name:", "New File", "newfile.txt");
         if (string.IsNullOrWhiteSpace(name)) return;
 
         string path = System.IO.Path.Combine(dir, name);
@@ -583,7 +580,7 @@ internal sealed class WorkspacePanel : UserControl
         string? dir = GetSelectedDirectory();
         if (dir is null) return;
 
-        string? name = SimpleInputDialog.Show(ParentForm, "Folder name:", "New Folder", "newfolder");
+        string? name = SimpleInputDialog.Show(ParentForm!, "Folder name:", "New Folder", "newfolder");
         if (string.IsNullOrWhiteSpace(name)) return;
 
         string path = System.IO.Path.Combine(dir, name);
