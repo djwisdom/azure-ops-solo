@@ -109,6 +109,11 @@ using System.Linq;
         private int _workspaceWidth = 200;
         private string _workspaceRoot = "";
 
+        // Git panel state
+        private readonly GitService _gitService = new();
+        private GitPanel? _gitPanel;
+        private bool _gitPanelVisible;
+
         private TerminalPanel? ActiveTerminal =>
             _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
                 ? _terminalTabs[_terminalTabControl.SelectedIndex]
@@ -176,11 +181,7 @@ using System.Linq;
         private System.Windows.Forms.Timer? elasticTabTimer;
         private CancellationTokenSource? tabComputeCts;
 
-        // Git integration
-        private System.Windows.Forms.Timer? _gitPollTimer;
-        private string _gitBranchName = "";
-        private string _gitDirtyStatus = "";
-        private string _gitSyncStatus = "";
+        // Git integration via GitService
 
         // Code folding
         private FoldingManager? _foldingManager;
@@ -465,11 +466,9 @@ using System.Linq;
             elasticTabTimer.Interval = 250; // 250ms after last change
             elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
 
-             // Git status polling (every 3 seconds)
-             _gitPollTimer = new System.Windows.Forms.Timer();
-             _gitPollTimer.Interval = 3000;
-             _gitPollTimer.Tick += (s, e) => PollGitStatus();
-             _gitPollTimer.Start();
+              // Git service: wire to current file location
+              _gitService.OnRepoChanged += () => BeginInvoke(UpdateGitStatusBar);
+              RefreshGitRepo();
 
              // Initialize incremental highlighter (after colors are loaded)
              if (documents.Count > 0) CreateIncrementalHighlighter();
@@ -644,6 +643,33 @@ using System.Linq;
                   };
                   _workspacePanel.CloseRequested += () => ToggleWorkspace();
 
+                  // Git panel
+                  _gitPanel = new GitPanel(_gitService);
+                  _gitPanel.FileOpenRequested += (path) =>
+                  {
+                      if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                          OpenFileInNewTab(path);
+                  };
+                  _gitPanel.CloseRequested += () => ToggleGitPanel();
+                  _gitPanel.Visible = _gitPanelVisible;
+
+                  // Inner split: workspace on top, git on bottom
+                  var sidebarSplit = new SplitContainer
+                  {
+                      Dock = DockStyle.Fill,
+                      Orientation = Orientation.Horizontal,
+                      Panel1MinSize = 60,
+                      Panel2MinSize = 60,
+                      SplitterWidth = 4,
+                      SplitterIncrement = 8,
+                      BorderStyle = BorderStyle.None,
+                      Panel2Collapsed = !_gitPanelVisible
+                  };
+                  sidebarSplit.Panel1.Controls.Add(_workspacePanel);
+                  sidebarSplit.Panel2.Controls.Add(_gitPanel);
+                  sidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
+                  sidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+
                   _workspaceSplitContainer = new SplitContainer
                   {
                       Dock = DockStyle.Fill,
@@ -652,7 +678,7 @@ using System.Linq;
                       Panel2MinSize = 100,
                       SplitterWidth = 4,
                       SplitterIncrement = 8,
-                      Panel1Collapsed = !_workspaceVisible,
+                      Panel1Collapsed = !_workspaceVisible && !_gitPanelVisible,
                       BorderStyle = BorderStyle.None
                   };
                   _workspaceSplitContainer.HandleCreated += (s, e) =>
@@ -661,13 +687,12 @@ using System.Linq;
                       _workspaceWidth = Math.Max(80, Math.Min(600, _workspaceSplitContainer.SplitterDistance));
 
                   mainLayout.Controls.Remove(_terminalSplitContainer);
-                  _workspaceSplitContainer.Panel1.Controls.Add(_workspacePanel);
-                  _workspacePanel.Dock = DockStyle.Fill;
+                  _workspaceSplitContainer.Panel1.Controls.Add(sidebarSplit);
                   _workspaceSplitContainer.Panel1.BackColor = _currentTheme.MenuBackground;
                   _workspaceSplitContainer.Panel2.Controls.Add(_terminalSplitContainer);
                   _workspaceSplitContainer.Panel2.BackColor = _currentTheme.EditorBackground;
 
-                  if (_workspaceVisible)
+                  if (_workspaceVisible || _gitPanelVisible)
                       _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
 
                   mainLayout.Controls.Add(_workspaceSplitContainer, 0, 2);
@@ -3178,6 +3203,7 @@ using System.Linq;
             {
                 SwitchToTab(tabControl.SelectedIndex);
             }
+            RefreshGitRepo();
         }
 
         private void TabControl_DoubleClick(object? sender, EventArgs e)
@@ -4593,112 +4619,63 @@ using System.Linq;
 
         #region Git Integration
 
-        private void PollGitStatus()
+        private void RefreshGitRepo()
         {
-            try
+            string? path = currentFilePath ?? documents.FirstOrDefault()?.FilePath;
+            if (!string.IsNullOrEmpty(path))
             {
-                if (string.IsNullOrEmpty(currentFilePath) && documents.Count == 0) return;
-                string? dir = FindGitRepo();
-                if (dir == null) { ClearGitLabels(); return; }
-
-                string branch = RunGit(dir, "rev-parse --abbrev-ref HEAD");
-                string status = RunGit(dir, "status --porcelain");
-
-                if (string.IsNullOrEmpty(branch) || branch.Contains("fatal"))
-                {
-                    ClearGitLabels();
-                    return;
-                }
-
-                _gitBranchName = branch;
-                bool hasChanges = !string.IsNullOrEmpty(status?.Trim());
-                _gitDirtyStatus = hasChanges ? " ●" : "";
-
-                string? upstream = RunGit(dir, "rev-parse --abbrev-ref --symbolic-full-name @{u}");
-                if (!string.IsNullOrEmpty(upstream) && !upstream.Contains("fatal"))
-                {
-                    string ahead = RunGit(dir, "rev-list --count --right-only HEAD...@{u}");
-                    string behind = RunGit(dir, "rev-list --count --left-only HEAD...@{u}");
-                    int aheadCount = int.TryParse(ahead?.Trim(), out var a) ? a : 0;
-                    int behindCount = int.TryParse(behind?.Trim(), out var b) ? b : 0;
-                    if (aheadCount > 0 && behindCount > 0)
-                        _gitSyncStatus = $" ↓{behindCount} ↑{aheadCount}";
-                    else if (aheadCount > 0)
-                        _gitSyncStatus = $" ↑{aheadCount}";
-                    else if (behindCount > 0)
-                        _gitSyncStatus = $" ↓{behindCount}";
-                    else
-                        _gitSyncStatus = " ✔";
-                }
-                else
-                {
-                    _gitSyncStatus = "";
-                }
-
-                UpdateGitLabels();
+                _gitService.TryOpenRepo(path);
+                _gitPanel?.RefreshRepo(path);
             }
-            catch { ClearGitLabels(); }
+            UpdateGitStatusBar();
         }
 
-        private string? FindGitRepo()
+        private void UpdateGitStatusBar()
         {
-            string? dir = currentFilePath != null ? Path.GetDirectoryName(currentFilePath) : null;
-            if (dir == null && documents.Count > 0 && documents[0].FilePath != null)
-                dir = Path.GetDirectoryName(documents[0].FilePath);
-            if (dir == null) return null;
-
-            var d = new DirectoryInfo(dir);
-            while (d != null)
+            if (gitBranchLabel is null) return;
+            if (_gitService.IsActive)
             {
-                if (Directory.Exists(Path.Combine(d.FullName, ".git")))
-                    return d.FullName;
-                d = d.Parent;
+                gitBranchLabel.Text = _gitService.CurrentBranch ?? "";
+                var (staged, unstaged, untracked) = _gitService.GetStatus();
+                int changes = staged.Count + unstaged.Count + untracked.Count;
+                gitDirtyLabel.Text = changes > 0 ? " ●" : "";
+                gitSyncLabel.Visible = true;
             }
-            return null;
-        }
-
-        private string RunGit(string workingDir, string args)
-        {
-            try
+            else
             {
-                using var proc = new System.Diagnostics.Process();
-                proc.StartInfo.FileName = "git";
-                proc.StartInfo.Arguments = args;
-                proc.StartInfo.WorkingDirectory = workingDir;
-                proc.StartInfo.RedirectStandardOutput = true;
-                proc.StartInfo.RedirectStandardError = true;
-                proc.StartInfo.UseShellExecute = false;
-                proc.StartInfo.CreateNoWindow = true;
-                proc.Start();
-                string output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(2000);
-                return output?.TrimEnd('\n', '\r') ?? "";
+                gitBranchLabel.Text = "";
+                gitDirtyLabel.Text = "";
+                gitSyncLabel.Visible = false;
             }
-            catch { return ""; }
         }
 
-        private void UpdateGitLabels()
+        private void ToggleGitPanel()
         {
-            if (this.IsHandleCreated)
-                this.BeginInvoke(new Action(() =>
-                {
-                    if (gitBranchLabel == null) return;
-                    gitBranchLabel.Text = _gitBranchName;
-                    gitDirtyLabel.Text = _gitDirtyStatus;
-                    gitSyncLabel.Text = _gitSyncStatus;
-                }));
+            _gitPanelVisible = !_gitPanelVisible;
+            ToggleGitPanel(null, EventArgs.Empty);
         }
 
-        private void ClearGitLabels()
+        private void ToggleGitPanel(object? sender, EventArgs e)
         {
-            if (this.IsHandleCreated)
-                this.BeginInvoke(new Action(() =>
-                {
-                    if (gitBranchLabel == null) return;
-                    gitBranchLabel.Text = "";
-                    gitDirtyLabel.Text = "";
-                    gitSyncLabel.Text = "";
-                }));
+            if (_gitPanel is null || _workspaceSplitContainer is null) return;
+
+            _gitPanelVisible = !_gitPanelVisible;
+            _gitPanel.Visible = _gitPanelVisible;
+
+            if (_gitPanelVisible)
+            {
+                RefreshGitRepo();
+                _gitPanel.RefreshStatus();
+            }
+
+            // Update sidebar collapse state
+            bool anyVisible = _workspacePanel?.Visible == true || _gitPanelVisible;
+            _workspaceSplitContainer.Panel1Collapsed = !anyVisible;
+            _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+
+            // Update menu check
+            if (sender is ToolStripMenuItem item)
+                item.Checked = _gitPanelVisible;
         }
 
         #endregion
@@ -4784,9 +4761,9 @@ using System.Linq;
             SaveSettings();
             elasticTabTimer?.Stop();
             elasticTabTimer?.Dispose();
-            _gitPollTimer?.Stop();
-            _gitPollTimer?.Dispose();
             incrementalHighlighter?.Dispose();
+            _gitService.Dispose();
+            _gitPanel?.Dispose();
             _notificationFeed.Dispose();
             _notificationCenter?.Dispose();
             foreach (var t in _terminalTabs) t.Dispose();

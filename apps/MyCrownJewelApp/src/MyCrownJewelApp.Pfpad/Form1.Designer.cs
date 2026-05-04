@@ -84,6 +84,7 @@ partial class Form1
     internal ToolStripMenuItem workspaceMenuItem;
     internal ToolStripMenuItem openFolderMenuItem;
     internal ToolStripMenuItem notificationCenterMenuItem;
+    internal ToolStripMenuItem gitPanelMenuItem;
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
@@ -112,16 +113,13 @@ partial class Form1
         internal ToolStripStatusLabel fileTypeLabel;
     internal ToolStripStatusLabel vimModeLabel;
     private ToolStripStatusLabel gitBranchLabel;
-    private ToolStripStatusLabel gitDirtyLabel;
-    private ToolStripStatusLabel gitSyncLabel;
+    internal ToolStripStatusLabel gitDirtyLabel;
+    internal ToolStripStatusLabel gitSyncLabel;
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            _gitPollTimer?.Stop();
-            _gitPollTimer?.Dispose();
-            _tabStripWindow?.ReleaseHandle();
             components?.Dispose();
         }
         base.Dispose(disposing);
@@ -322,6 +320,10 @@ partial class Form1
         openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
         viewMenu.DropDownItems.Add(openFolderMenuItem);
         viewMenu.DropDownItems.Add(workspaceMenuItem);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        gitPanelMenuItem = new ToolStripMenuItem("&Source Control", null, ToggleGitPanel, Keys.Control | Keys.Alt | Keys.G);
+        gitPanelMenuItem.CheckOnClick = true;
+        viewMenu.DropDownItems.Add(gitPanelMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(terminalMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());

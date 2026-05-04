@@ -19,6 +19,10 @@
     <ProjectReference Include="..\MyCrownJewelApp.Core\MyCrownJewelApp.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
+  </ItemGroup>
+
   <Target Name="GenerateBuildMetadata" BeforeTargets="CoreCompile">
     <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
