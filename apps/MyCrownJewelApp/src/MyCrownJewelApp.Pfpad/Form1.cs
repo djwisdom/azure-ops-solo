@@ -9,8 +9,9 @@
  using System.Threading;
  using System.Threading.Tasks;
  using System.Windows.Forms;
- using System.Collections.Concurrent;
- using System.Linq;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Linq;
  using System.Security.Cryptography;
  using System.Runtime.CompilerServices;
 
@@ -100,6 +101,13 @@
         private bool _terminalVisible = false;
         private int _terminalHeight = 200;
         private string _terminalShell = "";
+
+        // Workspace / folder tree state
+        private SplitContainer? _workspaceSplitContainer;
+        private WorkspacePanel? _workspacePanel;
+        private bool _workspaceVisible;
+        private int _workspaceWidth = 200;
+        private string _workspaceRoot = "";
 
         private TerminalPanel? ActiveTerminal =>
             _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
@@ -226,7 +234,12 @@
             bool TerminalVisible = false,
             int TerminalHeight = 200,
             string TerminalShellPath = "",
-            string ThemeName = "Dark"
+            string ThemeName = "Dark",
+            List<ExternalTool>? ExternalTools = null,
+            bool WorkspaceVisible = false,
+            int WorkspaceWidth = 200,
+            string WorkspaceRoot = "",
+            bool ShowWhitespace = true
         );
 
         private string SettingsFilePath =>
@@ -244,6 +257,12 @@
 
         private Button _tabDropdownButton = null!;
         private bool _applyingHighlight;
+
+        // Notification feed
+        private readonly NotificationFeedService _notificationFeed = new();
+        private NotificationCenterForm? _notificationCenter;
+        private ToolStripStatusLabel _notificationStatusLabel = null!;
+        private readonly HashSet<string> _toastedIds = new();
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -310,6 +329,7 @@
             
             // Load persisted settings (overrides defaults below)
             LoadSettings();
+            RebuildExternalToolsMenu();
             
             // Apply loaded font after settings are loaded
             try { textEditor.Font = new Font(fontName, fontSize); } catch { }
@@ -374,6 +394,7 @@
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
+            whitespaceOverlay.Visible = whitespaceMenuItem.Checked;
             if (showGuide)
             {
                 textEditor!.ShowGuide = true;
@@ -402,6 +423,11 @@
                 minimapControl.SetTokenProvider(GetTokensForLine);
                 PositionMinimap();
             }
+
+            // Wire whitespace overlay to editor
+            whitespaceOverlay.LinkedEditor = textEditor;
+            textEditor.VScroll += (s, e) => whitespaceOverlay.Invalidate();
+            textEditor.Resize += (s, e) => whitespaceOverlay.Invalidate();
 
             // Tab dropdown menu button (rightmost corner of tab strip)
             _tabDropdownButton = new Button
@@ -602,11 +628,56 @@
              mainLayout.SetRow(statusStrip, 3);
              mainLayout.RowCount = 4;
              mainLayout.RowStyles.Clear();
-             mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 0: menu
-             mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));   // 1: tabs
-             mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));  // 2: editor + terminal (split)
-             mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 3: status
-             mainLayout.ResumeLayout(true);
+              mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 0: menu
+              mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));   // 1: tabs
+              mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));  // 2: editor + terminal (split)
+              mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 3: status
+
+              // Wrap editor/terminal in workspace split container (workspace sidebar | editor+terminal)
+              if (_workspaceSplitContainer == null)
+              {
+                  _workspacePanel = new WorkspacePanel();
+                  _workspacePanel.FileOpenRequested += (path) =>
+                  {
+                      if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                          OpenFileInNewTab(path);
+                  };
+                  _workspacePanel.CloseRequested += () => ToggleWorkspace();
+
+                  _workspaceSplitContainer = new SplitContainer
+                  {
+                      Dock = DockStyle.Fill,
+                      Orientation = Orientation.Vertical,
+                      Panel1MinSize = 80,
+                      Panel2MinSize = 100,
+                      SplitterWidth = 4,
+                      SplitterIncrement = 8,
+                      Panel1Collapsed = !_workspaceVisible,
+                      BorderStyle = BorderStyle.None
+                  };
+                  _workspaceSplitContainer.HandleCreated += (s, e) =>
+                      SetWindowTheme(_workspaceSplitContainer.Handle, "", "");
+                  _workspaceSplitContainer.SplitterMoved += (s, e) =>
+                      _workspaceWidth = Math.Max(80, Math.Min(600, _workspaceSplitContainer.SplitterDistance));
+
+                  mainLayout.Controls.Remove(_terminalSplitContainer);
+                  _workspaceSplitContainer.Panel1.Controls.Add(_workspacePanel);
+                  _workspacePanel.Dock = DockStyle.Fill;
+                  _workspaceSplitContainer.Panel1.BackColor = _currentTheme.MenuBackground;
+                  _workspaceSplitContainer.Panel2.Controls.Add(_terminalSplitContainer);
+                  _workspaceSplitContainer.Panel2.BackColor = _currentTheme.EditorBackground;
+
+                  if (_workspaceVisible)
+                      _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+
+                  mainLayout.Controls.Add(_workspaceSplitContainer, 0, 2);
+              }
+
+              mainLayout.ResumeLayout(true);
+
+              if (!string.IsNullOrEmpty(_workspaceRoot))
+                  _workspacePanel?.SetRoot(_workspaceRoot);
+              workspaceMenuItem.Checked = _workspaceVisible;
 
              // Set initial splitter position if terminal should be visible
              if (_terminalVisible)
@@ -614,10 +685,23 @@
                  ShowTerminal();
              }
 
-             // Apply terminal theme to match editor
-             UpdateTerminalTheme();
+              // Apply terminal theme to match editor
+              UpdateTerminalTheme();
 
-             // Ensure initial dirty flag is clear after all initialization
+              // Initialize notification feed service
+              _notificationStatusLabel = new ToolStripStatusLabel("(0)")
+              {
+                  Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                  Padding = new Padding(4, 1, 4, 1),
+                  Alignment = ToolStripItemAlignment.Right
+              };
+              _notificationStatusLabel.Click += ToggleNotificationCenter;
+              statusStrip.Items.Add(_notificationStatusLabel);
+
+              _notificationFeed.OnItemsUpdated += OnFeedUpdated;
+              _notificationFeed.StartPolling();
+
+              // Ensure initial dirty flag is clear after all initialization
              isModified = false;
          }
 
@@ -1024,6 +1108,11 @@
                 minimapControl.MarkDirty();
                 minimapControl.RefreshNow();
             }
+            if (whitespaceOverlay != null)
+            {
+                whitespaceOverlay.GlyphColor = theme.IsLight ? Color.FromArgb(140, 140, 140) : Color.FromArgb(90, 90, 90);
+                whitespaceOverlay.Invalidate();
+            }
             textEditor!.GuideColor = Color.FromArgb(120, 120, 120);
             if (_tabDropdownButton != null)
             {
@@ -1078,7 +1167,12 @@
             }
 
             ApplyTitleBarTheme();
-            
+
+            // Sync notification center theme
+            if (_notificationCenter is not null && !_notificationCenter.IsDisposed)
+                _notificationCenter.UpdateTheme(theme);
+            UpdateNotificationBadge();
+
             if (syntaxHighlightingEnabled && incrementalHighlighter != null)
             {
                 _applyingHighlight = true;
@@ -1159,6 +1253,18 @@
                         _terminalVisible = settings.TerminalVisible;
                         _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
                         _terminalShell = settings.TerminalShellPath ?? "";
+                        if (settings.ExternalTools != null)
+                            _externalTools = settings.ExternalTools;
+                        _workspaceVisible = settings.WorkspaceVisible;
+                        _workspaceWidth = Math.Max(80, Math.Min(600, settings.WorkspaceWidth));
+                        _workspaceRoot = settings.WorkspaceRoot ?? "";
+                        bool showWhitespace = settings.ShowWhitespace;
+                        if (whitespaceMenuItem != null)
+                        {
+                            whitespaceMenuItem.Checked = showWhitespace;
+                            whitespaceOverlay.ShowGlyphs = showWhitespace;
+                            whitespaceOverlay.Visible = showWhitespace;
+                        }
                     }
                 }
             }
@@ -1190,7 +1296,12 @@
                      MinimapVisible: minimapMenuItem?.Checked ?? false,
                      TerminalVisible: _terminalVisible,
                      TerminalHeight: _terminalHeight,
-                     TerminalShellPath: _terminalShell
+                     TerminalShellPath: _terminalShell,
+                      ExternalTools: _externalTools,
+                      WorkspaceVisible: _workspaceVisible,
+                      WorkspaceWidth: _workspaceWidth,
+                      WorkspaceRoot: _workspaceRoot,
+                      ShowWhitespace: whitespaceMenuItem?.Checked ?? true
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -1325,6 +1436,14 @@
             {
                 _terminalNewTabButton.BackColor = theme.MenuBackground;
                 _terminalNewTabButton.ForeColor = theme.Text;
+            }
+            if (_workspacePanel != null)
+                _workspacePanel.SetTheme(theme);
+            if (_workspaceSplitContainer != null)
+            {
+                _workspaceSplitContainer.BackColor = theme.MenuBackground;
+                _workspaceSplitContainer.Panel1.BackColor = theme.MenuBackground;
+                _workspaceSplitContainer.Panel2.BackColor = theme.EditorBackground;
             }
         }
 
@@ -2242,31 +2361,258 @@
             dlg.ShowDialog(this);
         }
 
+        // External tools
+        private List<ExternalTool> _externalTools = new();
+        private ToolStripItem? _externalToolsSeparator;
+        private readonly List<ToolStripMenuItem> _externalToolMenuItems = new();
+
+        // Find/Replace state
+        private string _lastFindText = "";
+        private bool _lastFindCaseSensitive;
+        private bool _lastFindUp;
+        private bool _lastUseRegex;
+        private string _lastReplaceText = "";
+
+        private void ConfigureTools_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new ExternalToolsConfigDialog(_externalTools);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                RebuildExternalToolsMenu();
+                SaveSettings();
+            }
+        }
+
+        private void RebuildExternalToolsMenu()
+        {
+            foreach (var item in _externalToolMenuItems)
+                toolsMenu.DropDownItems.Remove(item);
+            _externalToolMenuItems.Clear();
+
+            if (_externalToolsSeparator != null)
+            {
+                toolsMenu.DropDownItems.Remove(_externalToolsSeparator);
+                _externalToolsSeparator = null;
+            }
+
+            if (_externalTools.Count == 0)
+                return;
+
+            _externalToolsSeparator = new ToolStripSeparator();
+            toolsMenu.DropDownItems.Add(_externalToolsSeparator);
+
+            for (int i = 0; i < _externalTools.Count; i++)
+            {
+                var tool = _externalTools[i];
+                int index = i;
+                var item = new ToolStripMenuItem(tool.Name, null, (s, e) => RunExternalTool(index));
+                if (index < 9)
+                    item.ShortcutKeys = Keys.Control | Keys.Alt | Keys.Shift | (Keys.D1 + index);
+                _externalToolMenuItems.Add(item);
+                toolsMenu.DropDownItems.Add(item);
+            }
+        }
+
+        private void RunExternalTool(int index)
+        {
+            if (index < 0 || index >= _externalTools.Count) return;
+            var tool = _externalTools[index];
+
+            if (string.IsNullOrWhiteSpace(tool.Command))
+            {
+                ThemedMessageBox.Show($"Tool \"{tool.Name}\" has no command configured.", "External Tool",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string args = tool.Arguments;
+            if (tool.PromptForArguments)
+            {
+                string? input = SimpleInputDialog.Show(this, $"Arguments for \"{tool.Name}\":", "External Tool", args);
+                if (input == null) return;
+                args = input;
+            }
+
+            try
+            {
+                string resolvedCmd = ResolveVariables(tool.Command);
+                string resolvedArgs = ResolveVariables(args);
+                string resolvedDir = ResolveVariables(tool.InitialDirectory);
+
+                if (string.IsNullOrEmpty(resolvedDir))
+                {
+                    string? filePath = ActiveDoc?.FilePath;
+                    if (!string.IsNullOrEmpty(filePath))
+                        resolvedDir = Path.GetDirectoryName(filePath) ?? Environment.CurrentDirectory;
+                    else
+                        resolvedDir = Environment.CurrentDirectory;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = resolvedCmd,
+                    Arguments = resolvedArgs,
+                    WorkingDirectory = resolvedDir,
+                    UseShellExecute = tool.UseShellExecute
+                };
+
+                if (!tool.UseShellExecute)
+                {
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+                    psi.CreateNoWindow = true;
+                }
+
+                using var proc = new Process();
+                proc.StartInfo = psi;
+
+                if (tool.UseShellExecute)
+                {
+                    proc.Start();
+                }
+                else
+                {
+                    proc.Start();
+                    string output = proc.StandardOutput.ReadToEnd();
+                    string error = proc.StandardError.ReadToEnd();
+                    proc.WaitForExit();
+
+                    if (!string.IsNullOrEmpty(output) || !string.IsNullOrEmpty(error))
+                    {
+                        string caption = $"Output: {tool.Name}";
+                        string msg = "";
+                        if (!string.IsNullOrEmpty(output)) msg += output;
+                        if (!string.IsNullOrEmpty(error)) msg += $"\n--- stderr ---\n{error}";
+                        ThemedMessageBox.Show(msg.Trim(), caption);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show($"Error running \"{tool.Name}\": {ex.Message}", "External Tool",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private string ResolveVariables(string input)
+        {
+            string result = input;
+            string? filePath = ActiveDoc?.FilePath;
+            string? fileName = filePath != null ? Path.GetFileName(filePath) : "";
+            string? fileDir = filePath != null ? Path.GetDirectoryName(filePath) : "";
+            string? fileExt = filePath != null ? Path.GetExtension(filePath) : "";
+            string? fileNameNoExt = filePath != null ? Path.GetFileNameWithoutExtension(filePath) : "";
+            string selText = textEditor?.SelectedText ?? "";
+            int curLine = textEditor != null ? textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1 : 1;
+            int curCol = textEditor != null ? textEditor.SelectionStart - textEditor.GetFirstCharIndexFromLine(textEditor.GetLineFromCharIndex(textEditor.SelectionStart)) + 1 : 1;
+
+            result = result.Replace("$(FilePath)", filePath ?? "");
+            result = result.Replace("$(FileDir)", fileDir ?? "");
+            result = result.Replace("$(FileName)", fileName ?? "");
+            result = result.Replace("$(FileNameNoExt)", fileNameNoExt ?? "");
+            result = result.Replace("$(FileExt)", fileExt ?? "");
+            result = result.Replace("$(SelText)", selText);
+            result = result.Replace("$(CurLine)", curLine.ToString());
+            result = result.Replace("$(CurCol)", curCol.ToString());
+
+            return result;
+        }
+
+        private void ToggleWorkspace()
+        {
+            _workspaceVisible = !_workspaceVisible;
+            workspaceMenuItem.Checked = _workspaceVisible;
+            if (_workspaceVisible)
+            {
+                if (_workspaceSplitContainer != null)
+                {
+                    _workspaceSplitContainer.Panel1Collapsed = false;
+                    _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+                    _workspaceSplitContainer.PerformLayout();
+                    if (!string.IsNullOrEmpty(_workspaceRoot))
+                        _workspacePanel?.SetRoot(_workspaceRoot);
+                }
+            }
+            else
+            {
+                if (_workspaceSplitContainer != null)
+                {
+                    _workspaceWidth = Math.Max(80, Math.Min(600, _workspaceSplitContainer.SplitterDistance));
+                    _workspaceSplitContainer.Panel1Collapsed = true;
+                    _workspaceSplitContainer.PerformLayout();
+                }
+                textEditor?.Focus();
+            }
+            SaveSettings();
+        }
+
+        private void ToggleWorkspace_Click(object? sender, EventArgs e)
+        {
+            ToggleWorkspace();
+        }
+
+        private void OpenFolder_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new FolderBrowserDialog
+            {
+                Description = "Select a folder to open as workspace",
+                UseDescriptionForTitle = true,
+                SelectedPath = _workspaceRoot
+            };
+            if (dlg.ShowDialog() == DialogResult.OK)
+            {
+                _workspaceRoot = dlg.SelectedPath;
+                _workspacePanel?.SetRoot(_workspaceRoot);
+                if (!_workspaceVisible)
+                    ToggleWorkspace();
+                else
+                    SaveSettings();
+            }
+        }
+
         #endregion
 
         #region Find & Replace
 
         private void Find_Click(object? sender, EventArgs e)
         {
-            using var dlg = new FindReplaceDialog(this, false);
-            dlg.ShowDialog(this);
+            using var dlg = new FindReplaceDialog(this, false, _lastFindText, _lastFindCaseSensitive, _lastUseRegex);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                _lastFindText = dlg.FindText;
+                _lastFindCaseSensitive = dlg.CaseSensitive;
+                _lastFindUp = dlg.SearchUp;
+                _lastUseRegex = dlg.UseRegex;
+            }
         }
 
         private void FindNext_Click(object? sender, EventArgs e)
         {
-            // Would need to store last search parameters - stub for now
-            ThemedMessageBox.Show("Find Next requires storing last search parameters.", "Info");
+            if (string.IsNullOrEmpty(_lastFindText))
+                Find_Click(sender, e);
+            else
+                PerformFind(_lastFindText, _lastFindCaseSensitive, false, _lastUseRegex);
         }
 
         private void FindPrevious_Click(object? sender, EventArgs e)
         {
-            ThemedMessageBox.Show("Find Previous requires storing last search parameters.", "Info");
+            if (string.IsNullOrEmpty(_lastFindText))
+                Find_Click(sender, e);
+            else
+                PerformFind(_lastFindText, _lastFindCaseSensitive, true, _lastUseRegex);
         }
 
         private void Replace_Click(object? sender, EventArgs e)
         {
-            using var dlg = new FindReplaceDialog(this, true);
-            dlg.ShowDialog(this);
+            using var dlg = new FindReplaceDialog(this, true, _lastFindText, _lastFindCaseSensitive, _lastUseRegex);
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                _lastFindText = dlg.FindText;
+                _lastFindCaseSensitive = dlg.CaseSensitive;
+                _lastFindUp = dlg.SearchUp;
+                _lastUseRegex = dlg.UseRegex;
+                _lastReplaceText = dlg.ReplaceText;
+            }
         }
 
         private void Goto_Click(object? sender, EventArgs e)
@@ -2454,6 +2800,97 @@
 
         private void WordWrap_Click(object? sender, EventArgs e) => ToggleWordWrap();
         private void GutterMenuItem_Click(object? sender, EventArgs e) => ToggleGutter();
+
+        private void ToggleWhitespace_Click(object? sender, EventArgs e)
+        {
+            whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
+            whitespaceOverlay.Visible = whitespaceMenuItem.Checked;
+            whitespaceOverlay.Invalidate();
+        }
+
+        private void OnFeedUpdated()
+        {
+            if (_notificationStatusLabel is null || _notificationStatusLabel.IsDisposed) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(OnFeedUpdated);
+                return;
+            }
+
+            UpdateNotificationBadge();
+            ShowToastForNewItems();
+        }
+
+        private void UpdateNotificationBadge()
+        {
+            if (_notificationStatusLabel is null || _notificationStatusLabel.IsDisposed) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(UpdateNotificationBadge);
+                return;
+            }
+            int unread = _notificationFeed.UnreadCount;
+            if (unread > 0)
+            {
+                _notificationStatusLabel.Text = $"N {unread}";
+                _notificationStatusLabel.ForeColor = _currentTheme.Accent;
+            }
+            else
+            {
+                _notificationStatusLabel.Text = "N";
+                _notificationStatusLabel.ForeColor = _currentTheme.Muted;
+            }
+        }
+
+        private void ShowToastForNewItems()
+        {
+            var unread = _notificationFeed.AllItems.Where(i => !i.IsRead).ToList();
+            foreach (var item in unread)
+            {
+                if (_toastedIds.Add(item.Id))
+                {
+                    var toast = new NotificationToastForm(item);
+                    toast.FormClosed += (s, e) => toast.Dispose();
+                    toast.Show(this);
+                    return;
+                }
+            }
+        }
+
+        private void ToggleNotificationCenter(object? sender, EventArgs e)
+        {
+            if (_notificationCenter is not null && !_notificationCenter.IsDisposed)
+            {
+                _notificationCenter.BringToFront();
+                _notificationCenter.Focus();
+                return;
+            }
+
+            _notificationCenter = new NotificationCenterForm(_notificationFeed);
+            _notificationCenter.UpdateTheme(_currentTheme);
+            _notificationCenter.FormClosed += (s, args) =>
+            {
+                _notificationCenter = null;
+                UpdateNotificationBadge();
+            };
+
+            // Position near the bell icon in status bar
+            var screenPoint = statusStrip.PointToScreen(
+                new Point(_notificationStatusLabel.Bounds.Right, statusStrip.Bounds.Top - _notificationCenter.Height));
+            screenPoint.X = Math.Max(0, screenPoint.X - _notificationCenter.Width + 60);
+            screenPoint.Y = Math.Max(0, screenPoint.Y);
+            _notificationCenter.Location = screenPoint;
+            _notificationCenter.Show(this);
+        }
+
+        private void ConfigureNotifications_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new NotificationSettingsForm(_notificationFeed);
+            dlg.ShowDialog(this);
+            // Refresh notification state after settings change
+            OnFeedUpdated();
+            _ = _notificationFeed.FetchAllAsync();
+        }
 
         private void ApplyThemeByName(string name)
         {
@@ -3215,43 +3652,70 @@
             }
         }
 
-        public void PerformFind(string text, bool caseSensitive, bool up)
+        public void PerformFind(string text, bool caseSensitive, bool up, bool useRegex = false)
         {
             if (string.IsNullOrEmpty(text) || textEditor.Text.Length == 0) return;
 
+            string source = textEditor.Text;
+            int sourceLen = source.Length;
             int start = textEditor.SelectionStart;
-            int length = textEditor.Text.Length;
-
-            StringComparison comparison = caseSensitive ? StringComparison.CurrentCulture : StringComparison.CurrentCultureIgnoreCase;
             int found = -1;
 
-            if (up)
+            if (useRegex)
             {
-                for (int i = start - text.Length; i >= 0; i--)
+                var opts = RegexOptions.Multiline;
+                if (!caseSensitive) opts |= RegexOptions.IgnoreCase;
+                try
                 {
-                    if (i + text.Length <= length && textEditor.Text.Substring(i, text.Length).Equals(text, comparison))
+                    var regex = new Regex(text, opts);
+                    if (up)
                     {
-                        found = i;
-                        break;
+                        var matches = regex.Matches(source);
+                        for (int i = matches.Count - 1; i >= 0; i--)
+                        {
+                            if (matches[i].Index < start)
+                            {
+                                found = matches[i].Index;
+                                break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var m = regex.Match(source, Math.Min(start + 1, sourceLen));
+                        if (m.Success)
+                            found = m.Index;
                     }
                 }
+                catch { return; }
             }
             else
             {
-                for (int i = start + 1; i <= length - text.Length; i++)
+                StringComparison comparison = caseSensitive
+                    ? StringComparison.CurrentCulture
+                    : StringComparison.CurrentCultureIgnoreCase;
+
+                if (up)
                 {
-                    if (textEditor.Text.Substring(i, text.Length).Equals(text, comparison))
+                    for (int i = start - text.Length; i >= 0; i--)
                     {
-                        found = i;
-                        break;
+                        if (i + text.Length <= sourceLen && source.AsSpan(i, text.Length).Equals(text, comparison))
+                        {
+                            found = i;
+                            break;
+                        }
                     }
+                }
+                else
+                {
+                    found = source.IndexOf(text, Math.Min(start + 1, sourceLen), comparison);
                 }
             }
 
             if (found >= 0)
             {
                 textEditor.SelectionStart = found;
-                textEditor.SelectionLength = text.Length;
+                textEditor.SelectionLength = useRegex ? 0 : text.Length;
                 textEditor.ScrollToCaret();
                 UpdateStatusBar();
             }
@@ -3261,42 +3725,189 @@
             }
         }
 
-        public void PerformReplace(string findText, string replaceText, bool caseSensitive, bool replaceAll)
+        public void PerformReplace(string findText, string replaceText, bool caseSensitive, bool useRegex, bool replaceAll)
         {
             if (string.IsNullOrEmpty(findText)) return;
 
-            StringComparison comparison = caseSensitive ? StringComparison.CurrentCulture : StringComparison.CurrentCultureIgnoreCase;
+            int count = 0;
 
-            if (replaceAll)
+            if (useRegex)
             {
-                int startIndex = 0;
-                while (startIndex < textEditor.Text.Length)
+                var opts = RegexOptions.Multiline;
+                if (!caseSensitive) opts |= RegexOptions.IgnoreCase;
+                try
                 {
-                    int found = textEditor.Text.IndexOf(findText, startIndex, comparison);
-                    if (found < 0) break;
-                    textEditor.Text = textEditor.Text.Remove(found, findText.Length).Insert(found, replaceText);
-                    startIndex = found + replaceText.Length;
+                    var regex = new Regex(findText, opts);
+                    if (replaceAll)
+                    {
+                        string result = regex.Replace(textEditor.Text, replaceText);
+                        if (result != textEditor.Text)
+                        {
+                            textEditor.Text = result;
+                            count = 1;
+                        }
+                    }
+                    else
+                    {
+                        var m = regex.Match(textEditor.Text, textEditor.SelectionStart);
+                        if (m.Success)
+                        {
+                            textEditor.SelectionStart = m.Index;
+                            textEditor.SelectionLength = m.Length;
+                            textEditor.SelectedText = regex.Replace(m.Value, replaceText);
+                            count = 1;
+                        }
+                    }
                 }
-                isModified = true;
+                catch { return; }
             }
             else
             {
-                if (textEditor.SelectionLength > 0 && textEditor.SelectedText.Equals(findText, comparison))
+                StringComparison comparison = caseSensitive
+                    ? StringComparison.CurrentCulture
+                    : StringComparison.CurrentCultureIgnoreCase;
+
+                if (replaceAll)
                 {
-                    textEditor.SelectedText = replaceText;
-                    isModified = true;
+                    int startIndex = 0;
+                    var sb = new System.Text.StringBuilder(textEditor.Text);
+                    while (startIndex < sb.Length)
+                    {
+                        int found = sb.ToString().IndexOf(findText, startIndex, comparison);
+                        if (found < 0) break;
+                        sb.Remove(found, findText.Length).Insert(found, replaceText);
+                        startIndex = found + replaceText.Length;
+                        count++;
+                    }
+                    if (count > 0)
+                        textEditor.Text = sb.ToString();
                 }
                 else
                 {
-                    PerformFind(findText, caseSensitive, false);
-                    if (textEditor.SelectionLength > 0 && textEditor.SelectedText.Equals(findText, comparison))
+                    if (textEditor.SelectionLength > 0 && string.Equals(textEditor.SelectedText, findText, comparison))
                     {
                         textEditor.SelectedText = replaceText;
-                        isModified = true;
+                        count = 1;
+                    }
+                    else
+                    {
+                        PerformFind(findText, caseSensitive, false, false);
+                        if (textEditor.SelectionLength > 0 && string.Equals(textEditor.SelectedText, findText, comparison))
+                        {
+                            textEditor.SelectedText = replaceText;
+                            count = 1;
+                        }
                     }
                 }
             }
-            UpdateStatusBar();
+
+            if (count > 0)
+            {
+                isModified = true;
+                UpdateStatusBar();
+            }
+        }
+
+        public void PerformFindInFiles(string findText, bool caseSensitive, bool useRegex)
+        {
+            string? root = _workspacePanel?.RootPath;
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+            {
+                ThemedMessageBox.Show("No workspace folder is open. Use View > Open Folder to set a workspace root.",
+                    "Find in Files", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var results = new List<(string File, int Line, string Text)>();
+            var textExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".cs", ".vb", ".fs", ".ts", ".tsx", ".js", ".jsx", ".json", ".xml", ".html", ".htm",
+                ".css", ".scss", ".less", ".md", ".txt", ".yaml", ".yml", ".toml", ".ini", ".cfg",
+                ".config", ".csproj", ".sln", ".ps1", ".bat", ".cmd", ".sh", ".py", ".rb", ".java",
+                ".kt", ".swift", ".go", ".rs", ".c", ".cpp", ".h", ".hpp", ".sql", ".lua", ".php",
+                ".tf", ".bicep", ".editorconfig", ".gitignore", ".props", ".targets", ".resx"
+            };
+
+            var ignoredDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "node_modules", ".git", ".svn", ".hg", "bin", "obj", ".vs", "packages"
+            };
+
+            Regex? regex = null;
+            StringComparison comparison = StringComparison.CurrentCultureIgnoreCase;
+            if (useRegex)
+            {
+                try
+                {
+                    var opts = RegexOptions.Multiline;
+                    if (!caseSensitive) opts |= RegexOptions.IgnoreCase;
+                    regex = new Regex(findText, opts);
+                }
+                catch
+                {
+                    ThemedMessageBox.Show("Invalid regex pattern.", "Find in Files", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+            else
+            {
+                comparison = caseSensitive ? StringComparison.CurrentCulture : StringComparison.CurrentCultureIgnoreCase;
+            }
+
+            try
+            {
+                SearchDirectory(root, root, results, textExtensions, ignoredDirs, findText, regex, comparison);
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show($"Search error: {ex.Message}", "Find in Files", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            if (results.Count == 0)
+            {
+                ThemedMessageBox.Show("No results found.", "Find in Files", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dlg = new FindInFilesResultsDialog(results, root);
+            dlg.ShowDialog(this);
+        }
+
+        private static void SearchDirectory(string rootDir, string dir, List<(string File, int Line, string Text)> results,
+            HashSet<string> textExtensions, HashSet<string> ignoredDirs, string findText,
+            Regex? regex, StringComparison comparison)
+        {
+            foreach (var d in Directory.EnumerateDirectories(dir))
+            {
+                string name = Path.GetFileName(d);
+                if (!ignoredDirs.Contains(name))
+                    SearchDirectory(rootDir, d, results, textExtensions, ignoredDirs, findText, regex, comparison);
+            }
+
+            foreach (var file in Directory.EnumerateFiles(dir))
+            {
+                string ext = Path.GetExtension(file);
+                if (!textExtensions.Contains(ext)) continue;
+
+                try
+                {
+                    string[] lines = File.ReadAllLines(file);
+                    string relativePath = Path.GetRelativePath(rootDir, file);
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        bool match = false;
+                        if (regex != null)
+                            match = regex.IsMatch(lines[i]);
+                        else
+                            match = lines[i].Contains(findText, comparison);
+
+                        if (match)
+                            results.Add((relativePath, i + 1, lines[i].Trim()));
+                    }
+                }
+                catch { }
+            }
         }
 
         #endregion
@@ -4176,6 +4787,8 @@
             _gitPollTimer?.Stop();
             _gitPollTimer?.Dispose();
             incrementalHighlighter?.Dispose();
+            _notificationFeed.Dispose();
+            _notificationCenter?.Dispose();
             foreach (var t in _terminalTabs) t.Dispose();
             _terminalTabs.Clear();
             _terminalTabControl?.Dispose();

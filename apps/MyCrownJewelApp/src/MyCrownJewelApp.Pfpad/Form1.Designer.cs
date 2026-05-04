@@ -76,13 +76,20 @@ partial class Form1
     private ToolStripMenuItem col150MenuItem;
     private ToolStripMenuItem colCustomMenuItem;
     private ToolStripMenuItem gutterMenuItem;
+    internal ToolStripMenuItem whitespaceMenuItem;
     private ToolStripMenuItem vimModeMenuItem;
     private ToolStripMenuItem splitVMenuItem;
     private ToolStripMenuItem splitHMenuItem;
     internal ToolStripMenuItem terminalMenuItem;
+    internal ToolStripMenuItem workspaceMenuItem;
+    internal ToolStripMenuItem openFolderMenuItem;
+    internal ToolStripMenuItem notificationCenterMenuItem;
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
+
+    private ToolStripMenuItem toolsMenu;
+    internal ToolStripMenuItem configureToolsMenuItem;
 
     private TabControl tabControl;
     private TableLayoutPanel mainLayout;
@@ -90,6 +97,7 @@ partial class Form1
     private TableLayoutPanel mainTable;
     private Panel editorPanel;
     internal GutterPanel gutterPanel;
+    internal WhitespaceOverlayPanel whitespaceOverlay;
     internal HighlightRichTextBox textEditor;
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
@@ -271,6 +279,9 @@ partial class Form1
         columnGuideMenuItem.DropDownItems.Add(colCustomMenuItem);
         gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
         gutterMenuItem.CheckOnClick = true;
+        whitespaceMenuItem = new ToolStripMenuItem("&Show Whitespace", null, ToggleWhitespace_Click);
+        whitespaceMenuItem.CheckOnClick = true;
+        whitespaceMenuItem.Checked = true;
         minimapMenuItem = new ToolStripMenuItem("Minimap", null, MinimapMenuItem_Click);
         minimapMenuItem.CheckOnClick = true;
         vimModeMenuItem = new ToolStripMenuItem("&Vim Mode", null, ToggleVimMode, Keys.Control | Keys.Alt | Keys.V);
@@ -293,6 +304,7 @@ partial class Form1
         viewMenu.DropDownItems.Add(elasticTabsMenuItem);
         viewMenu.DropDownItems.Add(columnGuideMenuItem);
         viewMenu.DropDownItems.Add(gutterMenuItem);
+        viewMenu.DropDownItems.Add(whitespaceMenuItem);
         viewMenu.DropDownItems.Add(minimapMenuItem);
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -304,13 +316,31 @@ partial class Form1
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
         terminalMenuItem.Checked = false;
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        workspaceMenuItem = new ToolStripMenuItem("&Workspace", null, ToggleWorkspace_Click, Keys.Control | Keys.Shift | Keys.W);
+        workspaceMenuItem.CheckOnClick = true;
+        openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
+        viewMenu.DropDownItems.Add(openFolderMenuItem);
+        viewMenu.DropDownItems.Add(workspaceMenuItem);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(terminalMenuItem);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        notificationCenterMenuItem = new ToolStripMenuItem("Notification &Center", null, ToggleNotificationCenter, Keys.Control | Keys.Shift | Keys.N);
+        viewMenu.DropDownItems.Add(notificationCenterMenuItem);
+        var notificationSettingsMenuItem = new ToolStripMenuItem("Notification &Settings...", null, ConfigureNotifications_Click);
+        viewMenu.DropDownItems.Add(notificationSettingsMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(themeMenu);
 
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);
         menuStrip.Items.Add(viewMenu);
+        // Tools menu
+        toolsMenu = new ToolStripMenuItem("&Tools");
+        configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);
+        configureToolsMenuItem.ShortcutKeys = Keys.Control | Keys.Alt | Keys.T;
+        toolsMenu.DropDownItems.Add(configureToolsMenuItem);
+        menuStrip.Items.Add(toolsMenu);
         // Help menu
         var helpMenu = new ToolStripMenuItem("&Help");
         var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
@@ -326,9 +356,9 @@ partial class Form1
         tabControl.HotTrack = true;
         tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabControl.Alignment = TabAlignment.Top;
-        tabControl.SizeMode = TabSizeMode.Fixed;
-        tabControl.ItemSize = new Size(80, 30);
-        tabControl.Padding = new Point(12, 4);
+        tabControl.SizeMode = TabSizeMode.Normal;
+        tabControl.ItemSize = new Size(0, 30);
+        tabControl.Padding = new Point(17, 4);
         tabControl.Cursor = Cursors.Hand;
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
         tabControl.MouseDown += TabControl_MouseDown;
@@ -396,8 +426,15 @@ partial class Form1
         minimapControl.MinimapWidth = 200;
         minimapControl.Visible = false;
 
-        // Assemble editor panel with textEditor + minimap
+        // Whitespace overlay (transparent, on top of editor)
+        whitespaceOverlay = new WhitespaceOverlayPanel();
+        whitespaceOverlay.Dock = DockStyle.Fill;
+        whitespaceOverlay.Margin = new Padding(0);
+        whitespaceOverlay.ShowGlyphs = true;
+
+        // Assemble editor panel with textEditor + whitespaceOverlay + minimap
         editorPanel.Controls.Add(textEditor);
+        editorPanel.Controls.Add(whitespaceOverlay);
         editorPanel.Controls.Add(minimapControl);
 
         // Assemble table
