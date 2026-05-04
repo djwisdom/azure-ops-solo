@@ -150,7 +150,13 @@ internal sealed class WorkspacePanel : UserControl
         var openItem = new ToolStripMenuItem("Open", null, (s, e) => OpenSelectedNode());
         var openFolderItem = new ToolStripMenuItem("Open Containing Folder", null, (s, e) => OpenContainingFolder());
         var copyPathItem = new ToolStripMenuItem("Copy Path", null, (s, e) => CopyPath());
-        _fileContextMenu.Items.AddRange(new ToolStripItem[] { openItem, openFolderItem, new ToolStripSeparator(), copyPathItem });
+        _fileContextMenu.Items.AddRange(new ToolStripItem[] {
+            openItem, openFolderItem, new ToolStripSeparator(),
+            new ToolStripMenuItem("New File", null, (s, e) => CreateNewFile()),
+            new ToolStripMenuItem("New Folder", null, (s, e) => CreateNewFolder()),
+            new ToolStripSeparator(),
+            copyPathItem
+        });
 
         Controls.Add(_headerStrip);
         Controls.Add(_tree);
@@ -550,5 +556,54 @@ internal sealed class WorkspacePanel : UserControl
             try { Clipboard.SetText(path); }
             catch { }
         }
+    }
+
+    private void CreateNewFile()
+    {
+        string? dir = GetSelectedDirectory();
+        if (dir is null) return;
+
+        string? name = SimpleInputDialog.Show(ParentForm, "File name:", "New File", "newfile.txt");
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        string path = System.IO.Path.Combine(dir, name);
+        try
+        {
+            if (System.IO.File.Exists(path))
+            { ThemedMessageBox.Show("File already exists.", "New File", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            System.IO.File.WriteAllText(path, "");
+            RefreshTree();
+            FileOpenRequested?.Invoke(path);
+        }
+        catch (Exception ex) { ThemedMessageBox.Show($"Could not create file: {ex.Message}", "New File", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+    }
+
+    private void CreateNewFolder()
+    {
+        string? dir = GetSelectedDirectory();
+        if (dir is null) return;
+
+        string? name = SimpleInputDialog.Show(ParentForm, "Folder name:", "New Folder", "newfolder");
+        if (string.IsNullOrWhiteSpace(name)) return;
+
+        string path = System.IO.Path.Combine(dir, name);
+        try
+        {
+            if (System.IO.Directory.Exists(path))
+            { ThemedMessageBox.Show("Folder already exists.", "New Folder", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            System.IO.Directory.CreateDirectory(path);
+            RefreshTree();
+        }
+        catch (Exception ex) { ThemedMessageBox.Show($"Could not create folder: {ex.Message}", "New Folder", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+    }
+
+    private string? GetSelectedDirectory()
+    {
+        if (_tree.SelectedNode?.Tag is string path)
+        {
+            if (System.IO.Directory.Exists(path)) return path;
+            if (System.IO.File.Exists(path)) return System.IO.Path.GetDirectoryName(path);
+        }
+        return !string.IsNullOrEmpty(_rootPath) ? _rootPath : null;
     }
 }

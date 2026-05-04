@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
@@ -9,11 +10,15 @@ namespace MyCrownJewelApp.Pfpad
 {
     public enum VimMode
     {
-        Normal, Insert, Visual, VisualLine, VisualBlock, Command
+        Normal, Insert, Visual, VisualLine, VisualBlock, Command,
+        SearchForward, SearchBackward
     }
 
     public class VimEngine
     {
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        private const int EM_REDO = 0x042D;
         public VimMode CurrentMode { get; private set; } = VimMode.Normal;
         public bool Enabled { get; set; }
         public string CommandText => _cmdBuffer.ToString();
@@ -22,6 +27,13 @@ namespace MyCrownJewelApp.Pfpad
         private readonly StringBuilder _cmdBuffer = new();
         private string? _lastYank;
         private int _repeatCount = 1;
+
+        // Search state
+        private string _lastSearchPattern = "";
+        private bool _lastSearchForward = true;
+
+        // Repeat last action
+        private (string Action, string? Data, int Repeat)? _lastAction;
 
         public event Action? SaveRequested;
         public event Action<string>? SaveAsRequested;
@@ -77,6 +89,9 @@ namespace MyCrownJewelApp.Pfpad
 
             if (CurrentMode == VimMode.Command)
                 return ProcessCommandMode(key, ctrl, shift);
+
+            if (CurrentMode == VimMode.SearchForward || CurrentMode == VimMode.SearchBackward)
+                return ProcessSearchMode(key, ctrl, shift);
 
             return ProcessNormalMode(key, ctrl, shift);
         }
@@ -169,6 +184,92 @@ namespace MyCrownJewelApp.Pfpad
                 return true;
             }
 
+            return false;
+        }
+
+        private void EnterSearchMode(bool forward)
+        {
+            EnterMode(forward ? VimMode.SearchForward : VimMode.SearchBackward);
+            _cmdBuffer.Clear();
+            _cmdBuffer.Append(forward ? '/' : '?');
+        }
+
+        private bool ProcessSearchMode(Keys key, bool ctrl, bool shift)
+        {
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                _cmdBuffer.Clear();
+                EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Enter)
+            {
+                string pattern = _cmdBuffer.Length > 1 ? _cmdBuffer.ToString(1, _cmdBuffer.Length - 1) : _lastSearchPattern;
+                if (!string.IsNullOrEmpty(pattern))
+                {
+                    _lastSearchPattern = pattern;
+                    _lastSearchForward = CurrentMode == VimMode.SearchForward;
+                    ExecuteSearch(_lastSearchForward? 0 : _tb.TextLength, _lastSearchForward);
+                }
+                _cmdBuffer.Clear();
+                EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Back)
+            {
+                if (_cmdBuffer.Length > 1)
+                    _cmdBuffer.Remove(_cmdBuffer.Length - 1, 1);
+                return true;
+            }
+
+            char? ch = KeyToChar(key, shift);
+            if (ch != null && ch >= 32)
+            {
+                _cmdBuffer.Append(ch.Value);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool ExecuteSearch(int startFrom, bool forward)
+        {
+            if (string.IsNullOrEmpty(_lastSearchPattern)) return false;
+            string text = _tb.Text;
+            // Update stored direction for n/N
+            _lastSearchForward = forward;
+
+            // Use IndexOf for plain text search (case-insensitive)
+            var comparison = StringComparison.CurrentCultureIgnoreCase;
+            if (forward)
+            {
+                int found = text.IndexOf(_lastSearchPattern, Math.Min(startFrom, text.Length), comparison);
+                if (found >= 0)
+                {
+                    _tb.SelectionStart = found;
+                    _tb.SelectionLength = _lastSearchPattern.Length;
+                    _tb.ScrollToCaret();
+                    return true;
+                }
+            }
+            else
+            {
+                // Backward search: scan from startFrom backward
+                int found = -1;
+                int searchUpTo = Math.Min(startFrom, text.Length);
+                for (int i = 0; i <= searchUpTo - _lastSearchPattern.Length; i++)
+                {
+                    if (text.AsSpan(i, _lastSearchPattern.Length).Equals(_lastSearchPattern, comparison))
+                        found = i;
+                }
+                if (found >= 0)
+                {
+                    _tb.SelectionStart = found;
+                    _tb.SelectionLength = _lastSearchPattern.Length;
+                    _tb.ScrollToCaret();
+                    return true;
+                }
+            }
             return false;
         }
 
@@ -265,20 +366,20 @@ namespace MyCrownJewelApp.Pfpad
                 case "O": OpenLineAbove(); return true;
 
                 // Delete
-                case "x": DeleteChar(); return true;
-                case "X": DeleteCharBefore(); return true;
-                case "dd": DeleteLine(); return true;
-                case "D": case "d$": DeleteToLineEnd(); return true;
-                case "dw": DeleteWord(); return true;
-                case "diw": DeleteInnerWord(); return true;
-                case "d0": DeleteToLineStart(); return true;
-                case "d^": DeleteToLineStart(); return true;
+                case "x": DeleteChar(); RecordAction("delete-char"); return true;
+                case "X": DeleteCharBefore(); RecordAction("delete-char-before"); return true;
+                case "dd": DeleteLine(); RecordAction("delete-line"); return true;
+                case "D": case "d$": DeleteToLineEnd(); RecordAction("delete-to-line-end"); return true;
+                case "dw": DeleteWord(); RecordAction("delete-word"); return true;
+                case "diw": DeleteInnerWord(); RecordAction("delete-inner-word"); return true;
+                case "d0": DeleteToLineStart(); RecordAction("delete-to-line-start"); return true;
+                case "d^": DeleteToLineStart(); RecordAction("delete-to-line-start"); return true;
 
                 // Yank & Paste
-                case "yy": case "Y": YankLine(); return true;
+                case "yy": case "Y": YankLine(); RecordAction("yank-line"); return true;
                 case "yw": YankWord(); return true;
-                case "p": PasteAfter(); return true;
-                case "P": PasteBefore(); return true;
+                case "p": PasteAfter(); RecordAction("paste-after"); return true;
+                case "P": PasteBefore(); RecordAction("paste-before"); return true;
 
                 // Change
                 case "cc": DeleteLine(); EnterMode(VimMode.Insert); return true;
@@ -297,8 +398,8 @@ namespace MyCrownJewelApp.Pfpad
                 case "\x12": SendCtrlR(); return true;
 
                 // Indent
-                case ">>": IndentLine(1); return true;
-                case "<<": IndentLine(-1); return true;
+                case ">>": IndentLine(1); RecordAction("indent"); return true;
+                case "<<": IndentLine(-1); RecordAction("outdent"); return true;
 
                 // Toggle case
                 case "~": ToggleCase(); return true;
@@ -310,8 +411,8 @@ namespace MyCrownJewelApp.Pfpad
                 case ".": RepeatLast(); return true;
 
                 // Search
-                case "/": _cmdBuffer.Clear(); _cmdBuffer.Append('/'); return true;
-                case "?": _cmdBuffer.Clear(); _cmdBuffer.Append('?'); return true;
+                case "/": EnterSearchMode(true); return true;
+                case "?": EnterSearchMode(false); return true;
                 case "n": FindNext(); return true;
                 case "N": FindPrevious(); return true;
 
@@ -896,7 +997,33 @@ namespace MyCrownJewelApp.Pfpad
             if (_tb.SelectionLength > 0)
                 _lastYank = _tb.SelectedText;
         }
-        private void RepeatLast() { /* TODO: replay last non-motion command */ }
+        private void RecordAction(string action, string? data = null)
+        {
+            _lastAction = (action, data, 1);
+        }
+
+        private void RepeatLast()
+        {
+            if (_lastAction == null) return;
+            var (action, data, _) = _lastAction.Value;
+            switch (action)
+            {
+                case "delete-char": DeleteChar(); break;
+                case "delete-char-before": DeleteCharBefore(); break;
+                case "delete-line": DeleteLine(); break;
+                case "delete-to-line-end": DeleteToLineEnd(); break;
+                case "delete-word": DeleteWord(); break;
+                case "delete-inner-word": DeleteInnerWord(); break;
+                case "delete-to-line-start": DeleteToLineStart(); break;
+                case "yank-line": YankLine(); break;
+                case "paste-after": PasteAfter(); break;
+                case "paste-before": PasteBefore(); break;
+                case "indent": IndentLine(1); break;
+                case "outdent": IndentLine(-1); break;
+                case "toggle-case": ToggleCase(); break;
+                case "join": JoinLines(); break;
+            }
+        }
         #endregion
 
         #region Scrolling
@@ -908,12 +1035,37 @@ namespace MyCrownJewelApp.Pfpad
 
         #region Undo/Redo
         private void SendCtrlZ() { _tb.Undo(); }
-        private void SendCtrlR() { } // RichTextBox has no built-in Redo() method
+        private void SendCtrlR()
+        {
+            if (_tb.IsHandleCreated && _tb.CanRedo)
+                SendMessage(_tb.Handle, EM_REDO, IntPtr.Zero, IntPtr.Zero);
+        }
         #endregion
 
         #region Search
-        private void FindNext() { }
-        private void FindPrevious() { }
+        private void FindNext()
+        {
+            if (string.IsNullOrEmpty(_lastSearchPattern)) return;
+            int start = _tb.SelectionStart + _tb.SelectionLength;
+            if (start >= _tb.TextLength) start = 0;
+            if (!ExecuteSearch(start, true))
+            {
+                // Wrap around
+                if (start > 0) ExecuteSearch(0, true);
+            }
+        }
+
+        private void FindPrevious()
+        {
+            if (string.IsNullOrEmpty(_lastSearchPattern)) return;
+            int start = _tb.SelectionStart;
+            if (!ExecuteSearch(start, false))
+            {
+                // Wrap around from end
+                int len = _tb.TextLength;
+                if (len > 0) ExecuteSearch(len, false);
+            }
+        }
         #endregion
 
         #region Char handling

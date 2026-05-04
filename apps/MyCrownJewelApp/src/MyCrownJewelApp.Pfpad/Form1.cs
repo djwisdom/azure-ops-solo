@@ -113,6 +113,7 @@ using System.Linq;
         private readonly GitService _gitService = new();
         private GitPanel? _gitPanel;
         private bool _gitPanelVisible;
+        private SplitContainer? _sidebarSplit;
 
         private TerminalPanel? ActiveTerminal =>
             _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
@@ -654,10 +655,8 @@ using System.Linq;
                           OpenFileInNewTab(path);
                   };
                   _gitPanel.CloseRequested += () => ToggleGitPanel();
-                  _gitPanel.Visible = _gitPanelVisible;
 
-                  // Inner split: workspace on top, git on bottom
-                  var sidebarSplit = new SplitContainer
+                  _sidebarSplit = new SplitContainer
                   {
                       Dock = DockStyle.Fill,
                       Orientation = Orientation.Horizontal,
@@ -668,12 +667,12 @@ using System.Linq;
                       BorderStyle = BorderStyle.None,
                       Panel2Collapsed = !_gitPanelVisible
                   };
-                  sidebarSplit.Panel1.Controls.Add(_workspacePanel);
+                  _sidebarSplit.Panel1.Controls.Add(_workspacePanel);
                   _workspacePanel.Dock = DockStyle.Fill;
-                  sidebarSplit.Panel2.Controls.Add(_gitPanel);
+                  _sidebarSplit.Panel2.Controls.Add(_gitPanel);
                   _gitPanel.Dock = DockStyle.Fill;
-                  sidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
-                  sidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+                  _sidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
+                  _sidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
 
                   _workspaceSplitContainer = new SplitContainer
                   {
@@ -692,7 +691,7 @@ using System.Linq;
                       _workspaceWidth = Math.Max(80, Math.Min(600, _workspaceSplitContainer.SplitterDistance));
 
                   mainLayout.Controls.Remove(_terminalSplitContainer);
-                  _workspaceSplitContainer.Panel1.Controls.Add(sidebarSplit);
+                  _workspaceSplitContainer.Panel1.Controls.Add(_sidebarSplit);
                   _workspaceSplitContainer.Panel1.BackColor = _currentTheme.MenuBackground;
                   _workspaceSplitContainer.Panel2.Controls.Add(_terminalSplitContainer);
                   _workspaceSplitContainer.Panel2.BackColor = _currentTheme.EditorBackground;
@@ -4732,29 +4731,28 @@ using System.Linq;
 
         private void ToggleGitPanel()
         {
-            _gitPanelVisible = !_gitPanelVisible;
-            ToggleGitPanel(null, EventArgs.Empty);
-        }
-
-        private void ToggleGitPanel(object? sender, EventArgs e)
-        {
-            if (_gitPanel is null || _workspaceSplitContainer is null) return;
+            if (_gitPanel is null || _workspaceSplitContainer is null || _sidebarSplit is null) return;
 
             _gitPanelVisible = !_gitPanelVisible;
             _gitPanel.Visible = _gitPanelVisible;
+            _sidebarSplit.Panel2Collapsed = !_gitPanelVisible;
 
             if (_gitPanelVisible)
             {
+                _sidebarSplit.SplitterDistance = Math.Max(80, _sidebarSplit.Height / 2);
                 RefreshGitRepo();
                 _gitPanel.RefreshStatus();
             }
 
-            // Update sidebar collapse state
-            bool anyVisible = _workspacePanel?.Visible == true || _gitPanelVisible;
+            bool anyVisible = (_workspacePanel?.Visible == true) || _gitPanelVisible;
             _workspaceSplitContainer.Panel1Collapsed = !anyVisible;
-            _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+            if (anyVisible)
+                _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+        }
 
-            // Update menu check
+        private void ToggleGitPanel(object? sender, EventArgs e)
+        {
+            ToggleGitPanel();
             if (sender is ToolStripMenuItem item)
                 item.Checked = _gitPanelVisible;
         }

@@ -336,7 +336,7 @@ public class Form1FeatureTests : IDisposable
             form.textEditor.Text = "hello world";
             form.textEditor.SelectionStart = 0;
             form.textEditor.SelectionLength = 5;
-            form.PerformReplace("hello", "hi", false, false);
+            form.PerformReplace("hello", "hi", false, false, false);
             Assert.Contains("hi world", form.textEditor.Text);
         });
     }
@@ -347,7 +347,7 @@ public class Form1FeatureTests : IDisposable
         RunInSta(form =>
         {
             form.textEditor.Text = "a a a";
-            form.PerformReplace("a", "b", false, true);
+            form.PerformReplace("a", "b", false, false, true);
             Assert.Equal("b b b", form.textEditor.Text);
         });
     }

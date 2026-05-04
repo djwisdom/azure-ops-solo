@@ -1,32 +1,42 @@
 namespace MyCrownJewelApp.Pfpad;
 
-#pragma warning disable CS8618 // All fields assigned in InitializeForm/InitializeComponent
 public partial class FindReplaceDialog : Form
 {
-    private Form1 mainForm;
-    private bool isReplace;
+    private readonly Form1 _mainForm;
+    private readonly bool _isReplace;
 
-    private Label findLabel;
-    private TextBox findTextBox;
-    private CheckBox caseSensitiveCheckBox;
-    private GroupBox directionGroup;
-    private RadioButton upRadioButton;
-    private RadioButton downRadioButton;
-    private CheckBox wrapCheckBox;
-    private Button findNextButton;
-    private Button replaceButton;
-    private Button replaceAllButton;
-    private Button cancelButton;
-#pragma warning disable CS0169 // Intentionally unused layout spacer
-    private Label spacerLabel;
-#pragma warning restore CS0169
+    private TextBox findTextBox = null!;
+    private TextBox replaceTextBox = null!;
+    private CheckBox caseSensitiveCheckBox = null!;
+    private CheckBox regexCheckBox = null!;
+    private GroupBox directionGroup = null!;
+    private RadioButton upRadioButton = null!;
+    private RadioButton downRadioButton = null!;
+    private CheckBox wrapCheckBox = null!;
+    private Button findNextButton = null!;
+    private Button replaceButton = null!;
+    private Button replaceAllButton = null!;
+    private Button findInFilesButton = null!;
+    private Button cancelButton = null!;
 
-    public FindReplaceDialog(Form1 form, bool replaceMode)
+    public string FindText => findTextBox.Text;
+    public bool CaseSensitive => caseSensitiveCheckBox.Checked;
+    public bool SearchUp => upRadioButton.Checked;
+    public bool UseRegex => regexCheckBox.Checked;
+    public string ReplaceText => replaceTextBox.Text;
+    public bool WrapAround => wrapCheckBox.Checked;
+
+    public FindReplaceDialog(Form1 form, bool replaceMode, string? initialFind = null, bool initialCaseSensitive = false, bool initialRegex = false)
     {
-        mainForm = form;
-        isReplace = replaceMode;
-        InitializeForm();
+        _mainForm = form;
+        _isReplace = replaceMode;
+        InitializeForm(initialFind ?? "");
         ApplyTheme();
+        if (!string.IsNullOrEmpty(initialFind))
+        {
+            caseSensitiveCheckBox.Checked = initialCaseSensitive;
+            regexCheckBox.Checked = initialRegex;
+        }
     }
 
     private void ApplyTheme()
@@ -35,34 +45,32 @@ public partial class FindReplaceDialog : Form
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
-        void StyleLabel(Label lbl)
+        static void StyleTextBox(TextBox tb)
         {
-            lbl.BackColor = Color.Transparent;
-            lbl.ForeColor = theme.Text;
-        }
-        void StyleTextBox(TextBox tb)
-        {
-            tb.BackColor = theme.EditorBackground;
-            tb.ForeColor = theme.Text;
+            var t = ThemeManager.Instance.CurrentTheme;
+            tb.BackColor = t.EditorBackground;
+            tb.ForeColor = t.Text;
             tb.BorderStyle = BorderStyle.FixedSingle;
         }
-        void StyleButton(Button btn)
+        static void StyleButton(Button btn)
         {
+            var t = ThemeManager.Instance.CurrentTheme;
             btn.FlatStyle = FlatStyle.Flat;
-            btn.BackColor = theme.PanelBackground;
-            btn.ForeColor = theme.Text;
-            btn.FlatAppearance.BorderColor = theme.Border;
-            btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+            btn.BackColor = t.PanelBackground;
+            btn.ForeColor = t.Text;
+            btn.FlatAppearance.BorderColor = t.Border;
+            btn.FlatAppearance.MouseOverBackColor = t.ButtonHoverBackground;
         }
-        void StyleCheckBox(CheckBox cb)
+        static void StyleCheckBox(CheckBox cb)
         {
             cb.BackColor = Color.Transparent;
-            cb.ForeColor = theme.Text;
+            cb.ForeColor = ThemeManager.Instance.CurrentTheme.Text;
         }
 
-        StyleLabel(findLabel);
         StyleTextBox(findTextBox);
+        StyleTextBox(replaceTextBox);
         StyleCheckBox(caseSensitiveCheckBox);
+        StyleCheckBox(regexCheckBox);
         StyleCheckBox(wrapCheckBox);
 
         directionGroup.BackColor = Color.Transparent;
@@ -75,68 +83,104 @@ public partial class FindReplaceDialog : Form
         StyleButton(findNextButton);
         StyleButton(replaceButton);
         StyleButton(replaceAllButton);
+        StyleButton(findInFilesButton);
         StyleButton(cancelButton);
     }
 
-    private void InitializeForm()
+    private void InitializeForm(string initialFind)
     {
-        Text = isReplace ? "Replace" : "Find";
-        Size = new Size(400, 280);
+        Text = _isReplace ? "Replace" : "Find";
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
 
-        findLabel = new Label { Text = "Fi&nd what:", Location = new Point(10, 15), AutoSize = true };
-        findTextBox = new TextBox { Location = new Point(100, 12), Width = 270 };
+        int y = 12;
+        int labelW = 90;
+        int inputW = 270;
+        int leftCol = 10 + labelW;
+
+        // Find what
+        var findLabel = new Label { Text = "Fi&nd what:", Location = new Point(10, y), AutoSize = true };
+        findTextBox = new TextBox { Text = initialFind, Location = new Point(leftCol, y - 3), Width = inputW };
         findTextBox.TextChanged += (s, e) => UpdateButtons();
+        findTextBox.SelectAll();
+        y += 28;
 
-        caseSensitiveCheckBox = new CheckBox { Text = "Match &case", Location = new Point(100, 45), AutoSize = true };
+        // Replace with
+        var replaceLabel = new Label { Text = "Re&place with:", Location = new Point(10, y), AutoSize = true };
+        replaceTextBox = new TextBox { Location = new Point(leftCol, y - 3), Width = inputW };
+        replaceTextBox.Visible = _isReplace;
+        replaceLabel.Visible = _isReplace;
+        y += _isReplace ? 28 : 0;
 
+        // Options row
+        caseSensitiveCheckBox = new CheckBox { Text = "Match &case", Location = new Point(leftCol, y), AutoSize = true };
+        int cx = leftCol + 100;
+        regexCheckBox = new CheckBox { Text = "Use rege&x", Location = new Point(cx, y), AutoSize = true };
+        y += 26;
+
+        // Direction group
         directionGroup = new GroupBox
         {
             Text = "Direction",
-            Location = new Point(100, 75),
-            Size = new Size(150, 80)
+            Location = new Point(leftCol, y),
+            Size = new Size(160, 50)
         };
-        upRadioButton = new RadioButton { Text = "&Up", Location = new Point(15, 30), AutoSize = true };
-        downRadioButton = new RadioButton { Text = "&Down", Location = new Point(80, 30), AutoSize = true };
+        upRadioButton = new RadioButton { Text = "&Up", Location = new Point(12, 22), AutoSize = true };
+        downRadioButton = new RadioButton { Text = "&Down", Location = new Point(80, 22), AutoSize = true };
         downRadioButton.Checked = true;
-        directionGroup.Controls.AddRange(new Control[] { upRadioButton, downRadioButton });
+        directionGroup.Controls.AddRange(new[] { upRadioButton, downRadioButton });
 
-        wrapCheckBox = new CheckBox { Text = "&Wrap around", Location = new Point(260, 90), AutoSize = true };
+        wrapCheckBox = new CheckBox { Text = "&Wrap", Location = new Point(leftCol + 166, y + 14), AutoSize = true };
         wrapCheckBox.Checked = true;
+        y += 60;
 
-        findNextButton = new Button { Text = "&Find Next", Location = new Point(200, 150), Width = 80 };
+        // Buttons
+        int btnW = 85;
+        int btnH = 26;
+        int btnRight = leftCol + inputW;
+
+        findNextButton = new Button { Text = "&Find Next", Location = new Point(btnRight - btnW, y), Width = btnW, Height = btnH, Enabled = !string.IsNullOrEmpty(initialFind) };
         findNextButton.Click += (s, e) => PerformFindNext();
-        findNextButton.Enabled = false;
+        y += btnH + 4;
 
-        replaceButton = new Button { Text = "&Replace", Location = new Point(290, 150), Width = 80 };
-        replaceButton.Click += (s, e) => PerformReplace();
-        replaceButton.Enabled = false;
+        int replaceBtnRight = btnRight;
+        if (_isReplace)
+        {
+            replaceButton = new Button { Text = "&Replace", Location = new Point(replaceBtnRight - btnW, y), Width = btnW, Height = btnH, Enabled = !string.IsNullOrEmpty(initialFind) };
+            replaceButton.Click += (s, e) => PerformReplace();
+            y += btnH + 4;
 
-        replaceAllButton = new Button { Text = "Replace &All", Location = new Point(200, 185), Width = 170 };
-        replaceAllButton.Click += (s, e) => PerformReplaceAll();
+            replaceAllButton = new Button { Text = "Replace &All", Location = new Point(replaceBtnRight - btnW, y), Width = btnW, Height = btnH, Enabled = !string.IsNullOrEmpty(initialFind) };
+            replaceAllButton.Click += (s, e) => PerformReplaceAll();
+            y += btnH + 4;
+        }
+        else
+        {
+            replaceButton = new Button { Visible = false };
+            replaceAllButton = new Button { Visible = false };
+        }
 
-        cancelButton = new Button { Text = "Cancel", Location = new Point(290, 220), Width = 80 };
+        findInFilesButton = new Button { Text = "Find in &Files", Location = new Point(leftCol, y), Width = 100, Height = btnH };
+        findInFilesButton.Click += (s, e) => PerformFindInFiles();
+
+        cancelButton = new Button { Text = "Cancel", Location = new Point(replaceBtnRight - 75, y), Width = 75, Height = btnH };
         cancelButton.Click += (s, e) => Close();
+
+        y += btnH + 12;
+        ClientSize = new Size(leftCol + inputW + 16, y);
 
         Controls.AddRange(new Control[]
         {
-            findLabel, findTextBox, caseSensitiveCheckBox,
+            findLabel, findTextBox, replaceLabel, replaceTextBox,
+            caseSensitiveCheckBox, regexCheckBox,
             directionGroup, wrapCheckBox,
-            findNextButton, replaceButton, replaceAllButton, cancelButton
+            findNextButton, replaceButton, replaceAllButton,
+            findInFilesButton, cancelButton
         });
 
-        if (!isReplace)
-        {
-            replaceButton.Visible = false;
-            replaceAllButton.Visible = false;
-            ClientSize = new Size(400, 200);
-            cancelButton.Location = new Point(290, 150);
-        }
-
-        AcceptButton = isReplace ? replaceButton : findNextButton;
+        AcceptButton = _isReplace ? replaceButton : findNextButton;
         CancelButton = cancelButton;
     }
 
@@ -145,21 +189,26 @@ public partial class FindReplaceDialog : Form
         bool hasText = !string.IsNullOrEmpty(findTextBox.Text);
         findNextButton.Enabled = hasText;
         replaceButton.Enabled = hasText;
+        replaceAllButton.Enabled = hasText;
     }
 
     private void PerformFindNext()
     {
-        mainForm.PerformFind(findTextBox.Text, caseSensitiveCheckBox.Checked, upRadioButton.Checked);
+        _mainForm.PerformFind(FindText, CaseSensitive, SearchUp, UseRegex);
     }
 
     private void PerformReplace()
     {
-        mainForm.PerformReplace(findTextBox.Text, "", caseSensitiveCheckBox.Checked, false);
+        _mainForm.PerformReplace(FindText, ReplaceText, CaseSensitive, UseRegex, false);
     }
 
     private void PerformReplaceAll()
     {
-        mainForm.PerformReplace(findTextBox.Text, "", caseSensitiveCheckBox.Checked, true);
+        _mainForm.PerformReplace(FindText, ReplaceText, CaseSensitive, UseRegex, true);
+    }
+
+    private void PerformFindInFiles()
+    {
+        _mainForm.PerformFindInFiles(FindText, CaseSensitive, UseRegex);
     }
 }
-#pragma warning restore CS8618

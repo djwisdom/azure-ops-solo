@@ -336,6 +336,7 @@ internal sealed class GitPanel : UserControl
 
     private void LayoutControls()
     {
+        if (_statusList is null || _commitList is null || _commitMessage is null) return;
         int w = _bodyPanel.ClientSize.Width - 12;
         if (w < 100) w = 100;
 
