@@ -265,6 +265,9 @@ using System.Linq;
         private ToolStripStatusLabel _notificationStatusLabel = null!;
         private readonly HashSet<string> _toastedIds = new();
 
+        // Symbol index for Go to Definition
+        private readonly SymbolIndexService _symbolIndex = new();
+
     public Form1()
         : this(skipInitialDocument: false)
     {
@@ -666,7 +669,9 @@ using System.Linq;
                       Panel2Collapsed = !_gitPanelVisible
                   };
                   sidebarSplit.Panel1.Controls.Add(_workspacePanel);
+                  _workspacePanel.Dock = DockStyle.Fill;
                   sidebarSplit.Panel2.Controls.Add(_gitPanel);
+                  _gitPanel.Dock = DockStyle.Fill;
                   sidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
                   sidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
 
@@ -1749,6 +1754,12 @@ using System.Linq;
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.KeyCode == Keys.F12)
+            {
+                GoToDefinition();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
 
         private void HandleTab(KeyEventArgs e)
@@ -2588,6 +2599,7 @@ using System.Linq;
             {
                 _workspaceRoot = dlg.SelectedPath;
                 _workspacePanel?.SetRoot(_workspaceRoot);
+                _symbolIndex.RebuildIndex(_workspaceRoot);
                 if (!_workspaceVisible)
                     ToggleWorkspace();
                 else
@@ -3678,6 +3690,62 @@ using System.Linq;
             }
         }
 
+        private string? GetWordAtCursor()
+        {
+            if (textEditor is null || textEditor.TextLength == 0) return null;
+            int pos = textEditor.SelectionStart;
+            string text = textEditor.Text;
+            if (pos >= text.Length) return null;
+
+            int start = pos;
+            while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_'))
+                start--;
+            int end = pos;
+            while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_'))
+                end++;
+
+            return start < end ? text[start..end] : null;
+        }
+
+        private void GoToDefinition()
+        {
+            if (textEditor is null) return;
+            string? word = GetWordAtCursor();
+            if (string.IsNullOrEmpty(word)) return;
+
+            if (!_symbolIndex.HasIndex && !string.IsNullOrEmpty(_workspaceRoot))
+                _symbolIndex.RebuildIndex(_workspaceRoot);
+
+            var matches = _symbolIndex.Lookup(word);
+            if (matches.Count == 0)
+            {
+                ThemedMessageBox.Show($"No definition found for '{word}'.\n\nTip: Open a workspace folder (View > Open Folder)\nand the symbol index will build automatically.",
+                    "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            if (matches.Count == 1)
+            {
+                var loc = matches[0];
+                if (File.Exists(loc.File))
+                {
+                    OpenFileInNewTab(loc.File);
+                    GoToLine(loc.Line);
+                }
+                return;
+            }
+
+            using var picker = new GoToDefinitionPicker(word, matches);
+            if (picker.ShowDialog(this) == DialogResult.OK && picker.SelectedFile is not null)
+            {
+                if (File.Exists(picker.SelectedFile))
+                {
+                    OpenFileInNewTab(picker.SelectedFile);
+                    GoToLine(picker.SelectedLine);
+                }
+            }
+        }
+
         public void PerformFind(string text, bool caseSensitive, bool up, bool useRegex = false)
         {
             if (string.IsNullOrEmpty(text) || textEditor.Text.Length == 0) return;
@@ -4001,7 +4069,20 @@ using System.Linq;
 
         private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
         {
-            // TODO: implement mouse handling if needed
+            if (e.Button == MouseButtons.Right)
+            {
+                int charIdx = textEditor.GetCharIndexFromPosition(e.Location);
+                if (charIdx >= 0)
+                    textEditor.SelectionStart = charIdx;
+
+                var ctx = new ContextMenuStrip();
+                ctx.Items.Add("Go to Definition (F12)", null, (s, args) => GoToDefinition());
+                ctx.Items.Add(new ToolStripSeparator());
+                ctx.Items.Add("Cut", null, (s, args) => textEditor.Cut());
+                ctx.Items.Add("Copy", null, (s, args) => textEditor.Copy());
+                ctx.Items.Add("Paste", null, (s, args) => textEditor.Paste());
+                ctx.Show(textEditor, e.Location);
+            }
         }
 
         private void TextEditor_MouseWheel(object? sender, MouseEventArgs e)

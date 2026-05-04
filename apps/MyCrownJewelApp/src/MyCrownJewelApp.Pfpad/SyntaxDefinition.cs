@@ -16,6 +16,7 @@ public sealed record SyntaxDefinition
     public string CommentPattern { get; init; } = string.Empty;
     public string NumberPattern { get; init; } = string.Empty;
     public string[] MultiLineCommentPatterns { get; init; } = Array.Empty<string>();
+    public string[] DefinitionPatterns { get; init; } = Array.Empty<string>();
 
     // Built-in definitions
     public static SyntaxDefinition CSharp => new()
@@ -39,7 +40,16 @@ public sealed record SyntaxDefinition
         StringPattern = @"""([^""\\]|\\.)*""|@""([^""]|"""")*""",
         CommentPattern = @"//.*$",
         MultiLineCommentPatterns = new[] { @"/\*.*?\*/" },
-        NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b"
+        NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b",
+        DefinitionPatterns = new[]
+        {
+            @"(public|private|protected|internal|static|virtual|abstract|override|partial|readonly|async|unsafe)?\s*(class|struct|interface|enum|record)\s+(?<name>\w+)",
+            @"(public|private|protected|internal|static|virtual|abstract|override|partial|async|unsafe)?\s*\w+\s+(?<name>\w+)\s*\([^)]*\)\s*[{<]",
+            @"(public|private|protected|internal|static|readonly)\s+\w+\s+(?<name>\w+)\s*[{=;]",
+            @"(delegate|event)\s+\w+\s+(?<name>\w+)",
+            @"namespace\s+(?<name>[\w.]+)",
+            @"using\s+(?<name>[\w.]+)\s*=",
+        }
     };
 
     public static SyntaxDefinition C => new()
@@ -58,7 +68,13 @@ public sealed record SyntaxDefinition
         StringPattern = @"""([^""\\]|\\.)*""",
         CommentPattern = @"//.*$",
         MultiLineCommentPatterns = new[] { @"/\*.*?\*/" },
-        NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b"
+        NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b",
+        DefinitionPatterns = new[]
+        {
+            @"(static|extern|inline|const|typedef|struct|union|enum)?\s*\w+\s+(?<name>\w+)\s*\([^)]*\)\s*\{",
+            @"(typedef|struct|union|enum)\s+(?<name>\w+)\s*\{",
+            @"#define\s+(?<name>\w+)",
+        }
     };
 
     public static SyntaxDefinition Cpp => new()
@@ -84,7 +100,15 @@ public sealed record SyntaxDefinition
         StringPattern = @"""([^""\\]|\\.)*""",
         CommentPattern = @"//.*$",
         MultiLineCommentPatterns = new[] { @"/\*.*?\*/" },
-        NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b"
+        NumberPattern = @"\b\d+\.?\d*([fFlLdD]|uL?|UL?)?\b",
+        DefinitionPatterns = new[]
+        {
+            @"(public|private|protected)?\s*(class|struct|interface|enum|union)\s+(?<name>\w+)\s*(:\s*\w+)?\s*\{",
+            @"(\w+|<[\w\s,>]+>)*\s+(?<name>\w+)\s*\([^)]*\)\s*(const|override|final|\{)?",
+            @"(typedef|using)\s+\w+\s+(?<name>\w+)\s*[=;]",
+            @"#define\s+(?<name>\w+)",
+            @"template\s*<[^>]+>\s*(class|struct|typename)?\s*(?<name>\w+)",
+        }
     };
 
     public static SyntaxDefinition Bicep => new()
@@ -184,7 +208,17 @@ public sealed record SyntaxDefinition
         StringPattern = @"""([^""\\]|\\.)*""|'[^']*'|`([^`\\]|\\.)*`",
         CommentPattern = @"//.*$|/\*.*?\*/",
         MultiLineCommentPatterns = Array.Empty<string>(),
-        NumberPattern = @"\b\d+\.?\d*(?:[eE][+-]?\d+)?\b"
+        NumberPattern = @"\b\d+\.?\d*(?:[eE][+-]?\d+)?\b",
+        DefinitionPatterns = new[]
+        {
+            @"(export\s+)?(async\s+)?function\s+(?<name>\w+)",
+            @"(export\s+)?(async\s+)?\(?\w+\)?\s*=>\s*\{",
+            @"(export\s+)?class\s+(?<name>\w+)",
+            @"(export\s+)?(const|let|var)\s+(?<name>\w+)\s*[=:]",
+            @"(export\s+)?interface\s+(?<name>\w+)",
+            @"(export\s+)?(abstract\s+)?class\s+(?<name>\w+)",
+            @"(get|set)\s+(?<name>\w+)\s*\(\)",
+        }
     };
 
     public static SyntaxDefinition Json => new()
@@ -216,7 +250,14 @@ public sealed record SyntaxDefinition
         StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
         CommentPattern = "#.*$",
         MultiLineCommentPatterns = Array.Empty<string>(),
-        NumberPattern = @"\b\d+(\.\d+)?\b"
+        NumberPattern = @"\b\d+(\.\d+)?\b",
+        DefinitionPatterns = new[]
+        {
+            @"function\s+(?<name>\w+)",
+            @"(filter|workflow)\s+(?<name>\w+)",
+            @"class\s+(?<name>\w+)",
+            @"(public|private|protected|internal)?\s*(function|filter)\s+(?<name>\w+)",
+        }
     };
 
     public static SyntaxDefinition Bash => new()
@@ -237,7 +278,13 @@ public sealed record SyntaxDefinition
         StringPattern = @"""([^""\\]|\\.)*""|'[^']*'",
         CommentPattern = "#.*$",
         MultiLineCommentPatterns = Array.Empty<string>(),
-        NumberPattern = @"\b\d+(\.\d+)?\b"
+        NumberPattern = @"\b\d+(\.\d+)?\b",
+        DefinitionPatterns = new[]
+        {
+            @"^function\s+(?<name>\w+)",
+            @"^(?<name>\w+)\s*\(\s*\)\s*\{",
+            @"^(?<name>\w+)\s*=\s*\(\)\s*\{",
+        }
     };
 
     public static SyntaxDefinition? GetDefinitionForFile(string filePath)
