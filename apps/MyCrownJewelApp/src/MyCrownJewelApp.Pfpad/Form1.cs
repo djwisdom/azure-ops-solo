@@ -266,6 +266,7 @@ using System.Linq;
         private NotificationCenterForm? _notificationCenter;
         private ToolStripStatusLabel _notificationStatusLabel = null!;
         private readonly HashSet<string> _toastedIds = new();
+        private NotificationToastForm? _currentToast;
 
         // Symbol index for Go to Definition
         private readonly SymbolIndexService _symbolIndex = new();
@@ -401,6 +402,7 @@ using System.Linq;
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
             whitespaceOverlay.Visible = whitespaceMenuItem.Checked;
+            whitespaceOverlay.BringToFront();
             if (showGuide)
             {
                 textEditor!.ShowGuide = true;
@@ -480,7 +482,7 @@ using System.Linq;
 
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
-              vimEngine.SaveRequested += () => { if (currentFilePath != null) SaveFile(); else SaveAsFile(); };
+              vimEngine.SaveRequested += () => { if (currentFilePath != null) { SaveFile(); ShowNotification("Vim", "File saved"); } else { SaveAsFile(); } };
               vimEngine.SaveAsRequested += (filename) =>
               {
                   string dir = currentFilePath != null ? Path.GetDirectoryName(currentFilePath)!
@@ -500,40 +502,72 @@ using System.Linq;
                           CreateIncrementalHighlighter();
                       UpdateWindowTitle();
                       UpdateActiveTabTitle();
+                      ShowNotification("Vim", $"Saved as {Path.GetFileName(fullPath)}");
                   }
                   catch (Exception ex)
                   {
-                      ThemedMessageBox.Show($"Error saving file: {ex.Message}", "Save Error",
-                          MessageBoxButtons.OK, MessageBoxIcon.Error);
+                      ShowNotification("Vim", $"Save error: {ex.Message}");
                   }
               };
               vimEngine.CloseRequested += () => this.Close();
               vimEngine.VerticalSplitRequested += () =>
               {
                   if (documents.Count > 0)
+                  {
                       SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Right);
+                      ShowNotification("Vim", "Vertical split created");
+                  }
               };
               vimEngine.HorizontalSplitRequested += () =>
               {
                   if (documents.Count > 0)
-                      SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Bottom);
-              };
-              vimEngine.InsertSpacesRequested += (v) => { if (insertSpaces != v) ToggleInsertSpaces(); };
-              vimEngine.TabSizeRequested += (s) => SetTabSize(s);
-              vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) ToggleAutoIndent(); };
-              vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) ToggleSmartTabs(); };
-              vimEngine.GoToLineRequested += (line) => GoToLine(line);
-              vimEngine.SplitCloseRequested += () => CloseSplit();
-              vimEngine.SplitNextRequested += () =>
-              {
-                  if (_splitEditor == null) return;
-                  if (_splitEditor.Focused)
                   {
-                      if (textEditor.CanFocus) textEditor.Focus();
+                      SplitTabToPane(activeDocIndex >= 0 ? activeDocIndex : 0, DragZone.Bottom);
+                      ShowNotification("Vim", "Horizontal split created");
+                  }
+              };
+              vimEngine.InsertSpacesRequested += (v) => { if (insertSpaces != v) { ToggleInsertSpaces(); ShowNotification("Vim", v ? "expendtab" : "noexpandtab"); } };
+              vimEngine.TabSizeRequested += (s) => { SetTabSize(s); ShowNotification("Vim", $"tabstop={s}"); };
+              vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) { ToggleAutoIndent(); ShowNotification("Vim", v ? "smartindent" : "nosmartindent"); } };
+              vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) { ToggleSmartTabs(); ShowNotification("Vim", v ? "smarttab" : "nosmarttab"); } };
+              vimEngine.GoToLineRequested += (line) => GoToLine(line);
+              vimEngine.FileOpenRequested += (filename) =>
+              {
+                  string dir = !string.IsNullOrEmpty(currentFilePath)
+                      ? Path.GetDirectoryName(currentFilePath)!
+                      : Environment.CurrentDirectory;
+                  string fullPath = Path.GetFullPath(Path.Combine(dir, filename));
+                  if (File.Exists(fullPath))
+                  {
+                      OpenFileInNewTab(fullPath);
                   }
                   else
                   {
-                      _splitEditor.Focus();
+                      ShowNotification("Vim", $"File not found: {filename}");
+                  }
+              };
+              vimEngine.CommandFeedback += (msg) => ShowNotification("Vim", msg);
+              vimEngine.TerminalRequested += () => { ToggleTerminal(); ShowNotification("Vim", "Terminal toggled"); };
+              vimEngine.SplitCloseRequested += () => { CloseSplit(); ShowNotification("Vim", "Split closed"); };
+              vimEngine.SplitNextRequested += () =>
+              {
+                  if (ActiveTerminal?.ContainsFocus == true)
+                  {
+                      if (textEditor.CanFocus) textEditor.Focus();
+                  }
+                  else if (_splitEditor != null && _splitEditor.Focused)
+                  {
+                      if (_terminalVisible && ActiveTerminal != null)
+                          ActiveTerminal.FocusInput();
+                      else if (textEditor.CanFocus)
+                          textEditor.Focus();
+                  }
+                  else
+                  {
+                      if (_splitEditor != null)
+                          _splitEditor.Focus();
+                      else if (_terminalVisible && ActiveTerminal != null)
+                          ActiveTerminal.FocusInput();
                   }
               };
 
@@ -1155,7 +1189,7 @@ using System.Linq;
             }
             if (whitespaceOverlay != null)
             {
-                whitespaceOverlay.GlyphColor = theme.IsLight ? Color.FromArgb(140, 140, 140) : Color.FromArgb(90, 90, 90);
+                whitespaceOverlay.GlyphColor = theme.IsLight ? Color.FromArgb(200, 200, 200) : Color.FromArgb(180, 180, 180);
                 whitespaceOverlay.Invalidate();
             }
             textEditor!.GuideColor = Color.FromArgb(120, 120, 120);
@@ -1531,9 +1565,7 @@ using System.Linq;
             terminal.Dispose();
 
             if (_terminalTabs.Count == 0)
-            {
-                AddTerminalTab(string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell);
-            }
+                HideTerminal();
             PositionTerminalNewTabButton();
         }
 
@@ -2857,6 +2889,7 @@ using System.Linq;
         {
             whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
             whitespaceOverlay.Visible = whitespaceMenuItem.Checked;
+            whitespaceOverlay.BringToFront();
             whitespaceOverlay.Invalidate();
         }
 
@@ -2871,6 +2904,42 @@ using System.Linq;
 
             UpdateNotificationBadge();
             ShowToastForNewItems();
+        }
+
+        public void ShowNotification(string title, string summary)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => ShowNotification(title, summary));
+                return;
+            }
+
+            if (_currentToast != null && !_currentToast.IsDisposed)
+            {
+                _currentToast.Close();
+                _currentToast.Dispose();
+                _currentToast = null;
+            }
+
+            _notificationFeed.AddNotification(title, summary);
+
+            var id = $"app-{Guid.NewGuid():N}";
+            var item = new FeedItem
+            {
+                Id = id,
+                Source = FeedSource.Custom,
+                Title = title,
+                Summary = summary,
+                Published = DateTime.UtcNow,
+                IsRead = false
+            };
+            _currentToast = new NotificationToastForm(item);
+            _currentToast.FormClosed += (s, e) =>
+            {
+                _currentToast?.Dispose();
+                _currentToast = null;
+            };
+            _currentToast.Show(this);
         }
 
         private void UpdateNotificationBadge()
@@ -3627,6 +3696,9 @@ using System.Linq;
 
             _splitDocument = null;
             _splitDocumentTitle = null;
+
+            if (textEditor.CanFocus)
+                textEditor.Focus();
         }
 
         private void TabControl_MouseMove(object? sender, MouseEventArgs e)
@@ -4536,7 +4608,7 @@ using System.Linq;
                             int len = Math.Min(token.Length, lineLen - token.StartIndex);
                             if (len <= 0) continue;
                             cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
-                            cf.dwEffects = (token.Type == SyntaxTokenType.Comment || token.Type == SyntaxTokenType.Type || token.Type == SyntaxTokenType.Preprocessor) ? CFE_ITALIC : 0;
+                            cf.dwEffects = (token.Type == SyntaxTokenType.Comment || token.Type == SyntaxTokenType.Type || token.Type == SyntaxTokenType.Preprocessor || token.Type == SyntaxTokenType.Identifier) ? CFE_ITALIC : 0;
                             Marshal.StructureToPtr(cf, cfPtr, false);
                             SendMessage(textEditor.Handle, EM_SETSEL, (IntPtr)idx, (IntPtr)(idx + len));
                             SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);

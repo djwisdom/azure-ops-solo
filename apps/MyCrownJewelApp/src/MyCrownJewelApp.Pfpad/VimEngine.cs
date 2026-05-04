@@ -48,6 +48,9 @@ namespace MyCrownJewelApp.Pfpad
         public event Action<bool>? AutoIndentRequested;
         public event Action<bool>? SmartTabsRequested;
         public event Action<int>? GoToLineRequested;
+        public event Action? TerminalRequested;
+        public event Action<string>? CommandFeedback;
+        public event Action<string>? FileOpenRequested;
 
         private static readonly HashSet<Keys> MotionKeys = new()
         {
@@ -550,6 +553,12 @@ namespace MyCrownJewelApp.Pfpad
 
         private void ExecuteCommand(string cmd)
         {
+            if (cmd == "set")
+            {
+                ShowNotification("Usage: :set option[=value], :set {option}?");
+                return;
+            }
+
             if (cmd.StartsWith("set "))
             {
                 ExecuteSet(cmd[4..].Trim());
@@ -561,6 +570,8 @@ namespace MyCrownJewelApp.Pfpad
                 GoToLineRequested?.Invoke(line);
                 return;
             }
+
+            bool handled = true;
 
             switch (cmd)
             {
@@ -583,15 +594,19 @@ namespace MyCrownJewelApp.Pfpad
                 case "close":
                     SplitCloseRequested?.Invoke();
                     break;
+                case "e!":
+                    ShowNotification("e! not implemented");
+                    break;
+                case "e":
+                case "edit":
+                    ShowNotification("Usage: :e <filename> or :e!");
+                    break;
                 case "w!":
                     SaveRequested?.Invoke();
                     break;
                 case "wq!":
                     SaveRequested?.Invoke();
                     CloseRequested?.Invoke();
-                    break;
-                case "e!":
-                    // Reload — not implemented
                     break;
                 case "sp":
                 case "split":
@@ -602,6 +617,26 @@ namespace MyCrownJewelApp.Pfpad
                 case "vsplit":
                     VerticalSplitRequested?.Invoke();
                     break;
+                case "term":
+                case "terminal":
+                    TerminalRequested?.Invoke();
+                    break;
+                default:
+                    handled = false;
+                    break;
+            }
+
+            if (handled) return;
+
+            // Handle :w filename and :write filename (save as)
+            if (cmd.StartsWith("w ") || cmd.StartsWith("write "))
+            {
+                string filename = cmd[(cmd[0] == 'w' ? 2 : 6)..].Trim();
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    SaveAsRequested?.Invoke(filename);
+                    return;
+                }
             }
 
             // Handle :w filename and :write filename (save as)
@@ -625,6 +660,25 @@ namespace MyCrownJewelApp.Pfpad
                     CloseRequested?.Invoke();
                 }
             }
+
+            // Handle :e filename and :edit filename (open file)
+            if (cmd.StartsWith("e ") || cmd.StartsWith("edit "))
+            {
+                string filename = cmd[cmd[0] == 'e' ? 2.. : 5..].Trim();
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    FileOpenRequested?.Invoke(filename);
+                    return;
+                }
+            }
+
+            if (!handled)
+                ShowNotification($"Unknown command: {cmd}");
+        }
+
+        private void ShowNotification(string message)
+        {
+            CommandFeedback?.Invoke(message);
         }
 
         private void ExecuteSet(string args)
@@ -632,6 +686,14 @@ namespace MyCrownJewelApp.Pfpad
             foreach (var part in args.Split(','))
             {
                 string arg = part.Trim();
+
+                if (arg.EndsWith("?"))
+                {
+                    string opt = arg[..^1];
+                    ShowNotification($"set {opt}? — see :set {opt}=<value> to change");
+                    continue;
+                }
+
                 if (arg == "smartindent") { AutoIndentRequested?.Invoke(true); }
                 else if (arg == "nosmartindent") { AutoIndentRequested?.Invoke(false); }
                 else if (arg == "smarttab") { SmartTabsRequested?.Invoke(true); }

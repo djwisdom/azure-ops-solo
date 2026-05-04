@@ -25,6 +25,24 @@ public sealed class NotificationFeedService : IDisposable
 
     public event Action? OnItemsUpdated;
 
+    public void AddNotification(string title, string summary)
+    {
+        var id = $"app-{Guid.NewGuid():N}";
+        var item = new FeedItem
+        {
+            Id = id,
+            Source = FeedSource.Custom,
+            Title = title,
+            Summary = summary,
+            Published = DateTime.UtcNow,
+            IsRead = false
+        };
+        _seenIds.TryAdd(id, false);
+        var list = _items.GetOrAdd(FeedSource.Custom, _ => new List<FeedItem>());
+        list.Add(item);
+        OnItemsUpdated?.Invoke();
+    }
+
     public IReadOnlyList<FeedItem> AllItems =>
         _items.Values.SelectMany(x => x).OrderByDescending(i => i.Published).ToList();
 

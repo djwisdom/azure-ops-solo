@@ -2,16 +2,16 @@
 
 ## Current State
 - **Last session:** 2026-05-05
-- **Last commit:** `d76942b` — fix: split view horizontal/vertical, keyboard nav, Vim :close, CS8602 warnings
+- **Last commit:** `22dbfdd` — docs: update MEMORY.md with AI-relevant context
 - **Branch:** master (200 commits), up to date with origin/master
-- **Active work:** Syntax highlighting performance re-implementation (see PLAN.md)
+- **Active work:** Syntax highlighting improvements, Vim notification routing, minimap bar rendering, whitespace overlay visibility, terminal exit fix
 - **Stashed work:** `stash@{0}` — "Fix Tab pushing view down" (wrap single-caret insert with BeginUpdate/EndUpdate)
 
 ## Toolchain
 | Tool | Version |
 |---|---|
 | .NET SDK | 10.0.300-preview.0.26177.108 |
-| Target framework (apps) | net8.0-windows (MyCrownJewelApp), net10.0 (TextEditor) |
+| Target framework (apps) | net8.0-windows (MyCrownJewelApp) |
 | PowerShell | 7.5.5 |
 | Azure CLI | 2.85.0 |
 | Terraform | 1.14.7 (latest: 1.15.1 — update pending) |
@@ -26,7 +26,6 @@
   - `src/MyCrownJewelApp.Web/` — ASP.NET Core web project
   - `tests/` — 6 test files: Terminal, DirtyFlag, Form1Features, IncrementalHighlighter, Indentation, SyntaxHighlightRegression
   - `deploy/` — WiX installer (PersonalFlipPad-Setup-1.0.5.56.exe) + build.ps1
-- **`apps/TextEditor/`** — Standalone WPF text editor (newer, targets net10.0, single Program.cs)
 - **`infra/`** — Terraform (azurerm ~>3.0, backend config commented out)
 - **`bicep/`** — Bicep templates (resourceGroup, keyVault, appService)
 - **`pipelines/`** — Azure DevOps YAML (deploy-app, patch-vms, patch-aks)

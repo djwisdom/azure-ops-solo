@@ -242,6 +242,8 @@ public sealed class IncrementalHighlighter : IDisposable
                     AddToken(tokens, start, pos - start, SyntaxTokenType.Keyword);
                 else if (_types.Contains(word))
                     AddToken(tokens, start, pos - start, SyntaxTokenType.Type);
+                else
+                    AddToken(tokens, start, pos - start, SyntaxTokenType.Identifier);
                 continue;
             }
 

@@ -7,11 +7,11 @@
 #define MyAppName "Personal Flip Pad"
 #define MyAppShortName "Pfpad"
 #define MyAppExeName "MyCrownJewelApp.Pfpad.exe"
-#define MyAppVersion "1.0.0.0"
+#define MyAppVersion "1.0.6.0"
 #define MyAppPublisher "Personal Flip Pad"
 #define MyAppURL "https://github.com/casse/azure-ops-solo"
 #define MyAppAssocName "Source Code File"
-#define MyAppAssocExt ".cs"
+#define MyAppAssocExt ".cs,.js,.ts,.py,.json,.xml,.yaml,.yml,.md,.txt,.html,.css,.ps1,.sh,.tf,.bicep"
 
 [Setup]
 ; NOTE: AppId must be unique across all installers. Generated via UUID.

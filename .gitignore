@@ -4,6 +4,10 @@ obj/
 publish/
 dist/
 
+# Deploy artifacts
+apps/MyCrownJewelApp/deploy/*.exe
+apps/MyCrownJewelApp/deploy/app/
+
 # NuGet
 packages/
 

@@ -518,7 +518,8 @@ internal sealed class TerminalPanel : UserControl, IDisposable
 
             if (cmd.Equals("exit", StringComparison.OrdinalIgnoreCase))
             {
-                SendInput(Environment.NewLine);
+                SendInput("exit" + Environment.NewLine);
+                HideTerminalRequested?.Invoke();
                 return;
             }
 
