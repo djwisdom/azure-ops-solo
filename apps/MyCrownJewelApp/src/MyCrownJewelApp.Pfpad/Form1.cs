@@ -130,6 +130,12 @@ using System.Linq;
         private ProblemsPanel? _problemsPanel;
         private bool _problemsPanelVisible;
 
+        // Hover docs + signature help
+        private readonly HoverTooltipForm _hoverTooltip = new();
+        private readonly SignatureHelpForm _signatureHelp = new();
+        private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 400 };
+        private string _lastHoveredWord = "";
+
         private TerminalPanel? ActiveTerminal =>
             _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
                 ? _terminalTabs[_terminalTabControl.SelectedIndex]
@@ -493,6 +499,14 @@ using System.Linq;
             // Lint engine — wire diagnostics to problems panel + squiggles
             _quickActionProvider = new QuickActionProvider(_symbolIndex);
             _lintEngine.DiagnosticsUpdated += OnLintDiagnosticsUpdated;
+
+            // Hover docs + signature help
+            textEditor.MouseMove += TextEditor_MouseMoveHover;
+            textEditor.KeyDown += TextEditor_KeyDownHelp;
+            textEditor.KeyPress += TextEditor_KeyPressHelp;
+            _hoverTimer.Tick += HoverTimer_Tick;
+            _hoverTooltip.FormClosing += (s, e) => { e.Cancel = true; if (Visible) _hoverTooltip.Hide(); };
+            _signatureHelp.FormClosing += (s, e) => { e.Cancel = true; if (Visible) _signatureHelp.Hide(); };
             
             // Elastic tab stops debounce timer
             elasticTabTimer = new System.Windows.Forms.Timer();
@@ -1932,6 +1946,141 @@ using System.Linq;
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+        }
+
+        private void TextEditor_KeyDownHelp(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                _signatureHelp.Dismiss();
+                _hoverTooltip.Dismiss();
+            }
+        }
+
+        private void TextEditor_MouseMoveHover(object? sender, MouseEventArgs e)
+        {
+            _hoverTimer.Stop();
+            if (textEditor is null) return;
+            int charIdx = textEditor.GetCharIndexFromPosition(e.Location);
+            if (charIdx < 0 || charIdx >= textEditor.TextLength) { _hoverTooltip.Dismiss(); return; }
+            string word = GetWordAtCharIndex(charIdx);
+            if (string.IsNullOrEmpty(word) || word == _lastHoveredWord)
+            {
+                if (string.IsNullOrEmpty(word)) _hoverTooltip.Dismiss();
+                return;
+            }
+            _lastHoveredWord = word;
+            _hoverTimer.Tag = (e.Location, word);
+            _hoverTimer.Start();
+        }
+
+        private void HoverTimer_Tick(object? sender, EventArgs e)
+        {
+            _hoverTimer.Stop();
+            if (textEditor is null) return;
+            var (mouseLoc, word) = ((Point, string))_hoverTimer.Tag!;
+            if (string.IsNullOrEmpty(word)) return;
+
+            // Check if cursor is still near the same position
+            Point currentMouse = textEditor.PointToClient(Cursor.Position);
+            if (Math.Abs(currentMouse.X - mouseLoc.X) > 10 || Math.Abs(currentMouse.Y - mouseLoc.Y) > 10)
+                return;
+
+            // Look up in symbol index
+            var symbols = _symbolIndex.Lookup(word);
+            if (symbols.Count == 0) { _hoverTooltip.Dismiss(); return; }
+
+            var first = symbols[0];
+            string title = $"{first.Kind}: {first.Name}";
+            string summary = "";
+
+            // Try to extract XML docs from the source file
+            if (File.Exists(first.File))
+            {
+                var docs = XmlDocParser.ExtractFromFile(first.File, first.Line);
+                if (docs != null)
+                    summary = docs.Summary;
+            }
+
+            Point screenLoc = textEditor.PointToScreen(mouseLoc);
+            _hoverTooltip.ShowAt(screenLoc, title, summary, first.Context);
+        }
+
+        private void TextEditor_KeyPressHelp(object? sender, KeyPressEventArgs e)
+        {
+            if (e.KeyChar == '(')
+                ShowSignatureHelp();
+            else if (e.KeyChar == ')' || e.KeyChar is ',' or ';')
+                _signatureHelp.Dismiss();
+        }
+
+        private void ShowSignatureHelp()
+        {
+            if (textEditor is null) return;
+            int pos = textEditor.SelectionStart;
+            if (pos < 1) return;
+
+            // Get word before cursor
+            string text = textEditor.Text[..pos];
+            int start = pos - 1;
+            while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_'))
+                start--;
+            string methodName = text[start..pos];
+
+            if (string.IsNullOrEmpty(methodName) || methodName.Length < 2) return;
+
+            _hoverTooltip.Dismiss();
+
+            // Count how many commas before cursor = current parameter index
+            int paramIdx = 0;
+            int depth = 0;
+            for (int i = pos - 1; i >= 0; i--)
+            {
+                char c = text[i];
+                if (c == ')') depth++;
+                else if (c == '(') { if (depth == 0) break; depth--; }
+                else if (c == ',' && depth == 0) paramIdx++;
+            }
+
+            // Look up method in symbol index
+            var symbols = _symbolIndex.Lookup(methodName);
+            foreach (var sym in symbols)
+            {
+                if (sym.Kind != SymbolKind.Method && sym.Kind != SymbolKind.Function) continue;
+                if (!File.Exists(sym.File)) continue;
+
+                var parsed = XmlDocParser.ParseSignature(sym.File, methodName);
+                if (parsed == null) continue;
+
+                var (signature, paramNames) = parsed.Value;
+
+                // Get doc for current parameter
+                string paramDoc = "";
+                if (paramIdx < paramNames.Count)
+                {
+                    var docs = XmlDocParser.ExtractFromFile(sym.File, sym.Line);
+                    if (docs != null && paramIdx < docs.Params.Count)
+                        paramDoc = docs.Params[paramIdx].text;
+                }
+
+                Point pt = textEditor.GetPositionFromCharIndex(pos);
+                Point screenPt = textEditor.PointToScreen(pt);
+                _signatureHelp.ShowAt(screenPt, signature, paramIdx, paramDoc);
+                break;
+            }
+        }
+
+        private string GetWordAtCharIndex(int charIdx)
+        {
+            if (textEditor is null || charIdx < 0 || charIdx >= textEditor.TextLength) return "";
+            string text = textEditor.Text;
+            int start = charIdx;
+            int end = charIdx;
+            while (start > 0 && (char.IsLetterOrDigit(text[start - 1]) || text[start - 1] == '_'))
+                start--;
+            while (end < text.Length - 1 && (char.IsLetterOrDigit(text[end + 1]) || text[end + 1] == '_'))
+                end++;
+            return start <= end ? text[start..(end + 1)] : "";
         }
 
         private void HandleTab(KeyEventArgs e)
@@ -5403,6 +5552,9 @@ using System.Linq;
             _workspacePanel?.CancelScan();
             _symbolIndexCts?.Cancel();
             _symbolIndexCts?.Dispose();
+            _hoverTooltip.Dispose();
+            _signatureHelp.Dispose();
+            _hoverTimer.Dispose();
             elasticTabTimer?.Stop();
             elasticTabTimer?.Dispose();
             _highlightTimer?.Stop();
