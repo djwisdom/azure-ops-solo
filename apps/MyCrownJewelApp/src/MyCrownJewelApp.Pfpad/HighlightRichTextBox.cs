@@ -423,7 +423,47 @@ public class HighlightRichTextBox : RichTextBox
     [DllImport("user32.dll")]
     private static extern bool HideCaret(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    private const int GWL_STYLE = -16;
+    private const int WS_VSCROLL = 0x00200000;
+    private const int WS_HSCROLL = 0x00100000;
+    private const int SM_CXVSCROLL = 2;
+    private const int SM_CYHSCROLL = 3;
+
     private const int SRCCOPY = 0x00CC0020;
+
+    private const int WM_NCPAINT = 0x0085;
+    private const int SB_BOTH = 6;
+
+    private void PaintScrollbarCorner()
+    {
+        if (IsDisposed || !IsHandleCreated || !Visible) return;
+        try
+        {
+            bool hasH = (GetWindowLong(Handle, GWL_STYLE) & WS_HSCROLL) != 0;
+            bool hasV = (GetWindowLong(Handle, GWL_STYLE) & WS_VSCROLL) != 0;
+            if (!hasH || !hasV) return;
+
+            int scrollW = GetSystemMetrics(SM_CXVSCROLL);
+            int scrollH = GetSystemMetrics(SM_CYHSCROLL);
+            if (scrollW <= 0 || scrollH <= 0) return;
+
+            int cx = ClientSize.Width - scrollW;
+            int cy = ClientSize.Height - scrollH;
+            if (cx < 0 || cy < 0) return;
+
+            var theme = Pfpad.ThemeManager.Instance.CurrentTheme;
+            using var g = Graphics.FromHwnd(Handle);
+            using var brush = new SolidBrush(theme.EditorBackground);
+            g.FillRectangle(brush, cx, cy, scrollW, scrollH);
+        }
+        catch { }
+    }
 
     protected override void WndProc(ref Message m)
     {
@@ -440,6 +480,11 @@ public class HighlightRichTextBox : RichTextBox
 
         switch (m.Msg)
         {
+            case WM_NCPAINT:
+                base.WndProc(ref m);
+                if (!IsHandleCreated || DesignMode) return;
+                try { PaintScrollbarCorner(); } catch { }
+                return;
             case WM_PAINT:
                 {
                     base.WndProc(ref m);

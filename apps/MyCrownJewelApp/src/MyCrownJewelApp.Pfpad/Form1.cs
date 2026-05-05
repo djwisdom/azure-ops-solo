@@ -9,11 +9,12 @@
  using System.Threading;
  using System.Threading.Tasks;
  using System.Windows.Forms;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Linq;
+ using System.Collections.Concurrent;
+ using System.Diagnostics;
+ using System.Linq;
  using System.Security.Cryptography;
  using System.Runtime.CompilerServices;
+ using MyCrownJewelApp.Pfpad.Debugger;
 
  [assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
 
@@ -53,13 +54,9 @@ using System.Linq;
 
         private void ApplyScrollbarTheme()
         {
-            string? themeName = isDarkTheme ? DARK_MODE_SCROLLBAR : null;
-            if (textEditor is not null && textEditor.IsHandleCreated)
-                SetWindowTheme(textEditor.Handle, themeName, null);
-            if (_splitEditor is not null && _splitEditor.IsHandleCreated)
-                SetWindowTheme(_splitEditor.Handle, themeName, null);
-            if (tabControl is not null && tabControl.IsHandleCreated)
-                SetWindowTheme(tabControl.Handle, themeName, null);
+            bool dark = isDarkTheme;
+            NativeThemed.ApplyDarkScrollbarTheme(this.Handle, dark);
+            NativeThemed.ApplyThemeToChildScrollbars(this, dark);
         }
 
         private void ApplyTitleBarTheme()
@@ -310,6 +307,17 @@ using System.Linq;
         // Workspace scan state
         private Color _originalStatusBarColor;
         private CancellationTokenSource? _symbolIndexCts;
+
+        // Debugger integration
+        private readonly DebugSession _debugSession = new();
+        private readonly BreakpointManager _breakpointManager = new();
+        private DebugVariablesPanel? _debugVariablesPanel;
+        private DebugCallStackPanel? _debugCallStackPanel;
+        private int _debugActiveLine = -1;
+        private string? _debugActiveFile;
+        public BreakpointManager DebugBreakpointManager => _breakpointManager;
+        public int DebugActiveLine => _debugActiveLine;
+        public string? CurrentFilePath => currentFilePath;
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -907,10 +915,29 @@ using System.Linq;
               _notificationStatusLabel.Click += ToggleNotificationCenter;
               statusStrip.Items.Add(_notificationStatusLabel);
 
-              _notificationFeed.OnItemsUpdated += OnFeedUpdated;
-              _notificationFeed.StartPolling();
+               _notificationFeed.OnItemsUpdated += OnFeedUpdated;
+               _notificationFeed.StartPolling();
 
-              // Ensure initial dirty flag is clear after all initialization
+               // Initialize debugger integration
+               _breakpointManager.BreakpointsChanged += () =>
+               {
+                   if (gutterPanel != null) gutterPanel.Invalidate();
+               };
+               gutterPanel.BreakpointClicked += (line) =>
+               {
+                   if (currentFilePath != null)
+                       _breakpointManager.ToggleBreakpoint(currentFilePath, line + 1);
+               };
+               _debugSession.StateChanged += OnDebugStateChanged;
+               _debugSession.ThreadStopped += OnDebugThreadStopped;
+               _debugSession.ThreadContinued += (tid) =>
+               {
+                   _debugActiveLine = -1;
+                   _debugActiveFile = null;
+               };
+               _debugSession.DebugOutput += (msg) => ShowNotification("Debug", msg);
+
+               // Ensure initial dirty flag is clear after all initialization
              isModified = false;
          }
 
@@ -5982,6 +6009,9 @@ using System.Linq;
             _terminalTabs.Clear();
             _terminalTabControl?.Dispose();
             _terminalNewTabButton?.Dispose();
+            _debugSession.Dispose();
+            _debugVariablesPanel?.Dispose();
+            _debugCallStackPanel?.Dispose();
         }
 
         private void Form1_Activated(object? sender, EventArgs e)
@@ -6023,6 +6053,223 @@ using System.Linq;
             dlg.ShowDialog(this);
         }
 
+        #region Debugger Integration
+
+        private void OnDebugStateChanged(DebugState state)
+        {
+            bool isRunning = state == DebugState.Running;
+            bool isPaused = state == DebugState.Paused;
+            bool isActive = isRunning || isPaused || state == DebugState.Stepping;
+            bool isTerminated = state == DebugState.Terminated || state == DebugState.Terminating;
+
+            BeginInvoke(() =>
+            {
+                startDebugMenuItem.Enabled = !isActive && !isTerminated;
+                stopDebugMenuItem.Enabled = isActive;
+                continueDebugMenuItem.Enabled = isPaused;
+                stepOverMenuItem.Enabled = isPaused;
+                stepIntoMenuItem.Enabled = isPaused;
+                stepOutMenuItem.Enabled = isPaused;
+
+                if (isTerminated)
+                {
+                    _debugActiveLine = -1;
+                    _debugActiveFile = null;
+                    _debugVariablesPanel?.Close();
+                    _debugVariablesPanel = null;
+                    _debugCallStackPanel?.Close();
+                    _debugCallStackPanel = null;
+                    gutterPanel?.Invalidate();
+                }
+            });
+        }
+
+        private async void OnDebugThreadStopped(int threadId, string reason)
+        {
+            _debugActiveLine = -1;
+            _debugActiveFile = null;
+
+            var frames = await _debugSession.GetStackTraceAsync(threadId);
+            if (frames is { Length: > 0 })
+            {
+                var top = frames[0];
+                _debugActiveLine = top.Line;
+                _debugActiveFile = top.Source?.Path;
+
+                if (_debugActiveFile != null && File.Exists(_debugActiveFile))
+                    NavigateToFileLine(_debugActiveFile, _debugActiveLine);
+
+                gutterPanel?.Invalidate();
+            }
+
+            BeginInvoke(async () =>
+            {
+                if (_debugVariablesPanel == null || _debugVariablesPanel.IsDisposed)
+                {
+                    _debugVariablesPanel = new DebugVariablesPanel(_debugSession);
+                    _debugVariablesPanel.Show(this);
+                    _debugVariablesPanel.Location = new Point(Right - 360, Top + 200);
+                }
+                else
+                {
+                    _debugVariablesPanel.BringToFront();
+                }
+
+                if (_debugCallStackPanel == null || _debugCallStackPanel.IsDisposed)
+                {
+                    _debugCallStackPanel = new DebugCallStackPanel(_debugSession, this);
+                    _debugCallStackPanel.Show(this);
+                    _debugCallStackPanel.Location = new Point(Right - 760, Top + 60);
+                }
+                else
+                {
+                    _debugCallStackPanel.BringToFront();
+                }
+
+                if (frames is { Length: > 0 })
+                {
+                    await _debugVariablesPanel.RefreshAsync(frames[0].Id);
+                    await _debugCallStackPanel.RefreshAsync(threadId);
+                }
+            });
+        }
+
+        private async void StartDebug_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(currentFilePath))
+            {
+                ThemedMessageBox.Show("Open a file first to start debugging.", "Debugger", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string? projectDir = FindProjectDirectory(currentFilePath);
+            if (projectDir == null)
+            {
+                ThemedMessageBox.Show("Could not find a .csproj file. Open a file that is part of a .NET project.", "Debugger", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string outputDll = FindOutputAssembly(projectDir);
+            if (outputDll == null)
+            {
+                var result = ThemedMessageBox.Show("No build output found. Build the project first?",
+                    "Debugger", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                {
+                    RunDotnetBuild(projectDir);
+                    outputDll = FindOutputAssembly(projectDir);
+                }
+                if (outputDll == null)
+                {
+                    ThemedMessageBox.Show("Build output not found. Build the project and try again.", "Debugger", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
+            string? error = await _debugSession.StartAsync(outputDll, projectDir);
+            if (error != null)
+            {
+                ThemedMessageBox.Show(error, "Debugger Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            string? fileForBp = currentFilePath;
+            if (fileForBp != null)
+            {
+                var bps = _breakpointManager.GetDapBreakpoints(fileForBp);
+                await _debugSession.SetBreakpointsAsync(fileForBp, bps);
+            }
+
+            await _debugSession.ConfigurationDoneAsync();
+            ShowNotification("Debug", $"Debug session started: {Path.GetFileName(outputDll)}");
+        }
+
+        private async void StopDebug_Click(object? sender, EventArgs e)
+        {
+            _debugSession.Dispose();
+            OnDebugStateChanged(DebugState.Terminated);
+            ShowNotification("Debug", "Debug session stopped.");
+        }
+
+        private async void DebugContinue_Click(object? sender, EventArgs e)
+        {
+            await _debugSession.ContinueAsync();
+        }
+
+        private async void StepOver_Click(object? sender, EventArgs e)
+        {
+            await _debugSession.StepOverAsync();
+        }
+
+        private async void StepInto_Click(object? sender, EventArgs e)
+        {
+            await _debugSession.StepInAsync();
+        }
+
+        private async void StepOut_Click(object? sender, EventArgs e)
+        {
+            await _debugSession.StepOutAsync();
+        }
+
+        private void ToggleBreakpointMenu_Click(object? sender, EventArgs e)
+        {
+            if (currentFilePath == null) return;
+            int line = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
+            _breakpointManager.ToggleBreakpoint(currentFilePath, line);
+        }
+
+        private static string? FindProjectDirectory(string filePath)
+        {
+            var dir = Path.GetDirectoryName(filePath);
+            while (dir != null)
+            {
+                if (Directory.EnumerateFiles(dir, "*.csproj").Any())
+                    return dir;
+                var parent = Path.GetDirectoryName(dir);
+                if (parent == dir) break;
+                dir = parent;
+            }
+            return null;
+        }
+
+        private static string? FindOutputAssembly(string projectDir)
+        {
+            var csproj = Directory.EnumerateFiles(projectDir, "*.csproj").FirstOrDefault();
+            if (csproj == null) return null;
+
+            string name = Path.GetFileNameWithoutExtension(csproj);
+            string[] candidates =
+            {
+                Path.Combine(projectDir, "bin", "Debug", "net8.0", $"{name}.dll"),
+                Path.Combine(projectDir, "bin", "Debug", "net9.0", $"{name}.dll"),
+                Path.Combine(projectDir, "bin", "Debug", "net10.0", $"{name}.dll"),
+            };
+
+            foreach (var c in candidates)
+                if (File.Exists(c))
+                    return c;
+
+            return null;
+        }
+
+        private static void RunDotnetBuild(string projectDir)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("dotnet", "build")
+                {
+                    WorkingDirectory = projectDir,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var proc = Process.Start(psi);
+                proc?.WaitForExit(30000);
+            }
+            catch { }
+        }
+
+        #endregion
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             // Global search: Ctrl+Shift+F
@@ -6050,6 +6297,45 @@ using System.Linq;
             if (keyData == (Keys.Control | Keys.Shift | Keys.W) && _splitEditor != null)
             {
                 CloseSplit();
+                return true;
+            }
+
+            // Debugger keyboard shortcuts (take priority when active)
+            if (_debugSession.State != DebugState.Idle && _debugSession.State != DebugState.Terminated)
+            {
+                if (keyData == Keys.F5)
+                {
+                    if (_debugSession.State == DebugState.Paused)
+                        _ = _debugSession.ContinueAsync();
+                    return true;
+                }
+                if (keyData == (Keys.Shift | Keys.F5))
+                {
+                    StopDebug_Click(null, EventArgs.Empty);
+                    return true;
+                }
+                if (keyData == Keys.F10)
+                {
+                    _ = _debugSession.StepOverAsync();
+                    return true;
+                }
+                if (keyData == Keys.F11)
+                {
+                    _ = _debugSession.StepInAsync();
+                    return true;
+                }
+                if (keyData == (Keys.Shift | Keys.F11))
+                {
+                    _ = _debugSession.StepOutAsync();
+                    return true;
+                }
+            }
+
+            // F9 always toggles breakpoint
+            if (keyData == Keys.F9)
+            {
+                ToggleBreakpointMenu_Click(null, EventArgs.Empty);
+                gutterPanel?.Invalidate();
                 return true;
             }
 

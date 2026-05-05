@@ -250,7 +250,22 @@
 | Crash logging | `Program.cs` | ✅ | 1.0.0.0 | `crash.log` |
 | About dialog (version + commit) | `AboutDialog.cs` | ✅ | 1.0.0.0 | Git hash at build time |
 
-## 18. Hardening & Bug Fixes
+## 18. Integrated Debugger (v1 — .NET via DAP/netcoredbg)
+
+| Feature | Source File(s) | Status | Version | Notes |
+|---------|---------------|--------|---------|-------|
+| DAP protocol types (40+ message types) | `Debugger/DebugAdapterProtocol.cs` | ✅ | 1.0.10.0 | JSON-RPC 2.0, camelCase via System.Text.Json |
+| DAP transport client (stdin/stdout) | `Debugger/DebugAdapterClient.cs` | ✅ | 1.0.10.0 | Content-Length framing, thread-safe reader |
+| Debug session orchestration | `Debugger/DebugSession.cs` | ✅ | 1.0.10.0 | State machine: Idle→Initializing→Running→Paused→Terminated |
+| Breakpoint manager + persistence | `Debugger/BreakpointManager.cs` | ✅ | 1.0.10.0 | JSON in %APPDATA%, conditional/hit-count/logpoint support |
+| Gutter breakpoint rendering | `GutterPanel.cs` | ✅ | 1.0.10.0 | Red dot (breakpoint), gold dot (execution line) |
+| Gutter breakpoint click-to-toggle | `GutterPanel.cs` | ✅ | 1.0.10.0 | Click left of line numbers |
+| Call stack panel | `Debugger/DebugCallStackPanel.cs` | ✅ | 1.0.10.0 | Thread/frame browser, double-click to navigate |
+| Variables + watch panel | `Debugger/DebugVariablesPanel.cs` | ✅ | 1.0.10.0 | Locals/autos tree, watch expressions, expand objects |
+| Debug menu (Run > Debug) | `Form1.Designer.cs` | ✅ | 1.0.10.0 | Start/Stop/Continue/Step Over/Into/Out + Toggle Breakpoint |
+| Keyboard shortcuts | `Form1.cs` | ✅ | 1.0.10.0 | F5 (start/continue), Shift+F5 (stop), F9 (bp toggle), F10 (over), F11 (into), Shift+F11 (out) |
+| Auto-detect project/build output | `Form1.cs` | ✅ | 1.0.10.0 | Walks parent dirs for .csproj, finds bin/Debug/net8.0/*.dll |
+| One-click build before debug | `Form1.cs` | ✅ | 1.0.10.0 | Prompts to build if no output found, runs `dotnet build` |
 
 | Audit Finding | Source File(s) | Status | Version | Notes |
 |--------------|---------------|--------|---------|-------|
@@ -281,3 +296,4 @@
 | Syntax highlighting: frame rate monitoring | ✅ | 1.0.10.0 | Stopwatch tracking in ApplyHighlightPatches, feeds adaptive debounce |
 | Terraform 1.14.7 → 1.15.1 | ✅ | — | `required_version` bumped in infra/main.tf |
 | Test suite run | ✅ | — | 81 passed, 1 skipped, 0 failed |
+| Integrated debugger v1 (.NET via DAP/netcoredbg) | ✅ | 1.0.10.0 | DAP client, breakpoints, call stack, variables, watches, step/continue/stop, F5/F9/F10/F11 shortcuts, gutter decorations |

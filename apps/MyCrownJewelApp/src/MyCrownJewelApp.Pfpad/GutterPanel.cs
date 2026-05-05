@@ -21,6 +21,7 @@ public class GutterPanel : Panel
     private const int FoldClickWidth = 28;
     private const int QuickActionWidth = 18;
     private const int CoverageMarginWidth = 8;
+    private const int BreakpointMarginWidth = 16;
 
     private int totalMarginWidth;
     private bool _showFoldMarkers;
@@ -28,6 +29,8 @@ public class GutterPanel : Panel
 
     private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
     private Dictionary<int, int>? _coverageHits; // line → hit count
+
+    public event Action<int>? BreakpointClicked;
 
     public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
     {
@@ -52,6 +55,9 @@ public class GutterPanel : Panel
 
     [Category("Appearance")]
     public bool ShowCodeFolds { get; set; } = true;
+
+    [Category("Appearance")]
+    public bool ShowBreakpoints { get; set; } = true;
 
     [DllImport("user32.dll")]
     private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
@@ -78,6 +84,14 @@ public class GutterPanel : Panel
         int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
         int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
         int lineIndex = firstVis + e.Y / lineHeight;
+
+        // Breakpoint click (left of line numbers)
+        int bpEnd = QuickActionWidth + BookmarkMarginWidth;
+        if (e.X >= QuickActionWidth && e.X < bpEnd)
+        {
+            BreakpointClicked?.Invoke(lineIndex);
+            return;
+        }
 
         // Quick action click (left side)
         if (e.X >= 0 && e.X < QuickActionWidth)
@@ -196,6 +210,7 @@ public class GutterPanel : Panel
         if (ShowBookmarks) totalMarginWidth += BookmarkMarginWidth;
         if (ShowChangeHistory) totalMarginWidth += ChangeMarginWidth;
         if (_coverageHits != null) totalMarginWidth += CoverageMarginWidth;
+        if (ShowBreakpoints) totalMarginWidth += BreakpointMarginWidth;
         if (ShowCodeFolds) totalMarginWidth += FoldMarginWidth;
         return totalMarginWidth;
     }
@@ -251,6 +266,12 @@ public class GutterPanel : Panel
             {
                 DrawBookmark(g, lineIndex, currentX, lineY);
                 currentX += BookmarkMarginWidth;
+            }
+
+            if (ShowBreakpoints)
+            {
+                DrawBreakpoint(g, lineIndex, currentX, lineY);
+                currentX += BreakpointMarginWidth;
             }
 
             if (ShowChangeHistory)
@@ -360,6 +381,35 @@ public class GutterPanel : Panel
         {
             using var brush = new SolidBrush(Color.Orange);
             g.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
+        }
+    }
+
+    private void DrawBreakpoint(Graphics g, int lineIndex, int x, int y)
+    {
+        if (mainForm?.DebugBreakpointManager == null) return;
+        int fileLine = lineIndex + 1;
+        string? filePath = mainForm.CurrentFilePath;
+        if (filePath == null) return;
+
+        bool hasBp = mainForm.DebugBreakpointManager.HasBreakpoint(filePath, fileLine);
+        bool isActive = mainForm.DebugActiveLine == fileLine;
+        if (!hasBp && !isActive) return;
+
+        int cx = x + BreakpointMarginWidth / 2;
+        int cy = y + 8;
+        int r = 6;
+
+        if (isActive)
+        {
+            using var brush = new SolidBrush(Color.Gold);
+            g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
+            using var innerBrush = new SolidBrush(Color.FromArgb(220, 180, 0));
+            g.FillEllipse(innerBrush, cx - r / 2, cy - r / 2, r, r);
+        }
+        else if (hasBp)
+        {
+            using var brush = new SolidBrush(Color.FromArgb(220, 40, 40));
+            g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
         }
     }
 

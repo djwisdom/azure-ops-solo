@@ -8,6 +8,8 @@ namespace MyCrownJewelApp.Pfpad;
 
 internal static class NativeThemed
 {
+    private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
+
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     internal static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
@@ -21,6 +23,19 @@ internal static class NativeThemed
         SetWindowTheme(hWnd, "DarkMode_Explorer", null);
         int dark = 1;
         DwmSetWindowAttribute(hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+    }
+
+    internal static void ApplyDarkScrollbarTheme(IntPtr hWnd, bool isDark)
+    {
+        if (hWnd == IntPtr.Zero) return;
+        SetWindowTheme(hWnd, isDark ? DARK_MODE_SCROLLBAR : null, null);
+    }
+
+    internal static void ApplyThemeToChildScrollbars(Control parent, bool isDark)
+    {
+        ApplyDarkScrollbarTheme(parent.Handle, isDark);
+        foreach (Control child in parent.Controls)
+            ApplyThemeToChildScrollbars(child, isDark);
     }
 
     // CBT hook for file dialog dark mode

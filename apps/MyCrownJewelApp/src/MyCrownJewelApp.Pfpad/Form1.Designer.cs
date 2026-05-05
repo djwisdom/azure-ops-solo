@@ -92,6 +92,14 @@ partial class Form1
     private ToolStripMenuItem toolsMenu;
     internal ToolStripMenuItem configureToolsMenuItem;
     private ToolStripMenuItem runMenu;
+    internal ToolStripMenuItem startDebugMenuItem;
+    internal ToolStripMenuItem stopDebugMenuItem;
+    internal ToolStripMenuItem continueDebugMenuItem;
+    internal ToolStripMenuItem stepOverMenuItem;
+    internal ToolStripMenuItem stepIntoMenuItem;
+    internal ToolStripMenuItem stepOutMenuItem;
+    internal ToolStripMenuItem toggleBreakpointMenuItem;
+    private ToolStripMenuItem debugMenu;
 
     private TabControl tabControl;
     private TableLayoutPanel mainLayout;
@@ -376,6 +384,33 @@ partial class Form1
         runMenu.DropDownItems.Add(runCoverageItem);
         var loadCoverageItem = new ToolStripMenuItem("&Load Coverage File...", null, LoadCoverage_Click);
         runMenu.DropDownItems.Add(loadCoverageItem);
+        runMenu.DropDownItems.Add(new ToolStripSeparator());
+        // Debug menu items
+        debugMenu = new ToolStripMenuItem("&Debug");
+        startDebugMenuItem = new ToolStripMenuItem("&Start Debugging", null, StartDebug_Click, Keys.F5);
+        stopDebugMenuItem = new ToolStripMenuItem("S&top Debugging", null, StopDebug_Click, Keys.Shift | Keys.F5);
+        stopDebugMenuItem.Enabled = false;
+        continueDebugMenuItem = new ToolStripMenuItem("&Continue", null, DebugContinue_Click, Keys.F5);
+        continueDebugMenuItem.Enabled = false;
+        stepOverMenuItem = new ToolStripMenuItem("Step &Over", null, StepOver_Click, Keys.F10);
+        stepOverMenuItem.Enabled = false;
+        stepIntoMenuItem = new ToolStripMenuItem("Step &Into", null, StepInto_Click, Keys.F11);
+        stepIntoMenuItem.Enabled = false;
+        stepOutMenuItem = new ToolStripMenuItem("Step O&ut", null, StepOut_Click, Keys.Shift | Keys.F11);
+        stepOutMenuItem.Enabled = false;
+        toggleBreakpointMenuItem = new ToolStripMenuItem("Toggle &Breakpoint", null, ToggleBreakpointMenu_Click, Keys.F9);
+        toggleBreakpointMenuItem.Enabled = true;
+        debugMenu.DropDownItems.Add(startDebugMenuItem);
+        debugMenu.DropDownItems.Add(stopDebugMenuItem);
+        debugMenu.DropDownItems.Add(new ToolStripSeparator());
+        debugMenu.DropDownItems.Add(continueDebugMenuItem);
+        debugMenu.DropDownItems.Add(stepOverMenuItem);
+        debugMenu.DropDownItems.Add(stepIntoMenuItem);
+        debugMenu.DropDownItems.Add(stepOutMenuItem);
+        debugMenu.DropDownItems.Add(new ToolStripSeparator());
+        debugMenu.DropDownItems.Add(toggleBreakpointMenuItem);
+        runMenu.DropDownItems.Add(new ToolStripSeparator());
+        runMenu.DropDownItems.Add(debugMenu);
         menuStrip.Items.Add(runMenu);
         // Tools menu
         toolsMenu = new ToolStripMenuItem("&Tools");

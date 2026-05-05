@@ -145,10 +145,18 @@ Everything related to running tests and measuring code quality lives here. If yo
 
 | Command | Shortcut | What It Does |
 |---------|----------|-------------|
-| Run Tests | `Ctrl+Alt+F5` | Finds the first `*Tests.csproj` or `*Test.csproj` in the workspace and runs `dotnet test` with TRX logging. Parses the results into a structured dialog showing pass/fail/skip counts, test names with colored badges, error messages, and stack traces. Double-click a stack trace frame to open the file at the failing line. |
-| Rerun Failed Tests | `Ctrl+Alt+F6` | Re-runs only the tests that failed in the last run (using a fully-qualified-name filter). Shows results in the same structured dialog. |
-| Run Tests with Coverage | `Ctrl+Alt+R` | Runs `dotnet test --collect "Code Coverage"` with coverlet. Parses the resulting Cobertura XML and shows a coverage summary dialog. Code coverage bars appear in the gutter — green for covered, red for missed. |
-| Load Coverage File | | Opens a file picker for loading a `.cobertura.xml` or `.xml` file directly, without re-running tests. |
+| Run Tests | `Ctrl+Alt+F5` | Finds the first `*Tests.csproj` or `*Test.csproj` in the workspace and runs `dotnet test` with TRX logging. |
+| Rerun Failed Tests | `Ctrl+Alt+F6` | Re-runs only the tests that failed in the last run. |
+| Run Tests with Coverage | `Ctrl+Alt+R` | Runs `dotnet test --collect "Code Coverage"` with coverlet. |
+| Load Coverage File | | Opens a file picker for loading a `.cobertura.xml` or `.xml` file directly. |
+| **Debug** (submenu) | | |
+| Start Debugging | `F5` | Launches the .NET debugger via netcoredbg (DAP). Starts or continues. |
+| Stop Debugging | `Shift+F5` | Kills the debug session. |
+| Continue | `F5` | Resumes execution after a breakpoint hit. |
+| Step Over | `F10` | Executes current line, skips into method calls. |
+| Step Into | `F11` | Steps into the method call. |
+| Step Out | `Shift+F11` | Steps out of the current method. |
+| Toggle Breakpoint | `F9` | Places or removes a breakpoint at the current line. |
 
 ### 2.6 Tools Menu
 
@@ -486,6 +494,46 @@ Results are merged into the Problems panel alongside lint diagnostics. The scann
 **Rerun Failed Tests** (`Ctrl+Alt+F6`): Filters to only run tests that failed in the last run. Uses `--filter` with the fully-qualified names of failed tests.
 
 **Run > Run Tests with Coverage** (`Ctrl+Alt+R`): Runs the same test project with `--collect "Code Coverage"` for combined test results and coverage data (see section 5.20).
+
+### 5.25 Integrated Debugger (v1)
+
+The editor includes a first-class **.NET debugger** built on the Debug Adapter Protocol (DAP) using `netcoredbg`.
+
+**Starting a debug session:**
+- Open any file in a .NET project
+- Set breakpoints by clicking in the gutter (left of line numbers) or press `F9`
+- Run > Debug > Start Debugging (or `F5`)
+- If no build output is found, the editor offers to run `dotnet build` automatically
+
+**Debug controls** (Run > Debug menu):
+
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| Start Debugging | `F5` | Launches the debugger (or continues when paused) |
+| Stop Debugging | `Shift+F5` | Kills the debug session |
+| Continue | `F5` | Resumes execution after a breakpoint |
+| Step Over | `F10` | Executes the current line, steps over method calls |
+| Step Into | `F11` | Steps into the method call on the current line |
+| Step Out | `Shift+F11` | Steps out of the current method |
+| Toggle Breakpoint | `F9` | Places or removes a breakpoint at the current line |
+
+**Breakpoints:**
+- Red dot in the gutter at each breakpoint line
+- Gold dot indicates the current execution line when paused
+- Breakpoints persist between sessions (stored in `%APPDATA%`)
+
+**When a breakpoint is hit:**
+- The editor scrolls to the source line and highlights it
+- **Call Stack** panel opens showing the thread's frame list
+- **Variables** panel opens showing locals, parameters, and watch expressions
+- Expand objects in the Variables panel to inspect nested properties
+- Add watch expressions by typing in the watch input box and pressing Enter
+
+**Under the hood:**
+- Communicates with `netcoredbg` over stdin/stdout using JSON-RPC 2.0
+- Full DAP protocol: initialize, launch, setBreakpoints, configurationDone, continue, next, stepIn, stepOut, stackTrace, scopes, variables, evaluate, threads, disconnect
+- Auto-discovers the project directory by walking up from the current file
+- Finds the compiled assembly in `bin/Debug/net8.0/`, `net9.0/`, or `net10.0/`
 
 The test runner uses the TRX (Visual Studio Test Results) XML format for structured parsing rather than trying to parse console output — a deliberate choice for reliability over cleverness. The parser handles the standard `http://microsoft.com/schemas/VisualStudio/TeamTest/2010` namespace and extracts error info and stack traces from the `<ErrorInfo>` elements.
 
