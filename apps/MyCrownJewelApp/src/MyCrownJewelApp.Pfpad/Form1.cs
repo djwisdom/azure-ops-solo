@@ -54,10 +54,12 @@ using System.Linq;
         private void ApplyScrollbarTheme()
         {
             string? themeName = isDarkTheme ? DARK_MODE_SCROLLBAR : null;
-            if (textEditor != null && textEditor.IsHandleCreated)
+            if (textEditor is not null && textEditor.IsHandleCreated)
                 SetWindowTheme(textEditor.Handle, themeName, null);
-            if (_splitEditor != null && _splitEditor.IsHandleCreated)
+            if (_splitEditor is not null && _splitEditor.IsHandleCreated)
                 SetWindowTheme(_splitEditor.Handle, themeName, null);
+            if (tabControl is not null && tabControl.IsHandleCreated)
+                SetWindowTheme(tabControl.Handle, themeName, null);
         }
 
         private void ApplyTitleBarTheme()
@@ -4482,7 +4484,7 @@ using System.Linq;
         {
             // Strip visual styles to remove the 3D raised border from the tab strip
             if (tabControl.IsHandleCreated)
-                SetWindowTheme(tabControl.Handle, "", "");
+                SetWindowTheme(tabControl.Handle, isDarkTheme ? DARK_MODE_SCROLLBAR : "", null);
 
             // Remove the classic 3D raised border style
             int style = GetWindowLong(tabControl.Handle, GWL_STYLE);
