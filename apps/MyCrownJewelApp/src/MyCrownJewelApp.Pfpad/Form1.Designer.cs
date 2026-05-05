@@ -32,10 +32,6 @@ partial class Form1
     private ToolStripMenuItem selectAllMenuItem;
     private ToolStripMenuItem timeDateMenuItem;
     private ToolStripMenuItem fontMenuItem;
-    #pragma warning disable CS0169
-    private ToolStripMenuItem bookmarkSeparator;
-    private ToolStripMenuItem foldingSeparator;
-    #pragma warning restore CS0169
     private ToolStripMenuItem toggleBookmarkMenuItem;
     private ToolStripMenuItem nextBookmarkMenuItem;
     private ToolStripMenuItem prevBookmarkMenuItem;
@@ -180,10 +176,6 @@ partial class Form1
         selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, Keys.Control | Keys.A);
         timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, Keys.F5);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click, Keys.Control | Keys.Shift | Keys.F);
-        #pragma warning disable CS0169
-        bookmarkSeparator = new ToolStripMenuItem();
-        foldingSeparator = new ToolStripMenuItem();
-        #pragma warning restore CS0169
         toggleBookmarkMenuItem = new ToolStripMenuItem("Toggle Bookmark", null, ToggleBookmark_Click, "Ctrl+F2");
         nextBookmarkMenuItem = new ToolStripMenuItem("Next Bookmark", null, NextBookmark_Click, "F2");
         prevBookmarkMenuItem = new ToolStripMenuItem("Previous Bookmark", null, PrevBookmark_Click, "Shift+F2");
@@ -213,10 +205,9 @@ partial class Form1
         editMenu.DropDownItems.Add(nextBookmarkMenuItem);
         editMenu.DropDownItems.Add(prevBookmarkMenuItem);
         editMenu.DropDownItems.Add(clearBookmarksMenuItem);
-        editMenu.DropDownItems.Add(bookmarkSeparator);
+        editMenu.DropDownItems.Add(new ToolStripSeparator());
         editMenu.DropDownItems.Add(toggleFoldMenuItem);
         editMenu.DropDownItems.Add(toggleAllFoldsMenuItem);
-        editMenu.DropDownItems.Add(foldingSeparator);
 
         viewMenu = new ToolStripMenuItem("&View");
         zoomMenu = new ToolStripMenuItem("&Zoom");
@@ -306,15 +297,12 @@ partial class Form1
         viewMenu.DropDownItems.Add(minimapMenuItem);
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
-        // Split menu items
         splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Shift | Keys.V);
         splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
         viewMenu.DropDownItems.Add(splitVMenuItem);
         viewMenu.DropDownItems.Add(splitHMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
-        terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
-        terminalMenuItem.Checked = false;
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
         workspaceMenuItem = new ToolStripMenuItem("&Workspace", null, ToggleWorkspace_Click, Keys.Control | Keys.Shift | Keys.W);
         workspaceMenuItem.CheckOnClick = true;
         openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
