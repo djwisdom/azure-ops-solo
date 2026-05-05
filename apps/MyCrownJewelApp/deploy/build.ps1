@@ -66,12 +66,29 @@ $netcoreDbgExe = Join-Path $netcoreDbgDir "netcoredbg.exe"
 if (-not (Test-Path $netcoreDbgExe)) {
     Write-Host "=== Downloading netcoredbg ===" -ForegroundColor Cyan
     New-Item -ItemType Directory -Force -Path $netcoreDbgDir | Out-Null
-    $url = "https://github.com/Samsung/netcoredbg/releases/latest/download/netcoredbg-win64.zip"
+    $netcoredbgZipUrl = "https://github.com/Samsung/netcoredbg/releases/latest/download/netcoredbg-win64.zip"
     $zipPath = Join-Path $env:TEMP "netcoredbg-win64.zip"
     try {
-        Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+        Invoke-WebRequest -Uri $netcoredbgZipUrl -OutFile $zipPath -UseBasicParsing
         Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $netcoreDbgDir, $true)
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+        foreach ($entry in $zip.Entries) {
+            $targetPath = Join-Path $netcoreDbgDir $entry.FullName
+            if ($entry.FullName.EndsWith('/')) {
+                New-Item -ItemType Directory -Force -Path $targetPath | Out-Null
+            } else {
+                $dir = Split-Path $targetPath -Parent
+                if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $targetPath, $true)
+            }
+        }
+        $zip.Dispose()
+        # Flatten if zip contained a root folder (e.g. netcoredbg/)
+        $subDir = Join-Path $netcoreDbgDir "netcoredbg"
+        if (Test-Path $subDir) {
+            Get-ChildItem -Path $subDir -Recurse | Move-Item -Destination $netcoreDbgDir -Force
+            Remove-Item $subDir -Recurse -Force
+        }
         Remove-Item $zipPath -Force
         Write-Host "netcoredbg downloaded to $netcoreDbgDir" -ForegroundColor Green
     } catch {
