@@ -2921,6 +2921,45 @@ using System.Linq;
             dlg.ShowDialog(this);
         }
 
+        private void ParseStackTrace_Click(object? sender, EventArgs e)
+        {
+            ParseStackTrace();
+        }
+
+        private void ParseStackTrace()
+        {
+            string source = textEditor?.SelectedText ?? "";
+            if (string.IsNullOrWhiteSpace(source))
+                source = textEditor?.Text ?? "";
+
+            var frames = StackTraceParser.Parse(source);
+            if (frames.Count == 0)
+            {
+                ThemedMessageBox.Show("No stack trace frames detected in the current selection or document.\n\nSupported formats:\n.NET: at Method() in File.cs:line 42\nJS:   at func (file.js:42:10)\nPython: File \"file.py\", line 42",
+                    "Parse Stack Trace", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using var dlg = new StackTraceDialog(source);
+            dlg.FrameSelected += (file, line) =>
+            {
+                BeginInvoke(() =>
+                {
+                    if (!string.IsNullOrEmpty(file) && File.Exists(file))
+                    {
+                        OpenFileInNewTab(file);
+                        GoToLine(line);
+                    }
+                    else
+                    {
+                        ThemedMessageBox.Show($"File not found:\n{file}",
+                            "Stack Trace", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }
+                });
+            };
+            dlg.ShowDialog(this);
+        }
+
         private void GoToDefinition_Click(object? sender, EventArgs e)
         {
             GoToDefinition();
@@ -4474,6 +4513,7 @@ using System.Linq;
                 ctx.Items.Add("Rename (F2)", null, (s, args) => RenameSymbol());
                 ctx.Items.Add("Call Hierarchy", null, (s, args) => ShowCallHierarchy());
                 ctx.Items.Add(new ToolStripSeparator());
+                ctx.Items.Add("Parse Stack Trace", null, (s, args) => ParseStackTrace());
                 ctx.Items.Add("Cut", null, (s, args) => textEditor.Cut());
                 ctx.Items.Add("Copy", null, (s, args) => textEditor.Copy());
                 ctx.Items.Add("Paste", null, (s, args) => textEditor.Paste());
