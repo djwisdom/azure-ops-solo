@@ -1926,6 +1926,12 @@ using System.Linq;
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.KeyCode == Keys.F2)
+            {
+                RenameSymbol();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
 
         private void HandleTab(KeyEventArgs e)
@@ -2867,6 +2873,25 @@ using System.Linq;
         {
             using var dlg = new GoToDialog(this);
             dlg.ShowDialog(this);
+        }
+
+        private void RenameSymbol()
+        {
+            if (textEditor is null) return;
+            string? word = GetWordAtCursor();
+            if (string.IsNullOrEmpty(word)) return;
+
+            using var dlg = new RenameDialog(word, _workspaceRoot);
+            if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Applied)
+            {
+                if (textEditor.Text.Contains(dlg.NewName))
+                    ShowNotification("Rename", $"Renamed '{word}' to '{dlg.NewName}'");
+            }
+        }
+
+        private void Rename_Click(object? sender, EventArgs e)
+        {
+            RenameSymbol();
         }
 
         private void GoToDefinition_Click(object? sender, EventArgs e)
@@ -4419,6 +4444,7 @@ using System.Linq;
 
                 var ctx = new ContextMenuStrip();
                 ctx.Items.Add("Go to Definition (F12)", null, (s, args) => GoToDefinition());
+                ctx.Items.Add("Rename (F2)", null, (s, args) => RenameSymbol());
                 ctx.Items.Add(new ToolStripSeparator());
                 ctx.Items.Add("Cut", null, (s, args) => textEditor.Cut());
                 ctx.Items.Add("Copy", null, (s, args) => textEditor.Copy());

@@ -179,6 +179,8 @@ partial class Form1
         gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click, Keys.Control | Keys.G);
         var gotoDefMenuItem = new ToolStripMenuItem("Go to &Definition", null, GoToDefinition_Click, Keys.F12);
         editMenu.DropDownItems.Add(gotoDefMenuItem);
+        var renameMenuItem = new ToolStripMenuItem("&Rename...", null, Rename_Click, Keys.F2);
+        editMenu.DropDownItems.Add(renameMenuItem);
         selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, Keys.Control | Keys.A);
         timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, Keys.F5);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click, Keys.Control | Keys.Shift | Keys.F);
