@@ -3072,24 +3072,38 @@ using System.Linq;
             string root = _workspaceRoot;
             Task.Run(() =>
             {
-                var todos = TodoScanner.ScanWorkspace(root);
-                BeginInvoke(() =>
+                try
                 {
-                    // Merge with existing diagnostics
-                    var existing = _problemsPanel?.GetDiagnostics() ?? new List<Diagnostic>();
-                    var merged = new List<Diagnostic>();
-                    merged.AddRange(existing);
-                    merged.AddRange(todos);
-                    merged.Sort((a, b) => { int c = a.Line.CompareTo(b.Line); return c != 0 ? c : a.Column.CompareTo(b.Column); });
+                    var todos = TodoScanner.ScanWorkspace(root);
+                    BeginInvoke(() =>
+                    {
+                        try
+                        {
+                            // Merge with existing diagnostics
+                            var existing = _problemsPanel?.GetDiagnostics() ?? new List<Diagnostic>();
+                            var merged = new List<Diagnostic>();
+                            merged.AddRange(existing);
+                            merged.AddRange(todos);
+                            merged.Sort((a, b) => { int c = a.Line.CompareTo(b.Line); return c != 0 ? c : a.Column.CompareTo(b.Column); });
 
-                    var allActions = _quickActionProvider.GetActions("", merged);
-                    var gutterActions = allActions.Select(a => (a.Line, a.Title, a.Apply)).ToList();
-                    _problemsPanel?.SetDiagnostics(merged);
-                    gutterPanel?.SetQuickActions(gutterActions);
+                            var allActions = _quickActionProvider.GetActions("", merged);
+                            var gutterActions = allActions.Select(a => (a.Line, a.Title, a.Apply)).ToList();
+                            _problemsPanel?.SetDiagnostics(merged);
+                            gutterPanel?.SetQuickActions(gutterActions);
 
-                    double pct = merged.Count > 0 ? (double)todos.Count / merged.Count * 100 : 0;
-                    ShowNotification("Task List", $"Found {todos.Count} TODO(s) — {merged.Count} total issues");
-                });
+                            double pct = merged.Count > 0 ? (double)todos.Count / merged.Count * 100 : 0;
+                            ShowNotification("Task List", $"Found {todos.Count} TODO(s) — {merged.Count} total issues");
+                        }
+                        catch (Exception ex)
+                        {
+                            ShowNotification("Task List", $"Error: {ex.Message}");
+                        }
+                    });
+                }
+                catch
+                {
+                    BeginInvoke(() => ShowNotification("Task List", "Scan failed"));
+                }
             });
         }
 
@@ -3115,9 +3129,20 @@ using System.Linq;
             }
 
             ShowNotification("Dependencies", "Scanning project dependencies...");
-            var projects = ProjectDependencyAnalyzer.Analyze(_workspaceRoot);
-            using var dlg = new DependencyGraphDialog(projects);
-            dlg.ShowDialog(this);
+            try
+            {
+                var projects = ProjectDependencyAnalyzer.Analyze(_workspaceRoot);
+                using var dlg = new DependencyGraphDialog(projects);
+                dlg.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show(
+                    $"Dependency analysis failed:\n{ex.Message}",
+                    "Dependencies Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         private void ImpactAnalysis_Click(object? sender, EventArgs e)
@@ -3136,14 +3161,25 @@ using System.Linq;
             }
 
             ShowNotification("Impact", "Analyzing dependencies...");
-            var projects = ProjectDependencyAnalyzer.Analyze(_workspaceRoot);
-            var affected = ProjectDependencyAnalyzer.FindAffectedFiles(currentFilePath, projects);
-            using var dlg = new ImpactAnalysisDialog(currentFilePath, affected);
-            dlg.FileSelected += (file) => BeginInvoke(() =>
+            try
             {
-                if (File.Exists(file)) OpenFileInNewTab(file);
-            });
-            dlg.ShowDialog(this);
+                var projects = ProjectDependencyAnalyzer.Analyze(_workspaceRoot);
+                var affected = ProjectDependencyAnalyzer.FindAffectedFiles(currentFilePath, projects);
+                using var dlg = new ImpactAnalysisDialog(currentFilePath, affected);
+                dlg.FileSelected += (file) => BeginInvoke(() =>
+                {
+                    if (File.Exists(file)) OpenFileInNewTab(file);
+                });
+                dlg.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show(
+                    $"Impact analysis failed:\n{ex.Message}",
+                    "Impact Analysis Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         private void ShowDependents()
@@ -4137,8 +4173,7 @@ using System.Linq;
             if (next >= 0 && next < tabControl.TabCount)
             {
                 tabControl.SelectedIndex = next;
-                var tabRect = tabControl.GetTabRect(next);
-                tabControl.Invalidate(tabRect);
+                EnsureSelectedTabVisible();
             }
         }
 
@@ -4183,12 +4218,12 @@ using System.Linq;
         private void EnsureSelectedTabVisible()
         {
             if (tabControl == null || tabControl.IsDisposed) return;
-            SuspendLayout();
+            int idx = tabControl.SelectedIndex;
+            var tabRect = tabControl.GetTabRect(idx);
+            if (tabRect.Right <= tabControl.Width && tabRect.Left >= 0) return;
             tabControl.SuspendLayout();
-            tabControl.Multiline = false;
-            tabControl.Multiline = true;
+            tabControl.SelectedIndex = idx;
             tabControl.ResumeLayout();
-            ResumeLayout();
             tabControl.Invalidate();
         }
         private void CloseTabAtLocation(Point location)

@@ -391,7 +391,7 @@ partial class Form1
         tabControl = new TabControl();
         tabControl.Dock = DockStyle.Fill;
         tabControl.Height = 30;
-        tabControl.Multiline = true;
+        tabControl.Multiline = false;
         tabControl.HotTrack = true;
         tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabControl.Alignment = TabAlignment.Top;

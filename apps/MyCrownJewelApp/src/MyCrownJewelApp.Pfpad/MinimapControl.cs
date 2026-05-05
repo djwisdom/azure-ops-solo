@@ -172,7 +172,7 @@ namespace MyCrownJewelApp.Pfpad
             int visibleLines = visHeight / lineH + 1;
 
             if (_totalLines > 0)
-                _lineScale = Math.Max(0.5f, Height / (float)_totalLines);
+                _lineScale = Math.Max(0.5f, Height / (float)Math.Max(_totalLines, visibleLines));
             else
                 _lineScale = 1.0f;
 
@@ -215,8 +215,13 @@ namespace MyCrownJewelApp.Pfpad
             int mapH = Height;
             if (mapW <= 0) return;
 
+            int firstVis = GetFirstVisibleLine();
+            int visHeight = _attachedEditor.ClientSize.Height;
+            int lineH = Math.Max(1, _attachedEditor.Font.Height);
+            int visibleLines = visHeight / lineH + 5;
+
             if (_totalLines > 0)
-                _lineScale = Math.Max(0.5f, mapH / (float)_totalLines);
+                _lineScale = Math.Max(0.5f, mapH / (float)Math.Max(_totalLines, visibleLines));
             else
                 _lineScale = 1.0f;
 
@@ -225,11 +230,6 @@ namespace MyCrownJewelApp.Pfpad
 
             if (_fullMap != null)
                 g.DrawImage(_fullMap, 2, 0);
-
-            int firstVis = GetFirstVisibleLine();
-            int visHeight = _attachedEditor.ClientSize.Height;
-            int lineH = Math.Max(1, _attachedEditor.Font.Height);
-            int visibleLines = visHeight / lineH + 5;
 
             int vpY = (int)(firstVis * _lineScale);
             int vpH = Math.Max(4, (int)(visibleLines * _lineScale));
@@ -257,11 +257,12 @@ namespace MyCrownJewelApp.Pfpad
             var theme = ThemeManager.Instance.CurrentTheme;
             mg.Clear(theme.EditorBackground);
 
-            int linesToDraw = Math.Min(_totalLines, mapH);
-            float linesPerPixel = _totalLines / (float)mapH;
+            int contentHeight = (int)(_totalLines * _lineScale);
+            int renderRows = Math.Min(mapH, contentHeight);
+            float linesPerPixel = _totalLines / (float)Math.Max(1, renderRows);
             double accum = 0;
 
-            for (int pixelRow = 0; pixelRow < mapH; pixelRow++)
+            for (int pixelRow = 0; pixelRow < renderRows; pixelRow++)
             {
                 accum += linesPerPixel;
                 int count = (int)Math.Floor(accum);

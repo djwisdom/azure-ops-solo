@@ -87,7 +87,11 @@ public sealed class CallHierarchyDialog : Form
         Controls.Add(_tree);
         Controls.Add(_statusLabel);
         Controls.Add(closeBtn);
+    }
 
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
         BeginInvoke(ScanAsync);
     }
 

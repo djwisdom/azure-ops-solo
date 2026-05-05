@@ -17,8 +17,8 @@ public class GutterPanel : Panel
     private int LineNumberMarginWidth = 60;
     private const int BookmarkMarginWidth = 20;
     private const int ChangeMarginWidth = 20;
-    private const int FoldMarginWidth = 14;
-    private const int FoldClickWidth = 25;
+    private const int FoldMarginWidth = 18;
+    private const int FoldClickWidth = 28;
     private const int QuickActionWidth = 18;
     private const int CoverageMarginWidth = 8;
 
@@ -113,7 +113,11 @@ public class GutterPanel : Panel
 
         var region = mainForm.FoldingManager.GetRegionAtLine(lineIndex);
         if (region.HasValue)
+        {
             mainForm.ToggleFold(lineIndex);
+            _showFoldMarkers = true;
+            Invalidate();
+        }
     }
 
     private void GutterPanel_MouseMove(object? sender, MouseEventArgs e)
@@ -388,7 +392,6 @@ public class GutterPanel : Panel
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
-        if (!_showFoldMarkers) return;
 
         bool isFoldStart;
         bool folded;
@@ -418,7 +421,10 @@ public class GutterPanel : Panel
         Size sz = Size.Ceiling(g.MeasureString(symbol, _foldFont));
         int tx = x + (FoldMarginWidth - sz.Width) / 2;
         int ty = y + 2;
-        Color col = mainForm.IsDarkTheme ? Color.FromArgb(180, 180, 180) : Color.FromArgb(80, 80, 80);
+        int alpha = folded || _showFoldMarkers ? 220 : 80;
+        Color col = mainForm.IsDarkTheme
+            ? Color.FromArgb(alpha, 180, 180, 180)
+            : Color.FromArgb(alpha, 80, 80, 80);
         using var brush = new SolidBrush(col);
         g.DrawString(symbol, _foldFont, brush, tx, ty);
     }
