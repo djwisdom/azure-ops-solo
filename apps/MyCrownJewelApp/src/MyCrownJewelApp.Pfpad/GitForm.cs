@@ -74,15 +74,16 @@ internal sealed class GitForm : Form
             Orientation = Orientation.Vertical,
             SplitterDistance = 380,
             Padding = new Padding(0),
-            SplitterWidth = 1
+            SplitterWidth = 6,
+            SplitterIncrement = 1
         };
 
-        var leftPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 6, 6, 6) };
+        var leftPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
 
         _rightLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(6, 6, 8, 6),
+            Padding = new Padding(4, 4, 4, 4),
             ColumnCount = 1,
             RowCount = 3,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
@@ -212,9 +213,24 @@ internal sealed class GitForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             Location = new Point(84, y),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            Size = new Size(210, 26),
+            Size = new Size(210, 60),
+            Multiline = true,
+            AcceptsReturn = true,
+            AcceptsTab = false,
+            WordWrap = true,
+            ScrollBars = ScrollBars.Vertical,
+            MaxLength = 10000,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text
+        };
+        _commitMessage.KeyDown += (s, ke) =>
+        {
+            if (ke.Control && ke.KeyCode == Keys.Enter)
+            {
+                ke.SuppressKeyPress = true;
+                if (_commitBtn.Enabled)
+                    Commit_Click(s, EventArgs.Empty);
+            }
         };
 
         _commitMessage.TextChanged += (s, e) =>
@@ -224,7 +240,7 @@ internal sealed class GitForm : Form
             _commitBtn.Enabled = hasText && hasStaged;
         };
 
-        y += 32;
+        y += 66;
 
         var commitHeader = new Label
         {
@@ -464,6 +480,10 @@ internal sealed class GitForm : Form
         StyleButton(_pullBtn, theme, false);
         StyleButton(_commitBtn, theme, true);
         StyleButton(_pushBtn, theme, true);
+
+        ApplyScrollbarTheme(_statusList.Handle);
+        ApplyScrollbarTheme(_commitList.Handle);
+        ApplyScrollbarTheme(_diffBox.Handle);
 
         foreach (Control c in Controls)
         {
