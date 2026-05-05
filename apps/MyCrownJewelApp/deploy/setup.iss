@@ -7,7 +7,7 @@
 #define MyAppName "Personal Flip Pad"
 #define MyAppShortName "Pfpad"
 #define MyAppExeName "MyCrownJewelApp.Pfpad.exe"
-#define MyAppVersion "1.0.6.0"
+#define MyAppVersion "1.0.7.0"
 #define MyAppPublisher "Personal Flip Pad"
 #define MyAppURL "https://github.com/casse/azure-ops-solo"
 #define MyAppAssocName "Source Code File"
@@ -40,6 +40,11 @@ DisableProgramGroupPage=yes
 ; Request restart only if files are in use
 CloseApplications=yes
 RestartApplications=no
+; Upgrade support — remember previous install location and settings
+UsePreviousAppDir=yes
+UsePreviousGroup=yes
+DisableDirPage=auto
+DisableProgramGroupPage=auto
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

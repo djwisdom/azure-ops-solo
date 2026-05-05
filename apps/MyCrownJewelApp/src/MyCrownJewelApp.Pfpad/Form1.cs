@@ -181,6 +181,8 @@ using System.Linq;
 
         // Elastic tab stops system
         private System.Windows.Forms.Timer? elasticTabTimer;
+        private System.Windows.Forms.Timer? _highlightTimer;
+        private int _pendingHighlightLine = -1;
         private CancellationTokenSource? tabComputeCts;
 
         // Git integration via GitService
@@ -289,8 +291,6 @@ using System.Linq;
           this.Shown += (s, e) =>
           {
               PositionTabDropdownButton();
-              _notificationFeed.OnItemsUpdated += OnFeedUpdated;
-              _notificationFeed.StartPolling();
           };
 
         // Enable file drop support (client area + non-client area)
@@ -470,8 +470,22 @@ using System.Linq;
             
             // Elastic tab stops debounce timer
             elasticTabTimer = new System.Windows.Forms.Timer();
-            elasticTabTimer.Interval = 250; // 250ms after last change
+            elasticTabTimer.Interval = 250;
             elasticTabTimer.Tick += (s, e) => { elasticTabTimer.Stop(); if (elasticTabsEnabled) ComputeElasticTabStopsAsync(); };
+
+            // Highlight debounce timer — delays syntax highlighting during rapid typing
+            _highlightTimer = new System.Windows.Forms.Timer();
+            _highlightTimer.Interval = 350;
+            _highlightTimer.Tick += (s, e) =>
+            {
+                _highlightTimer.Stop();
+                if (_pendingHighlightLine >= 0)
+                {
+                    incrementalHighlighter?.MarkDirty(_pendingHighlightLine);
+                    incrementalHighlighter?.MarkDirty(_pendingHighlightLine + 1);
+                    _pendingHighlightLine = -1;
+                }
+            };
 
               // Git service: wire to current file location
               _gitService.OnRepoChanged += () => BeginInvoke(UpdateGitStatusBar);
@@ -482,6 +496,7 @@ using System.Linq;
 
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
+              textEditor.Enter += (s, e) => { if (vimModeEnabled) vimEngine?.SetEditor(textEditor); };
               vimEngine.SaveRequested += () => { if (currentFilePath != null) { SaveFile(); ShowNotification("Vim", "File saved"); } else { SaveAsFile(); } };
               vimEngine.SaveAsRequested += (filename) =>
               {
@@ -776,6 +791,9 @@ using System.Linq;
               };
               _notificationStatusLabel.Click += ToggleNotificationCenter;
               statusStrip.Items.Add(_notificationStatusLabel);
+
+              _notificationFeed.OnItemsUpdated += OnFeedUpdated;
+              _notificationFeed.StartPolling();
 
               // Ensure initial dirty flag is clear after all initialization
              isModified = false;
@@ -2974,9 +2992,16 @@ using System.Linq;
         {
             if (_notificationCenter is not null && !_notificationCenter.IsDisposed)
             {
-                _notificationCenter.BringToFront();
-                _notificationCenter.Focus();
-                return;
+                var wa1 = Screen.GetWorkingArea(_notificationCenter);
+                if (wa1.Contains(_notificationCenter.Bounds))
+                {
+                    _notificationCenter.BringToFront();
+                    _notificationCenter.Focus();
+                    return;
+                }
+                // Off-screen — close and recreate
+                _notificationCenter.Close();
+                _notificationCenter = null;
             }
 
             _notificationCenter = new NotificationCenterForm(_notificationFeed);
@@ -2987,11 +3012,12 @@ using System.Linq;
                 UpdateNotificationBadge();
             };
 
-            // Position near the bell icon in status bar
+            // Position above the status bar notification label, clamped to working area
+            var wa2 = Screen.GetWorkingArea(this);
             var screenPoint = statusStrip.PointToScreen(
                 new Point(_notificationStatusLabel.Bounds.Right, statusStrip.Bounds.Top - _notificationCenter.Height));
-            screenPoint.X = Math.Max(0, screenPoint.X - _notificationCenter.Width + 60);
-            screenPoint.Y = Math.Max(0, screenPoint.Y);
+            screenPoint.X = Math.Clamp(screenPoint.X - _notificationCenter.Width + 60, wa2.Left, wa2.Right - _notificationCenter.Width);
+            screenPoint.Y = Math.Clamp(screenPoint.Y, wa2.Top, wa2.Bottom - _notificationCenter.Height);
             _notificationCenter.Location = screenPoint;
             _notificationCenter.Show(this);
         }
@@ -3544,6 +3570,11 @@ using System.Linq;
                     Text = doc.Content ?? ""
                 };
                 _splitEditor.HandleCreated += (s, e) => ApplyScrollbarTheme();
+                _splitEditor.Enter += (s, e) =>
+                {
+                    if (vimModeEnabled && vimEngine != null)
+                        vimEngine.SetEditor(_splitEditor);
+                };
 
                 if (zone is DragZone.Left or DragZone.Right)
                 {
@@ -4163,9 +4194,10 @@ using System.Linq;
             int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             modifiedLines.Add(lineIndex);
 
-            // Mark affected lines for incremental re-highlighting (line and following line for context)
-            incrementalHighlighter?.MarkDirty(lineIndex);
-            incrementalHighlighter?.MarkDirty(lineIndex + 1);
+            // Debounce syntax highlighting — wait for pause in typing
+            _pendingHighlightLine = lineIndex;
+            _highlightTimer?.Stop();
+            _highlightTimer?.Start();
 
             UpdateStatusBar();
 
@@ -4977,6 +5009,8 @@ using System.Linq;
             SaveSettings();
             elasticTabTimer?.Stop();
             elasticTabTimer?.Dispose();
+            _highlightTimer?.Stop();
+            _highlightTimer?.Dispose();
             incrementalHighlighter?.Dispose();
             _gitService.Dispose();
             _gitPanel?.Dispose();

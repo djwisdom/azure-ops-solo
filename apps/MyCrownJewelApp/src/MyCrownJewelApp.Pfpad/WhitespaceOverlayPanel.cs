@@ -36,7 +36,7 @@ public sealed class WhitespaceOverlayForm : Form
         SetStyle(ControlStyles.SupportsTransparentBackColor, false);
         DoubleBuffered = true;
 
-        _syncTimer = new System.Windows.Forms.Timer { Interval = 50 };
+        _syncTimer = new System.Windows.Forms.Timer { Interval = 150 };
         _syncTimer.Tick += (s, e) => SyncPosition();
     }
 

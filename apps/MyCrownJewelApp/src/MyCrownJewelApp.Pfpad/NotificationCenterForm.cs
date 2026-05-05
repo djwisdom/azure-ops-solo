@@ -155,7 +155,7 @@ public sealed class NotificationCenterForm : Form
         {
             using var dlg = new NotificationSettingsForm(_feed);
             dlg.ShowDialog(this);
-            Close(); // refresh the notification center after settings change
+            RefreshList();
         };
         toolbar.Controls.Add(settingsBtn);
 
@@ -163,23 +163,17 @@ public sealed class NotificationCenterForm : Form
         _listView = new ListView
         {
             Dock = DockStyle.Fill,
-            View = View.Details,
-            FullRowSelect = true,
+            View = View.List,
             ShowItemToolTips = true,
-            HeaderStyle = ColumnHeaderStyle.None,
             BorderStyle = BorderStyle.None,
             BackColor = _theme.Background,
             ForeColor = _theme.Text,
             Font = new Font("Segoe UI", 9),
-            OwnerDraw = true,
-            MultiSelect = false
+            MultiSelect = false,
+            FullRowSelect = true
         };
-        _listView.Columns.Add("Notification", -2);
-        _listView.DrawItem += ListView_DrawItem;
-        _listView.DrawColumnHeader += (s, e) => { };
         _listView.MouseClick += ListView_MouseClick;
         _listView.MouseDoubleClick += ListView_MouseDoubleClick;
-        _listView.Resize += (s, e) => { if (_listView.Columns.Count > 0) _listView.Columns[0].Width = _listView.ClientSize.Width - 4; };
 
         // Loading indicator
         var loadingLabel = new Label
@@ -195,8 +189,6 @@ public sealed class NotificationCenterForm : Form
         Controls.Add(_listView);
         Controls.Add(toolbar);
         Controls.Add(titleBar);
-
-        Deactivate += (s, e) => Close();
 
         _feed.OnItemsUpdated += OnFeedUpdated;
 
@@ -219,16 +211,21 @@ public sealed class NotificationCenterForm : Form
         var items = _feed.AllItems;
         if (items.Count == 0)
         {
-            _listView.Items.Add(new ListViewItem("No notifications yet.") { Font = new Font("Segoe UI", 9, FontStyle.Italic), ForeColor = _theme.Muted });
+            _listView.Items.Add("No notifications yet.");
         }
         else
         {
             foreach (var item in items)
             {
+                string prefix = item.IsRead ? "  " : "\u25CF ";
+                string display = $"{prefix}[{item.SourceLabel}] {item.Title}";
+                if (display.Length > 120)
+                    display = display[..117] + "...";
                 var lvi = new ListViewItem
                 {
-                    Text = "",  // custom drawn
-                    Tag = item
+                    Text = display,
+                    Tag = item,
+                    ToolTipText = item.Summary
                 };
                 _listView.Items.Add(lvi);
             }
@@ -236,69 +233,6 @@ public sealed class NotificationCenterForm : Form
 
         _titleLabel.Text = $"Notification Center ({(items.Count(i => !i.IsRead))} new)";
         _listView.EndUpdate();
-    }
-
-    private void ListView_DrawItem(object? sender, DrawListViewItemEventArgs e)
-    {
-        if (e.Item?.Tag is not FeedItem item)
-        {
-            e.DrawDefault = true;
-            return;
-        }
-
-        var rect = e.Bounds;
-        bool isRead = item.IsRead;
-        bool isSelected = e.Item.Selected;
-
-        var bg = isSelected
-            ? (isRead ? _theme.ButtonHoverBackground : _theme.Accent.WithAlpha(80))
-            : _theme.Background;
-        using var bgBrush = new SolidBrush(bg);
-        e.Graphics.FillRectangle(bgBrush, rect);
-
-        // Left color stripe per source
-        var stripeColor = GetSourceColor(item.Source);
-        using var stripeBrush = new SolidBrush(stripeColor);
-        e.Graphics.FillRectangle(stripeBrush, rect.X, rect.Y, 4, rect.Height);
-
-        int x = rect.X + 12;
-        int y = rect.Y + 4;
-
-        // Source label
-        var sourceFont = new Font("Segoe UI", 7.5f, FontStyle.Bold);
-        TextRenderer.DrawText(e.Graphics, item.SourceLabel, sourceFont,
-            new Point(x, y), stripeColor, TextFormatFlags.NoPadding);
-        sourceFont.Dispose();
-
-        // Title
-        y += 16;
-        var titleFont = new Font("Segoe UI", 9, isRead ? FontStyle.Regular : FontStyle.Bold);
-        var titleColor = isRead ? _theme.Muted : _theme.Text;
-        var titleText = item.Title.Length > 60 ? item.Title[..60] + "..." : item.Title;
-        TextRenderer.DrawText(e.Graphics, titleText, titleFont,
-            new Rectangle(x, y, rect.Width - x - 8, 18), titleColor,
-            TextFormatFlags.NoPadding | TextFormatFlags.WordEllipsis);
-        titleFont.Dispose();
-
-        // Summary
-        y += 18;
-        var summaryFont = new Font("Segoe UI", 8, FontStyle.Regular);
-        TextRenderer.DrawText(e.Graphics, item.Summary, summaryFont,
-            new Rectangle(x, y, rect.Width - x - 8, 16), _theme.Muted,
-            TextFormatFlags.NoPadding | TextFormatFlags.WordEllipsis);
-        summaryFont.Dispose();
-
-        // Time ago on right
-        var timeFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-        var timeSize = TextRenderer.MeasureText(item.TimeAgo, timeFont);
-        TextRenderer.DrawText(e.Graphics, item.TimeAgo, timeFont,
-            new Point(rect.Right - timeSize.Width - 8, rect.Y + 5), _theme.Disabled,
-            TextFormatFlags.NoPadding);
-        timeFont.Dispose();
-
-        // Bottom separator
-        using var sepPen = new Pen(_theme.Border);
-        e.Graphics.DrawLine(sepPen, rect.X, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
     }
 
     private void ListView_MouseClick(object? sender, MouseEventArgs e)
@@ -383,10 +317,4 @@ public sealed class NotificationCenterForm : Form
         if (_feed.AllItems.Count == 0)
             _ = _feed.FetchAllAsync();
     }
-}
-
-internal static class ColorExtensions
-{
-    public static Color WithAlpha(this Color c, int alpha) =>
-        Color.FromArgb(alpha, c.R, c.G, c.B);
 }

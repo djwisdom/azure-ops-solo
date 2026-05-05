@@ -58,7 +58,7 @@ namespace MyCrownJewelApp.Pfpad
             Width = MinimapWidth;
             MinimumSize = new Size(40, 0);
 
-            _pollTimer = new System.Windows.Forms.Timer { Interval = 50 };
+            _pollTimer = new System.Windows.Forms.Timer { Interval = 150 };
             _pollTimer.Tick += (s, e) => PollEditor();
         }
 
@@ -181,7 +181,17 @@ namespace MyCrownJewelApp.Pfpad
             vpY = Math.Max(0, Math.Min(vpY, Height - vpH));
             vpH = Math.Min(vpH, Height - vpY);
             var newRect = new Rectangle(0, vpY, Width, vpH);
-            if (newRect != _viewportRect) { _viewportRect = newRect; Invalidate(); RaiseViewportChanged(); }
+            if (newRect != _viewportRect)
+            {
+                if (Math.Abs(newRect.Y - _viewportRect.Y) < 3 && _viewportRect.Height == newRect.Height)
+                    _viewportRect = newRect;
+                else
+                {
+                    _viewportRect = newRect;
+                    Invalidate();
+                    RaiseViewportChanged();
+                }
+            }
         }
 
         private void RaiseViewportChanged()

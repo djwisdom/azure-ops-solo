@@ -23,7 +23,7 @@ namespace MyCrownJewelApp.Pfpad
         public bool Enabled { get; set; }
         public string CommandText => _cmdBuffer.ToString();
 
-        private readonly RichTextBox _tb;
+        private RichTextBox _tb;
         private readonly StringBuilder _cmdBuffer = new();
         private string? _lastYank;
         private int _repeatCount = 1;
@@ -63,6 +63,11 @@ namespace MyCrownJewelApp.Pfpad
         };
 
         public VimEngine(RichTextBox textBox)
+        {
+            _tb = textBox;
+        }
+
+        public void SetEditor(RichTextBox textBox)
         {
             _tb = textBox;
         }

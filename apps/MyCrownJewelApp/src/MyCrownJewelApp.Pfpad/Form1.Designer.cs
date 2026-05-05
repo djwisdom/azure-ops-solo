@@ -400,7 +400,7 @@ partial class Form1
         textEditor = new HighlightRichTextBox();
         textEditor.Dock = DockStyle.Fill;
         textEditor.Multiline = true;
-        textEditor.ScrollBars = RichTextBoxScrollBars.ForcedVertical;
+        textEditor.ScrollBars = RichTextBoxScrollBars.Both;
         textEditor.AcceptsTab = true;
         textEditor.Font = new Font("Consolas", 12);
         textEditor.BorderStyle = BorderStyle.None;
