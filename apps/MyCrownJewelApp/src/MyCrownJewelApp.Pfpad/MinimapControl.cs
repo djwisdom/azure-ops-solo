@@ -25,14 +25,17 @@ namespace MyCrownJewelApp.Pfpad
         private Rectangle _viewportRect = Rectangle.Empty;
         private bool _isDragging;
         private volatile int _totalLines;
-        private float _lineScale;
+        private int _mapFirstLine;
         private Func<int, IReadOnlyList<TokenInfo>?>? _tokenProvider;
 
         private Bitmap? _fullMap;
         private bool _mapDirty = true;
         private int _mapGeneration;
 
-        [Category("Layout")]
+        private const float PixelsPerLine = 2f;
+        private const float LineContentHeight = 1f;
+        private const float LineGap = 1f;
+
         public int MinimapWidth { get; set; } = 100;
 
         [Category("Appearance")]
@@ -45,7 +48,6 @@ namespace MyCrownJewelApp.Pfpad
         public Color BorderColor { get; set; } = Color.FromArgb(60, 60, 60);
 
         private bool _mouseHovering;
-        private readonly Dictionary<int, Color> _tokenColorCache = new();
 
         public MinimapControl()
         {
@@ -165,32 +167,39 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
             int total = CountLines();
-            if (total != _totalLines) { _totalLines = total; MarkDirty(); Invalidate(); return; }
+            if (total != _totalLines) { _totalLines = total; MarkDirty(); Invalidate(); }
+
             int firstVis = GetFirstVisibleLine();
-            int visHeight = _attachedEditor.ClientSize.Height;
-            int lineH = Math.Max(1, _attachedEditor.Font.Height);
+            var editor = _attachedEditor;
+            int visHeight = editor.ClientSize.Height;
+            int lineH = Math.Max(1, editor.Font.Height);
             int visibleLines = visHeight / lineH + 1;
 
-            if (_totalLines > 0)
-                _lineScale = Math.Max(0.5f, Height / (float)Math.Max(_totalLines, visibleLines));
-            else
-                _lineScale = 1.0f;
+            int minimapContentLines = (int)(Height / PixelsPerLine);
+            int newFirstLine = 0;
 
-            int vpY = (int)(firstVis * _lineScale);
-            int vpH = Math.Max(2, (int)(visibleLines * _lineScale));
-            vpY = Math.Max(0, Math.Min(vpY, Height - vpH));
+            if (_totalLines > minimapContentLines)
+            {
+                int targetCenter = firstVis + visibleLines / 2;
+                int halfContent = minimapContentLines / 2;
+                newFirstLine = Math.Max(0, Math.Min(_totalLines - minimapContentLines, targetCenter - halfContent));
+            }
+
+            if (newFirstLine != _mapFirstLine)
+            {
+                _mapFirstLine = newFirstLine;
+                MarkDirty();
+            }
+
+            int vpY = (int)((firstVis - _mapFirstLine) * PixelsPerLine);
+            int vpH = Math.Max(3, (int)(visibleLines * PixelsPerLine));
             vpH = Math.Min(vpH, Height - vpY);
-            var newRect = new Rectangle(0, vpY, Width, vpH);
+            var newRect = new Rectangle(0, Math.Max(0, vpY), Width, Math.Max(2, vpH));
             if (newRect != _viewportRect)
             {
-                if (Math.Abs(newRect.Y - _viewportRect.Y) < 3 && _viewportRect.Height == newRect.Height)
-                    _viewportRect = newRect;
-                else
-                {
-                    _viewportRect = newRect;
-                    Invalidate();
-                    RaiseViewportChanged();
-                }
+                _viewportRect = newRect;
+                Invalidate();
+                RaiseViewportChanged();
             }
         }
 
@@ -200,7 +209,8 @@ namespace MyCrownJewelApp.Pfpad
             if (h == null) return;
             int vis = h.ClientSize.Height / Math.Max(1, h.Font.Height) + 1;
             ViewportChanged?.Invoke(this, new ViewportChangedEventArgs(
-                Math.Max(0, (int)(_viewportRect.Y / _lineScale)),
+                _mapFirstLine == 0 ? (_viewportRect.Y < 0 ? 0 : (int)(_viewportRect.Y / PixelsPerLine + _mapFirstLine))
+                    : (int)((_viewportRect.Y + _mapFirstLine * PixelsPerLine) / PixelsPerLine),
                 vis));
         }
 
@@ -212,30 +222,22 @@ namespace MyCrownJewelApp.Pfpad
             if (_attachedEditor == null || _totalLines == 0) return;
 
             int mapW = Width - 4;
-            int mapH = Height;
             if (mapW <= 0) return;
 
-            int firstVis = GetFirstVisibleLine();
-            int visHeight = _attachedEditor.ClientSize.Height;
             int lineH = Math.Max(1, _attachedEditor.Font.Height);
+            int visHeight = _attachedEditor.ClientSize.Height;
             int visibleLines = visHeight / lineH + 5;
 
-            if (_totalLines > 0)
-                _lineScale = Math.Max(0.5f, mapH / (float)Math.Max(_totalLines, visibleLines));
-            else
-                _lineScale = 1.0f;
-
-            if (_mapDirty || _fullMap == null || _fullMap.Width != mapW || _fullMap.Height != mapH)
-                RebuildFullMap(mapW, mapH);
+            if (_mapDirty || _fullMap == null || _fullMap.Width != mapW || _fullMap.Height != Height)
+                RebuildFullMap(mapW, Height);
 
             if (_fullMap != null)
                 g.DrawImage(_fullMap, 2, 0);
 
-            int vpY = (int)(firstVis * _lineScale);
-            int vpH = Math.Max(4, (int)(visibleLines * _lineScale));
-            vpY = Math.Max(0, Math.Min(vpY, Height - vpH));
-            vpH = Math.Min(vpH, Height - vpY);
-            _viewportRect = new Rectangle(2, vpY, mapW, vpH);
+            int firstVis = GetFirstVisibleLine();
+            int vpY = (int)((firstVis - _mapFirstLine) * PixelsPerLine);
+            int vpH = Math.Max(4, (int)(visibleLines * PixelsPerLine));
+            _viewportRect = new Rectangle(2, Math.Max(0, vpY), mapW, Math.Min(vpH, Height - Math.Max(0, vpY)));
 
             if (_mouseHovering || _isDragging)
             {
@@ -257,28 +259,21 @@ namespace MyCrownJewelApp.Pfpad
             var theme = ThemeManager.Instance.CurrentTheme;
             mg.Clear(theme.EditorBackground);
 
-            int contentHeight = (int)(_totalLines * _lineScale);
-            int renderRows = Math.Min(mapH, contentHeight);
-            float linesPerPixel = _totalLines / (float)Math.Max(1, renderRows);
-            double accum = 0;
+            int endLine = (int)Math.Ceiling((_mapFirstLine + mapH / PixelsPerLine));
+            endLine = Math.Min(endLine, _totalLines);
 
-            for (int pixelRow = 0; pixelRow < renderRows; pixelRow++)
+            for (int line = _mapFirstLine; line < endLine; line++)
             {
-                accum += linesPerPixel;
-                int count = (int)Math.Floor(accum);
-                accum -= count;
-                if (count <= 0) continue;
+                int pixelY = (int)((line - _mapFirstLine) * PixelsPerLine + 0.5f);
+                if (pixelY >= mapH) break;
 
-                // Sample the middle line of this pixel-row's range for content/color
-                int sampleLine = (int)(pixelRow * linesPerPixel + count * 0.5f);
-                if (sampleLine >= _totalLines) break;
-
-                string text = GetLineText(sampleLine);
+                string text = GetLineText(line);
                 if (string.IsNullOrWhiteSpace(text))
                     continue;
 
-                var tokens = _tokenProvider?.Invoke(sampleLine);
+                var tokens = _tokenProvider?.Invoke(line);
                 int x = 0;
+                bool hasContent = false;
 
                 for (int pos = 0; pos < text.Length; pos++)
                 {
@@ -296,7 +291,8 @@ namespace MyCrownJewelApp.Pfpad
                         Color color = GetCharColor(tokens, pos, text.Length);
                         color = Color.FromArgb(200, color);
                         using var brush = new SolidBrush(color);
-                        mg.FillRectangle(brush, x, pixelRow, 1, 1);
+                        mg.FillRectangle(brush, x, pixelY, 1, (int)LineContentHeight);
+                        hasContent = true;
                     }
                     x++;
                 }
@@ -343,7 +339,7 @@ namespace MyCrownJewelApp.Pfpad
             }
             else
             {
-                int targetLine = (int)(e.Y / _lineScale);
+                int targetLine = _mapFirstLine + (int)(e.Y / PixelsPerLine);
                 targetLine = Math.Max(0, Math.Min(_totalLines - 1, targetLine));
                 int visHeight = _attachedEditor.ClientSize.Height;
                 int lineH = Math.Max(1, _attachedEditor.Font.Height);
@@ -360,7 +356,7 @@ namespace MyCrownJewelApp.Pfpad
             base.OnMouseMove(e);
             if (!_isDragging || _attachedEditor == null) return;
 
-            int targetLine = (int)(e.Y / _lineScale);
+            int targetLine = _mapFirstLine + (int)(e.Y / PixelsPerLine);
             targetLine = Math.Max(0, Math.Min(_totalLines - 1, targetLine));
             int visHeight = _attachedEditor.ClientSize.Height;
             int lineH = Math.Max(1, _attachedEditor.Font.Height);
