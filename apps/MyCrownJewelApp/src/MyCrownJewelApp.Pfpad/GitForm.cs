@@ -356,7 +356,13 @@ internal sealed class GitForm : Form
         _git.OnError += (msg) => BeginInvoke(() => ThemedMessageBox.Show(msg, "Git", MessageBoxButtons.OK, MessageBoxIcon.Warning));
 
         ApplyTheme(theme);
-        ThemeManager.Instance.ThemeChanged += t => BeginInvoke(() => ApplyTheme(t));
+        ThemeManager.Instance.ThemeChanged += t =>
+        {
+            if (IsHandleCreated)
+                BeginInvoke(() => ApplyTheme(t));
+            else
+                ApplyTheme(t);
+        };
 
         Shown += (s, e) => RefreshStatus();
     }
