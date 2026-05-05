@@ -347,6 +347,11 @@ partial class Form1
         panelMenu.DropDownItems.Add(notificationCenterMenuItem);
         var notificationSettingsMenuItem = new ToolStripMenuItem("Notification &Settings...", null, ConfigureNotifications_Click);
         panelMenu.DropDownItems.Add(notificationSettingsMenuItem);
+        panelMenu.DropDownItems.Add(new ToolStripSeparator());
+        var dependenciesMenuItem = new ToolStripMenuItem("&Dependencies", null, Dependencies_Click, Keys.Control | Keys.Alt | Keys.D);
+        panelMenu.DropDownItems.Add(dependenciesMenuItem);
+        var impactMenuItem = new ToolStripMenuItem("&Impact Analysis", null, ImpactAnalysis_Click, Keys.Control | Keys.Alt | Keys.I);
+        panelMenu.DropDownItems.Add(impactMenuItem);
 
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);

@@ -3065,6 +3065,58 @@ using System.Linq;
                 LoadCoverageFile(dlg.FileName);
         }
 
+        private void Dependencies_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+            {
+                ThemedMessageBox.Show("Open a workspace folder first (Panel > Open Folder).",
+                    "Dependencies", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ShowNotification("Dependencies", "Scanning project dependencies...");
+            var projects = ProjectDependencyAnalyzer.Analyze(_workspaceRoot);
+            using var dlg = new DependencyGraphDialog(projects);
+            dlg.ShowDialog(this);
+        }
+
+        private void ImpactAnalysis_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(currentFilePath))
+            {
+                ThemedMessageBox.Show("Save the current file first, then run impact analysis.",
+                    "Impact Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+            {
+                ThemedMessageBox.Show("Open a workspace folder first (Panel > Open Folder).",
+                    "Impact Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ShowNotification("Impact", "Analyzing dependencies...");
+            var projects = ProjectDependencyAnalyzer.Analyze(_workspaceRoot);
+            var affected = ProjectDependencyAnalyzer.FindAffectedFiles(currentFilePath, projects);
+            using var dlg = new ImpactAnalysisDialog(currentFilePath, affected);
+            dlg.FileSelected += (file) => BeginInvoke(() =>
+            {
+                if (File.Exists(file)) OpenFileInNewTab(file);
+            });
+            dlg.ShowDialog(this);
+        }
+
+        private void ShowDependents()
+        {
+            if (string.IsNullOrEmpty(currentFilePath))
+            {
+                ThemedMessageBox.Show("Save the current file first.", "Find Dependents",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            ImpactAnalysis_Click(null, EventArgs.Empty);
+        }
+
         private void RunTestsWithCoverage()
         {
             string testProj = FindTestProject();
@@ -4748,6 +4800,8 @@ using System.Linq;
                 ctx.Items.Add("Call Hierarchy", null, (s, args) => ShowCallHierarchy());
                 ctx.Items.Add(new ToolStripSeparator());
                 ctx.Items.Add("Parse Stack Trace", null, (s, args) => ParseStackTrace());
+                ctx.Items.Add(new ToolStripSeparator());
+                ctx.Items.Add("Find Dependents", null, (s, args) => ShowDependents());
                 ctx.Items.Add("Cut", null, (s, args) => textEditor.Cut());
                 ctx.Items.Add("Copy", null, (s, args) => textEditor.Copy());
                 ctx.Items.Add("Paste", null, (s, args) => textEditor.Paste());
