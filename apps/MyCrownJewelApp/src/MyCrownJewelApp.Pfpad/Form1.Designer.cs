@@ -42,6 +42,7 @@ partial class Form1
     #pragma warning restore CS0169
 
     private ToolStripMenuItem viewMenu;
+    private ToolStripMenuItem panelMenu;
     private ToolStripMenuItem zoomMenu;
     private ToolStripMenuItem zoomInMenuItem;
     private ToolStripMenuItem zoomOutMenuItem;
@@ -81,6 +82,8 @@ partial class Form1
     internal ToolStripMenuItem openFolderMenuItem;
     internal ToolStripMenuItem notificationCenterMenuItem;
     internal ToolStripMenuItem gitPanelMenuItem;
+    internal ToolStripMenuItem symbolsMenuItem;
+    internal ToolStripMenuItem problemsMenuItem;
     private ToolStripMenuItem themeMenu;
     private ToolStripMenuItem darkThemeMenuItem;
     private ToolStripMenuItem lightThemeMenuItem;
@@ -111,6 +114,7 @@ partial class Form1
     private ToolStripStatusLabel gitBranchLabel;
     internal ToolStripStatusLabel gitDirtyLabel;
     internal ToolStripStatusLabel gitSyncLabel;
+    internal ToolStripProgressBar scanProgressBar;
 
     protected override void Dispose(bool disposing)
     {
@@ -173,6 +177,8 @@ partial class Form1
         findPreviousMenuItem = new ToolStripMenuItem("Find &Previous", null, FindPrevious_Click, Keys.Shift | Keys.F3);
         replaceMenuItem = new ToolStripMenuItem("&Replace...", null, Replace_Click, Keys.Control | Keys.H);
         gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click, Keys.Control | Keys.G);
+        var gotoDefMenuItem = new ToolStripMenuItem("Go to &Definition", null, GoToDefinition_Click, Keys.F12);
+        editMenu.DropDownItems.Add(gotoDefMenuItem);
         selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, Keys.Control | Keys.A);
         timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, Keys.F5);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click, Keys.Control | Keys.Shift | Keys.F);
@@ -282,6 +288,7 @@ partial class Form1
             darkThemeMenuItem, lightThemeMenuItem
         });
         viewMenu.DropDownItems.Add(zoomMenu);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(statusBarMenuItem);
         viewMenu.DropDownItems.Add(wordWrapMenuItem);
         viewMenu.DropDownItems.Add(syntaxHighlightingMenuItem);
@@ -297,39 +304,47 @@ partial class Form1
         viewMenu.DropDownItems.Add(minimapMenuItem);
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        viewMenu.DropDownItems.Add(fontMenuItem);
+        viewMenu.DropDownItems.Add(themeMenu);
+        viewMenu.DropDownItems.Add(new ToolStripSeparator());
         splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Shift | Keys.V);
         splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
         viewMenu.DropDownItems.Add(splitVMenuItem);
         viewMenu.DropDownItems.Add(splitHMenuItem);
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+
+        // Panel menu — sidebar panel toggles
+        panelMenu = new ToolStripMenuItem("&Panel");
         openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
         workspaceMenuItem = new ToolStripMenuItem("&Workspace", null, ToggleWorkspace_Click, Keys.Control | Keys.Shift | Keys.W);
         workspaceMenuItem.CheckOnClick = true;
-        openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
-        workspaceMenuItem.CheckOnClick = true;
-        viewMenu.DropDownItems.Add(openFolderMenuItem);
-        viewMenu.DropDownItems.Add(workspaceMenuItem);
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        panelMenu.DropDownItems.Add(openFolderMenuItem);
+        panelMenu.DropDownItems.Add(workspaceMenuItem);
+        panelMenu.DropDownItems.Add(new ToolStripSeparator());
         gitPanelMenuItem = new ToolStripMenuItem("&Source Control", null, ToggleGitPanel, Keys.Control | Keys.Alt | Keys.G);
         gitPanelMenuItem.CheckOnClick = true;
-        viewMenu.DropDownItems.Add(gitPanelMenuItem);
+        panelMenu.DropDownItems.Add(gitPanelMenuItem);
         var gitFormMenuItem = new ToolStripMenuItem("Source Control &Window...", null, OpenGitForm, Keys.Control | Keys.Shift | Keys.G);
-        viewMenu.DropDownItems.Add(gitFormMenuItem);
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        panelMenu.DropDownItems.Add(gitFormMenuItem);
+        symbolsMenuItem = new ToolStripMenuItem("&Symbols", null, ToggleSymbolPanel, Keys.Control | Keys.Alt | Keys.S);
+        symbolsMenuItem.CheckOnClick = true;
+        panelMenu.DropDownItems.Add(symbolsMenuItem);
+        problemsMenuItem = new ToolStripMenuItem("&Problems", null, ToggleProblemsPanel, Keys.Control | Keys.Alt | Keys.P);
+        problemsMenuItem.CheckOnClick = true;
+        panelMenu.DropDownItems.Add(problemsMenuItem);
+        panelMenu.DropDownItems.Add(new ToolStripSeparator());
         terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
         terminalMenuItem.Checked = false;
-        viewMenu.DropDownItems.Add(terminalMenuItem);
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        panelMenu.DropDownItems.Add(terminalMenuItem);
+        panelMenu.DropDownItems.Add(new ToolStripSeparator());
         notificationCenterMenuItem = new ToolStripMenuItem("Notification &Center", null, ToggleNotificationCenter, Keys.Control | Keys.Shift | Keys.N);
-        viewMenu.DropDownItems.Add(notificationCenterMenuItem);
+        panelMenu.DropDownItems.Add(notificationCenterMenuItem);
         var notificationSettingsMenuItem = new ToolStripMenuItem("Notification &Settings...", null, ConfigureNotifications_Click);
-        viewMenu.DropDownItems.Add(notificationSettingsMenuItem);
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
-        viewMenu.DropDownItems.Add(themeMenu);
+        panelMenu.DropDownItems.Add(notificationSettingsMenuItem);
 
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);
         menuStrip.Items.Add(viewMenu);
+        menuStrip.Items.Add(panelMenu);
         // Tools menu
         toolsMenu = new ToolStripMenuItem("&Tools");
         configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);
@@ -469,6 +484,14 @@ partial class Form1
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
         encodingLabel = new ToolStripStatusLabel("UTF-8");
+        scanProgressBar = new ToolStripProgressBar
+        {
+            Name = "scanProgressBar",
+            Style = ProgressBarStyle.Continuous,
+            Width = 100,
+            Visible = false,
+            Alignment = ToolStripItemAlignment.Right
+        };
         themeDropDown = new ToolStripDropDownButton();
         themeDropDown.Text = "Theme";
         themeDropDown.Width = 60;
@@ -498,6 +521,7 @@ partial class Form1
         statusStrip.Items.Add(encodingLabel);
         statusStrip.Items.Add(themeDropDown);
         statusStrip.Items.Add(fileTypeLabel);
+        statusStrip.Items.Add(scanProgressBar);
 
         const int itemPadding = 8;
         lineColLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);

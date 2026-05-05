@@ -33,6 +33,13 @@ public sealed class SymbolIndexService : IDisposable
         return _index.TryGetValue(name, out var list) ? list : Array.Empty<SymbolLocation>();
     }
 
+    public IEnumerable<SymbolLocation> GetAllSymbols()
+    {
+        foreach (var list in _index.Values)
+            foreach (var loc in list)
+                yield return loc;
+    }
+
     public bool HasIndex => _rootDir is not null;
 
     public void RebuildIndex(string rootDir)

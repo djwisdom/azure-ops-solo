@@ -22,11 +22,36 @@ internal sealed class WorkspacePanel : UserControl
     private bool _showAllFiles;
 #pragma warning restore CS0649
     private readonly System.Windows.Forms.Timer _refreshTimer;
+    private CancellationTokenSource? _scanCts;
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
+    public event Action? ScanStarted;
+    public event Action? ScanCompleted;
+    public event Action<string>? ScanProgressChanged;
 
     public string RootPath => _rootPath;
+    public bool IsScanning => _scanCts is not null;
+
+    public void CancelScan()
+    {
+        if (_scanCts is not null)
+        {
+            _scanCts.Cancel();
+            _scanCts.Dispose();
+            _scanCts = null;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            CancelScan();
+            _refreshTimer?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
 
     private static readonly HashSet<string> DefaultTextExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -204,6 +229,7 @@ internal sealed class WorkspacePanel : UserControl
 
     public void SetRoot(string path)
     {
+        CancelScan();
         _rootPath = path;
         _rootLabel.Text = !string.IsNullOrEmpty(path) ? Path.GetFileName(path) : "Workspace";
         _rootLabel.ToolTipText = path;
@@ -212,8 +238,14 @@ internal sealed class WorkspacePanel : UserControl
         {
             var rootNode = CreateDirectoryNode(path);
             _tree.Nodes.Add(rootNode);
-            rootNode.Expand();
             _tree.SelectedNode = rootNode;
+            if (IsHandleCreated)
+                BeginInvoke(() => PopulateDirectoryAsync(rootNode, path));
+            else
+            {
+                // Handle not yet created (e.g. startup) — do sync fallback
+                rootNode.Expand();
+            }
         }
         _refreshTimer.Stop();
         if (!string.IsNullOrEmpty(path))
@@ -222,6 +254,7 @@ internal sealed class WorkspacePanel : UserControl
 
     public void RefreshTree()
     {
+        CancelScan();
         if (string.IsNullOrEmpty(_rootPath) || !Directory.Exists(_rootPath)) return;
         if (_tree.Nodes.Count == 0)
         {
@@ -458,6 +491,134 @@ internal sealed class WorkspacePanel : UserControl
         catch { }
     }
 
+    private async void PopulateDirectoryAsync(TreeNode rootNode, string rootPath)
+    {
+        CancelScan();
+        var cts = new CancellationTokenSource();
+        _scanCts = cts;
+        var token = cts.Token;
+
+        try
+        {
+            ScanStarted?.Invoke();
+
+            // Collect all entries on background thread to avoid blocking the UI
+            var result = await Task.Run(() => CollectTreeStructure(rootPath, token), token);
+
+            if (token.IsCancellationRequested || result is null) return;
+
+            // Apply all nodes to the tree on the UI thread
+            if (!IsHandleCreated) return;
+            rootNode.Nodes.Clear();
+            ApplyNodes(rootNode, result);
+
+            rootNode.Expand();
+            _tree.SelectedNode = rootNode;
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception)
+        {
+            // Background scan failed silently — tree remains with root-only placeholder
+        }
+        finally
+        {
+            if (_scanCts == cts)
+            {
+                _scanCts = null;
+                cts.Dispose();
+            }
+            ScanCompleted?.Invoke();
+        }
+    }
+
+    private sealed class DirEntry
+    {
+        public string Name { get; init; } = "";
+        public string FullPath { get; init; } = "";
+        public List<DirEntry> SubDirs { get; } = new();
+        public List<string> Files { get; } = new();
+    }
+
+    private DirEntry? CollectTreeStructure(string rootPath, CancellationToken token)
+    {
+        try
+        {
+            int progressCount = 0;
+            var root = new DirEntry
+            {
+                Name = Path.GetFileName(rootPath),
+                FullPath = rootPath
+            };
+            CollectDir(root, rootPath, token, ref progressCount);
+            return root;
+        }
+        catch { return null; }
+    }
+
+    private void CollectDir(DirEntry entry, string dirPath, CancellationToken token, ref int progressCount)
+    {
+        if (token.IsCancellationRequested) return;
+
+        try
+        {
+            var dirs = new List<string>();
+            var files = new List<string>();
+
+            foreach (var d in Directory.EnumerateDirectories(dirPath))
+            {
+                if (token.IsCancellationRequested) return;
+                string name = Path.GetFileName(d);
+                if (!name.StartsWith('.') && !IsIgnoredDirectory(name))
+                    dirs.Add(d);
+            }
+
+            foreach (var f in Directory.EnumerateFiles(dirPath))
+            {
+                if (token.IsCancellationRequested) return;
+                string ext = Path.GetExtension(f);
+                if (_showAllFiles || _textExtensions.Contains(ext))
+                    files.Add(f);
+            }
+
+            dirs.Sort(StringComparer.OrdinalIgnoreCase);
+            files.Sort(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var d in dirs)
+            {
+                if (token.IsCancellationRequested) return;
+                var child = new DirEntry { Name = Path.GetFileName(d), FullPath = d };
+                entry.SubDirs.Add(child);
+                CollectDir(child, d, token, ref progressCount);
+            }
+
+            entry.Files.AddRange(files);
+
+            progressCount++;
+            if (progressCount % 25 == 0 && IsHandleCreated)
+            {
+                int pct = Math.Min(progressCount, 100);
+                BeginInvoke(new Action(() =>
+                    ScanProgressChanged?.Invoke($"Scanning ({pct}%)...")));
+            }
+        }
+        catch { }
+    }
+
+    private void ApplyNodes(TreeNode parentNode, DirEntry entry)
+    {
+        foreach (var sub in entry.SubDirs)
+        {
+            var node = CreateDirectoryNode(sub.FullPath);
+            parentNode.Nodes.Add(node);
+            ApplyNodes(node, sub);
+        }
+        foreach (var f in entry.Files)
+        {
+            parentNode.Nodes.Add(CreateFileNode(f));
+        }
+    }
+
     private static bool IsIgnoredDirectory(string name)
     {
         return name.Equals("node_modules", StringComparison.OrdinalIgnoreCase)
@@ -503,7 +664,10 @@ internal sealed class WorkspacePanel : UserControl
                 if (File.Exists(f))
                     FileOpenRequested?.Invoke(f);
                 else if (Directory.Exists(f))
+                {
+                    CancelScan();
                     SetRoot(f);
+                }
             }
         }
     }

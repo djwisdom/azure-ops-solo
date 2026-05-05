@@ -19,9 +19,19 @@ public class GutterPanel : Panel
     private const int ChangeMarginWidth = 20;
     private const int FoldMarginWidth = 14;
     private const int FoldClickWidth = 25;
+    private const int QuickActionWidth = 18;
 
     private int totalMarginWidth;
     private bool _showFoldMarkers;
+    private int _hoveredActionLine = -1;
+
+    private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
+
+    public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
+    {
+        _quickActions = actions;
+        Invalidate();
+    }
 
     [Category("Appearance")]
     public bool ShowLineNumbers { get; set; } = true;
@@ -55,41 +65,81 @@ public class GutterPanel : Panel
 
     private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
     {
-        if (mainForm?.textEditor == null || mainForm.FoldingManager == null) return;
-        int foldX = Width - FoldClickWidth;
-        if (e.X < foldX || e.X > Width) return;
-
+        if (mainForm?.textEditor == null) return;
         var editor = mainForm.textEditor;
         int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
         int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
         int lineIndex = firstVis + e.Y / lineHeight;
 
+        // Quick action click (left side)
+        if (e.X >= 0 && e.X < QuickActionWidth)
+        {
+            var actions = _quickActions.Where(a => a.line == lineIndex + 1).ToList();
+            if (actions.Count > 0)
+            {
+                var menu = new ContextMenuStrip();
+                foreach (var act in actions)
+                {
+                    menu.Items.Add(act.title, null, (s, args) =>
+                    {
+                        if (act.apply != null)
+                        {
+                            string text = editor.Text;
+                            string newText = act.apply(text);
+                            int selStart = editor.SelectionStart;
+                            editor.Text = newText;
+                            if (selStart <= editor.TextLength)
+                                editor.SelectionStart = selStart;
+                        }
+                    });
+                }
+                menu.Show(this, e.Location);
+                return;
+            }
+        }
+
+        // Fold click (right side)
+        if (mainForm?.FoldingManager == null) return;
+        int foldX = Width - FoldClickWidth;
+        if (e.X < foldX || e.X > Width) return;
+
         var region = mainForm.FoldingManager.GetRegionAtLine(lineIndex);
         if (region.HasValue)
-        {
             mainForm.ToggleFold(lineIndex);
-        }
     }
 
     private void GutterPanel_MouseMove(object? sender, MouseEventArgs e)
     {
-        if (mainForm?.textEditor == null || !ShowCodeFolds || mainForm.FoldingManager == null) return;
+        if (mainForm?.textEditor == null) return;
 
         int foldX = Width - FoldClickWidth;
         bool inFoldMargin = e.X >= foldX && e.X <= Width;
 
-        if (inFoldMargin != _showFoldMarkers)
+        int newHoverLine = -1;
+        if (e.X < QuickActionWidth)
+        {
+            var editor = mainForm.textEditor;
+            int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
+            int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+            int lineIndex = firstVis + e.Y / lineHeight;
+            if (_quickActions.Any(a => a.line == lineIndex + 1))
+                newHoverLine = lineIndex + 1;
+        }
+
+        if (inFoldMargin != _showFoldMarkers || newHoverLine != _hoveredActionLine)
         {
             _showFoldMarkers = inFoldMargin;
+            _hoveredActionLine = newHoverLine;
             Invalidate();
         }
     }
 
     private void GutterPanel_MouseLeave(object? sender, EventArgs e)
     {
-        if (_showFoldMarkers)
+        if (_showFoldMarkers || _hoveredActionLine >= 0)
         {
             _showFoldMarkers = false;
+            _hoveredActionLine = -1;
             Invalidate();
         }
     }
@@ -129,7 +179,7 @@ public class GutterPanel : Panel
 
     private int GetTotalMarginWidth()
     {
-        totalMarginWidth = 0;
+        totalMarginWidth = QuickActionWidth;
         if (ShowLineNumbers) totalMarginWidth += LineNumberMarginWidth;
         if (ShowBookmarks) totalMarginWidth += BookmarkMarginWidth;
         if (ShowChangeHistory) totalMarginWidth += ChangeMarginWidth;
@@ -173,6 +223,10 @@ public class GutterPanel : Panel
             if (lineY > editor.ClientSize.Height + 2) break;
 
             int currentX = 0;
+
+            // Quick action lightbulb
+            DrawQuickAction(g, lineIndex + 1, currentX, lineY);
+            currentX += QuickActionWidth;
 
             if (ShowLineNumbers)
             {
@@ -340,6 +394,26 @@ public class GutterPanel : Panel
         Color col = mainForm.IsDarkTheme ? Color.FromArgb(180, 180, 180) : Color.FromArgb(80, 80, 80);
         using var brush = new SolidBrush(col);
         g.DrawString(symbol, _foldFont, brush, tx, ty);
+    }
+
+    private void DrawQuickAction(Graphics g, int lineNumber, int x, int y)
+    {
+        var actions = _quickActions.Where(a => a.line == lineNumber).ToList();
+        if (actions.Count == 0) return;
+
+        int centerX = x + QuickActionWidth / 2;
+        int centerY = y + 8;
+        int radius = 5;
+
+        Color c = (_hoveredActionLine == lineNumber)
+            ? Color.Gold
+            : Color.FromArgb(180, 180, 100);
+
+        using var brush = new SolidBrush(c);
+        g.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
+
+        using var insideBrush = new SolidBrush(Color.FromArgb(45, 45, 45));
+        g.FillEllipse(insideBrush, centerX - 2, centerY - 2, 4, 4);
     }
 
     public void RefreshGutter()

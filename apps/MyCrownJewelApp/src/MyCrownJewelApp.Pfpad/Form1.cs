@@ -117,6 +117,18 @@ using System.Linq;
         private GitForm? _gitForm;
         private bool _gitPanelVisible;
         private SplitContainer? _sidebarSplit;
+        private SplitContainer? _botSidebarSplit;
+        private SplitContainer? _problemsSplit;
+
+        // Symbol panel state
+        private SymbolPanel? _symbolPanel;
+        private bool _symbolPanelVisible;
+
+        // Lint engine state
+        private readonly LintEngine _lintEngine = new();
+        private readonly QuickActionProvider _quickActionProvider;
+        private ProblemsPanel? _problemsPanel;
+        private bool _problemsPanelVisible;
 
         private TerminalPanel? ActiveTerminal =>
             _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
@@ -247,7 +259,9 @@ using System.Linq;
             bool WorkspaceVisible = false,
             int WorkspaceWidth = 200,
             string WorkspaceRoot = "",
-            bool ShowWhitespace = true
+            bool ShowWhitespace = true,
+            bool SymbolPanelVisible = false,
+            bool ProblemsPanelVisible = false
         );
 
         private string SettingsFilePath =>
@@ -275,6 +289,10 @@ using System.Linq;
 
         // Symbol index for Go to Definition
         private readonly SymbolIndexService _symbolIndex = new();
+
+        // Workspace scan state
+        private Color _originalStatusBarColor;
+        private CancellationTokenSource? _symbolIndexCts;
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -468,8 +486,13 @@ using System.Linq;
             {
                 if (!_suppressFoldRescan) _foldingManager?.ScanRegions();
                 gutterPanel?.RefreshGutter();
+                ScheduleLint();
             };
             _foldingManager.ScanRegions();
+
+            // Lint engine — wire diagnostics to problems panel + squiggles
+            _quickActionProvider = new QuickActionProvider(_symbolIndex);
+            _lintEngine.DiagnosticsUpdated += OnLintDiagnosticsUpdated;
             
             // Elastic tab stops debounce timer
             elasticTabTimer = new System.Windows.Forms.Timer();
@@ -714,6 +737,9 @@ using System.Linq;
                           OpenFileInNewTab(path);
                   };
                   _workspacePanel.CloseRequested += () => ToggleWorkspace();
+                  _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
+                  _workspacePanel.ScanCompleted += OnWorkspaceScanCompleted;
+                  _workspacePanel.ScanProgressChanged += OnWorkspaceScanProgressChanged;
 
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
@@ -724,6 +750,66 @@ using System.Linq;
                   };
                   _gitPanel.CloseRequested += () => ToggleGitPanel();
 
+                  // Symbol panel
+                  _symbolPanel = new SymbolPanel(_symbolIndex);
+                  _symbolPanel.SymbolSelected += (file, line) =>
+                  {
+                      if (!string.IsNullOrEmpty(file) && File.Exists(file))
+                      {
+                          OpenFileInNewTab(file);
+                          GoToLine(line);
+                      }
+                  };
+                  _symbolPanel.CloseRequested += () => ToggleSymbolPanel();
+                  _symbolIndex.OnIndexUpdated += () => BeginInvoke(_symbolPanel.RefreshSymbols);
+
+                  // Problems panel
+                  _problemsPanel = new ProblemsPanel();
+                  _problemsPanel.ProblemSelected += (file, line) =>
+                  {
+                      if (!string.IsNullOrEmpty(file) && File.Exists(file))
+                      {
+                          OpenFileInNewTab(file);
+                          GoToLine(line);
+                      }
+                  };
+                  _problemsPanel.CloseRequested += () => ToggleProblemsPanel();
+
+                  _problemsSplit = new SplitContainer
+                  {
+                      Dock = DockStyle.Fill,
+                      Orientation = Orientation.Horizontal,
+                      Panel1MinSize = 60,
+                      Panel2MinSize = 60,
+                      SplitterWidth = 4,
+                      SplitterIncrement = 8,
+                      BorderStyle = BorderStyle.None,
+                      Panel2Collapsed = !_problemsPanelVisible
+                  };
+                  _problemsSplit.Panel1.Controls.Add(_symbolPanel);
+                  _symbolPanel.Dock = DockStyle.Fill;
+                  _problemsSplit.Panel2.Controls.Add(_problemsPanel);
+                  _problemsPanel.Dock = DockStyle.Fill;
+                  _problemsSplit.Panel1.BackColor = _currentTheme.MenuBackground;
+                  _problemsSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+
+                  _botSidebarSplit = new SplitContainer
+                  {
+                      Dock = DockStyle.Fill,
+                      Orientation = Orientation.Horizontal,
+                      Panel1MinSize = 60,
+                      Panel2MinSize = 60,
+                      SplitterWidth = 4,
+                      SplitterIncrement = 8,
+                      BorderStyle = BorderStyle.None,
+                      Panel2Collapsed = !_symbolPanelVisible && !_problemsPanelVisible
+                  };
+                  _botSidebarSplit.Panel1.Controls.Add(_gitPanel);
+                  _gitPanel.Dock = DockStyle.Fill;
+                  _botSidebarSplit.Panel2.Controls.Add(_problemsSplit);
+                  _botSidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
+                  _botSidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+
                   _sidebarSplit = new SplitContainer
                   {
                       Dock = DockStyle.Fill,
@@ -733,12 +819,11 @@ using System.Linq;
                       SplitterWidth = 4,
                       SplitterIncrement = 8,
                       BorderStyle = BorderStyle.None,
-                      Panel2Collapsed = !_gitPanelVisible
+                      Panel2Collapsed = !_gitPanelVisible && !_symbolPanelVisible
                   };
                   _sidebarSplit.Panel1.Controls.Add(_workspacePanel);
                   _workspacePanel.Dock = DockStyle.Fill;
-                  _sidebarSplit.Panel2.Controls.Add(_gitPanel);
-                  _gitPanel.Dock = DockStyle.Fill;
+                  _sidebarSplit.Panel2.Controls.Add(_botSidebarSplit);
                   _sidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
                   _sidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
 
@@ -750,7 +835,7 @@ using System.Linq;
                       Panel2MinSize = 100,
                       SplitterWidth = 4,
                       SplitterIncrement = 8,
-                      Panel1Collapsed = !_workspaceVisible && !_gitPanelVisible,
+                      Panel1Collapsed = !_workspaceVisible && !_gitPanelVisible && !_symbolPanelVisible,
                       BorderStyle = BorderStyle.None
                   };
                   _workspaceSplitContainer.HandleCreated += (s, e) =>
@@ -775,6 +860,8 @@ using System.Linq;
               if (!string.IsNullOrEmpty(_workspaceRoot))
                   _workspacePanel?.SetRoot(_workspaceRoot);
               workspaceMenuItem.Checked = _workspaceVisible;
+              symbolsMenuItem.Checked = _symbolPanelVisible;
+              problemsMenuItem.Checked = _problemsPanelVisible;
 
              // Set initial splitter position if terminal should be visible
              if (_terminalVisible)
@@ -1354,6 +1441,8 @@ using System.Linq;
                         _workspaceVisible = settings.WorkspaceVisible;
                         _workspaceWidth = Math.Max(80, Math.Min(600, settings.WorkspaceWidth));
                         _workspaceRoot = settings.WorkspaceRoot ?? "";
+                        _symbolPanelVisible = settings.SymbolPanelVisible;
+                        _problemsPanelVisible = settings.ProblemsPanelVisible;
                         bool showWhitespace = settings.ShowWhitespace;
                         if (whitespaceMenuItem != null)
                         {
@@ -1395,8 +1484,10 @@ using System.Linq;
                       ExternalTools: _externalTools,
                       WorkspaceVisible: _workspaceVisible,
                       WorkspaceWidth: _workspaceWidth,
-                      WorkspaceRoot: _workspaceRoot,
-                      ShowWhitespace: whitespaceMenuItem?.Checked ?? true
+                       WorkspaceRoot: _workspaceRoot,
+                       ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
+                       SymbolPanelVisible: _symbolPanelVisible,
+                       ProblemsPanelVisible: _problemsPanelVisible
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -1534,12 +1625,24 @@ using System.Linq;
             }
             if (_workspacePanel != null)
                 _workspacePanel.SetTheme(theme);
+            if (_symbolPanel != null)
+                _symbolPanel.SetTheme(theme);
+            if (_problemsPanel != null)
+                _problemsPanel.SetTheme(theme);
+            if (_problemsSplit != null)
+                _problemsSplit.BackColor = theme.MenuBackground;
+            if (_gitPanel != null)
+                _gitPanel.SetTheme(theme);
             if (_workspaceSplitContainer != null)
             {
                 _workspaceSplitContainer.BackColor = theme.MenuBackground;
                 _workspaceSplitContainer.Panel1.BackColor = theme.MenuBackground;
                 _workspaceSplitContainer.Panel2.BackColor = theme.EditorBackground;
             }
+            if (_sidebarSplit != null)
+                _sidebarSplit.BackColor = theme.MenuBackground;
+            if (_botSidebarSplit != null)
+                _botSidebarSplit.BackColor = theme.MenuBackground;
         }
 
         private TerminalPanel AddTerminalTab(string? shellPath)
@@ -2660,13 +2763,58 @@ using System.Linq;
             };
             if (dlg.ShowDialog() == DialogResult.OK)
             {
+                // Cancel any in-flight scan and symbol rebuild
+                _workspacePanel?.CancelScan();
+                _symbolIndexCts?.Cancel();
+                _symbolIndexCts = new CancellationTokenSource();
+                var token = _symbolIndexCts.Token;
                 _workspaceRoot = dlg.SelectedPath;
                 _workspacePanel?.SetRoot(_workspaceRoot);
-                _symbolIndex.RebuildIndex(_workspaceRoot);
+                // Symbol index rebuild on background thread — cancellation prevents stale overwrites
+                Task.Run(() =>
+                {
+                    if (!token.IsCancellationRequested)
+                        _symbolIndex.RebuildIndex(_workspaceRoot);
+                }, token);
                 if (!_workspaceVisible)
                     ToggleWorkspace();
                 else
                     SaveSettings();
+            }
+        }
+
+        private void OnWorkspaceScanStarted()
+        {
+            if (InvokeRequired) { if (IsHandleCreated) BeginInvoke(OnWorkspaceScanStarted); return; }
+            scanProgressBar.Visible = true;
+            scanProgressBar.Value = 0;
+            scanProgressBar.Maximum = 100;
+            _originalStatusBarColor = statusStrip.BackColor;
+            statusStrip.BackColor = _currentTheme.Accent.IsEmpty
+                ? Color.DodgerBlue
+                : Color.FromArgb(_currentTheme.Accent.R, _currentTheme.Accent.G, _currentTheme.Accent.B);
+        }
+
+        private void OnWorkspaceScanCompleted()
+        {
+            if (InvokeRequired) { if (IsHandleCreated) BeginInvoke(OnWorkspaceScanCompleted); return; }
+            scanProgressBar.Visible = false;
+            scanProgressBar.Value = 0;
+            statusStrip.BackColor = _originalStatusBarColor;
+            ShowNotification("Workspace", "Folder scan complete");
+        }
+
+        private void OnWorkspaceScanProgressChanged(string message)
+        {
+            if (InvokeRequired) { if (IsHandleCreated) BeginInvoke(() => OnWorkspaceScanProgressChanged(message)); return; }
+            // Extract percentage from message like "Scanning (45%)..."
+            if (message is not null)
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(message, @"(\d+)%");
+                if (m.Success && int.TryParse(m.Groups[1].Value, out int pct))
+                {
+                    scanProgressBar.Value = Math.Min(pct, 100);
+                }
             }
         }
 
@@ -2719,6 +2867,11 @@ using System.Linq;
         {
             using var dlg = new GoToDialog(this);
             dlg.ShowDialog(this);
+        }
+
+        private void GoToDefinition_Click(object? sender, EventArgs e)
+        {
+            GoToDefinition();
         }
 
         #endregion
@@ -3889,13 +4042,25 @@ using System.Linq;
             string? word = GetWordAtCursor();
             if (string.IsNullOrEmpty(word)) return;
 
-            if (!_symbolIndex.HasIndex && !string.IsNullOrEmpty(_workspaceRoot))
-                _symbolIndex.RebuildIndex(_workspaceRoot);
+            if (!_symbolIndex.HasIndex)
+            {
+                if (string.IsNullOrEmpty(_workspaceRoot))
+                {
+                    ThemedMessageBox.Show($"No definition found for '{word}'.\n\nTip: Open a workspace folder (View > Open Folder)\nand the symbol index will build automatically.",
+                        "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    ThemedMessageBox.Show($"No definition found for '{word}'.\n\nThe symbol index is still building. Try again in a moment.",
+                        "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                return;
+            }
 
             var matches = _symbolIndex.Lookup(word);
             if (matches.Count == 0)
             {
-                ThemedMessageBox.Show($"No definition found for '{word}'.\n\nTip: Open a workspace folder (View > Open Folder)\nand the symbol index will build automatically.",
+                ThemedMessageBox.Show($"No definition found for '{word}'.",
                     "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -4915,23 +5080,13 @@ using System.Linq;
 
         private void ToggleGitPanel()
         {
-            if (_gitPanel is null || _workspaceSplitContainer is null || _sidebarSplit is null) return;
+            if (_gitPanel is null || _workspaceSplitContainer is null || _botSidebarSplit is null) return;
 
             _gitPanelVisible = !_gitPanelVisible;
             _gitPanel.Visible = _gitPanelVisible;
-            _sidebarSplit.Panel2Collapsed = !_gitPanelVisible;
-
+            UpdateSidebarLayout();
             if (_gitPanelVisible)
-            {
-                _sidebarSplit.SplitterDistance = Math.Max(80, _sidebarSplit.Height / 2);
                 RefreshGitRepo();
-                _gitPanel.RefreshStatus();
-            }
-
-            bool anyVisible = (_workspacePanel?.Visible == true) || _gitPanelVisible;
-            _workspaceSplitContainer.Panel1Collapsed = !anyVisible;
-            if (anyVisible)
-                _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
         }
 
         private void ToggleGitPanel(object? sender, EventArgs e)
@@ -4939,6 +5094,121 @@ using System.Linq;
             ToggleGitPanel();
             if (sender is ToolStripMenuItem item)
                 item.Checked = _gitPanelVisible;
+        }
+
+        private void ToggleSymbolPanel()
+        {
+            if (_symbolPanel is null || _workspaceSplitContainer is null || _botSidebarSplit is null) return;
+
+            _symbolPanelVisible = !_symbolPanelVisible;
+            _symbolPanel.Visible = _symbolPanelVisible;
+            UpdateSidebarLayout();
+            if (_symbolPanelVisible)
+                _symbolPanel.RefreshSymbols();
+        }
+
+        private void ToggleSymbolPanel(object? sender, EventArgs e)
+        {
+            ToggleSymbolPanel();
+            if (sender is ToolStripMenuItem item)
+                item.Checked = _symbolPanelVisible;
+        }
+
+        private void ToggleProblemsPanel()
+        {
+            if (_problemsPanel is null || _problemsSplit is null) return;
+            _problemsPanelVisible = !_problemsPanelVisible;
+            _problemsPanel.Visible = _problemsPanelVisible;
+            UpdateSidebarLayout();
+        }
+
+        private void ToggleProblemsPanel(object? sender, EventArgs e)
+        {
+            ToggleProblemsPanel();
+            if (sender is ToolStripMenuItem item)
+                item.Checked = _problemsPanelVisible;
+        }
+
+        private void ScheduleLint()
+        {
+            if (!_lintEngine.Enabled) return;
+            string text = textEditor?.Text ?? "";
+            string path = currentFilePath ?? "";
+            _lintEngine.ScheduleLint(text, path);
+        }
+
+        private void OnLintDiagnosticsUpdated(IReadOnlyList<Diagnostic> diagnostics)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(() => OnLintDiagnosticsUpdated(diagnostics));
+                return;
+            }
+
+            _problemsPanel?.SetDiagnostics(diagnostics);
+
+            // Convert diagnostics to squiggly positions
+            var squiggles = new List<(int start, int length, Color color)>();
+            if (textEditor is not null && !textEditor.IsDisposed && textEditor.IsHandleCreated)
+            {
+                string text = textEditor.Text;
+                var lines = text.Split('\n');
+                foreach (var d in diagnostics)
+                {
+                    if (d.Line < 1 || d.Line > lines.Length) continue;
+                    string lineText = lines[d.Line - 1].TrimEnd('\r');
+                    int lineStartIdx = textEditor.GetFirstCharIndexFromLine(d.Line - 1);
+                    if (lineStartIdx < 0) continue;
+                    int col = Math.Max(0, Math.Min(d.Column - 1, lineText.Length));
+                    int start = lineStartIdx + col;
+                    int len = Math.Min(d.Length, Math.Max(1, lineText.Length - col));
+                    squiggles.Add((start, len, d.Color));
+                }
+            }
+            if (textEditor is not null && !textEditor.IsDisposed)
+                textEditor.SetSquiggles(squiggles);
+
+            // Generate quick actions and pass to gutter
+            string docText = textEditor?.Text ?? "";
+            var actions = _quickActionProvider.GetActions(docText, diagnostics);
+            var gutterActions = actions
+                .Select(a => (a.Line, a.Title, a.Apply))
+                .ToList();
+            gutterPanel?.SetQuickActions(gutterActions);
+        }
+
+        private void UpdateSidebarLayout()
+        {
+            if (_botSidebarSplit is null || _sidebarSplit is null || _workspaceSplitContainer is null
+                || _problemsSplit is null) return;
+            bool botAny = _gitPanelVisible || _symbolPanelVisible || _problemsPanelVisible;
+            bool innerAny = _symbolPanelVisible || _problemsPanelVisible;
+            _botSidebarSplit.Panel2Collapsed = !innerAny;
+            _problemsSplit.Panel2Collapsed = !_problemsPanelVisible;
+            _sidebarSplit.Panel2Collapsed = !botAny;
+
+            if (innerAny)
+            {
+                int totalH = _botSidebarSplit.Height - _botSidebarSplit.SplitterWidth;
+                if (_symbolPanelVisible && _problemsPanelVisible)
+                    _botSidebarSplit.SplitterDistance = Math.Max(60, totalH / 2);
+                else
+                    _botSidebarSplit.SplitterDistance = Math.Max(60, totalH - 60);
+            }
+
+            if (botAny)
+            {
+                int totalH = _sidebarSplit.Height - _sidebarSplit.SplitterWidth;
+                if (_gitPanelVisible && innerAny)
+                    _sidebarSplit.SplitterDistance = Math.Max(60, totalH / 2);
+                else if (_gitPanelVisible)
+                    _sidebarSplit.SplitterDistance = Math.Max(60, totalH - 60);
+            }
+
+            bool anyVisible = (_workspacePanel?.Visible == true) || botAny;
+            _workspaceSplitContainer.Panel1Collapsed = !anyVisible;
+            if (anyVisible)
+                _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
         }
 
         private void OpenGitForm(object? sender, EventArgs e)
@@ -5036,6 +5306,9 @@ using System.Linq;
                 }
             }
             SaveSettings();
+            _workspacePanel?.CancelScan();
+            _symbolIndexCts?.Cancel();
+            _symbolIndexCts?.Dispose();
             elasticTabTimer?.Stop();
             elasticTabTimer?.Dispose();
             _highlightTimer?.Stop();

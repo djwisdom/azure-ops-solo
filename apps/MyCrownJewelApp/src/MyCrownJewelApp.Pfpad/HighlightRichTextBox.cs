@@ -22,6 +22,13 @@ public class HighlightRichTextBox : RichTextBox
     private FoldingManager? _foldingManager;
     private Color _foldLineColor = Color.FromArgb(80, 80, 80);
 
+    private List<(int start, int length, Color color)> _squiggles = new();
+    public void SetSquiggles(List<(int start, int length, Color color)> squiggles)
+    {
+        _squiggles = squiggles ?? new();
+        Invalidate();
+    }
+
     private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
     private static readonly Dictionary<char, char> _bracePairs = new()
     {
@@ -294,6 +301,43 @@ public class HighlightRichTextBox : RichTextBox
         catch { }
     }
 
+    private void DrawSquiggles(Graphics g)
+    {
+        if (_squiggles.Count == 0 || !IsHandleCreated || TextLength == 0) return;
+        try
+        {
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            using var pen = new Pen(Color.Empty, 1);
+
+            foreach (var (start, length, color) in _squiggles)
+            {
+                if (start < 0 || start >= TextLength) continue;
+                int end = Math.Min(start + length, TextLength);
+                if (end <= start) continue;
+
+                Point startPt = GetPositionFromCharIndex(start);
+                Point endPt = GetPositionFromCharIndex(end);
+                if (startPt.IsEmpty) continue;
+
+                int y = startPt.Y + lineH - 2;
+                int x1 = startPt.X;
+                int x2 = end != start ? endPt.X : startPt.X + 8;
+
+                pen.Color = color;
+                int waveLen = Math.Max(4, x2 - x1);
+                int segments = Math.Max(1, waveLen / 4);
+                for (int sx = 0; sx < segments && x1 + sx * 4 < x2; sx++)
+                {
+                    int px = x1 + sx * 4;
+                    int py = y + (sx % 2 == 0 ? 0 : 2);
+                    int nx = Math.Min(px + 4, x2);
+                    g.DrawLine(pen, px, py, nx, py + (sx % 2 == 0 ? 2 : -2));
+                }
+            }
+        }
+        catch { }
+    }
+
     private void DrawBraceRect(Graphics g, int pos, int lineH, Color color)
     {
         Point pt = GetPositionFromCharIndex(pos);
@@ -433,6 +477,7 @@ public class HighlightRichTextBox : RichTextBox
                         DrawColumnGuide(g);
                         DrawFoldBracketLines(g);
                         DrawMatchingBraces(g);
+                        DrawSquiggles(g);
 
                         if (_caretVisible && Focused && IsHandleCreated && !IsDisposed)
                             DrawBlockCursor(g);
