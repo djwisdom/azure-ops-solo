@@ -210,12 +210,9 @@ internal sealed class GitForm : Form
         _discardMenuItem.Click += Discard_Click;
         _statusContextMenu.Items.Add(_discardMenuItem);
 
-        var commitRow = new FlowLayoutPanel
+        var commitRow = new Panel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(0),
             Margin = new Padding(0)
         };
@@ -226,7 +223,7 @@ internal sealed class GitForm : Form
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             Size = new Size(75, 60),
-            Margin = new Padding(0),
+            Location = new Point(0, 0),
             Cursor = Cursors.Hand,
             Enabled = false
         };
@@ -236,8 +233,8 @@ internal sealed class GitForm : Form
         {
             Font = new Font("Segoe UI", 9),
             BorderStyle = BorderStyle.FixedSingle,
-            Margin = new Padding(4, 0, 0, 0),
-            Size = new Size(200, 60),
+            Location = new Point(79, 0),
+            Size = new Size(100, 60),
             Multiline = true,
             AcceptsReturn = true,
             AcceptsTab = false,
@@ -246,7 +243,7 @@ internal sealed class GitForm : Form
             MaxLength = 10000,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
         };
         _commitMessage.KeyDown += (s, ke) =>
         {
