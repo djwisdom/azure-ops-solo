@@ -181,6 +181,8 @@ partial class Form1
         editMenu.DropDownItems.Add(gotoDefMenuItem);
         var renameMenuItem = new ToolStripMenuItem("&Rename...", null, Rename_Click, Keys.F2);
         editMenu.DropDownItems.Add(renameMenuItem);
+        var callHierarchyMenuItem = new ToolStripMenuItem("Call &Hierarchy", null, CallHierarchy_Click, Keys.Control | Keys.Shift | Keys.H);
+        editMenu.DropDownItems.Add(callHierarchyMenuItem);
         selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, Keys.Control | Keys.A);
         timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, Keys.F5);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click, Keys.Control | Keys.Shift | Keys.F);

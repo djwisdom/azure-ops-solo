@@ -2894,6 +2894,33 @@ using System.Linq;
             RenameSymbol();
         }
 
+        private void CallHierarchy_Click(object? sender, EventArgs e)
+        {
+            ShowCallHierarchy();
+        }
+
+        private void ShowCallHierarchy()
+        {
+            if (textEditor is null) return;
+            string? word = GetWordAtCursor();
+            if (string.IsNullOrEmpty(word)) return;
+
+            string currentFile = currentFilePath ?? "";
+            using var dlg = new CallHierarchyDialog(word, _workspaceRoot, currentFile);
+            dlg.OpenFileRequested += (file, line) =>
+            {
+                BeginInvoke(() =>
+                {
+                    if (!string.IsNullOrEmpty(file) && File.Exists(file))
+                    {
+                        OpenFileInNewTab(file);
+                        GoToLine(line);
+                    }
+                });
+            };
+            dlg.ShowDialog(this);
+        }
+
         private void GoToDefinition_Click(object? sender, EventArgs e)
         {
             GoToDefinition();
@@ -4445,6 +4472,7 @@ using System.Linq;
                 var ctx = new ContextMenuStrip();
                 ctx.Items.Add("Go to Definition (F12)", null, (s, args) => GoToDefinition());
                 ctx.Items.Add("Rename (F2)", null, (s, args) => RenameSymbol());
+                ctx.Items.Add("Call Hierarchy", null, (s, args) => ShowCallHierarchy());
                 ctx.Items.Add(new ToolStripSeparator());
                 ctx.Items.Add("Cut", null, (s, args) => textEditor.Cut());
                 ctx.Items.Add("Copy", null, (s, args) => textEditor.Copy());
