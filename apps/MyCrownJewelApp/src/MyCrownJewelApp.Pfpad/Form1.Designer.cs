@@ -324,6 +324,8 @@ partial class Form1
         gitPanelMenuItem = new ToolStripMenuItem("&Source Control", null, ToggleGitPanel, Keys.Control | Keys.Alt | Keys.G);
         gitPanelMenuItem.CheckOnClick = true;
         viewMenu.DropDownItems.Add(gitPanelMenuItem);
+        var gitFormMenuItem = new ToolStripMenuItem("Source Control &Window...", null, OpenGitForm, Keys.Control | Keys.Shift | Keys.G);
+        viewMenu.DropDownItems.Add(gitFormMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(terminalMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());

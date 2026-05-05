@@ -112,6 +112,7 @@ using System.Linq;
         // Git panel state
         private readonly GitService _gitService = new();
         private GitPanel? _gitPanel;
+        private GitForm? _gitForm;
         private bool _gitPanelVisible;
         private SplitContainer? _sidebarSplit;
 
@@ -4936,6 +4937,20 @@ using System.Linq;
             ToggleGitPanel();
             if (sender is ToolStripMenuItem item)
                 item.Checked = _gitPanelVisible;
+        }
+
+        private void OpenGitForm(object? sender, EventArgs e)
+        {
+            if (_gitForm is null || _gitForm.IsDisposed)
+            {
+                _gitForm = new GitForm(_gitService);
+                _gitForm.FileOpenRequested += (path) => BeginInvoke(() => OpenFileInNewTab(path));
+                _gitForm.Show(this);
+            }
+            else
+            {
+                _gitForm.Activate();
+            }
         }
 
         #endregion

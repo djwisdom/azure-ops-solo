@@ -44,6 +44,27 @@ public sealed class GitService : IDisposable
         }
     }
 
+    public bool InitRepo(string path)
+    {
+        CloseRepo();
+        try
+        {
+            if (!Directory.Exists(path))
+                Directory.CreateDirectory(path);
+
+            var initPath = Repository.Init(path);
+            _repo = new Repository(initPath);
+            _repoPath = initPath;
+            OnRepoChanged?.Invoke();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            OnError?.Invoke($"Could not initialize repository: {ex.Message}");
+            return false;
+        }
+    }
+
     private static string? FindRepoRoot(string? filePath)
     {
         if (string.IsNullOrEmpty(filePath)) return null;
@@ -221,6 +242,178 @@ public sealed class GitService : IDisposable
         return result;
     }
 
+    public bool HasUncommittedChanges()
+    {
+        if (_repo is null) return false;
+        try
+        {
+            var status = _repo.RetrieveStatus(new StatusOptions());
+            return status.IsDirty;
+        }
+        catch { return false; }
+    }
+
+    public (bool Success, string Message) Stash(string? message = null)
+    {
+        if (_repo is null) return (false, "No repository open.");
+        try
+        {
+            var signature = new Signature("Personal Flip Pad", "git@pfpad.local", DateTimeOffset.Now);
+            _repo.Stashes.Add(signature, message, StashModifiers.Default);
+            OnRepoChanged?.Invoke();
+            return (true, "Changes stashed.");
+        }
+        catch (Exception ex) { return (false, $"Stash failed: {ex.Message}"); }
+    }
+
+    public (bool Success, string Message) StashPop()
+    {
+        if (_repo is null) return (false, "No repository open.");
+        try
+        {
+            if (!_repo.Stashes.Any()) return (false, "No stashes to pop.");
+            _repo.Stashes.Pop(0);
+            OnRepoChanged?.Invoke();
+            return (true, "Stash popped.");
+        }
+        catch (Exception ex) { return (false, $"Stash pop failed: {ex.Message}"); }
+    }
+
+    public bool UnstageAll()
+    {
+        if (_repo is null) return false;
+        try
+        {
+            var status = _repo.RetrieveStatus(new StatusOptions { IncludeUnaltered = false });
+            foreach (var entry in status)
+            {
+                if (entry.State.HasFlag(FileStatus.NewInIndex) ||
+                    entry.State.HasFlag(FileStatus.ModifiedInIndex) ||
+                    entry.State.HasFlag(FileStatus.DeletedFromIndex) ||
+                    entry.State.HasFlag(FileStatus.RenamedInIndex))
+                    _repo.Index.Remove(entry.FilePath);
+            }
+            _repo.Index.Write();
+            OnRepoChanged?.Invoke();
+            return true;
+        }
+        catch (Exception ex) { OnError?.Invoke($"Could not unstage all: {ex.Message}"); return false; }
+    }
+
+    public (bool Success, string Message) DiscardFile(string path)
+    {
+        if (_repo is null) return (false, "No repository open.");
+        try
+        {
+            var fullPath = Path.Combine(_repoPath!, path);
+            if (!File.Exists(fullPath)) return (false, "File does not exist on disk.");
+
+            var tip = _repo.Head.Tip;
+            if (tip is null) return (false, "No commits in this branch yet — cannot restore from HEAD.");
+
+            var blob = tip[path]?.Target as Blob;
+            if (blob is null)
+            {
+                _repo.Index.Remove(path);
+                _repo.Index.Write();
+                File.Delete(fullPath);
+            }
+            else
+            {
+                var content = blob.GetContentText();
+                File.WriteAllText(fullPath, content);
+                _repo.Index.Remove(path);
+                _repo.Index.Write();
+            }
+
+            OnRepoChanged?.Invoke();
+            return (true, $"Discarded changes in '{path}'.");
+        }
+        catch (Exception ex) { return (false, $"Could not discard '{path}': {ex.Message}"); }
+    }
+
+    public List<ConflictEntry> GetConflicts()
+    {
+        var result = new List<ConflictEntry>();
+        if (_repo is null) return result;
+
+        try
+        {
+            foreach (var conflict in _repo.Index.Conflicts)
+            {
+                var path = conflict.Ancestor?.Path ?? conflict.Ours?.Path ?? conflict.Theirs?.Path ?? "";
+                result.Add(new ConflictEntry(path));
+            }
+        }
+        catch { }
+
+        return result;
+    }
+
+    public bool ResolveConflictOurs(string path)
+    {
+        if (_repo is null) return false;
+        try
+        {
+            var conflict = _repo.Index.Conflicts[path];
+            if (conflict?.Ours is null) return false;
+
+            var ourBlob = _repo.Lookup<Blob>(conflict.Ours.Id);
+            if (ourBlob is null) return false;
+
+            var content = ourBlob.GetContentText();
+            var fullPath = Path.Combine(_repoPath!, path);
+            File.WriteAllText(fullPath, content);
+
+            _repo.Index.Add(path);
+            _repo.Index.Remove(path);
+            _repo.Index.Write();
+            OnRepoChanged?.Invoke();
+            return true;
+        }
+        catch (Exception ex) { OnError?.Invoke($"Could not resolve '{path}': {ex.Message}"); return false; }
+    }
+
+    public bool ResolveConflictTheirs(string path)
+    {
+        if (_repo is null) return false;
+        try
+        {
+            var conflict = _repo.Index.Conflicts[path];
+            if (conflict?.Theirs is null) return false;
+
+            var theirBlob = _repo.Lookup<Blob>(conflict.Theirs.Id);
+            if (theirBlob is null) return false;
+
+            var content = theirBlob.GetContentText();
+            var fullPath = Path.Combine(_repoPath!, path);
+            File.WriteAllText(fullPath, content);
+
+            _repo.Index.Add(path);
+            _repo.Index.Remove(path);
+            _repo.Index.Write();
+            OnRepoChanged?.Invoke();
+            return true;
+        }
+        catch (Exception ex) { OnError?.Invoke($"Could not resolve '{path}': {ex.Message}"); return false; }
+    }
+
+    public int GetBehindCount(string remoteName = "origin")
+    {
+        if (_repo is null) return -1;
+        try
+        {
+            var branch = _repo.Head;
+            var remoteBranch = _repo.Branches[$"{remoteName}/{branch.FriendlyName}"];
+            if (remoteBranch is null) return -1;
+
+            var behind = _repo.ObjectDatabase.CalculateHistoryDivergence(
+                branch.Tip, remoteBranch.Tip);
+            return behind?.BehindBy ?? -1;
+        }
+        catch { return -1; }
+    }
+
     public bool SwitchBranch(string name)
     {
         if (_repo is null) return false;
@@ -284,17 +477,22 @@ public sealed class GitService : IDisposable
         catch (Exception ex) { return (false, $"Pull failed: {ex.Message}"); }
     }
 
-    public (bool Success, string Message) Push(string remoteName = "origin", string? branchName = null)
+    public (bool Success, string Message) Push(string remoteName = "origin", string? branchName = null, bool force = false)
     {
         if (_repo is null) return (false, "No repository open.");
         try
         {
             var branch = branchName ?? _repo.Head.FriendlyName;
+            var refspec = force
+                ? $"+refs/heads/{branch}:refs/heads/{branch}"
+                : $"refs/heads/{branch}:refs/heads/{branch}";
             _repo.Network.Push(_repo.Network.Remotes[remoteName],
-                $"refs/heads/{branch}",
+                refspec,
                 new PushOptions());
             OnRepoChanged?.Invoke();
-            return (true, $"Pushed '{branch}' to '{remoteName}'.");
+            return (true, force
+                ? $"Force pushed '{branch}' to '{remoteName}'."
+                : $"Pushed '{branch}' to '{remoteName}'.");
         }
         catch (Exception ex) { return (false, $"Push failed: {ex.Message}"); }
     }
@@ -344,3 +542,4 @@ public sealed record StatusEntry(string Path, FileStatus State)
 
 public sealed record CommitEntry(string Sha, string Author, string Date, string Message);
 public sealed record BranchEntry(string Name, bool IsCurrent, string TipSha);
+public sealed record ConflictEntry(string Path);
