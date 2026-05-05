@@ -78,28 +78,36 @@ internal sealed class GitForm : Form
             SplitterIncrement = 1
         };
 
-        var leftPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
-
-        _rightLayout = new TableLayoutPanel
+        var leftLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(4, 4, 4, 4),
             ColumnCount = 1,
-            RowCount = 3,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink
+            RowCount = 6
         };
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
 
-        int y = 0;
+        var branchRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
+        };
 
         var branchLabel = new Label
         {
             Text = "Branch:",
             Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(4, y + 2)
+            Margin = new Padding(0, 3, 4, 0)
         };
 
         _branchDropdown = new ToolStripDropDownButton
@@ -107,7 +115,7 @@ internal sealed class GitForm : Form
             Text = "(no repo)",
             Font = new Font("Segoe UI", 8),
             AutoSize = false,
-            Width = 200,
+            Width = 160,
             Height = 22
         };
         _branchDropdown.DropDownOpening += BranchDropdown_DropDownOpening;
@@ -115,10 +123,9 @@ internal sealed class GitForm : Form
 
         _branchHost = new ToolStrip
         {
-            Location = new Point(60, y),
             GripStyle = ToolStripGripStyle.Hidden,
             AutoSize = false,
-            Size = new Size(210, 24),
+            Size = new Size(170, 24),
             Padding = new Padding(0),
             Margin = new Padding(0)
         };
@@ -130,20 +137,31 @@ internal sealed class GitForm : Form
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
             Size = new Size(75, 24),
-            Location = new Point(278, y),
+            Margin = new Padding(4, 0, 0, 0),
             Cursor = Cursors.Hand,
             Visible = false
         };
         _initBtn.Click += InitRepo_Click;
 
-        y += 30;
+        branchRow.Controls.AddRange(new Control[] { branchLabel, _branchHost, _initBtn });
+
+        var changesHeaderRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0),
+            Margin = new Padding(0),
+            Height = 24
+        };
 
         _statusHeader = new Label
         {
             Text = "Changes",
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(4, y)
+            Margin = new Padding(0, 3, 8, 0)
         };
 
         _stageAllBtn = new Button
@@ -152,7 +170,7 @@ internal sealed class GitForm : Form
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
             Size = new Size(70, 22),
-            Location = new Point(90, y - 1),
+            Margin = new Padding(0, 1, 4, 0),
             Cursor = Cursors.Hand,
             TabStop = false
         };
@@ -164,23 +182,22 @@ internal sealed class GitForm : Form
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
             Size = new Size(75, 22),
-            Location = new Point(162, y - 1),
+            Margin = new Padding(0, 1, 0, 0),
             Cursor = Cursors.Hand,
             TabStop = false
         };
         _unstageAllBtn.Click += (s, e) => { _git.UnstageAll(); RefreshStatus(); };
 
-        y += 24;
+        changesHeaderRow.Controls.AddRange(new Control[] { _statusHeader, _stageAllBtn, _unstageAllBtn });
+
         _statusList = new ListBox
         {
             DrawMode = DrawMode.OwnerDrawVariable,
             BorderStyle = BorderStyle.None,
             IntegralHeight = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Dock = DockStyle.Fill,
             ItemHeight = 22,
-            Cursor = Cursors.Hand,
-            Location = new Point(0, y),
-            Height = 200
+            Cursor = Cursors.Hand
         };
         _statusList.DrawItem += StatusList_DrawItem;
         _statusList.MouseClick += StatusList_MouseClick;
@@ -193,15 +210,23 @@ internal sealed class GitForm : Form
         _discardMenuItem.Click += Discard_Click;
         _statusContextMenu.Items.Add(_discardMenuItem);
 
-        y += 205;
+        var commitRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(0),
+            Margin = new Padding(0)
+        };
 
         _commitBtn = new Button
         {
             Text = "Commit",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
-            Size = new Size(75, 26),
-            Location = new Point(4, y),
+            Size = new Size(75, 60),
+            Margin = new Padding(0),
             Cursor = Cursors.Hand,
             Enabled = false
         };
@@ -211,9 +236,8 @@ internal sealed class GitForm : Form
         {
             Font = new Font("Segoe UI", 9),
             BorderStyle = BorderStyle.FixedSingle,
-            Location = new Point(84, y),
-            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            Size = new Size(210, 60),
+            Margin = new Padding(4, 0, 0, 0),
+            Size = new Size(200, 60),
             Multiline = true,
             AcceptsReturn = true,
             AcceptsTab = false,
@@ -221,7 +245,8 @@ internal sealed class GitForm : Form
             ScrollBars = ScrollBars.Vertical,
             MaxLength = 10000,
             BackColor = theme.EditorBackground,
-            ForeColor = theme.Text
+            ForeColor = theme.Text,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
         _commitMessage.KeyDown += (s, ke) =>
         {
@@ -240,35 +265,47 @@ internal sealed class GitForm : Form
             _commitBtn.Enabled = hasText && hasStaged;
         };
 
-        y += 66;
+        commitRow.Controls.Add(_commitBtn);
+        commitRow.Controls.Add(_commitMessage);
 
-        var commitHeader = new Label
+        var commitsHeader = new Label
         {
             Text = "Recent Commits",
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(4, y)
+            Margin = new Padding(0, 2, 0, 0),
+            Dock = DockStyle.Top
         };
 
-        y += 20;
         _commitList = new ListBox
         {
             DrawMode = DrawMode.OwnerDrawVariable,
             BorderStyle = BorderStyle.None,
             IntegralHeight = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            ItemHeight = 40,
-            Location = new Point(0, y)
+            Dock = DockStyle.Fill,
+            ItemHeight = 40
         };
         _commitList.DrawItem += CommitList_DrawItem;
         _commitList.MeasureItem += (s, e) => e.ItemHeight = 42;
         _commitList.HandleCreated += (s, e) => ApplyScrollbarTheme(_commitList.Handle);
 
-        leftPanel.Controls.AddRange(new Control[] {
-            branchLabel, _branchHost, _initBtn,
-            _statusHeader, _stageAllBtn, _unstageAllBtn, _statusList, _commitMessage, _commitBtn,
-            commitHeader, _commitList
-        });
+        leftLayout.Controls.Add(branchRow, 0, 0);
+        leftLayout.Controls.Add(changesHeaderRow, 0, 1);
+        leftLayout.Controls.Add(_statusList, 0, 2);
+        leftLayout.Controls.Add(commitRow, 0, 3);
+        leftLayout.Controls.Add(commitsHeader, 0, 4);
+        leftLayout.Controls.Add(_commitList, 0, 5);
+
+        _rightLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(4, 4, 4, 4),
+            ColumnCount = 1,
+            RowCount = 3
+        };
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         _syncPanel = new FlowLayoutPanel
         {
@@ -363,7 +400,7 @@ internal sealed class GitForm : Form
         _rightLayout.Controls.Add(_diffLabel, 0, 1);
         _rightLayout.Controls.Add(_diffBox, 0, 2);
 
-        mainSplit.Panel1.Controls.Add(leftPanel);
+        mainSplit.Panel1.Controls.Add(leftLayout);
         mainSplit.Panel2.Controls.Add(_rightLayout);
 
         Controls.Add(mainSplit);
