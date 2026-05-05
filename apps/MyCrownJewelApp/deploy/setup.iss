@@ -57,6 +57,10 @@ Source: "app\MyCrownJewelApp.Pfpad.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\MyCrownJewelApp.Pfpad.pdb"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\MyCrownJewelApp.Core.pdb"; DestDir: "{app}"; Flags: ignoreversion
 
+; Debugger support: netcoredbg (Debug Adapter Protocol server for .NET debugging)
+Source: "netcoredbg\netcoredbg.exe"; DestDir: "{app}\netcoredbg"; Flags: ignoreversion
+Source: "netcoredbg\*"; DestDir: "{app}\netcoredbg"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: DirExists(ExpandConstant('{src}\netcoredbg'))
+
 ; No additional runtime files needed — this is a self-contained single-file publish.
 
 [Icons]

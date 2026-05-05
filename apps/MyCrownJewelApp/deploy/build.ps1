@@ -30,6 +30,7 @@ $ErrorActionPreference = "Stop"
 $rootDir = Split-Path -Parent $PSScriptRoot
 $deployDir = Join-Path $rootDir "deploy"
 $appDir = Join-Path $deployDir "app"
+$netcoreDbgDir = Join-Path $deployDir "netcoredbg"
 $projectFile = Join-Path $rootDir "src\MyCrownJewelApp.Pfpad\MyCrownJewelApp.Pfpad.csproj"
 $issFile = Join-Path $deployDir "setup.iss"
 
@@ -58,6 +59,28 @@ if (-not $NoBuild) {
     Write-Host "Publish succeeded." -ForegroundColor Green
 } else {
     Write-Host "=== Skipping build (-NoBuild) ===" -ForegroundColor Yellow
+}
+
+# Download netcoredbg for the debugger if not already present
+$netcoreDbgExe = Join-Path $netcoreDbgDir "netcoredbg.exe"
+if (-not (Test-Path $netcoreDbgExe)) {
+    Write-Host "=== Downloading netcoredbg ===" -ForegroundColor Cyan
+    New-Item -ItemType Directory -Force -Path $netcoreDbgDir | Out-Null
+    $url = "https://github.com/Samsung/netcoredbg/releases/latest/download/netcoredbg-win64.zip"
+    $zipPath = Join-Path $env:TEMP "netcoredbg-win64.zip"
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $netcoreDbgDir, $true)
+        Remove-Item $zipPath -Force
+        Write-Host "netcoredbg downloaded to $netcoreDbgDir" -ForegroundColor Green
+    } catch {
+        Write-Host "WARNING: Could not download netcoredbg: $_" -ForegroundColor Yellow
+        Write-Host "The debugger feature will not be available out of the box." -ForegroundColor Yellow
+        Write-Host "Users can install it manually: https://github.com/Samsung/netcoredbg" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "=== netcoredbg already present ===" -ForegroundColor Cyan
 }
 
 # Update version in .iss file

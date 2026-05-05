@@ -240,9 +240,11 @@ public sealed class DebugSession : IDisposable
 
     private static string? FindNetCoreDbg()
     {
+        string appDir = AppDomain.CurrentDomain.BaseDirectory;
         string[] candidates =
         {
             "netcoredbg.exe",
+            Path.Combine(appDir, "netcoredbg", "netcoredbg.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "netcoredbg", "netcoredbg.exe"),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "netcoredbg", "netcoredbg.exe"),
         };
