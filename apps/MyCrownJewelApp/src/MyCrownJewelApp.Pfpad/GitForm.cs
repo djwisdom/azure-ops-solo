@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using LibGit2Sharp;
 
@@ -28,14 +29,30 @@ internal sealed class GitForm : Form
     private readonly ContextMenuStrip _statusContextMenu;
     private readonly ToolStripMenuItem _discardMenuItem;
     private readonly Label _statusHeader;
+    private readonly FlowLayoutPanel _syncPanel;
+    private readonly FlowLayoutPanel _btnFlow;
+    private readonly Label _syncLabel;
+    private readonly Label _diffLabel;
+    private readonly TableLayoutPanel _rightLayout;
+
     private List<StatusEntry> _staged = new();
     private List<StatusEntry> _unstaged = new();
     private List<StatusEntry> _untracked = new();
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
-    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    private const int GWL_STYLE = -16;
+    private const int WS_BORDER = 0x00800000;
+    private const int WS_EX_CLIENTEDGE = 0x00000200;
 
     public event Action<string>? FileOpenRequested;
 
@@ -47,6 +64,7 @@ internal sealed class GitForm : Form
         MinimumSize = new Size(600, 400);
         StartPosition = FormStartPosition.CenterParent;
         Font = new Font("Segoe UI", 9);
+        DoubleBuffered = true;
 
         var theme = ThemeManager.Instance.CurrentTheme;
 
@@ -60,7 +78,8 @@ internal sealed class GitForm : Form
         };
 
         var leftPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 6, 6, 6) };
-        var rightLayout = new TableLayoutPanel
+
+        _rightLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(6, 6, 8, 6),
@@ -68,9 +87,9 @@ internal sealed class GitForm : Form
             RowCount = 3,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
-        rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
-        rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+        _rightLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         int y = 0;
 
@@ -166,6 +185,7 @@ internal sealed class GitForm : Form
         _statusList.MouseClick += StatusList_MouseClick;
         _statusList.MouseDoubleClick += StatusList_DoubleClick;
         _statusList.MeasureItem += (s, e) => e.ItemHeight = 24;
+        _statusList.HandleCreated += (s, e) => ApplyScrollbarTheme(_statusList.Handle);
 
         _statusContextMenu = new ContextMenuStrip();
         _discardMenuItem = new ToolStripMenuItem("Discard Changes");
@@ -192,7 +212,9 @@ internal sealed class GitForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             Location = new Point(84, y),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-            Size = new Size(210, 26)
+            Size = new Size(210, 26),
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text
         };
 
         _commitMessage.TextChanged += (s, e) =>
@@ -224,6 +246,7 @@ internal sealed class GitForm : Form
         };
         _commitList.DrawItem += CommitList_DrawItem;
         _commitList.MeasureItem += (s, e) => e.ItemHeight = 42;
+        _commitList.HandleCreated += (s, e) => ApplyScrollbarTheme(_commitList.Handle);
 
         leftPanel.Controls.AddRange(new Control[] {
             branchLabel, _branchHost, _initBtn,
@@ -231,7 +254,7 @@ internal sealed class GitForm : Form
             commitHeader, _commitList
         });
 
-        var syncPanel = new FlowLayoutPanel
+        _syncPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
@@ -241,7 +264,7 @@ internal sealed class GitForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
 
-        var syncLabel = new Label
+        _syncLabel = new Label
         {
             Text = "Remote Sync",
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
@@ -249,7 +272,7 @@ internal sealed class GitForm : Form
             Margin = new Padding(0, 0, 0, 4)
         };
 
-        var btnFlow = new FlowLayoutPanel
+        _btnFlow = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.LeftToRight,
             AutoSize = true,
@@ -295,11 +318,11 @@ internal sealed class GitForm : Form
         };
         _pushBtn.Click += Push_Click;
 
-        btnFlow.Controls.AddRange(new Control[] { _fetchBtn, _pullBtn, _pushBtn });
-        syncPanel.Controls.Add(syncLabel);
-        syncPanel.Controls.Add(btnFlow);
+        _btnFlow.Controls.AddRange(new Control[] { _fetchBtn, _pullBtn, _pushBtn });
+        _syncPanel.Controls.Add(_syncLabel);
+        _syncPanel.Controls.Add(_btnFlow);
 
-        var diffLabel = new Label
+        _diffLabel = new Label
         {
             Text = "Diff Preview",
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
@@ -318,13 +341,14 @@ internal sealed class GitForm : Form
             WordWrap = false,
             Dock = DockStyle.Fill
         };
+        _diffBox.HandleCreated += (s, e) => ApplyScrollbarTheme(_diffBox.Handle);
 
-        rightLayout.Controls.Add(syncPanel, 0, 0);
-        rightLayout.Controls.Add(diffLabel, 0, 1);
-        rightLayout.Controls.Add(_diffBox, 0, 2);
+        _rightLayout.Controls.Add(_syncPanel, 0, 0);
+        _rightLayout.Controls.Add(_diffLabel, 0, 1);
+        _rightLayout.Controls.Add(_diffBox, 0, 2);
 
         mainSplit.Panel1.Controls.Add(leftPanel);
-        mainSplit.Panel2.Controls.Add(rightLayout);
+        mainSplit.Panel2.Controls.Add(_rightLayout);
 
         Controls.Add(mainSplit);
 
@@ -343,6 +367,68 @@ internal sealed class GitForm : Form
         NativeThemed.ApplyDarkModeToWindow(Handle);
     }
 
+    private void ApplyScrollbarTheme(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero) return;
+        var theme = ThemeManager.Instance.CurrentTheme;
+        SetWindowTheme(handle, theme.IsLight ? null : DARK_MODE_SCROLLBAR, null);
+    }
+
+    private void ThemeControl(Control c, Theme theme)
+    {
+        if (c is ToolStrip) return;
+
+        c.BackColor = theme.MenuBackground;
+        c.ForeColor = theme.Text;
+
+        switch (c)
+        {
+            case Button btn:
+                StyleButton(btn, theme, btn == _commitBtn || btn == _pushBtn);
+                break;
+            case TextBox tb:
+                tb.BackColor = theme.EditorBackground;
+                tb.ForeColor = theme.Text;
+                break;
+            case ListBox:
+                break;
+            case Label:
+                c.BackColor = Color.Transparent;
+                break;
+            case TableLayoutPanel tlp:
+                foreach (Control child in tlp.Controls)
+                    ThemeControl(child, theme);
+                break;
+            case FlowLayoutPanel:
+                c.BackColor = Color.Transparent;
+                foreach (Control child in c.Controls)
+                    ThemeControl(child, theme);
+                break;
+            case Panel p:
+                foreach (Control child in p.Controls)
+                    ThemeControl(child, theme);
+                break;
+        }
+    }
+
+    private static void StyleButton(Button btn, Theme theme, bool isAccent)
+    {
+        btn.FlatAppearance.BorderColor = theme.Muted;
+        btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        if (isAccent)
+        {
+            btn.BackColor = theme.Accent;
+            btn.ForeColor = Color.White;
+            btn.FlatAppearance.BorderSize = 0;
+        }
+        else
+        {
+            btn.BackColor = theme.Background;
+            btn.ForeColor = theme.Text;
+            btn.FlatAppearance.BorderSize = 1;
+        }
+    }
+
     private void ApplyTheme(Theme theme)
     {
         BackColor = theme.MenuBackground;
@@ -351,89 +437,38 @@ internal sealed class GitForm : Form
         _branchHost.BackColor = theme.MenuBackground;
         _branchHost.ForeColor = theme.Text;
         _branchHost.Renderer = new ThemeAwareMenuRenderer(theme);
-
-        foreach (ToolStripItem item in _branchHost.Items)
-        {
-            item.BackColor = theme.MenuBackground;
-            item.ForeColor = theme.Text;
-        }
+        _branchDropdown.BackColor = theme.MenuBackground;
+        _branchDropdown.ForeColor = theme.Text;
 
         _statusContextMenu.BackColor = theme.MenuBackground;
         _statusContextMenu.ForeColor = theme.Text;
         _statusContextMenu.Renderer = new ThemeAwareMenuRenderer(theme);
+        _discardMenuItem.BackColor = theme.MenuBackground;
+        _discardMenuItem.ForeColor = theme.Text;
+
+        _initBtn.BackColor = theme.Background;
+        _initBtn.ForeColor = theme.Text;
+        _initBtn.FlatAppearance.BorderColor = theme.Muted;
+        _initBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        _initBtn.FlatAppearance.BorderSize = 1;
+
+        StyleButton(_stageAllBtn, theme, false);
+        StyleButton(_unstageAllBtn, theme, false);
+        StyleButton(_fetchBtn, theme, false);
+        StyleButton(_pullBtn, theme, false);
+        StyleButton(_commitBtn, theme, true);
+        StyleButton(_pushBtn, theme, true);
 
         foreach (Control c in Controls)
         {
             if (c is SplitContainer sc)
             {
                 sc.BackColor = theme.Border;
-                ApplyThemeToPanel(sc.Panel1, theme);
-                ApplyThemeToPanel(sc.Panel2, theme);
+                foreach (Control child in sc.Panel1.Controls)
+                    ThemeControl(child, theme);
+                foreach (Control child in sc.Panel2.Controls)
+                    ThemeControl(child, theme);
             }
-        }
-    }
-
-    private void ApplyThemeToPanel(Panel panel, Theme theme)
-    {
-        panel.BackColor = theme.MenuBackground;
-        foreach (Control c in panel.Controls)
-        {
-            ApplyControlTheme(c, theme);
-        }
-    }
-
-    private void ApplyControlTheme(Control c, Theme theme)
-    {
-        if (c is ToolStrip) return;
-
-        c.BackColor = theme.MenuBackground;
-        c.ForeColor = theme.Text;
-
-        if (c is Button btn)
-        {
-            btn.FlatAppearance.BorderColor = theme.Muted;
-            btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
-            if (btn == _commitBtn || btn == _pushBtn)
-            {
-                btn.BackColor = theme.Accent;
-                btn.ForeColor = Color.White;
-                btn.FlatAppearance.BorderSize = 0;
-            }
-            else
-            {
-                btn.BackColor = theme.Background;
-            }
-        }
-        else if (c is TextBox tb)
-        {
-            tb.BackColor = theme.EditorBackground;
-            tb.ForeColor = theme.Text;
-        }
-        else if (c is ListBox lb)
-        {
-            lb.BackColor = theme.MenuBackground;
-            lb.ForeColor = theme.Text;
-        }
-        else if (c is Label lbl)
-        {
-            lbl.BackColor = Color.Transparent;
-        }
-        else if (c is TableLayoutPanel tlp)
-        {
-            tlp.BackColor = theme.MenuBackground;
-            foreach (Control child in tlp.Controls)
-            {
-                if (child is Panel p)
-                    ApplyThemeToPanel(p, theme);
-                else
-                    ApplyControlTheme(child, theme);
-            }
-        }
-        else if (c is FlowLayoutPanel flp)
-        {
-            flp.BackColor = Color.Transparent;
-            foreach (Control child in flp.Controls)
-                ApplyControlTheme(child, theme);
         }
     }
 
@@ -549,7 +584,7 @@ internal sealed class GitForm : Form
         {
             var paths = string.Join("\n", conflicts.Select(c => $"  • {c.Path}"));
             ThemedMessageBox.Show(
-                $"Merge conflicts detected in {conflicts.Count} file(s):\n\n{paths}\n\nUse the Right-click → 'Accept Ours' / 'Accept Theirs' on each conflicted file in the list, then commit.",
+                $"Merge conflicts detected in {conflicts.Count} file(s):\n\n{paths}\n\nClick a conflicted file (shown in red) and choose Ours (local) or Theirs (incoming) to resolve, then commit.",
                 "Merge Conflicts",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -703,7 +738,7 @@ internal sealed class GitForm : Form
         return null;
     }
 
-    private bool IsConflictEntry(string listText)
+    private static bool IsConflictEntry(string listText)
     {
         var trimmed = listText.TrimStart();
         return trimmed.StartsWith("[!]");
@@ -749,7 +784,7 @@ internal sealed class GitForm : Form
         bool isConflict = text.TrimStart().StartsWith("[!]");
 
         using var bgBrush = new SolidBrush(
-            isConflict ? Color.FromArgb(60, 200, 60, 60) :
+            isConflict ? Color.FromArgb(80, 180, 40, 40) :
             isSelected ? theme.ButtonHoverBackground :
             theme.MenuBackground);
         e.Graphics.FillRectangle(bgBrush, rect);
