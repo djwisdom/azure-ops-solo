@@ -122,7 +122,9 @@ public sealed class WhitespaceOverlayForm : Form
             return;
         }
 
-        var screenPos = linkedEditor.Parent.RectangleToScreen(linkedEditor.Bounds);
+        var parent = linkedEditor.Parent;
+        if (parent is null) return;
+        var screenPos = parent.RectangleToScreen(linkedEditor.Bounds);
         Bounds = screenPos;
     }
 
