@@ -88,7 +88,7 @@ internal sealed class GitForm : Form
         leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
         leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
         leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
 
@@ -243,7 +243,7 @@ internal sealed class GitForm : Form
             MaxLength = 10000,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text,
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
         _commitMessage.KeyDown += (s, ke) =>
         {
