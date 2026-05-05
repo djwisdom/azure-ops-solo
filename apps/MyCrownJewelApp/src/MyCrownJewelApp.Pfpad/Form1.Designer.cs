@@ -306,6 +306,7 @@ partial class Form1
         workspaceMenuItem = new ToolStripMenuItem("&Workspace", null, ToggleWorkspace_Click, Keys.Control | Keys.Shift | Keys.W);
         workspaceMenuItem.CheckOnClick = true;
         openFolderMenuItem = new ToolStripMenuItem("Open &Folder...", null, OpenFolder_Click, Keys.Control | Keys.Alt | Keys.O);
+        workspaceMenuItem.CheckOnClick = true;
         viewMenu.DropDownItems.Add(openFolderMenuItem);
         viewMenu.DropDownItems.Add(workspaceMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -315,6 +316,8 @@ partial class Form1
         var gitFormMenuItem = new ToolStripMenuItem("Source Control &Window...", null, OpenGitForm, Keys.Control | Keys.Shift | Keys.G);
         viewMenu.DropDownItems.Add(gitFormMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
+        terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
+        terminalMenuItem.Checked = false;
         viewMenu.DropDownItems.Add(terminalMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         notificationCenterMenuItem = new ToolStripMenuItem("Notification &Center", null, ToggleNotificationCenter, Keys.Control | Keys.Shift | Keys.N);
