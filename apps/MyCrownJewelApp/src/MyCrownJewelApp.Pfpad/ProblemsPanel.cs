@@ -165,6 +165,8 @@ internal sealed class ProblemsPanel : UserControl
             ProblemSelected?.Invoke(d.File, d.Line);
     }
 
+    public IReadOnlyList<Diagnostic> GetDiagnostics() => _diagnostics.AsReadOnly();
+
     public void SetTheme(Theme theme)
     {
         BackColor = theme.MenuBackground;

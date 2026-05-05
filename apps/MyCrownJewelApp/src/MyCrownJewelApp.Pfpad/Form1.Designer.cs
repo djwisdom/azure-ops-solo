@@ -355,6 +355,8 @@ partial class Form1
         panelMenu.DropDownItems.Add(new ToolStripSeparator());
         var runConfigMenuItem = new ToolStripMenuItem("Run &Configurations", null, ToggleRunConfigPanel, Keys.Control | Keys.F5);
         panelMenu.DropDownItems.Add(runConfigMenuItem);
+        var taskListMenuItem = new ToolStripMenuItem("&Task List", null, ScanTODOs_Click, Keys.Control | Keys.Alt | Keys.T);
+        panelMenu.DropDownItems.Add(taskListMenuItem);
 
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);

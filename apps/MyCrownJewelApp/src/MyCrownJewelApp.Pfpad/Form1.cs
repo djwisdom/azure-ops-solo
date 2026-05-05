@@ -3053,6 +3053,41 @@ using System.Linq;
             RunTestsWithCoverage();
         }
 
+        private void ScanTODOs_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+            {
+                ThemedMessageBox.Show("Open a workspace folder first (Panel > Open Folder).",
+                    "Task List", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Run TODO scan on background thread
+            ShowNotification("Task List", "Scanning for TODOs...");
+            string root = _workspaceRoot;
+            Task.Run(() =>
+            {
+                var todos = TodoScanner.ScanWorkspace(root);
+                BeginInvoke(() =>
+                {
+                    // Merge with existing diagnostics
+                    var existing = _problemsPanel?.GetDiagnostics() ?? new List<Diagnostic>();
+                    var merged = new List<Diagnostic>();
+                    merged.AddRange(existing);
+                    merged.AddRange(todos);
+                    merged.Sort((a, b) => { int c = a.Line.CompareTo(b.Line); return c != 0 ? c : a.Column.CompareTo(b.Column); });
+
+                    var allActions = _quickActionProvider.GetActions("", merged);
+                    var gutterActions = allActions.Select(a => (a.Line, a.Title, a.Apply)).ToList();
+                    _problemsPanel?.SetDiagnostics(merged);
+                    gutterPanel?.SetQuickActions(gutterActions);
+
+                    double pct = merged.Count > 0 ? (double)todos.Count / merged.Count * 100 : 0;
+                    ShowNotification("Task List", $"Found {todos.Count} TODO(s) — {merged.Count} total issues");
+                });
+            });
+        }
+
         private void LoadCoverage_Click(object? sender, EventArgs e)
         {
             using var dlg = new OpenFileDialog
