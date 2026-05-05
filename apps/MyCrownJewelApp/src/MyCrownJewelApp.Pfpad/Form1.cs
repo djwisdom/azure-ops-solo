@@ -5511,6 +5511,17 @@ using System.Linq;
                 item.Checked = _problemsPanelVisible;
         }
 
+        private void ToggleRunConfigPanel()
+        {
+            using var dlg = new RunConfigurationDialog(_workspaceRoot);
+            dlg.ShowDialog(this);
+        }
+
+        private void ToggleRunConfigPanel(object? sender, EventArgs e)
+        {
+            ToggleRunConfigPanel();
+        }
+
         private void ScheduleLint()
         {
             if (!_lintEngine.Enabled) return;

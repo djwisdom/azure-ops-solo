@@ -352,6 +352,9 @@ partial class Form1
         panelMenu.DropDownItems.Add(dependenciesMenuItem);
         var impactMenuItem = new ToolStripMenuItem("&Impact Analysis", null, ImpactAnalysis_Click, Keys.Control | Keys.Alt | Keys.I);
         panelMenu.DropDownItems.Add(impactMenuItem);
+        panelMenu.DropDownItems.Add(new ToolStripSeparator());
+        var runConfigMenuItem = new ToolStripMenuItem("Run &Configurations", null, ToggleRunConfigPanel, Keys.Control | Keys.F5);
+        panelMenu.DropDownItems.Add(runConfigMenuItem);
 
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);
