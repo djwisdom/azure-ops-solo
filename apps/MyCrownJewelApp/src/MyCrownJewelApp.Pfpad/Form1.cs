@@ -130,6 +130,11 @@ using System.Linq;
         private ProblemsPanel? _problemsPanel;
         private bool _problemsPanelVisible;
 
+        // Test runner state
+        private TestRunResult? _lastTestResult;
+        private string? _lastTestProject;
+        private bool _testsRunning;
+
         // Hover docs + signature help
         private readonly HoverTooltipForm _hoverTooltip = new();
         private readonly SignatureHelpForm _signatureHelp = new();
@@ -3220,6 +3225,173 @@ using System.Linq;
             catch { return null; }
         }
 
+        private void RunTests_Click(object? sender, EventArgs e)
+        {
+            RunTests();
+        }
+
+        private void RerunFailedTests_Click203(object? sender, EventArgs e)
+        {
+            RerunFailedTests();
+        }
+
+        private void RunTests()
+        {
+            if (_testsRunning)
+            {
+                ShowNotification("Tests", "Tests are already running");
+                return;
+            }
+
+            string testProj = FindTestProject();
+            if (string.IsNullOrEmpty(testProj))
+            {
+                ThemedMessageBox.Show("No test project found in the workspace folder.",
+                    "Run Tests", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _lastTestProject = testProj;
+            _testsRunning = true;
+            ShowNotification("Tests", "Running tests...");
+
+            string proj = testProj;
+            Task.Run(() =>
+            {
+                var result = TestResultParser.RunTests(proj);
+                BeginInvoke(() =>
+                {
+                    _testsRunning = false;
+                    _lastTestResult = result;
+                    
+                    if (result.Total == 0 && string.IsNullOrEmpty(result.RawOutput))
+                    {
+                        ShowNotification("Tests", "Test run failed or produced no results");
+                        return;
+                    }
+
+                    using var dlg = new TestResultsDialog(result);
+                    dlg.FrameSelected += (file, line) => BeginInvoke(() =>
+                    {
+                        if (File.Exists(file))
+                        {
+                            OpenFileInNewTab(file);
+                            GoToLine(line);
+                        }
+                    });
+                    dlg.ShowDialog(this);
+
+                    string status = result.Failed > 0
+                        ? $"{result.Failed} failed, {result.Passed} passed"
+                        : $"{result.Passed} passed";
+                    if (result.Skipped > 0) status += $", {result.Skipped} skipped";
+                    ShowNotification("Tests", status);
+                });
+            });
+        }
+
+        private void RerunFailedTests()
+        {
+            if (_testsRunning)
+            {
+                ShowNotification("Tests", "Tests are already running");
+                return;
+            }
+
+            string testProj = _lastTestProject ?? FindTestProject();
+            if (string.IsNullOrEmpty(testProj))
+            {
+                ThemedMessageBox.Show("No test project found.",
+                    "Rerun Failed Tests", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _testsRunning = true;
+            ShowNotification("Tests", "Rerunning failed tests...");
+
+            string proj = testProj;
+            string? filter = _lastTestResult != null
+                ? string.Join("|", _lastTestResult.Tests
+                    .Where(t => t.Outcome == TestOutcome.Failed)
+                    .Select(t => t.TestName))
+                : null;
+
+            Task.Run(() =>
+            {
+                string args = $"test \"{proj}\" --no-build --filter \"{filter}\"";
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = args,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc == null) { BeginInvoke(() => { _testsRunning = false; }); return; }
+
+                string stdout = proc.StandardOutput.ReadToEnd();
+                string stderr = proc.StandardError.ReadToEnd();
+                proc.WaitForExit(300000);
+
+                BeginInvoke(() =>
+                {
+                    _testsRunning = false;
+
+                    // Parse from stdout
+                    var result = new TestRunResult();
+                    TestResultParser.ParseSummaryFromOutput(stdout, result);
+
+                    // If we have a TRX, parse that too
+                    string tempDir = Path.Combine(Path.GetTempPath(), "pfpad_rerun_" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(tempDir);
+                    string trxFile = Path.Combine(tempDir, "rerun.trx");
+                    try
+                    {
+                        // Re-run with logger to get structured results
+                        var psi2 = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "dotnet",
+                            Arguments = $"test \"{proj}\" --no-build --filter \"{filter}\" --logger \"trx;LogFileName={trxFile}\"",
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                            CreateNoWindow = true
+                        };
+                        using var proc2 = System.Diagnostics.Process.Start(psi2);
+                        if (proc2 != null)
+                        {
+                            proc2.WaitForExit(300000);
+                            if (File.Exists(trxFile))
+                                result = TestResultParser.ParseTrxFile(trxFile);
+                        }
+                    }
+                    catch { }
+                    finally { try { Directory.Delete(tempDir, true); } catch { } }
+
+                    _lastTestResult = result;
+
+                    using var dlg = new TestResultsDialog(result);
+                    dlg.FrameSelected += (file, line) => BeginInvoke(() =>
+                    {
+                        if (File.Exists(file))
+                        {
+                            OpenFileInNewTab(file);
+                            GoToLine(line);
+                        }
+                    });
+                    dlg.ShowDialog(this);
+
+                    string status = result.Failed > 0
+                        ? $"{result.Failed} failed, {result.Passed} passed"
+                        : $"{result.Passed} passed";
+                    ShowNotification("Tests", "Rerun: " + status);
+                });
+            });
+        }
+
         private void ShowCallHierarchy()
         {
             if (textEditor is null) return;
@@ -4986,7 +5158,6 @@ using System.Linq;
                     x = Math.Max(0, x);
                     minimapControl.Location = new Point(x, textEditor.Top);
                     minimapControl.Size = new Size(mw, textEditor.ClientSize.Height);
-                    minimapControl.MinimapWidth = mw;
                     minimapControl.AttachEditor(textEditor);
                 }
             }

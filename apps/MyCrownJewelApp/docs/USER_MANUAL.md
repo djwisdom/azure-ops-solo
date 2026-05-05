@@ -44,7 +44,7 @@ Each file opens in its own tab. If no files are specified, you get a single unti
 
 ## 2. The Menu System
 
-The menu strip at the top contains four menus: File, Edit, View, and Tools. (Plus a Help menu with exactly one item, which is about as helpful as you'd expect from a software project.)
+The menu strip at the top contains six menus: File, Edit, View, Panel, Run, and Tools. (Plus a Help menu with exactly one item, which is about as helpful as you'd expect from a software project.) The separation is deliberate — View controls how the editor looks, Panel controls which sidebars appear, and Run controls what happens when you press the "go" lever.
 
 ### 2.1 File Menu
 
@@ -85,6 +85,10 @@ The menu strip at the top contains four menus: File, Edit, View, and Tools. (Plu
 | Clear Bookmarks | | Removes all bookmarks at once. |
 | Toggle Fold | `Ctrl+Shift+[` | Collapses or expands the code fold at the current line. |
 | Toggle All Folds | `Ctrl+Alt+[` | Collapses or expands all foldable regions. |
+| Go to Definition | `F12` | Navigates to the definition of the identifier at the cursor. Uses ctags or regex-based fallback. |
+| Rename | `F2` | Opens a project-wide rename dialog for the identifier at the cursor. Regex-based, not semantic — it renames every occurrence in every workspace file. Preview before applying. |
+| Call Hierarchy | `Ctrl+Shift+H` | Shows incoming callers and outgoing calls for the method at the cursor. Tree view with clickable navigation. |
+| Parse Stack Trace | `Ctrl+Shift+T` | Parses a selected .NET, JavaScript, Python, or generic stack trace into clickable file:line frames. |
 
 ### 2.3 View Menu
 
@@ -111,21 +115,46 @@ This is where most of the editor's personality lives.
 | Vim Mode | `Ctrl+Alt+V` | Enables or disables Vim emulation. See the Vim section below for the full list of supported commands. |
 | Split Vertical | `Ctrl+Shift+V` | Creates a vertical split pane showing a different document. |
 | Split Horizontal | `Ctrl+Alt+H` | Creates a horizontal split pane. |
-| Workspace | `Ctrl+Shift+W` | Toggles the file tree sidebar. |
-| Open Folder | `Ctrl+Alt+O` | Sets the workspace root directory. |
-| Source Control | `Ctrl+Alt+G` | Toggles the Git panel in the sidebar. |
+| Theme | | Submenu with 15 built-in themes: Dark (default), Light, four Catppuccin variants (Latte, Frappe, Macchiato, Mocha), Dracula, One Dark Pro, Tokyo Night, Night Owl, Shades of Purple, Atom One Light, GitHub Light, Light Owl, Ayu Light, and Bluloco Light. |
+
+### 2.4 Panel Menu
+
+The Panel menu is where all sidebar panels live — think of it as the "more tools" drawer. Each item toggles a panel's visibility, and they can be combined freely.
+
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Open Folder | `Ctrl+Alt+O` | Sets the workspace root directory. Required before most panel features work. |
+| Workspace | `Ctrl+Shift+W` | Toggles the file tree sidebar. See section 4.1. |
+| Source Control | `Ctrl+Alt+G` | Toggles the Git panel in the sidebar. See section 6.3. |
+| Source Control Window | `Ctrl+Shift+G` | Opens a standalone git form with a larger commit area and full log. |
+| Symbols | `Ctrl+Alt+S` | Toggles the symbol index sidebar listing all classes, methods, properties, and variables found in the workspace. Color-coded kind badges and a search filter make finding things bearable. Double-click to navigate. |
+| Problems | `Ctrl+Alt+P` | Toggles the diagnostics panel showing lint warnings, errors, and TODO items. Color-coded by severity (red=error, yellow=warning, blue=info). Double-click to jump to the offending line. |
 | Terminal | `` Ctrl+` `` | Toggles the integrated terminal panel. |
 | Notification Center | `Ctrl+Shift+N` | Opens the RSS feed notification viewer. |
 | Notification Settings | | Opens the feed configuration dialog. |
-| Theme | | Submenu with 15 built-in themes: Dark (default), Light, four Catppuccin variants (Latte, Frappe, Macchiato, Mocha), Dracula, One Dark Pro, Tokyo Night, Night Owl, Shades of Purple, Atom One Light, GitHub Light, Light Owl, Ayu Light, and Bluloco Light. |
+| Dependencies | `Ctrl+Alt+D` | Opens the project dependency graph dialog showing project references and NuGet package references. |
+| Impact Analysis | `Ctrl+Alt+I` | Shows which files would be affected by changes to the current file, based on cross-file namespace usage. |
+| Run Configurations | `Ctrl+F5` | Opens the launch profiles dialog. Scans for `launchSettings.json` (from ASP.NET projects) and `.env` files, grouped by project. Run and Stop buttons launch `dotnet run` with environment variables. |
+| Task List | `Ctrl+Alt+T` | Scans the workspace for TODO, FIXME, HACK, NOTE, XXX, BUG, OPTIMIZE, and REVIEW comments. Results are merged into the Problems panel with severity mapped by tag type. |
 
-### 2.4 Tools Menu
+### 2.5 Run Menu
+
+Everything related to running tests and measuring code quality lives here. If you're not a "run tests first, ask questions later" person, this section may cause discomfort.
+
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Run Tests | `Ctrl+Alt+F5` | Finds the first `*Tests.csproj` or `*Test.csproj` in the workspace and runs `dotnet test` with TRX logging. Parses the results into a structured dialog showing pass/fail/skip counts, test names with colored badges, error messages, and stack traces. Double-click a stack trace frame to open the file at the failing line. |
+| Rerun Failed Tests | `Ctrl+Alt+F6` | Re-runs only the tests that failed in the last run (using a fully-qualified-name filter). Shows results in the same structured dialog. |
+| Run Tests with Coverage | `Ctrl+Alt+R` | Runs `dotnet test --collect "Code Coverage"` with coverlet. Parses the resulting Cobertura XML and shows a coverage summary dialog. Code coverage bars appear in the gutter — green for covered, red for missed. |
+| Load Coverage File | | Opens a file picker for loading a `.cobertura.xml` or `.xml` file directly, without re-running tests. |
+
+### 2.6 Tools Menu
 
 | Command | Shortcut | What It Does |
 |---------|----------|-------------|
 | External Tools | `Ctrl+Alt+T` | Opens the External Tools configuration dialog. You can define up to 9 custom commands with variable substitution (`$(FilePath)`, `$(SelText)`, `$(CurLine)`, etc.) and assign them keyboard shortcuts `Ctrl+Alt+Shift+1` through `9`. |
 
-### 2.5 Help Menu
+### 2.7 Help Menu
 
 | Command | What It Does |
 |---------|-------------|
@@ -195,7 +224,30 @@ An integrated terminal that auto-detects the available shell (PowerShell 7, Powe
 - **Clear output** button.
 - **Theme-aware** — Colors match the current editor theme.
 
----
+### 4.4 Symbols Panel (Ctrl+Alt+S)
+
+A dockable sidebar listing every indexed symbol in the workspace. The symbol index is rebuilt on a background thread after each workspace scan, scanning every `.cs` file with regex patterns for:
+
+- `class`, `struct`, `interface`, `enum` declarations
+- `method`, `function`, `property`, `field`, `variable` declarations
+
+Each symbol is displayed with:
+- **Kind badge**: A colored square with a single-letter label — C (class, teal), I (interface, purple), M (method, blue), P (property, gold), F (field/function, gold), V (variable, gold).
+- **Name and file**: The symbol name and its source file (short name).
+- **Search filter**: Type to filter by name, context, or kind.
+
+Double-click any symbol to navigate to its file and line. The panel auto-refreshes when the index is updated.
+
+### 4.5 Problems Panel (Ctrl+Alt+P)
+
+Displays all diagnostics in the workspace in a unified list — lint warnings, errors, and scanned TODO items all appear here. Each entry shows:
+
+- **Severity badge**: Red (error), yellow (warning), blue (info).
+- **Message**: The diagnostic text, truncated with ellipsis if too long.
+- **Location**: Line number on the right side.
+- **Rule code**: The diagnostic code (e.g., `PFP002`, `TODO`).
+
+Double-click any item to jump to the source location. The panel header shows a count summary: "Problems (3 errors, 5 warnings, 2 other)." Items are sorted by line number for natural reading order.
 
 ## 5. Code Editing Features
 
@@ -300,9 +352,140 @@ Press F12 (or right-click → "Go to Definition") with the cursor on an identifi
 
 If there's a single match, you're taken directly to the file and line. Multiple matches show a picker dialog. No matches show a helpful message suggesting you open a workspace folder first — because the index needs something to index.
 
----
+### 5.13 Live Diagnostics & Squiggly Underlines
 
-## 6. Git Integration
+The lint engine runs on a background thread with a 400ms debounce. It doesn't need Roslyn — all rules are regex/text-based. Five rules are currently implemented:
+
+| Code | Rule | What It Flags |
+|------|------|---------------|
+| PFP001 | Trailing whitespace | Any line ending with spaces or tabs |
+| PFP002 | Line length | Lines exceeding 120 characters |
+| PFP003 | Magic numbers | Numeric literals that aren't 0, 1, or -1 (ignores array indices, enum values, and a few other well-known exceptions) |
+| PFP004 | Missing semicolon | Lines that look like they need a `;` but don't have one |
+| PFP005 | Naming convention | `camelCase` for local variables, `PascalCase` for methods and types, `_camelCase` for fields |
+
+Diagnostics appear in the Problems panel (Panel > Problems or `Ctrl+Alt+P`) and as squiggly underlines in the editor — red for errors, yellow for warnings, blue for info. The squiggles are drawn as zigzag lines in the `WM_PAINT` handler, which is the kind of sentence that makes WinForms developers nod knowingly and everyone else look concerned.
+
+### 5.14 Quick Actions (Gutter Lightbulbs)
+
+When the lint engine detects a fixable issue, a lightbulb icon appears in the gutter. Click the lightbulb to see available quick actions:
+
+- **Remove trailing whitespace**: Trims the offending line.
+- **Insert semicolon**: Adds `;` at the end of a statement that forgot one.
+- **Add missing using**: Cross-references the symbol index to find the correct namespace and inserts a `using` directive.
+
+Lightbulbs are yellow when hovered, amber otherwise — a deliberate design choice to remind you that the fix is there but requires conscious effort.
+
+### 5.15 Rename (F2)
+
+Press F2 with the cursor on an identifier to trigger a project-wide rename. The feature:
+
+1. Finds the word under the cursor.
+2. Searches all workspace files for occurrences using regex (word-boundary matched).
+3. Shows a preview dialog listing every match grouped by file.
+4. On confirmation, applies replacements file by file and saves each file.
+
+This is regex-based, not semantic. It will rename every occurrence of that identifier across the entire workspace, including false positives if another scope happens to use the same name. You have been warned. A red "Fix" button next to alarming stats is there for a reason.
+
+### 5.16 Call Hierarchy (Ctrl+Shift+H)
+
+With the cursor on a method name, press `Ctrl+Shift+H` to see who calls whom. The dialog shows:
+
+- **Outgoing calls**: Methods called by the current method, extracted by brace-matching the method body and scanning for `Identifier(` patterns.
+- **Incoming callers**: Every workspace file that references the method name.
+
+The result is a tree view with navigation. Double-click any node to jump to the file and line. The analysis is lexical — if two methods share the same name, both will appear as callers. This is a limitation of the regex approach, but it works well enough for most codebases.
+
+### 5.17 Stack Trace Parsing (Ctrl+Shift+T)
+
+Paste or type a stack trace into the editor, select it (or just ensure the cursor is on it), press `Ctrl+Shift+T`, and the editor parses it into clickable frames. The parser handles four formats:
+
+| Format | Example Frame |
+|--------|---------------|
+| .NET | `at Foo.Bar() in C:\project\file.cs:line 42` |
+| JavaScript | `at functionName (file.ts:42:10)` |
+| Python | `File "path/to/file.py", line 42, in functionName` |
+| Generic | `C:\project\file.cs:42` |
+
+Each frame shows whether the file exists (checkmark) or doesn't (cross). Double-click to navigate. The dialog has a "Copy All" button for sharing — because sometimes you need to forward the evidence.
+
+### 5.18 Hover Documentation
+
+Hovering over an identifier in the editor for 400ms triggers a tooltip overlay showing:
+
+1. **Symbol kind** (class, method, property, etc.)
+2. **XML doc summary** — parsed from `///` comments in the source file
+3. **Declaration context** — the surrounding type and namespace
+
+The tooltip is a borderless form that auto-positions above the cursor. It dismisses when the cursor moves more than 10 pixels or after 400ms of inactivity — which is just enough time to read, but not enough time to recline.
+
+### 5.19 Signature Help
+
+When you type an opening parenthesis `(`, a signature help overlay appears showing:
+
+1. **Method name and parameter list**
+2. **Current parameter** highlighted in bold with its XML `<param>` documentation
+3. **Overload list** (if multiple overloads exist)
+
+Navigate parameters by typing commas — the highlight shifts to the next parameter. Dismiss by typing `)`, `;`, or pressing Escape. The form repositions to track your cursor location.
+
+### 5.20 Code Coverage
+
+The editor supports code coverage analysis via the Cobertura XML format (the default output from coverlet). Two entry points:
+
+- **Run > Run Tests with Coverage** (`Ctrl+Alt+R`): Runs `dotnet test --collect "Code Coverage"` and parses the generated `.cobertura.xml` file.
+- **Run > Load Coverage File**: Opens an existing `.cobertura.xml` file without re-running tests.
+
+Coverage indicators appear in the gutter: a green bar for covered lines, red for missed. The Coverage Summary dialog shows per-file stats (file name, coverage percentage, covered/total lines, and a checkmark/cross status). The color coding is aggressive: green for >= 80%, yellow for >= 50%, red for anything below. The dialog uses a doubled format to make you feel bad about that 23% file.
+
+### 5.21 Project Dependencies & Impact Analysis
+
+**Dependencies** (`Ctrl+Alt+D` or Panel > Dependencies): Scans workspace `.csproj` files for `ProjectReference` and `PackageReference` entries. Shows a tree dialog with projects, their NuGet packages, and cross-project references. Useful for understanding why your build takes 47 seconds and which packages you're not actually using.
+
+**Impact Analysis** (`Ctrl+Alt+I` or Panel > Impact Analysis): Given the current file, finds all other files in the workspace that reference the same namespace. The result is a "who breaks if I change this" list — perfect for that refactoring you're about to do at 4:55 PM on a Friday. Results include file names, line numbers, and the matching context line.
+
+### 5.22 Run Configurations (Ctrl+F5)
+
+Scans the workspace for `Properties\launchSettings.json` files (from ASP.NET projects) and `.env*` files. Shows a dialog grouping profiles by project, each with:
+
+- **Profile name** and associated environment variables
+- **Run button**: Launches `dotnet run --project` with the profile's working directory and environment variables.
+- **Stop button**: Kills the running process.
+- **Stdout/stderr streaming**: Output is shown in the status label (truncated to 80 characters, because you don't need the full NuGet restore log in a dialog).
+
+If no `launchSettings.json` exists, it falls back to scanning parent directories for solution or project files, so it still shows something useful.
+
+### 5.23 Task List (Ctrl+Alt+T)
+
+Scans all workspace files for comment tags:
+
+| Tag | Severity |
+|-----|----------|
+| `TODO` | Info |
+| `FIXME` | Warning |
+| `HACK` | Warning |
+| `BUG` | Error |
+| `XXX` | Info |
+| `NOTE` | Info |
+| `OPTIMIZE` | Info |
+| `REVIEW` | Info |
+
+Results are merged into the Problems panel alongside lint diagnostics. The scanner runs on a background thread to avoid blocking the UI while it reads every file in your workspace. Tags are matched with word boundaries to avoid false positives from variable names like `BUG_REPORT_URL`.
+
+### 5.24 Test Runner
+
+**Run > Run Tests** (`Ctrl+Alt+F5`): Finds `*Tests.csproj` or `*Test.csproj` in the workspace and runs `dotnet test` with TRX logging on a background thread. The results open in the **Test Results** dialog featuring:
+
+- **Summary header**: Color-coded (green for all passing, red for any failures) with counts.
+- **Test list**: Owner-drawn with colored badges — green check for pass, red X for fail, yellow circle for skip — plus duration.
+- **Detail panel**: Selecting a test shows its full name, outcome, error message, and stack trace in a monospace detail pane.
+- **Stack trace navigation**: Double-click a file:line pattern in the detail pane to open the file at that line.
+
+**Rerun Failed Tests** (`Ctrl+Alt+F6`): Filters to only run tests that failed in the last run. Uses `--filter` with the fully-qualified names of failed tests.
+
+**Run > Run Tests with Coverage** (`Ctrl+Alt+R`): Runs the same test project with `--collect "Code Coverage"` for combined test results and coverage data (see section 5.20).
+
+The test runner uses the TRX (Visual Studio Test Results) XML format for structured parsing rather than trying to parse console output — a deliberate choice for reliability over cleverness. The parser handles the standard `http://microsoft.com/schemas/VisualStudio/TeamTest/2010` namespace and extracts error info and stack traces from the `<ErrorInfo>` elements.
 
 ### 6.1 How It Works
 
@@ -600,7 +783,7 @@ Settings are saved automatically whenever you toggle a feature, and loaded on st
 | `F5` | Insert Time/Date |
 | `Ctrl+Shift+F` | Font |
 
-### Navigation
+### Navigation & Code Analysis
 
 | Shortcut | Action |
 |----------|--------|
@@ -610,16 +793,36 @@ Settings are saved automatically whenever you toggle a feature, and loaded on st
 | `Ctrl+H` | Replace |
 | `Ctrl+G` | Go To Line |
 | `F12` | Go to Definition |
+| `F2` | Rename (project-wide) — also "Next Bookmark" when bookmarks are active; the button you press last in the menu wins |
+| `Ctrl+Shift+H` | Call Hierarchy |
+| `Ctrl+Shift+T` | Parse Stack Trace |
 
 ### Bookmarks & Folding
 
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+F2` | Toggle Bookmark |
-| `F2` | Next Bookmark |
+| `F2` | Next Bookmark (also Rename; see above) |
 | `Shift+F2` | Previous Bookmark |
 | `Ctrl+Shift+[` | Toggle Fold |
 | `Ctrl+Alt+[` | Toggle All Folds |
+
+### Panels
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+W` | Workspace Panel |
+| `Ctrl+Alt+O` | Open Folder |
+| `Ctrl+Alt+G` | Source Control Panel |
+| `Ctrl+Shift+G` | Source Control Window |
+| `Ctrl+Alt+S` | Symbols Panel |
+| `Ctrl+Alt+P` | Problems Panel |
+| `` Ctrl+` `` | Terminal |
+| `Ctrl+Shift+N` | Notification Center |
+| `Ctrl+Alt+D` | Dependencies |
+| `Ctrl+Alt+I` | Impact Analysis |
+| `Ctrl+F5` | Run Configurations |
+| `Ctrl+Alt+T` | Task List |
 
 ### View
 
@@ -631,12 +834,14 @@ Settings are saved automatically whenever you toggle a feature, and loaded on st
 | `Ctrl+Alt+V` | Vim Mode |
 | `Ctrl+Shift+V` | Split Vertical |
 | `Ctrl+Alt+H` | Split Horizontal |
-| `` Ctrl+` `` | Terminal |
-| `Ctrl+Shift+W` | Workspace |
-| `Ctrl+Alt+O` | Open Folder |
-| `Ctrl+Alt+G` | Source Control |
-| `Ctrl+Shift+N` | Notification Center |
-| `Ctrl+Alt+T` | External Tools Config |
+
+### Testing
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Alt+F5` | Run Tests |
+| `Ctrl+Alt+F6` | Rerun Failed Tests |
+| `Ctrl+Alt+R` | Run Tests with Coverage |
 
 ### External Tools (user-defined)
 
@@ -663,6 +868,12 @@ Settings are saved automatically whenever you toggle a feature, and loaded on st
 - **Elastic tab stops** are computed on a background thread with caching (`TabMeasurementCache`) and debounced at 250ms.
 - **Git operations** use LibGit2Sharp (native binaries bundled). The editor doesn't shell out to `git.exe` — a deliberate choice to avoid dependency on external tools.
 - **RSS feed polling** runs on a background `HttpClient` loop within the `NotificationFeedService`. Feeds are fetched in parallel, with the minimum polling interval across enabled sources determining the loop delay.
+- **All code analysis is regex/text-based**, not Roslyn-based. This was a deliberate zero-dependency decision — the editor weighs ~48 MB self-contained. Adding `Microsoft.CodeAnalysis.CSharp` would add another ~50 MB and require the .NET 8 SDK on the target machine. The trade-off is acceptable: the analysis is ~80% as accurate for ~0% of the dependency cost.
+- **The lint engine** (`LintEngine.cs`) is decoupled from the editor via a debounced event pipeline: text change → 400ms debounce → background `Task.Run` → `IReadOnlyList<Diagnostic>` → UI thread → squiggly underlines + problems panel. Five rules ship by default; adding more requires implementing a single `Func<string, string, List<Diagnostic>>` signature.
+- **Squiggly underlines** are drawn in the RichTextBox's `WM_PAINT` handler using a dedicated `DrawSquiggles` method. The squiggle positions are pre-computed on the UI thread from the diagnostic data — no line-by-line scanning during paint.
+- **The symbol index** (`SymbolIndexService.cs`) is rebuilt asynchronously after each workspace scan. It feeds the Symbols panel, Go to Definition fallback, Rename, and the "Add missing using" quick action. All consumers read from the same cached symbol list, which is published via an `Action OnIndexUpdated` event.
+- **The sidebar panel system** uses a nested `SplitContainer` layout: outer split (workspace left / everything else right), middle split (git + symbol split), inner split (symbols top / problems bottom). Each panel implements `SetTheme(Theme)` for color consistency and fires `CloseRequested` / `*Selected` events back to Form1.
+- **Test runner** (`TestResultParser.cs`) runs `dotnet test --logger trx` as a child process with a 5-minute timeout. Results are parsed from the TRX XML format (VSTest namespace) rather than scraping console output — structured data is always preferable to regex parsing of log text. The parser handles `<ErrorInfo>` elements for failure messages and stack traces.
 - **Crash resilience**: All non-trivial operations are wrapped in try/catch blocks. The `Program.Main` entry point catches unhandled exceptions and logs them to `crash.log` before displaying a message box.
 
 ---

@@ -364,6 +364,11 @@ partial class Form1
         menuStrip.Items.Add(panelMenu);
         // Run menu
         runMenu = new ToolStripMenuItem("&Run");
+        var runTestsItem = new ToolStripMenuItem("Run &Tests", null, RunTests_Click, Keys.Control | Keys.Alt | Keys.F5);
+        runMenu.DropDownItems.Add(runTestsItem);
+        var rerunFailedItem = new ToolStripMenuItem("Rerun &Failed Tests", null, RerunFailedTests_Click203, Keys.Control | Keys.Alt | Keys.F6);
+        runMenu.DropDownItems.Add(rerunFailedItem);
+        runMenu.DropDownItems.Add(new ToolStripSeparator());
         var runCoverageItem = new ToolStripMenuItem("Run Tests with &Coverage", null, RunCoverage_Click, Keys.Control | Keys.Alt | Keys.R);
         runMenu.DropDownItems.Add(runCoverageItem);
         var loadCoverageItem = new ToolStripMenuItem("&Load Coverage File...", null, LoadCoverage_Click);
@@ -457,7 +462,7 @@ partial class Form1
         minimapControl.ViewportBorderColor = Color.DodgerBlue;
         minimapControl.Margin = new Padding(0);
         minimapControl.Dock = DockStyle.None;
-        minimapControl.MinimapWidth = 200;
+        minimapControl.MinimapWidth = 100;
         minimapControl.Visible = false;
 
         // Whitespace overlay (transparent overlay form positioned over editor)
