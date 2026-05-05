@@ -121,6 +121,7 @@ public class GutterPanel : Panel
         if (lineNumberWidth < 20) lineNumberWidth = 20;
         if (lineNumberWidth > 400) lineNumberWidth = 400;
 
+        lineNumberWidth += 8; // left edge padding
         LineNumberMarginWidth = lineNumberWidth;
         Width = GetTotalMarginWidth();
         Invalidate();

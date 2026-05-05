@@ -2,33 +2,42 @@ using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
-using WinFormsTimer = System.Windows.Forms.Timer;
 
 namespace MyCrownJewelApp.Pfpad;
 
-/// <summary>
-/// Transparent overlay panel that draws whitespace glyphs (spaces, tabs, newlines)
-/// on top of the editor. Maintains stable line positions to prevent jitter.
-/// </summary>
-public sealed class WhitespaceOverlayPanel : Panel
+public sealed class WhitespaceOverlayForm : Form
 {
     private RichTextBox? linkedEditor;
-    private Color glyphColor = Color.Gray;
-    private bool showGlyphs = true;
-    private WinFormsTimer? _updateTimer;
+    private Color glyphColor = Color.FromArgb(180, 180, 180);
+    private bool showGlyphs = false;
+    private System.Windows.Forms.Timer? _syncTimer;
+    private Form? _ownerForm;
 
-    public WhitespaceOverlayPanel()
+    public Form? OwnerForm
     {
-        SetStyle(ControlStyles.UserPaint, true);
-        SetStyle(ControlStyles.SupportsTransparentBackColor, true);
-        SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
-        SetStyle(ControlStyles.AllPaintingInWmPaint, true);
-        BackColor = Color.Transparent;
-        Enabled = false;
-        TabStop = false;
+        get => _ownerForm;
+        set
+        {
+            _ownerForm = value;
+            if (value != null)
+                value.LocationChanged += (s, e) => SyncPosition();
+        }
+    }
 
-        _updateTimer = new WinFormsTimer { Interval = 16 };
-        _updateTimer.Tick += (s, e) => { _updateTimer.Stop(); Invalidate(); };
+    public WhitespaceOverlayForm()
+    {
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        BackColor = Color.Fuchsia;
+        TransparencyKey = Color.Fuchsia;
+        Visible = false;
+        Text = "";
+
+        SetStyle(ControlStyles.SupportsTransparentBackColor, false);
+        DoubleBuffered = true;
+
+        _syncTimer = new System.Windows.Forms.Timer { Interval = 50 };
+        _syncTimer.Tick += (s, e) => SyncPosition();
     }
 
     protected override CreateParams CreateParams
@@ -36,14 +45,9 @@ public sealed class WhitespaceOverlayPanel : Panel
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT
+            cp.ExStyle |= WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
             return cp;
         }
-    }
-
-    protected override void OnPaintBackground(PaintEventArgs e)
-    {
-        // Skip background painting to maintain transparency
     }
 
     public RichTextBox? LinkedEditor
@@ -53,26 +57,21 @@ public sealed class WhitespaceOverlayPanel : Panel
         {
             if (linkedEditor != null)
             {
-                linkedEditor.Resize -= Editor_ViewChanged;
-                linkedEditor.VScroll -= Editor_ViewChanged;
-                linkedEditor.HScroll -= Editor_ViewChanged;
-                linkedEditor.TextChanged -= Editor_ViewChanged;
-                linkedEditor.SelectionChanged -= Editor_SelectionChanged;
-                linkedEditor.FontChanged -= Editor_FontChanged;
+                linkedEditor.Resize -= OnEditorChanged;
+                linkedEditor.VScroll -= OnEditorChanged;
+                linkedEditor.HScroll -= OnEditorChanged;
+                linkedEditor.TextChanged -= OnEditorChanged;
+                linkedEditor.Disposed -= OnEditorDisposed;
             }
-
             linkedEditor = value;
-
             if (linkedEditor != null)
             {
-                linkedEditor.Resize += Editor_ViewChanged;
-                linkedEditor.VScroll += Editor_ViewChanged;
-                linkedEditor.HScroll += Editor_ViewChanged;
-                linkedEditor.TextChanged += Editor_ViewChanged;
-                linkedEditor.SelectionChanged += Editor_SelectionChanged;
-                linkedEditor.FontChanged += Editor_FontChanged;
+                linkedEditor.Resize += OnEditorChanged;
+                linkedEditor.VScroll += OnEditorChanged;
+                linkedEditor.HScroll += OnEditorChanged;
+                linkedEditor.TextChanged += OnEditorChanged;
+                linkedEditor.Disposed += OnEditorDisposed;
             }
-
             Invalidate();
         }
     }
@@ -86,25 +85,54 @@ public sealed class WhitespaceOverlayPanel : Panel
     public bool ShowGlyphs
     {
         get => showGlyphs;
-        set { showGlyphs = value; Invalidate(); }
+        set
+        {
+            showGlyphs = value;
+            if (value && linkedEditor != null && !linkedEditor.IsDisposed)
+            {
+                SyncPosition();
+                if (_ownerForm != null && !_ownerForm.IsDisposed)
+                    Show(_ownerForm);
+                else
+                    Visible = true;
+                _syncTimer?.Start();
+                Invalidate();
+            }
+            else
+            {
+                _syncTimer?.Stop();
+                Visible = false;
+            }
+        }
     }
 
-    private void Editor_ViewChanged(object? sender, EventArgs e) => RequestUpdate();
-    private void Editor_SelectionChanged(object? sender, EventArgs e) => RequestUpdate();
-    private void Editor_FontChanged(object? sender, EventArgs e) => Invalidate();
-
-    private void RequestUpdate()
+    private void OnEditorChanged(object? sender, EventArgs e)
     {
-        _updateTimer?.Stop();
-        _updateTimer?.Start();
+        SyncPosition();
+        Invalidate();
+    }
+    private void OnEditorDisposed(object? sender, EventArgs e) { ShowGlyphs = false; }
+
+    private void SyncPosition()
+    {
+        if (linkedEditor == null || linkedEditor.IsDisposed || !linkedEditor.Visible || !showGlyphs)
+        {
+            _syncTimer?.Stop();
+            Visible = false;
+            return;
+        }
+
+        var screenPos = linkedEditor.Parent.RectangleToScreen(linkedEditor.Bounds);
+        Bounds = screenPos;
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
-
-        if (!showGlyphs || linkedEditor == null || !linkedEditor.Visible || linkedEditor.IsDisposed)
+        if (!showGlyphs || linkedEditor == null || linkedEditor.IsDisposed || !linkedEditor.Visible)
+        {
+            e.Graphics.Clear(Color.Fuchsia);
             return;
+        }
 
         try
         {
@@ -114,13 +142,11 @@ public sealed class WhitespaceOverlayPanel : Panel
             int lineHeight = (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor);
             if (lineHeight <= 0) return;
 
-            // Get visible range via RichTextBox message
             int firstVisible = SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
             if (firstVisible < 0) firstVisible = 0;
             int visibleCount = (editor.ClientSize.Height / lineHeight) + 2;
             int lastVisible = Math.Min(editor.Lines.Length - 1, firstVisible + visibleCount);
 
-            // Base Y from first visible line
             int baseY = 0;
             int firstCharIdx = editor.GetFirstCharIndexFromLine(firstVisible);
             if (firstCharIdx >= 0)
@@ -130,6 +156,7 @@ public sealed class WhitespaceOverlayPanel : Panel
             }
 
             var flags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+            using var glyphFont = new Font(editor.Font.FontFamily, editor.Font.SizeInPoints * 0.75f, FontStyle.Regular);
 
             for (int lineIdx = firstVisible; lineIdx <= lastVisible; lineIdx++)
             {
@@ -140,7 +167,6 @@ public sealed class WhitespaceOverlayPanel : Panel
 
                 int y = baseY + (lineIdx - firstVisible) * lineHeight;
 
-                // Spaces and tabs
                 for (int i = 0; i < line.Length; i++)
                 {
                     char c = line[i];
@@ -148,13 +174,12 @@ public sealed class WhitespaceOverlayPanel : Panel
                     {
                         Point p = editor.GetPositionFromCharIndex(lineStartIdx + i);
                         if (p == Point.Empty) continue;
-                        p.Y = y; // lock Y
-                        string symbol = c == ' ' ? "·" : "→";
-                        TextRenderer.DrawText(g, symbol, editor.Font, p, glyphColor, flags);
+                        p.Y = y;
+                        string symbol = c == ' ' ? "\u00B7" : "\u2192";
+                        TextRenderer.DrawText(g, symbol, glyphFont, p, glyphColor, flags);
                     }
                 }
 
-                // Newline arrow
                 int newlineIdx = lineStartIdx + line.Length;
                 if (newlineIdx < editor.TextLength)
                 {
@@ -162,7 +187,7 @@ public sealed class WhitespaceOverlayPanel : Panel
                     if (pNew != Point.Empty)
                     {
                         pNew.Y = y;
-                        TextRenderer.DrawText(g, "↵", editor.Font, pNew, glyphColor, flags);
+                        TextRenderer.DrawText(g, "\u21B5", glyphFont, pNew, glyphColor, flags);
                     }
                 }
             }
@@ -170,25 +195,21 @@ public sealed class WhitespaceOverlayPanel : Panel
         catch { }
     }
 
+    [DllImport("user32.dll")]
+    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _syncTimer?.Stop();
+            _syncTimer?.Dispose();
             if (linkedEditor != null && !linkedEditor.IsDisposed)
-            {
-                linkedEditor.Resize -= Editor_ViewChanged;
-                linkedEditor.VScroll -= Editor_ViewChanged;
-                linkedEditor.HScroll -= Editor_ViewChanged;
-                linkedEditor.TextChanged -= Editor_ViewChanged;
-                linkedEditor.SelectionChanged -= Editor_SelectionChanged;
-                linkedEditor.FontChanged -= Editor_FontChanged;
-            }
-            _updateTimer?.Dispose();
+                linkedEditor.Disposed -= OnEditorDisposed;
         }
         base.Dispose(disposing);
     }
-
-    [DllImport("user32.dll")]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
 }

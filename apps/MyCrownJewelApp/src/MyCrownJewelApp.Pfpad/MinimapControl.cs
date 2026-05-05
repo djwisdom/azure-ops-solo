@@ -14,7 +14,7 @@ namespace MyCrownJewelApp.Pfpad
         [DllImport("user32.dll")]
         private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, System.Text.StringBuilder lParam);
+        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
         private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
         private const int EM_LINESCROLL = 0x00B6;
@@ -139,9 +139,14 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (_attachedEditor is RichTextBox rtb && rtb.IsHandleCreated)
             {
-                var sb = new System.Text.StringBuilder(4096);
-                int len = SendMessage(rtb.Handle, EM_GETLINE, lineIndex, sb);
-                return len > 0 ? sb.ToString() : string.Empty;
+                IntPtr ptr = Marshal.AllocCoTaskMem(4096 * 2);
+                try
+                {
+                    Marshal.WriteInt16(ptr, (short)4096);
+                    int len = SendMessage(rtb.Handle, EM_GETLINE, lineIndex, ptr);
+                    return len > 0 ? Marshal.PtrToStringUni(ptr, len)!.TrimEnd('\r', '\n') : string.Empty;
+                }
+                finally { Marshal.FreeCoTaskMem(ptr); }
             }
             return string.Empty;
         }
@@ -242,72 +247,47 @@ namespace MyCrownJewelApp.Pfpad
             var theme = ThemeManager.Instance.CurrentTheme;
             mg.Clear(theme.EditorBackground);
 
-            float rowScale = mapH / (float)_totalLines;
+            int linesToDraw = Math.Min(_totalLines, mapH);
+            float linesPerPixel = _totalLines / (float)mapH;
+            double accum = 0;
 
-            // Find the longest line for proportional bar scaling
-            int maxLineLen = 1;
-            for (int line = 0; line < _totalLines; line++)
+            for (int pixelRow = 0; pixelRow < mapH; pixelRow++)
             {
-                string text = GetLineText(line);
-                int len = text.TrimEnd('\r', '\n').Length;
-                if (len > maxLineLen) maxLineLen = len;
-            }
+                accum += linesPerPixel;
+                int count = (int)Math.Floor(accum);
+                accum -= count;
+                if (count <= 0) continue;
 
-            if (rowScale >= 1.0f)
-            {
-                // Tall minimap: each line gets at least 1px, render sequentially
-                int y = 0;
-                for (int line = 0; line < _totalLines && y < mapH; line++)
+                // Sample the middle line of this pixel-row's range for content/color
+                int sampleLine = (int)(pixelRow * linesPerPixel + count * 0.5f);
+                if (sampleLine >= _totalLines) break;
+
+                string text = GetLineText(sampleLine);
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                var tokens = _tokenProvider?.Invoke(sampleLine);
+                int x = 0;
+
+                for (int pos = 0; pos < text.Length; pos++)
                 {
-                    string text = GetLineText(line);
-                    if (string.IsNullOrWhiteSpace(text))
+                    char c = text[pos];
+                    if (c == '\r' || c == '\n') break;
+                    if (c == '\t')
                     {
-                        y++;
+                        x = ((x / 4) + 1) * 4;
                         continue;
                     }
+                    if (x >= mapW) break;
 
-                    int contentLen = text.TrimEnd('\r', '\n').Length;
-                    int barW = Math.Max(1, Math.Min(mapW, contentLen * mapW / maxLineLen));
-
-                    Color color = theme.Text;
-                    var tokens = _tokenProvider?.Invoke(line);
-                    if (tokens != null && tokens.Count > 0)
-                        color = GetCharColor(tokens, 0, text.Length);
-
-                    color = Color.FromArgb(180, color);
-                    using var brush = new SolidBrush(color);
-                    mg.FillRectangle(brush, 0, y, barW, 1);
-                    y++;
-                }
-            }
-            else
-            {
-                // Compact minimap: fractionally distribute lines into available height
-                float y = 0;
-                int prevY = 0;
-                for (int line = 0; line < _totalLines; line++)
-                {
-                    y += rowScale;
-                    int curY = (int)Math.Floor(y);
-                    if (curY >= mapH) break;
-                    if (curY == prevY) continue;
-                    prevY = curY;
-
-                    string text = GetLineText(line);
-                    if (string.IsNullOrWhiteSpace(text))
-                        continue;
-
-                    int contentLen = text.TrimEnd('\r', '\n').Length;
-                    int barW = Math.Max(1, Math.Min(mapW, contentLen * mapW / maxLineLen));
-
-                    Color color = theme.Text;
-                    var tokens = _tokenProvider?.Invoke(line);
-                    if (tokens != null && tokens.Count > 0)
-                        color = GetCharColor(tokens, 0, text.Length);
-
-                    color = Color.FromArgb(180, color);
-                    using var brush = new SolidBrush(color);
-                    mg.FillRectangle(brush, 0, curY, barW, 1);
+                    if (c != ' ')
+                    {
+                        Color color = GetCharColor(tokens, pos, text.Length);
+                        color = Color.FromArgb(200, color);
+                        using var brush = new SolidBrush(color);
+                        mg.FillRectangle(brush, x, pixelRow, 1, 1);
+                    }
+                    x++;
                 }
             }
 

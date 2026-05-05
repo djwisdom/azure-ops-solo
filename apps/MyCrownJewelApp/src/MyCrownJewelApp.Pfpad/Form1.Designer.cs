@@ -98,7 +98,7 @@ partial class Form1
     private TableLayoutPanel mainTable;
     private Panel editorPanel;
     internal GutterPanel gutterPanel;
-    internal WhitespaceOverlayPanel whitespaceOverlay;
+    internal WhitespaceOverlayForm whitespaceOverlay;
     internal HighlightRichTextBox textEditor;
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
@@ -428,15 +428,12 @@ partial class Form1
         minimapControl.MinimapWidth = 200;
         minimapControl.Visible = false;
 
-        // Whitespace overlay (transparent, on top of editor)
-        whitespaceOverlay = new WhitespaceOverlayPanel();
-        whitespaceOverlay.Dock = DockStyle.Fill;
-        whitespaceOverlay.Margin = new Padding(0);
-        whitespaceOverlay.ShowGlyphs = true;
+        // Whitespace overlay (transparent overlay form positioned over editor)
+        whitespaceOverlay = new WhitespaceOverlayForm();
+        whitespaceOverlay.ShowGlyphs = false;
 
-        // Assemble editor panel with textEditor + whitespaceOverlay + minimap
+        // Assemble editor panel with textEditor + minimap
         editorPanel.Controls.Add(textEditor);
-        editorPanel.Controls.Add(whitespaceOverlay);
         editorPanel.Controls.Add(minimapControl);
 
         // Assemble table

@@ -286,10 +286,12 @@ using System.Linq;
         this.KeyDown += Form1_KeyDown;
         this.FormClosing += Form1_FormClosing;
         this.Activated += Form1_Activated;
-        this.Shown += (s, e) =>
-        {
-            PositionTabDropdownButton();
-        };
+          this.Shown += (s, e) =>
+          {
+              PositionTabDropdownButton();
+              _notificationFeed.OnItemsUpdated += OnFeedUpdated;
+              _notificationFeed.StartPolling();
+          };
 
         // Enable file drop support (client area + non-client area)
         EnableFileDrop();
@@ -401,8 +403,7 @@ using System.Linq;
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
-            whitespaceOverlay.Visible = whitespaceMenuItem.Checked;
-            whitespaceOverlay.BringToFront();
+            whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
             if (showGuide)
             {
                 textEditor!.ShowGuide = true;
@@ -432,10 +433,9 @@ using System.Linq;
                 PositionMinimap();
             }
 
-            // Wire whitespace overlay to editor
+            // Wire whitespace overlay (transparent overlay form)
             whitespaceOverlay.LinkedEditor = textEditor;
-            textEditor!.VScroll += (s, e) => whitespaceOverlay?.Invalidate();
-            textEditor!.Resize += (s, e) => whitespaceOverlay?.Invalidate();
+            whitespaceOverlay.OwnerForm = this;
 
             // Tab dropdown menu button (rightmost corner of tab strip)
             _tabDropdownButton = new Button
@@ -776,9 +776,6 @@ using System.Linq;
               };
               _notificationStatusLabel.Click += ToggleNotificationCenter;
               statusStrip.Items.Add(_notificationStatusLabel);
-
-              _notificationFeed.OnItemsUpdated += OnFeedUpdated;
-              _notificationFeed.StartPolling();
 
               // Ensure initial dirty flag is clear after all initialization
              isModified = false;
@@ -1190,7 +1187,6 @@ using System.Linq;
             if (whitespaceOverlay != null)
             {
                 whitespaceOverlay.GlyphColor = theme.IsLight ? Color.FromArgb(200, 200, 200) : Color.FromArgb(180, 180, 180);
-                whitespaceOverlay.Invalidate();
             }
             textEditor!.GuideColor = Color.FromArgb(120, 120, 120);
             if (_tabDropdownButton != null)
@@ -1342,7 +1338,6 @@ using System.Linq;
                         {
                             whitespaceMenuItem.Checked = showWhitespace;
                             whitespaceOverlay.ShowGlyphs = showWhitespace;
-                            whitespaceOverlay.Visible = showWhitespace;
                         }
                     }
                 }
@@ -2888,9 +2883,6 @@ using System.Linq;
         private void ToggleWhitespace_Click(object? sender, EventArgs e)
         {
             whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
-            whitespaceOverlay.Visible = whitespaceMenuItem.Checked;
-            whitespaceOverlay.BringToFront();
-            whitespaceOverlay.Invalidate();
         }
 
         private void OnFeedUpdated()
@@ -4608,7 +4600,7 @@ using System.Linq;
                             int len = Math.Min(token.Length, lineLen - token.StartIndex);
                             if (len <= 0) continue;
                             cf.crTextColor = ColorTranslator.ToWin32(GetColorForToken(token.Type));
-                            cf.dwEffects = (token.Type == SyntaxTokenType.Comment || token.Type == SyntaxTokenType.Type || token.Type == SyntaxTokenType.Preprocessor || token.Type == SyntaxTokenType.Identifier) ? CFE_ITALIC : 0;
+                            cf.dwEffects = (token.Type == SyntaxTokenType.Comment || token.Type == SyntaxTokenType.Type || token.Type == SyntaxTokenType.Preprocessor) ? CFE_ITALIC : 0;
                             Marshal.StructureToPtr(cf, cfPtr, false);
                             SendMessage(textEditor.Handle, EM_SETSEL, (IntPtr)idx, (IntPtr)(idx + len));
                             SendMessage(textEditor.Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
