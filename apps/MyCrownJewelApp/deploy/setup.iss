@@ -44,7 +44,6 @@ RestartApplications=no
 UsePreviousAppDir=yes
 UsePreviousGroup=yes
 DisableDirPage=auto
-DisableProgramGroupPage=auto
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

@@ -3628,6 +3628,18 @@ using System.Linq;
                     _terminalSplitContainer.PerformLayout();
                 }
 
+                // Ensure Vim engine targets the split editor
+                if (vimModeEnabled && vimEngine != null)
+                {
+                    BeginInvoke(() =>
+                    {
+                        vimEngine.SetEditor(_splitEditor);
+                        if (vimEngine.CurrentMode == VimMode.Insert)
+                            vimEngine.EnterMode(VimMode.Normal);
+                        _splitEditor.Focus();
+                    });
+                }
+
                 // Remove the tab page from the tab control (document stays in memory)
                 if (tabIndex >= 0 && tabIndex < tabControl.TabPages.Count)
                     tabControl.TabPages.RemoveAt(tabIndex);
