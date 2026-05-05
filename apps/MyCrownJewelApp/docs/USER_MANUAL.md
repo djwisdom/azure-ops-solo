@@ -72,6 +72,8 @@ The menu strip at the top contains six menus: File, Edit, View, Panel, Run, and 
 | Paste | `Ctrl+V` | Inserts clipboard contents at the cursor position. |
 | Delete | `Delete` | Removes selected text without copying. |
 | Find | `Ctrl+F` | Opens the Find dialog. Supports case-sensitive, regex, direction (up/down), and wrap-around searching. |
+| Find in Files | `Ctrl+Shift+F` | Opens the Global Search dialog for async workspace-wide search with file type filters, exclude dirs, regex, and Replace All. |
+| Find Next | `F3` | Repeats the last search forward. |
 | Find Next | `F3` | Repeats the last search forward. |
 | Find Previous | `Shift+F3` | Repeats the last search backward. |
 | Replace | `Ctrl+H` | Opens the Replace variant of the Find dialog, with Replace and Replace All buttons. |
@@ -669,9 +671,21 @@ Same features as Find, plus:
 - **Replace**: Replaces the current match
 - **Replace All**: Replaces all matches in the document
 
-### 9.3 Find in Files
+### 9.3 Find in Files / Global Search (`Ctrl+Shift+F`)
 
-Click the "Find in Files" button in the Find dialog to search all files in the workspace. Results appear in a separate dialog with columns for File, Line, and Content. Double-click or press Enter to open the file at the matched line.
+Press `Ctrl+Shift+F` or go to Edit > Find in Files to open the **Global Search** dialog — a full-featured workspace search tool:
+
+- **Search text** with Enter to execute
+- **Replace text** with "Replace All" for bulk replacements across all matched files
+- **Case-sensitive** and **Regex** toggle
+- **File type filter** — comma-separated glob patterns (default: `*.cs, *.ts, *.js, *.json, *.md, *.xml, *.yaml, *.html, *.css, *.py, *.go, *.rs, *.tf, *.ps1, *.sh`)
+- **Exclude directories** — comma-separated directory names (default: `node_modules, .git, bin, obj, .vs, packages, .terraform`)
+- **Async search** — runs on a background thread; results stream in progressively; Stop button cancels
+- **Results tree** — grouped by file with match count, expandable to individual lines with line numbers
+- **Double-click** or **Enter** on a match to navigate to the file at that line
+- **Status bar** — shows `N matches in M files — Xms` duration
+
+The existing "Find in Files" button in the Find dialog (`Ctrl+F`) still works for the basic synchronous search.
 
 ---
 
@@ -788,6 +802,7 @@ Settings are saved automatically whenever you toggle a feature, and loaded on st
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+F` | Find |
+| `Ctrl+Shift+F` | Find in Files (Global Search) |
 | `F3` | Find Next |
 | `Shift+F3` | Find Previous |
 | `Ctrl+H` | Replace |

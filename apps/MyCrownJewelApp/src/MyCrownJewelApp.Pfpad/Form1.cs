@@ -210,6 +210,12 @@ using System.Linq;
         private System.Windows.Forms.Timer? _highlightTimer;
         private int _pendingHighlightLine = -1;
         private CancellationTokenSource? tabComputeCts;
+        private readonly Stopwatch _highlightPerfSw = new();
+        private double _lastHighlightDurationMs;
+        private const int HighlightTimerMinInterval = 100;
+        private const int HighlightTimerMaxInterval = 500;
+        private int _typingBurstCount;
+        private DateTime _lastKeyPress = DateTime.MinValue;
 
         // Git integration via GitService
 
@@ -520,7 +526,7 @@ using System.Linq;
 
             // Highlight debounce timer — delays syntax highlighting during rapid typing
             _highlightTimer = new System.Windows.Forms.Timer();
-            _highlightTimer.Interval = 350;
+            _highlightTimer.Interval = HighlightTimerMinInterval;
             _highlightTimer.Tick += (s, e) =>
             {
                 _highlightTimer.Stop();
@@ -4993,6 +4999,21 @@ using System.Linq;
             int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             modifiedLines.Add(lineIndex);
 
+            // Adaptive debounce: detect typing bursts, scale interval dynamically
+            DateTime now = DateTime.UtcNow;
+            double msSinceLastKey = (now - _lastKeyPress).TotalMilliseconds;
+            _lastKeyPress = now;
+            if (msSinceLastKey < 150)
+                _typingBurstCount++;
+            else
+                _typingBurstCount = 0;
+
+            double adaptiveInterval = HighlightTimerMinInterval + (_typingBurstCount * 20);
+            if (_lastHighlightDurationMs > 30)
+                adaptiveInterval += _lastHighlightDurationMs * 0.5;
+            int interval = (int)Math.Clamp(adaptiveInterval, HighlightTimerMinInterval, HighlightTimerMaxInterval);
+            _highlightTimer.Interval = interval;
+
             // Debounce syntax highlighting — wait for pause in typing
             _pendingHighlightLine = lineIndex;
             _highlightTimer?.Stop();
@@ -5387,6 +5408,7 @@ using System.Linq;
         private void ApplyHighlightPatches(List<HighlightPatch> patches)
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
+            _highlightPerfSw.Restart();
             _applyingHighlight = true;
             int savedSelStart = textEditor.SelectionStart;
             int savedSelLength = textEditor.SelectionLength;
@@ -5447,6 +5469,7 @@ using System.Linq;
             catch { }
             finally
             {
+                _lastHighlightDurationMs = _highlightPerfSw.Elapsed.TotalMilliseconds;
                 textEditor.Select(savedSelStart, savedSelLength);
                 _applyingHighlight = false;
             }
@@ -5966,8 +5989,49 @@ using System.Linq;
             CheckExternalChange();
         }
 
+        public string? WorkspaceRoot => _workspacePanel?.RootPath ?? _workspaceRoot;
+
+        internal void RefreshWorkspace()
+        {
+            _workspacePanel?.RefreshTree();
+        }
+
+        internal void NavigateToFileLine(string filePath, int lineNumber)
+        {
+            OpenFileInNewTab(filePath);
+            try
+            {
+                int idx = textEditor.GetFirstCharIndexFromLine(lineNumber - 1);
+                if (idx >= 0)
+                {
+                    textEditor.SelectionStart = idx;
+                    textEditor.SelectionLength = 0;
+                    textEditor.ScrollToCaret();
+                    textEditor.Focus();
+                }
+            }
+            catch { }
+        }
+
+        private void GlobalSearch_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new GlobalSearchDialog(this);
+            if (_workspacePanel?.RootPath is { Length: > 0 } root && Directory.Exists(root))
+                dlg.WorkspaceRoot = root;
+            else if (!string.IsNullOrEmpty(_workspaceRoot) && Directory.Exists(_workspaceRoot))
+                dlg.WorkspaceRoot = _workspaceRoot;
+            dlg.ShowDialog(this);
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            // Global search: Ctrl+Shift+F
+            if (keyData == (Keys.Control | Keys.Shift | Keys.F))
+            {
+                GlobalSearch_Click(null, EventArgs.Empty);
+                return true;
+            }
+
             // Split navigation: cycle focus between split editor and main editor
             if (keyData == (Keys.Control | Keys.Tab) && (_splitEditor != null))
             {

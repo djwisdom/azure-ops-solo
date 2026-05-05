@@ -29,6 +29,7 @@ partial class Form1
     private ToolStripMenuItem findPreviousMenuItem;
     private ToolStripMenuItem replaceMenuItem;
     private ToolStripMenuItem gotoMenuItem;
+    private ToolStripMenuItem globalSearchMenuItem;
     private ToolStripMenuItem selectAllMenuItem;
     private ToolStripMenuItem timeDateMenuItem;
     private ToolStripMenuItem fontMenuItem;
@@ -178,6 +179,7 @@ partial class Form1
         findPreviousMenuItem = new ToolStripMenuItem("Find &Previous", null, FindPrevious_Click, Keys.Shift | Keys.F3);
         replaceMenuItem = new ToolStripMenuItem("&Replace...", null, Replace_Click, Keys.Control | Keys.H);
         gotoMenuItem = new ToolStripMenuItem("&Go To...", null, Goto_Click, Keys.Control | Keys.G);
+        globalSearchMenuItem = new ToolStripMenuItem("&Find in Files...", null, GlobalSearch_Click, Keys.Control | Keys.Shift | Keys.F);
         var gotoDefMenuItem = new ToolStripMenuItem("Go to &Definition", null, GoToDefinition_Click, Keys.F12);
         editMenu.DropDownItems.Add(gotoDefMenuItem);
         var renameMenuItem = new ToolStripMenuItem("&Rename...", null, Rename_Click, Keys.F2);
@@ -209,6 +211,7 @@ partial class Form1
         editMenu.DropDownItems.Add(findPreviousMenuItem);
         editMenu.DropDownItems.Add(replaceMenuItem);
         editMenu.DropDownItems.Add(gotoMenuItem);
+        editMenu.DropDownItems.Add(globalSearchMenuItem);
         editMenu.DropDownItems.Add(new ToolStripSeparator());
         editMenu.DropDownItems.Add(selectAllMenuItem);
         editMenu.DropDownItems.Add(timeDateMenuItem);

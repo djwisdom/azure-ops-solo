@@ -14,7 +14,7 @@
 | Target framework (apps) | net8.0-windows (MyCrownJewelApp) |
 | PowerShell | 7.5.5 |
 | Azure CLI | 2.85.0 |
-| Terraform | 1.14.7 (latest: 1.15.1 — update pending) |
+| Terraform | 1.15.1 |
 | Bicep | 0.42.1 |
 | Active Azure | Subscription: "Visual Studio Subscription", Tenant: 76e3921f-489b-4b7e-9547-9ea297add9b5 |
 
@@ -44,7 +44,8 @@
 ## Test Health
 - **Test framework:** xUnit (.NET 8.0-windows)
 - **Test files:** TerminalTests, DirtyFlagTests, Form1FeatureTests, IncrementalHighlighterTests, IndentationTests, SyntaxHighlightRegressionTests
-- **Status:** (run `dotnet test apps/MyCrownJewelApp/MyCrownJewelApp.sln` to verify)
+- **Last run:** 2026-05-06 — **81 passed, 1 skipped, 0 failed** (20s duration)
+- **Skipped:** `Highlighter_MarksDirty_AndTokenizes` (pre-existing, requires STA thread setup)
 
 ## Environment Quirks & Windows-Specific Notes
 - `head` and `tail` are NOT available as native commands in PowerShell — use `Select-Object -First`/`-Last`
@@ -70,9 +71,9 @@
 - 2026-05-05 — MEMORY.md revamped to include AI-relevant context, toolchain versions, hot files, conventions, and environment quirks
 
 ## Next Steps
-- [ ] Implement syntax highlighting improvements per PLAN.md
-- [ ] Update Terraform from 1.14.7 → 1.15.1
-- [ ] Run test suite and record pass/fail status here
+- [x] Implement syntax highlighting improvements per PLAN.md
+- [x] Update Terraform from 1.14.7 → 1.15.1
+- [x] Run test suite and record pass/fail status here
 
 ## What Not to Forget
 - Stash `stash@{0}` exists with Tab-fix work not yet committed

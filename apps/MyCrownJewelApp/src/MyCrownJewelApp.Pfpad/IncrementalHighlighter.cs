@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 
@@ -34,8 +35,16 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly HashSet<string> _types;
     private readonly HashSet<string> _preprocs;
     private bool _disposed;
+    private int _totalTimeouts;
+    private int _consecutiveTimeouts;
+    private bool _fallbackActive;
+    private int _stateCycleCount;
 
     private const int MaxBatch = 500;
+    private const int MaxParseTimeMs = 16;
+    private const int MaxIterationsPerLine = 10000;
+    private const int MaxWorkerBatchTimeMs = 50;
+    private const int MaxConsecutiveTimeouts = 5;
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
@@ -108,6 +117,7 @@ public sealed class IncrementalHighlighter : IDisposable
     private async Task WorkerLoop()
     {
         var batch = new List<(int Line, string Text)>();
+        var sw = new Stopwatch();
         await foreach (var entry in _channel.Reader.ReadAllAsync(_cts.Token))
         {
             batch.Clear();
@@ -124,14 +134,63 @@ public sealed class IncrementalHighlighter : IDisposable
             if (firstLine > 0 && _cache.TryGetValue(firstLine - 1, out var prev))
                 state = prev.StateAfter;
 
-            for (int i = 0; i < batch.Count; i++)
+            if (_fallbackActive)
             {
-                if (_cts.IsCancellationRequested) break;
-                int lineNum = batch[i].Line;
-                var (tokens, nextState) = TokenizeLine(batch[i].Text.AsSpan(), state);
-                state = nextState;
-                _cache[lineNum] = new LineTokens(tokens, state);
-                patches.Add(new HighlightPatch(lineNum, tokens));
+                foreach (var item in batch)
+                    if (!_cache.ContainsKey(item.Line))
+                        patches.Add(new HighlightPatch(item.Line, Array.Empty<TokenInfo>()));
+            }
+            else
+            {
+                int consecutiveTimeoutsThisBatch = 0;
+                sw.Restart();
+
+                for (int i = 0; i < batch.Count; i++)
+                {
+                    if (_cts.IsCancellationRequested) break;
+
+                    if (sw.ElapsedMilliseconds > MaxWorkerBatchTimeMs)
+                    {
+                        await Task.Yield();
+                        sw.Restart();
+                    }
+
+                    int lineNum = batch[i].Line;
+                    var (tokens, nextState) = TokenizeLine(batch[i].Text.AsSpan(), state);
+                    if (tokens.Count == 1 && tokens[0].Type == SyntaxTokenType.Comment && tokens[0].Length == batch[i].Text.Length && tokens[0].StartIndex == 0)
+                    {
+                        bool wasTimeout = state.InComment && tokens[0].Length < batch[i].Text.Length;
+                        if (wasTimeout)
+                        {
+                            consecutiveTimeoutsThisBatch++;
+                            Interlocked.Increment(ref _totalTimeouts);
+                        }
+                    }
+                    if (state.InComment == nextState.InComment && state.InComment)
+                        Interlocked.Increment(ref _stateCycleCount);
+                    else
+                        Interlocked.Exchange(ref _stateCycleCount, 0);
+
+                    state = nextState;
+                    _cache[lineNum] = new LineTokens(tokens, state);
+                    patches.Add(new HighlightPatch(lineNum, tokens));
+                }
+
+                if (consecutiveTimeoutsThisBatch > 0)
+                {
+                    Interlocked.Add(ref _consecutiveTimeouts, consecutiveTimeoutsThisBatch);
+                    if (Volatile.Read(ref _consecutiveTimeouts) >= MaxConsecutiveTimeouts)
+                        Volatile.Write(ref _fallbackActive, true);
+                }
+                else
+                {
+                    Interlocked.Exchange(ref _consecutiveTimeouts, 0);
+                }
+
+                if (Volatile.Read(ref _stateCycleCount) > 100)
+                {
+                    Volatile.Write(ref _fallbackActive, true);
+                }
             }
 
             if (patches.Count > 0)
@@ -151,6 +210,9 @@ public sealed class IncrementalHighlighter : IDisposable
             return (tokens, state with { InComment = false });
 
         int pos = 0;
+        int iterations = 0;
+        var sw = new Stopwatch();
+        sw.Start();
 
         if (state.InComment)
         {
@@ -181,6 +243,21 @@ public sealed class IncrementalHighlighter : IDisposable
 
         while (pos < line.Length)
         {
+            iterations++;
+            if (iterations > MaxIterationsPerLine)
+            {
+                AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                return (tokens, state with { InComment = true });
+            }
+            if (sw.ElapsedMilliseconds > MaxParseTimeMs)
+            {
+                if (state.InComment)
+                    AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                else
+                    AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                return (tokens, state with { InComment = true });
+            }
+
             char c = line[pos];
 
             if (c == '/' && pos + 1 < line.Length)
