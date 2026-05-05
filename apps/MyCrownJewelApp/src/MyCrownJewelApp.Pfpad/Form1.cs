@@ -3048,6 +3048,91 @@ using System.Linq;
             ShowCallHierarchy();
         }
 
+        private void RunCoverage_Click(object? sender, EventArgs e)
+        {
+            RunTestsWithCoverage();
+        }
+
+        private void LoadCoverage_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new OpenFileDialog
+            {
+                Title = "Open Coverage File",
+                Filter = "Cobertura XML (*.cobertura.xml;*.xml)|*.cobertura.xml;*.xml|All files (*.*)|*.*",
+                DefaultExt = ".xml"
+            };
+            if (dlg.ShowDialog() == DialogResult.OK)
+                LoadCoverageFile(dlg.FileName);
+        }
+
+        private void RunTestsWithCoverage()
+        {
+            string testProj = FindTestProject();
+            if (string.IsNullOrEmpty(testProj))
+            {
+                ThemedMessageBox.Show("No test project found in the workspace folder.\n\nEnsure a .csproj with a test SDK reference exists.",
+                    "Run Tests", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ShowNotification("Coverage", "Running tests with coverage...");
+            var result = CoverageParser.RunTestsWithCoverage(testProj);
+            if (result == null || result.FileLineHits.Count == 0)
+            {
+                ShowNotification("Coverage", "No coverage data generated");
+                return;
+            }
+
+            ApplyCoverageResult(result);
+        }
+
+        private void LoadCoverageFile(string path)
+        {
+            var result = CoverageParser.ParseFile(path);
+            if (result == null || result.FileLineHits.Count == 0)
+            {
+                ThemedMessageBox.Show("Could not parse coverage file or no data found.", "Load Coverage",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            ApplyCoverageResult(result);
+        }
+
+        private void ApplyCoverageResult(CoverageParser.CoverageResult result)
+        {
+            double pct = result.LinesValid > 0 ? (double)result.LinesCovered / result.LinesValid * 100 : 0;
+
+            // Apply to gutter for current file
+            if (currentFilePath != null && result.FileLineHits.TryGetValue(currentFilePath, out var lineHits))
+                gutterPanel?.SetCoverage(lineHits);
+
+            // Show summary
+            using var dlg = new CoverageSummaryForm(result);
+            dlg.FileSelected += (file) => BeginInvoke(() =>
+            {
+                if (File.Exists(file))
+                    OpenFileInNewTab(file);
+            });
+            dlg.ShowDialog(this);
+
+            ShowNotification("Coverage", $"{pct:F1}% — {result.LinesCovered}/{result.LinesValid} lines");
+        }
+
+        private string? FindTestProject()
+        {
+            if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+                return null;
+
+            try
+            {
+                var csprojFiles = Directory.EnumerateFiles(_workspaceRoot, "*Tests.csproj", SearchOption.AllDirectories)
+                    .Concat(Directory.EnumerateFiles(_workspaceRoot, "*Test.csproj", SearchOption.AllDirectories))
+                    .ToList();
+                return csprojFiles.FirstOrDefault();
+            }
+            catch { return null; }
+        }
+
         private void ShowCallHierarchy()
         {
             if (textEditor is null) return;

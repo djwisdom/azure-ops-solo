@@ -90,6 +90,7 @@ partial class Form1
 
     private ToolStripMenuItem toolsMenu;
     internal ToolStripMenuItem configureToolsMenuItem;
+    private ToolStripMenuItem runMenu;
 
     private TabControl tabControl;
     private TableLayoutPanel mainLayout;
@@ -351,6 +352,13 @@ partial class Form1
         menuStrip.Items.Add(editMenu);
         menuStrip.Items.Add(viewMenu);
         menuStrip.Items.Add(panelMenu);
+        // Run menu
+        runMenu = new ToolStripMenuItem("&Run");
+        var runCoverageItem = new ToolStripMenuItem("Run Tests with &Coverage", null, RunCoverage_Click, Keys.Control | Keys.Alt | Keys.R);
+        runMenu.DropDownItems.Add(runCoverageItem);
+        var loadCoverageItem = new ToolStripMenuItem("&Load Coverage File...", null, LoadCoverage_Click);
+        runMenu.DropDownItems.Add(loadCoverageItem);
+        menuStrip.Items.Add(runMenu);
         // Tools menu
         toolsMenu = new ToolStripMenuItem("&Tools");
         configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);

@@ -20,16 +20,24 @@ public class GutterPanel : Panel
     private const int FoldMarginWidth = 14;
     private const int FoldClickWidth = 25;
     private const int QuickActionWidth = 18;
+    private const int CoverageMarginWidth = 8;
 
     private int totalMarginWidth;
     private bool _showFoldMarkers;
     private int _hoveredActionLine = -1;
 
     private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
+    private Dictionary<int, int>? _coverageHits; // line → hit count
 
     public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
     {
         _quickActions = actions;
+        Invalidate();
+    }
+
+    public void SetCoverage(Dictionary<int, int>? lineHits)
+    {
+        _coverageHits = lineHits;
         Invalidate();
     }
 
@@ -183,6 +191,7 @@ public class GutterPanel : Panel
         if (ShowLineNumbers) totalMarginWidth += LineNumberMarginWidth;
         if (ShowBookmarks) totalMarginWidth += BookmarkMarginWidth;
         if (ShowChangeHistory) totalMarginWidth += ChangeMarginWidth;
+        if (_coverageHits != null) totalMarginWidth += CoverageMarginWidth;
         if (ShowCodeFolds) totalMarginWidth += FoldMarginWidth;
         return totalMarginWidth;
     }
@@ -244,6 +253,12 @@ public class GutterPanel : Panel
             {
                 DrawChangeIndicator(g, lineIndex, currentX, lineY);
                 currentX += ChangeMarginWidth;
+            }
+
+            if (_coverageHits != null)
+            {
+                DrawCoverageIndicator(g, lineIndex + 1, currentX, lineY);
+                currentX += CoverageMarginWidth;
             }
 
             if (ShowCodeFolds)
@@ -356,6 +371,18 @@ public class GutterPanel : Panel
             using var brush = new SolidBrush(Color.Orange);
             g.FillRectangle(brush, barX, y + 2, barWidth, 10);
         }
+    }
+
+    private void DrawCoverageIndicator(Graphics g, int lineNumber, int x, int y)
+    {
+        if (_coverageHits == null) return;
+        if (!_coverageHits.TryGetValue(lineNumber, out int hits)) return;
+
+        int barWidth = CoverageMarginWidth - 2;
+        int barX = x + 1;
+        Color c = hits > 0 ? Color.FromArgb(80, 200, 80) : Color.FromArgb(220, 60, 60);
+        using var brush = new SolidBrush(c);
+        g.FillRectangle(brush, barX, y + 2, barWidth, 10);
     }
 
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
