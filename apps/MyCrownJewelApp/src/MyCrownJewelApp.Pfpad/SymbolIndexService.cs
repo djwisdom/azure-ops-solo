@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MyCrownJewelApp.Pfpad.Roslyn;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -25,11 +26,41 @@ public sealed class SymbolIndexService : IDisposable
     private Dictionary<string, List<SymbolLocation>> _index = new(StringComparer.OrdinalIgnoreCase);
     private string? _rootDir;
     private bool _disposed;
+    private IRoslynWorkspace? _roslynWorkspace;
+    private TreeSitter.TreeSitterService? _treeSitterService;
 
     public event Action? OnIndexUpdated;
 
+    public void SetRoslynWorkspace(IRoslynWorkspace workspace)
+    {
+        _roslynWorkspace = workspace;
+    }
+
+    public void SetTreeSitterService(TreeSitter.TreeSitterService service)
+    {
+        _treeSitterService = service;
+    }
+
     public IReadOnlyList<SymbolLocation> Lookup(string name)
     {
+        // Try Roslyn first for semantic symbol resolution
+        if (_roslynWorkspace is not null)
+        {
+            var symbols = _roslynWorkspace.FindSymbolsAsync(name).Result;
+            if (symbols.Count > 0)
+            {
+                return symbols.Select(s => new SymbolLocation
+                {
+                    Name = s.Name,
+                    Kind = MapSymbolKind(s.Kind),
+                    File = s.Locations.FirstOrDefault()?.SourceTree?.FilePath ?? "",
+                    Line = s.Locations.FirstOrDefault()?.GetLineSpan().StartLinePosition.Line ?? 0,
+                    Column = s.Locations.FirstOrDefault()?.GetLineSpan().StartLinePosition.Character ?? 0,
+                    Context = s.ContainingType?.Name ?? s.ContainingNamespace?.Name ?? ""
+                }).ToList();
+            }
+        }
+
         return _index.TryGetValue(name, out var list) ? list : Array.Empty<SymbolLocation>();
     }
 
@@ -55,6 +86,18 @@ public sealed class SymbolIndexService : IDisposable
             _index = newIndex;
             OnIndexUpdated?.Invoke();
             return;
+        }
+
+        // Try TreeSitter for supported languages (C, C++, JS, etc.)
+        if (_treeSitterService is not null)
+        {
+            ScanWithTreeSitter(rootDir, newIndex);
+            if (newIndex.Count > 0)
+            {
+                _index = newIndex;
+                OnIndexUpdated?.Invoke();
+                return;
+            }
         }
 
         // Fall back to regex scanner
@@ -136,6 +179,34 @@ public sealed class SymbolIndexService : IDisposable
         "typedef" or "type" => SymbolKind.Type,
         _ => SymbolKind.Unknown
     };
+
+    private void ScanWithTreeSitter(string rootDir, Dictionary<string, List<SymbolLocation>> index)
+    {
+        if (_treeSitterService is null) return;
+        try
+        {
+            var files = Directory.EnumerateFiles(rootDir, "*.*", SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                if (IsIgnored(file)) continue;
+                if (!_treeSitterService.CanHandle(file)) continue;
+
+                try
+                {
+                    var text = File.ReadAllText(file);
+                    var symbols = _treeSitterService.GetSymbols(text, file);
+                    foreach (var sym in symbols)
+                    {
+                        if (!index.ContainsKey(sym.Name))
+                            index[sym.Name] = new List<SymbolLocation>();
+                        index[sym.Name].Add(sym);
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+    }
 
     private void ScanWithRegex(string rootDir, Dictionary<string, List<SymbolLocation>> index)
     {
@@ -224,6 +295,17 @@ public sealed class SymbolIndexService : IDisposable
             if (dir.Contains(d)) return true;
         return false;
     }
+
+    private static SymbolKind MapSymbolKind(Microsoft.CodeAnalysis.SymbolKind kind) => kind switch
+    {
+        Microsoft.CodeAnalysis.SymbolKind.NamedType => SymbolKind.Class,
+        Microsoft.CodeAnalysis.SymbolKind.Method => SymbolKind.Method,
+        Microsoft.CodeAnalysis.SymbolKind.Property => SymbolKind.Property,
+        Microsoft.CodeAnalysis.SymbolKind.Field => SymbolKind.Field,
+        Microsoft.CodeAnalysis.SymbolKind.ArrayType => SymbolKind.Type,
+        Microsoft.CodeAnalysis.SymbolKind.Parameter or Microsoft.CodeAnalysis.SymbolKind.Local => SymbolKind.Variable,
+        _ => SymbolKind.Unknown
+    };
 
     public void Dispose()
     {

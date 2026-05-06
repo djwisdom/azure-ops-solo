@@ -798,8 +798,8 @@ namespace MyCrownJewelApp.Pfpad
             if (pos >= t.Length) return pos;
             // Skip current word
             while (pos < t.Length && IsWordChar(t[pos])) pos++;
-            // Skip whitespace
-            while (pos < t.Length && !IsWordChar(t[pos]) && t[pos] != '\n') pos++;
+            // Skip whitespace and newlines
+            while (pos < t.Length && !IsWordChar(t[pos])) pos++;
             return Math.Min(pos, t.Length);
         }
         private int FindPrevWord(int pos)
@@ -807,8 +807,8 @@ namespace MyCrownJewelApp.Pfpad
             string t = _tb.Text;
             if (pos <= 0) return 0;
             pos = Math.Max(0, pos - 1);
-            // Skip whitespace backward
-            while (pos > 0 && !IsWordChar(t[pos]) && t[pos] != '\n') pos--;
+            // Skip whitespace and newlines backward
+            while (pos > 0 && !IsWordChar(t[pos])) pos--;
             // Skip word backward
             while (pos > 0 && IsWordChar(t[pos - 1])) pos--;
             return pos;
@@ -817,8 +817,8 @@ namespace MyCrownJewelApp.Pfpad
         {
             string t = _tb.Text;
             if (pos >= t.Length) return pos;
-            // Skip whitespace forward
-            while (pos < t.Length && !IsWordChar(t[pos]) && t[pos] != '\n') pos++;
+            // Skip whitespace and newlines
+            while (pos < t.Length && !IsWordChar(t[pos])) pos++;
             // Move to end of word
             while (pos + 1 < t.Length && IsWordChar(t[pos + 1])) pos++;
             return Math.Min(pos + 1, t.Length);

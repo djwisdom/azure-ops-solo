@@ -8,10 +8,12 @@ namespace MyCrownJewelApp.Pfpad;
 public sealed class QuickActionProvider
 {
     private readonly SymbolIndexService _symbolIndex;
+    private readonly Roslyn.IRoslynWorkspace? _roslynWorkspace;
 
-    public QuickActionProvider(SymbolIndexService symbolIndex)
+    public QuickActionProvider(SymbolIndexService symbolIndex, Roslyn.IRoslynWorkspace? roslynWorkspace = null)
     {
         _symbolIndex = symbolIndex;
+        _roslynWorkspace = roslynWorkspace;
     }
 
     public List<QuickAction> GetActions(string text, IReadOnlyList<Diagnostic> diagnostics)
@@ -73,7 +75,7 @@ public sealed class QuickActionProvider
 
     private void AddMissingUsingActions(string text, string[] lines, List<QuickAction> actions)
     {
-        if (!_symbolIndex.HasIndex) return;
+        if (!_symbolIndex.HasIndex && _roslynWorkspace is null) return;
         if (!text.Contains("using ")) return;
 
         var existingUsings = new HashSet<string>(
@@ -108,10 +110,24 @@ public sealed class QuickActionProvider
                 || u.Equals(typeName, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            var symbols = _symbolIndex.Lookup(typeName);
-            if (symbols.Count == 0) continue;
+            string? ns = null;
 
-            string? ns = InferNamespace(symbols[0].File);
+            // Try Roslyn first
+            if (_roslynWorkspace is not null)
+            {
+                var syms = _roslynWorkspace.FindSymbolsAsync(typeName).Result;
+                var sym = syms.FirstOrDefault();
+                ns = sym?.ContainingNamespace?.ToDisplayString();
+            }
+
+            // Fall back to symbol index file scan
+            if (ns is null)
+            {
+                var symbols = _symbolIndex.Lookup(typeName);
+                if (symbols.Count > 0)
+                    ns = InferNamespace(symbols[0].File);
+            }
+
             if (ns is null || existingUsings.Contains(ns)) continue;
 
             // Find a line where this type is used

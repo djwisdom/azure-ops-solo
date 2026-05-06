@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using MyCrownJewelApp.Pfpad.Roslyn;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -13,6 +14,8 @@ public sealed class LintEngine : IDisposable
     private CancellationTokenSource? _cts;
     private bool _enabled = true;
     private System.Windows.Forms.Timer? _debounceTimer;
+    private IRoslynWorkspace? _roslynWorkspace;
+    private string? _currentFilePath;
 
     public event Action<IReadOnlyList<Diagnostic>>? DiagnosticsUpdated;
 
@@ -52,6 +55,7 @@ public sealed class LintEngine : IDisposable
     public void ScheduleLint(string text, string filePath)
     {
         if (!_enabled) return;
+        _currentFilePath = filePath;
         _debounceTimer?.Stop();
         _debounceTimer?.Start();
 
@@ -62,18 +66,30 @@ public sealed class LintEngine : IDisposable
         _cts = cts;
         var token = cts.Token;
 
+        bool useRoslyn = _roslynWorkspace is not null &&
+            filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+
         Task.Run(() =>
         {
             try
             {
                 if (token.IsCancellationRequested) return;
 
-                var diags = new List<Diagnostic>();
-                foreach (var rule in _rules)
+                List<Diagnostic> diags;
+
+                if (useRoslyn)
                 {
-                    if (token.IsCancellationRequested) return;
-                    try { rule.Analyze(text, filePath, diags); }
-                    catch { }
+                    diags = GetRoslynDiagnostics();
+                }
+                else
+                {
+                    diags = new List<Diagnostic>();
+                    foreach (var rule in _rules)
+                    {
+                        if (token.IsCancellationRequested) return;
+                        try { rule.Analyze(text, filePath, diags); }
+                        catch { }
+                    }
                 }
 
                 if (token.IsCancellationRequested) return;
@@ -105,6 +121,42 @@ public sealed class LintEngine : IDisposable
                 }
             }
         }, token);
+    }
+
+    public void SetRoslynWorkspace(IRoslynWorkspace workspace)
+    {
+        _roslynWorkspace = workspace;
+    }
+
+    private List<Diagnostic> GetRoslynDiagnostics()
+    {
+        if (_roslynWorkspace is null) return new List<Diagnostic>();
+        try
+        {
+            var roslynDiags = _roslynWorkspace.GetRoslynDiagnosticsAsync()
+                .ConfigureAwait(false).GetAwaiter().GetResult();
+            return roslynDiags
+                .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error
+                    || d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .Select(d => new Diagnostic
+                {
+                    File = _currentFilePath ?? "",
+                    Line = d.Location.GetLineSpan().StartLinePosition.Line + 1,
+                    Column = d.Location.GetLineSpan().StartLinePosition.Character + 1,
+                    Length = d.Location.SourceSpan.Length,
+                    Message = d.GetMessage(),
+                    Severity = d.Severity switch
+                    {
+                        Microsoft.CodeAnalysis.DiagnosticSeverity.Error => DiagnosticSeverity.Error,
+                        Microsoft.CodeAnalysis.DiagnosticSeverity.Warning => DiagnosticSeverity.Warning,
+                        Microsoft.CodeAnalysis.DiagnosticSeverity.Info => DiagnosticSeverity.Suggestion,
+                        _ => DiagnosticSeverity.Hint
+                    },
+                    RuleId = d.Id
+                })
+                .ToList();
+        }
+        catch { return new List<Diagnostic>(); }
     }
 
     public void Dispose()

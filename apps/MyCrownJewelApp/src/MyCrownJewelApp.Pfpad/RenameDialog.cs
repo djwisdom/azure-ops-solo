@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using MyCrownJewelApp.Pfpad.Roslyn;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -21,6 +22,8 @@ public sealed class RenameDialog : Form
     private readonly string _workspaceRoot;
     private CancellationTokenSource? _scanCts;
     private List<(string file, int line, string context)> _matches = new();
+    private IRoslynWorkspace? _roslynWorkspace;
+    private int _roslynCursorPosition;
 
     public string NewName => _newNameBox.Text.Trim();
     public bool Applied { get; private set; }
@@ -157,6 +160,12 @@ public sealed class RenameDialog : Form
         BeginInvoke(ScanWorkspace);
     }
 
+    public void SetRoslynWorkspace(IRoslynWorkspace workspace, int cursorPosition)
+    {
+        _roslynWorkspace = workspace;
+        _roslynCursorPosition = cursorPosition;
+    }
+
     private async void ScanWorkspace()
     {
         if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
@@ -238,7 +247,16 @@ public sealed class RenameDialog : Form
 
     private void Ok_Click(object? sender, EventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_newNameBox.Text) || _matches.Count == 0) return;
+        if (string.IsNullOrWhiteSpace(_newNameBox.Text)) return;
+
+        // Roslyn semantic rename
+        if (_roslynWorkspace is not null)
+        {
+            ApplyRoslynRename();
+            return;
+        }
+
+        if (_matches.Count == 0) return;
 
         try
         {
@@ -254,6 +272,71 @@ public sealed class RenameDialog : Form
                 File.WriteAllText(group.Key, content);
             }
 
+            Applied = true;
+            DialogResult = DialogResult.OK;
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Rename failed: {ex.Message}", "Rename Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private async void ApplyRoslynRename()
+    {
+        if (_roslynWorkspace is null) return;
+        try
+        {
+            int pos = _roslynCursorPosition;
+            string newName = _newNameBox.Text.Trim();
+
+            var symbol = await Task.Run(() => _roslynWorkspace.FindSymbolAtPositionAsync(pos));
+            if (symbol is null)
+            {
+                ThemedMessageBox.Show($"Could not find symbol at cursor position.",
+                    "Rename", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            var solution = await _roslynWorkspace.PrepareRenameAsync(symbol, newName);
+
+            // Apply all document changes from the new solution
+            foreach (var project in solution.Projects)
+            {
+                foreach (var doc in project.Documents)
+                {
+                    if (doc.FilePath is null) continue;
+                    var text = await doc.GetTextAsync();
+                    File.WriteAllText(doc.FilePath, text.ToString());
+                }
+            }
+
+            Applied = true;
+            DialogResult = DialogResult.OK;
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Roslyn rename failed: {ex.Message}\n\nFalling back to text-based rename.",
+                "Rename", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            // Fall back to regex rename
+            if (_matches.Count > 0)
+                ApplyRegexRename();
+        }
+    }
+
+    private void ApplyRegexRename()
+    {
+        try
+        {
+            string pattern = $@"\b{Regex.Escape(_oldName)}\b";
+            string replacement = _newNameBox.Text.Trim();
+            var fileGroups = _matches.GroupBy(m => m.file);
+            foreach (var group in fileGroups)
+            {
+                string content = File.ReadAllText(group.Key);
+                content = Regex.Replace(content, pattern, replacement);
+                File.WriteAllText(group.Key, content);
+            }
             Applied = true;
             DialogResult = DialogResult.OK;
         }

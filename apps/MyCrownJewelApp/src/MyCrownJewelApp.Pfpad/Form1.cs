@@ -516,7 +516,7 @@
             _foldingManager.ScanRegions();
 
             // Lint engine — wire diagnostics to problems panel + squiggles
-            _quickActionProvider = new QuickActionProvider(_symbolIndex);
+            _quickActionProvider = new QuickActionProvider(_symbolIndex, _roslynWorkspace);
             _lintEngine.DiagnosticsUpdated += OnLintDiagnosticsUpdated;
 
             // Hover docs + signature help
@@ -2024,6 +2024,13 @@
             if (Math.Abs(currentMouse.X - mouseLoc.X) > 10 || Math.Abs(currentMouse.Y - mouseLoc.Y) > 10)
                 return;
 
+            // Roslyn hover docs for C# files
+            if (currentSyntax?.Name == "C#" && _roslynWorkspace.IsReady)
+            {
+                ShowHoverTooltipRoslyn(word, mouseLoc);
+                return;
+            }
+
             // Look up in symbol index
             var symbols = _symbolIndex.Lookup(word);
             if (symbols.Count == 0) { _hoverTooltip.Dismiss(); return; }
@@ -2055,6 +2062,14 @@
         private void ShowSignatureHelp()
         {
             if (textEditor is null) return;
+
+            // Roslyn semantic signature help for C# files
+            if (currentSyntax?.Name == "C#")
+            {
+                ShowSignatureHelpRoslyn();
+                return;
+            }
+
             int pos = textEditor.SelectionStart;
             if (pos < 1) return;
 
@@ -2397,8 +2412,9 @@
                  textEditor.Text = content;
                  textEditor.TextChanged += TextEditor_TextChanged;
 
-                 currentFilePath = path;
-                 currentSyntax = SyntaxDefinition.GetDefinitionForFile(path);
+                  currentFilePath = path;
+                  currentSyntax = SyntaxDefinition.GetDefinitionForFile(path);
+                  OpenRoslynDocument(path);
                  if (File.Exists(path))
                      lastFileWriteTime = File.GetLastWriteTimeUtc(path);
                  
@@ -3069,6 +3085,8 @@
             if (string.IsNullOrEmpty(word)) return;
 
             using var dlg = new RenameDialog(word, _workspaceRoot);
+            if (_roslynWorkspace.IsReady)
+                dlg.SetRoslynWorkspace(_roslynWorkspace, textEditor.SelectionStart);
             if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Applied)
             {
                 if (textEditor.Text.Contains(dlg.NewName))
@@ -4694,6 +4712,13 @@
             string? word = GetWordAtCursor();
             if (string.IsNullOrEmpty(word)) return;
 
+            // Roslyn semantic go-to-definition for C# files
+            if (currentSyntax?.Name == "C#" && _roslynWorkspace.IsReady)
+            {
+                GoToDefinitionRoslyn();
+                return;
+            }
+
             if (!_symbolIndex.HasIndex)
             {
                 if (string.IsNullOrEmpty(_workspaceRoot))
@@ -6001,6 +6026,7 @@
             _highlightTimer?.Stop();
             _highlightTimer?.Dispose();
             incrementalHighlighter?.Dispose();
+            _roslynWorkspace.Dispose();
             _gitService.Dispose();
             _gitPanel?.Dispose();
             _notificationFeed.Dispose();
