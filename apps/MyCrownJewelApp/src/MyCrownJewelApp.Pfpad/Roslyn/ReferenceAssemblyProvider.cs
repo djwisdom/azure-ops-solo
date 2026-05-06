@@ -87,10 +87,38 @@ public static class ReferenceAssemblyProvider
     private static void AddRefDirs(List<string> candidates, string dotnetRoot)
     {
         var packsDir = Path.Combine(dotnetRoot, "packs");
-        if (!Directory.Exists(packsDir)) return;
+        if (Directory.Exists(packsDir))
+        {
+            AddRefDir(candidates, packsDir, "Microsoft.NETCore.App.Ref");
+            AddRefDir(candidates, packsDir, "Microsoft.WindowsDesktop.App.Ref");
+        }
 
-        AddRefDir(candidates, packsDir, "Microsoft.NETCore.App.Ref");
-        AddRefDir(candidates, packsDir, "Microsoft.WindowsDesktop.App.Ref");
+        // Fallback to runtime shared framework (installed with .NET Runtime, no SDK needed)
+        var sharedDir = Path.Combine(dotnetRoot, "shared");
+        if (Directory.Exists(sharedDir))
+        {
+            AddRuntimeDir(candidates, sharedDir, "Microsoft.NETCore.App");
+            AddRuntimeDir(candidates, sharedDir, "Microsoft.WindowsDesktop.App");
+        }
+    }
+
+    private static void AddRuntimeDir(List<string> candidates, string sharedDir, string name)
+    {
+        try
+        {
+            var appDir = Path.Combine(sharedDir, name);
+            if (!Directory.Exists(appDir)) return;
+
+            var bestVersion = Directory.EnumerateDirectories(appDir)
+                .Select(d => (Path: d, Name: Path.GetFileName(d)))
+                .Where(x => Version.TryParse(x.Name, out _))
+                .OrderByDescending(x => Version.Parse(x.Name))
+                .FirstOrDefault();
+
+            if (bestVersion.Path is not null && !candidates.Contains(bestVersion.Path))
+                candidates.Add(bestVersion.Path);
+        }
+        catch { }
     }
 
     private static void AddRefDir(List<string> candidates, string packsDir, string packName)
