@@ -3777,6 +3777,8 @@
                 _currentToast = null;
             };
             _currentToast.Show(this);
+            if (textEditor.CanFocus)
+                textEditor.Focus();
         }
 
         private void UpdateNotificationBadge()
@@ -3810,6 +3812,8 @@
                     var toast = new NotificationToastForm(item);
                     toast.FormClosed += (s, e) => toast.Dispose();
                     toast.Show(this);
+                    if (textEditor.CanFocus)
+                        textEditor.Focus();
                     return;
                 }
             }
@@ -3994,6 +3998,7 @@
 
             // Switch to new tab and ensure visible
             tabControl.SelectedIndex = newIndex;
+            activeDocIndex = newIndex;
             EnsureSelectedTabVisible();
         }
 
@@ -4024,7 +4029,8 @@
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
                 tabControl.TabPages.Add(tabPage);
-                tabControl.SelectedIndex = newIndex; // triggers SwitchToTab
+                tabControl.SelectedIndex = newIndex; // triggers SwitchToTab when handle exists
+                activeDocIndex = newIndex;
                 EnsureSelectedTabVisible();
             }
             catch (Exception ex)
@@ -4238,9 +4244,23 @@
             if (_tabDropdownButton == null || tabControl == null || tabControl.IsDisposed) return;
             Point tabScreen = tabControl.PointToScreen(Point.Empty);
             Point formClient = this.PointToClient(tabScreen);
-            int x = formClient.X + tabControl.Width - _tabDropdownButton.Width - 2;
             int y = formClient.Y + (tabControl.Height - _tabDropdownButton.Height) / 2;
-            _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(0, y));
+
+            int lastTabIndex = tabControl.TabCount - 1;
+            if (lastTabIndex >= 0)
+            {
+                Rectangle lastTabRect = tabControl.GetTabRect(lastTabIndex);
+                int desiredX = formClient.X + lastTabRect.Right + 2;
+                int scrollBtnArea = 55;
+                int maxX = formClient.X + tabControl.Width - scrollBtnArea;
+                int x = Math.Min(desiredX, maxX);
+                _tabDropdownButton.Location = new Point(Math.Max(formClient.X, x), Math.Max(0, y));
+            }
+            else
+            {
+                int x = formClient.X + tabControl.Width - _tabDropdownButton.Width - 2;
+                _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(0, y));
+            }
             _tabDropdownButton.Visible = tabControl.TabCount > 0;
         }
 
@@ -6006,6 +6026,7 @@
         {
             if (menuStrip != null)
                 menuStrip.Visible = !menuStrip.Visible;
+            BeginInvoke(PositionTabDropdownButton);
         }
 
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
