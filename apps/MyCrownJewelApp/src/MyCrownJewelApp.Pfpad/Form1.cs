@@ -4106,6 +4106,11 @@
                 SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
             }
 
+            // Force scrollbar recalculation — native RichEdit can miss extents after .Text set
+            textEditor.WordWrap = !wordWrapEnabled;
+            textEditor.WordWrap = wordWrapEnabled;
+            textEditor.Refresh();
+
             // Recreate syntax highlighter based on current syntax
             CreateIncrementalHighlighter();
 
