@@ -253,6 +253,262 @@ public sealed class GitService : IDisposable
         catch { return false; }
     }
 
+    private const int MaxDiffSizeBytes = 512 * 1024;
+
+    public string GetDiffContent(string path, bool staged)
+    {
+        if (_repo is null) return string.Empty;
+        try
+        {
+            string? oldContent = null;
+            string? newContent = null;
+            string oldLabel, newLabel;
+
+            if (staged)
+            {
+                oldLabel = $"a/{path}";
+                newLabel = $"b/{path}";
+                // HEAD → Index
+                oldContent = ReadBlobContent(_repo.Head.Tip?.Tree, path);
+                newContent = ReadIndexContent(path);
+                if (oldContent is null && newContent is null)
+                    return "(no changes)";
+                if (oldContent is null)
+                    return FormatNewFileDiff(path, newContent!);
+                if (newContent is null)
+                    return FormatDeletedFileDiff(path, oldContent);
+            }
+            else
+            {
+                oldLabel = $"a/{path}";
+                newLabel = $"b/{path}";
+                // Index → Working Directory
+                oldContent = ReadIndexContent(path);
+                if (!File.Exists(Path.Combine(_repoPath!, path)))
+                {
+                    if (oldContent is null) return "(file removed from index and disk)";
+                    return FormatDeletedFileDiff(path, oldContent);
+                }
+                newContent = File.ReadAllText(Path.Combine(_repoPath!, path));
+                if (oldContent is null)
+                    return FormatNewFileDiff(path, newContent);
+            }
+
+            if (oldContent == newContent)
+                return "(no changes)";
+
+            return ComputeUnifiedDiff(path, oldLabel, newLabel, oldContent!, newContent!);
+        }
+        catch (Exception ex)
+        {
+            return $"Error generating diff: {ex.Message}";
+        }
+    }
+
+    private string? ReadBlobContent(Tree? tree, string path)
+    {
+        var entry = tree?[path];
+        return (entry?.Target as Blob)?.GetContentText();
+    }
+
+    private string? ReadIndexContent(string path)
+    {
+        var idxEntry = _repo!.Index[path];
+        if (idxEntry is null) return null;
+        var blob = _repo.Lookup<Blob>(idxEntry.Id);
+        return blob?.GetContentText();
+    }
+
+    private string FormatNewFileDiff(string path, string content)
+    {
+        var lines = content.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("--- /dev/null");
+        sb.AppendLine($"+++ b/{path}");
+        sb.AppendLine($"@@ -0,0 +1,{lines.Length} @@");
+        foreach (var line in lines)
+            sb.AppendLine("+" + line);
+        if (content.EndsWith("\n")) sb.AppendLine("+\\ No newline at end of file");
+        return sb.ToString();
+    }
+
+    private string FormatDeletedFileDiff(string path, string content)
+    {
+        var lines = content.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"--- a/{path}");
+        sb.AppendLine("+++ /dev/null");
+        sb.AppendLine($"@@ -1,{lines.Length} +0,0 @@");
+        foreach (var line in lines)
+            sb.AppendLine("-" + line);
+        return sb.ToString();
+    }
+
+    private string ComputeUnifiedDiff(string path, string oldLabel, string newLabel, string oldContent, string newContent)
+    {
+        var oldLines = oldContent.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+        var newLines = newContent.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"--- {oldLabel}");
+        sb.AppendLine($"+++ {newLabel}");
+
+        // Simple LCS-based diff for producing hunks
+        var hunks = ComputeHunks(oldLines, newLines);
+        foreach (var hunk in hunks)
+        {
+            if (sb.Length > MaxDiffSizeBytes)
+            {
+                sb.AppendLine($"\n(diff truncated at {MaxDiffSizeBytes / 1024}KB)");
+                break;
+            }
+
+            sb.AppendLine($"@@ -{hunk.OldStart},{hunk.OldCount} +{hunk.NewStart},{hunk.NewCount} @@");
+            foreach (var line in hunk.Lines)
+            {
+                char prefix = line.Type switch
+                {
+                    DiffLineType.Added => '+',
+                    DiffLineType.Removed => '-',
+                    _ => ' '
+                };
+                sb.AppendLine(prefix + line.Text);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private enum DiffLineType { Context, Added, Removed }
+
+    private sealed record DiffLine(DiffLineType Type, string Text);
+
+    private sealed record DiffHunk(int OldStart, int OldCount, int NewStart, int NewCount, List<DiffLine> Lines);
+
+    private List<DiffHunk> ComputeHunks(string[] oldLines, string[] newLines)
+    {
+        var hunks = new List<DiffHunk>();
+        int oldLen = oldLines.Length;
+        int newLen = newLines.Length;
+
+        // Build LCS table
+        int[,] lcs = new int[oldLen + 1, newLen + 1];
+        for (int i = 1; i <= oldLen; i++)
+            for (int j = 1; j <= newLen; j++)
+                if (oldLines[i - 1] == newLines[j - 1])
+                    lcs[i, j] = lcs[i - 1, j - 1] + 1;
+                else
+                    lcs[i, j] = Math.Max(lcs[i - 1, j], lcs[i, j - 1]);
+
+        // Walk the LCS to build diff hunks
+        var diffLines = new List<DiffLine>();
+        int oi = oldLen, ni = newLen;
+        var reversed = new List<DiffLine>();
+        while (oi > 0 || ni > 0)
+        {
+            if (oi > 0 && ni > 0 && oldLines[oi - 1] == newLines[ni - 1])
+            {
+                reversed.Add(new DiffLine(DiffLineType.Context, oldLines[oi - 1]));
+                oi--; ni--;
+            }
+            else if (ni > 0 && (oi == 0 || lcs[oi, ni - 1] >= lcs[oi - 1, ni]))
+            {
+                reversed.Add(new DiffLine(DiffLineType.Added, newLines[ni - 1]));
+                ni--;
+            }
+            else
+            {
+                reversed.Add(new DiffLine(DiffLineType.Removed, oldLines[oi - 1]));
+                oi--;
+            }
+        }
+
+        reversed.Reverse();
+        diffLines = reversed;
+
+        // Group into hunks
+        int contextBefore = 3;
+        int contextAfter = 3;
+        int i2 = 0;
+        while (i2 < diffLines.Count)
+        {
+            // Find next change
+            while (i2 < diffLines.Count && diffLines[i2].Type == DiffLineType.Context) i2++;
+            if (i2 >= diffLines.Count) break;
+
+            int hunkStart = Math.Max(0, i2 - contextBefore);
+            int hunkEnd = i2;
+            while (hunkEnd < diffLines.Count && diffLines[hunkEnd].Type != DiffLineType.Context) hunkEnd++;
+            hunkEnd = Math.Min(diffLines.Count, hunkEnd + contextAfter);
+
+            var hunkLines = diffLines.GetRange(hunkStart, hunkEnd - hunkStart);
+
+            // Count total context/added/removed in hunk
+            int oldCount = 0, newCount = 0, oldStart = 0, newStart = 0;
+            for (int ci = 0; ci < hunkLines.Count; ci++)
+            {
+                if (hunkLines[ci].Type != DiffLineType.Added) oldCount++;
+                if (hunkLines[ci].Type != DiffLineType.Removed) newCount++;
+                if (oldStart == 0 && hunkLines[ci].Type != DiffLineType.Added)
+                    oldStart = CountPrecedingOldLines(diffLines, hunkStart + ci);
+                if (newStart == 0 && hunkLines[ci].Type != DiffLineType.Removed)
+                    newStart = CountPrecedingNewLines(diffLines, hunkStart + ci);
+            }
+
+            if (oldStart == 0) oldStart = 1;
+            if (newStart == 0) newStart = 1;
+
+            hunks.Add(new DiffHunk(oldStart, oldCount, newStart, newCount, hunkLines));
+            i2 = hunkEnd;
+        }
+
+        if (hunks.Count == 0)
+        {
+            // Fallback: show entire diff as one hunk
+            int oldStart = 1, newStart = 1;
+            int oldC = 0, newC = 0;
+            var allLines = new List<DiffLine>();
+            // Simple one-hunk diff
+            for (int idx = 0; idx < Math.Max(oldLen, newLen); idx++)
+            {
+                if (idx < oldLen && idx < newLen && oldLines[idx] == newLines[idx])
+                {
+                    allLines.Add(new DiffLine(DiffLineType.Context, oldLines[idx]));
+                    oldC++; newC++;
+                }
+                else if (idx < oldLen)
+                {
+                    allLines.Add(new DiffLine(DiffLineType.Removed, oldLines[idx]));
+                    oldC++;
+                }
+                if (idx < newLen)
+                {
+                    allLines.Add(new DiffLine(DiffLineType.Added, newLines[idx]));
+                    newC++;
+                }
+            }
+            hunks.Add(new DiffHunk(oldStart, oldC, newStart, newC, allLines));
+        }
+
+        return hunks;
+    }
+
+    private int CountPrecedingOldLines(List<DiffLine> allLines, int upTo)
+    {
+        int count = 0;
+        for (int i = 0; i < upTo && i < allLines.Count; i++)
+            if (allLines[i].Type != DiffLineType.Added) count++;
+        return count + 1;
+    }
+
+    private int CountPrecedingNewLines(List<DiffLine> allLines, int upTo)
+    {
+        int count = 0;
+        for (int i = 0; i < upTo && i < allLines.Count; i++)
+            if (allLines[i].Type != DiffLineType.Removed) count++;
+        return count + 1;
+    }
+
     public (bool Success, string Message) Stash(string? message = null)
     {
         if (_repo is null) return (false, "No repository open.");

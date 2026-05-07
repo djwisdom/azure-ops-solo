@@ -17,7 +17,9 @@ internal sealed class GitPanel : UserControl
     private readonly ToolStripButton _refreshButton;
     private readonly ToolStripButton _closeButton;
 
-    private readonly Panel _bodyPanel;
+    private readonly SplitContainer _bodySplit;
+    private readonly Panel _topPanel;
+    private readonly DiffPanel _diffPanel;
     private readonly ListBox _statusList;
     private readonly ListBox _commitList;
     private readonly TextBox _commitMessage;
@@ -33,6 +35,8 @@ internal sealed class GitPanel : UserControl
     private List<StatusEntry> _staged = new();
     private List<StatusEntry> _unstaged = new();
     private List<StatusEntry> _untracked = new();
+
+    private int _selectedDiffIndex = -1;
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
@@ -106,7 +110,6 @@ internal sealed class GitPanel : UserControl
         _headerStrip.Items.Add(new ToolStripSeparator { Alignment = ToolStripItemAlignment.Right });
         _headerStrip.Items.Add(_closeButton);
 
-        // No repo label (shown when not in a git repo)
         _noRepoLabel = new Label
         {
             Text = "Not in a Git repository.\nOpen a file inside a repo\nto see git status.",
@@ -116,8 +119,8 @@ internal sealed class GitPanel : UserControl
             Visible = false
         };
 
-        // Body panel (scrollable)
-        _bodyPanel = new Panel
+        // Top panel with git controls (scrollable)
+        _topPanel = new Panel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
@@ -159,6 +162,7 @@ internal sealed class GitPanel : UserControl
         _statusList.DrawItem += StatusList_DrawItem;
         _statusList.MouseClick += StatusList_MouseClick;
         _statusList.MouseDoubleClick += StatusList_DoubleClick;
+        _statusList.SelectedIndexChanged += StatusList_SelectedIndexChanged;
         _statusList.MeasureItem += (s, e) => e.ItemHeight = 24;
 
         y += 4;
@@ -254,13 +258,31 @@ internal sealed class GitPanel : UserControl
             SetSyncEnabled(true);
         };
 
-        _bodyPanel.Controls.AddRange(new Control[] {
+        _topPanel.Controls.AddRange(new Control[] {
             _statusHeader, _stageAllBtn, _statusList, _commitMessage, _commitBtn,
             _commitHeader, _commitList, _fetchBtn, _pullBtn, _pushBtn
         });
 
+        // Diff panel
+        _diffPanel = new DiffPanel();
+        _diffPanel.StageRequested += (path) => { _git.Stage(path); RefreshStatus(); };
+        _diffPanel.UnstageRequested += (path) => { _git.Unstage(path); RefreshStatus(); };
+        _diffPanel.DiscardRequested += (path) => { _git.DiscardFile(path); RefreshStatus(); };
+
+        // Body split: top = git controls, bottom = diff view
+        _bodySplit = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+            IsSplitterFixed = false,
+            SplitterWidth = 4,
+            Panel1 = { Controls = { _topPanel } },
+            Panel2 = { Controls = { _diffPanel } },
+            Panel2Collapsed = true
+        };
+
         Controls.Add(_noRepoLabel);
-        Controls.Add(_bodyPanel);
+        Controls.Add(_bodySplit);
         Controls.Add(_headerStrip);
 
         _git.OnRepoChanged += OnRepoChanged;
@@ -281,12 +303,38 @@ internal sealed class GitPanel : UserControl
         BeginInvoke(RefreshStatus);
     }
 
+    private StatusEntry? FindStatusEntry(string listText)
+    {
+        var trimmed = listText.TrimStart();
+        if (trimmed.StartsWith('['))
+        {
+            var close = trimmed.IndexOf(']');
+            if (close > 0)
+            {
+                var path = trimmed[(close + 1)..].Trim();
+                return _staged.FirstOrDefault(s => s.Path == path)
+                    ?? _unstaged.FirstOrDefault(s => s.Path == path)
+                    ?? _untracked.FirstOrDefault(s => s.Path == path);
+            }
+        }
+        return null;
+    }
+
+    private string? GetStatusPathAtIndex(int idx)
+    {
+        if (idx < 0 || idx >= _statusList.Items.Count) return null;
+        var text = _statusList.Items[idx].ToString() ?? "";
+        if (text.StartsWith('\u2501')) return null;
+        var entry = FindStatusEntry(text);
+        return entry?.Path;
+    }
+
     public void RefreshStatus()
     {
         if (_git.IsActive)
         {
             _noRepoLabel.Visible = false;
-            _bodyPanel.Visible = true;
+            _bodySplit.Visible = true;
             var (staged, unstaged, untracked) = _git.GetStatus();
             _staged = staged;
             _unstaged = unstaged;
@@ -317,61 +365,127 @@ internal sealed class GitPanel : UserControl
             _branchDropdown.Text = _git.CurrentBranch ?? "(detached)";
             _commitBtn.Enabled = _commitMessage.Text.Trim().Length > 0 && staged.Count > 0;
 
-            // Commit log
             var log = _git.GetLog(30);
             _commitList.Items.Clear();
             foreach (var c in log) _commitList.Items.Add(c);
+
+            // Re-select previously selected file if it still exists
+            if (_selectedDiffIndex >= 0)
+            {
+                var prevPath = GetStatusPathAtIndex(_selectedDiffIndex);
+                var reSelectIdx = FindStatusIndexByPath(prevPath);
+                if (reSelectIdx >= 0)
+                {
+                    _selectedDiffIndex = reSelectIdx;
+                    ShowDiffForIndex(_selectedDiffIndex);
+                }
+                else
+                {
+                    _selectedDiffIndex = -1;
+                    _diffPanel.ClearDiff();
+                    _bodySplit.Panel2Collapsed = true;
+                }
+            }
         }
         else
         {
             _noRepoLabel.Visible = true;
-            _bodyPanel.Visible = false;
+            _bodySplit.Visible = false;
             _branchDropdown.Text = "(no repo)";
             _statusList.Items.Clear();
             _commitList.Items.Clear();
+            _diffPanel.ClearDiff();
+            _bodySplit.Panel2Collapsed = true;
         }
 
         LayoutControls();
     }
 
+    private int FindStatusIndexByPath(string? path)
+    {
+        if (path is null) return -1;
+        for (int i = 0; i < _statusList.Items.Count; i++)
+        {
+            var text = _statusList.Items[i].ToString() ?? "";
+            var entry = FindStatusEntry(text);
+            if (entry?.Path == path) return i;
+        }
+        return -1;
+    }
+
+    private void ShowDiffForIndex(int idx)
+    {
+        var path = GetStatusPathAtIndex(idx);
+        if (path is null) { _diffPanel.ClearDiff(); _bodySplit.Panel2Collapsed = true; return; }
+
+        var entry = FindStatusEntry(_statusList.Items[idx].ToString()!);
+        if (entry is null) { _diffPanel.ClearDiff(); _bodySplit.Panel2Collapsed = true; return; }
+
+        bool isStaged = entry.IsStaged && !entry.IsUnstaged;
+        var diffContent = _git.GetDiffContent(path, isStaged);
+
+        _diffPanel.ShowDiff(path, isStaged, diffContent);
+
+        if (_bodySplit.Panel2Collapsed)
+        {
+            _bodySplit.Panel2Collapsed = false;
+            _bodySplit.SplitterDistance = Math.Max(100, (int)(Height * 0.55));
+        }
+    }
+
     private void LayoutControls()
     {
         if (_statusList is null || _commitList is null || _commitMessage is null) return;
-        int w = _bodyPanel.ClientSize.Width - 12;
+        int w = _topPanel.ClientSize.Width - 12;
         if (w < 100) w = 100;
 
         _statusList.Size = new Size(w, Math.Min(_statusList.Items.Count * 24 + 4, 300));
         _commitMessage.Size = new Size(w - 94, 24);
         _commitList.Location = new Point(4, _commitList.Location.Y);
-        _commitList.Size = new Size(w, Math.Max(60, _bodyPanel.ClientSize.Height - _commitList.Top - 4));
+        _commitList.Size = new Size(w, Math.Max(60, _topPanel.ClientSize.Height - _commitList.Top - 4));
     }
 
-    private void CommitList_DrawItem(object? sender, DrawItemEventArgs e)
+    private void StatusList_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        if (e.Index < 0 || e.Index >= _commitList.Items.Count) return;
-        if (_commitList.Items[e.Index] is not CommitEntry entry) return;
+        if (_statusList.SelectedIndex < 0) return;
+        var text = _statusList.Items[_statusList.SelectedIndex].ToString() ?? "";
+        if (text.StartsWith('\u2501') || text == "(no changes)")
+        {
+            _diffPanel.ClearDiff();
+            _bodySplit.Panel2Collapsed = true;
+            _selectedDiffIndex = -1;
+            return;
+        }
+        _selectedDiffIndex = _statusList.SelectedIndex;
+        ShowDiffForIndex(_selectedDiffIndex);
+    }
 
-        var theme = ThemeManager.Instance.CurrentTheme;
-        var rect = e.Bounds;
-        bool isSelected = (e.State & DrawItemState.Selected) != 0;
+    private void StatusList_MouseClick(object? sender, MouseEventArgs e)
+    {
+        int idx = _statusList.IndexFromPoint(e.Location);
+        if (idx < 0 || idx >= _statusList.Items.Count) return;
+        var text = _statusList.Items[idx].ToString() ?? "";
+        if (text.StartsWith('\u2501') || text == "(no changes)") return;
 
-        using var bgBrush = new SolidBrush(isSelected ? theme.ButtonHoverBackground : theme.MenuBackground);
-        e.Graphics.FillRectangle(bgBrush, rect);
+        var entry = FindStatusEntry(text);
+        if (entry is null) return;
 
-        using var shaFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
-        using var msgFont = new Font("Segoe UI", 8.5f, FontStyle.Regular);
-        using var metaFont = new Font("Segoe UI", 7, FontStyle.Regular);
+        // Single click toggles stage/unstage ONLY for header sections
+        // (selected index change already triggers diff view)
+    }
 
-        TextRenderer.DrawText(e.Graphics, entry.Sha, shaFont,
-            new Point(rect.X + 4, rect.Y + 2), theme.Accent, TextFormatFlags.NoPadding);
-        TextRenderer.DrawText(e.Graphics, entry.Message, msgFont,
-            new Point(rect.X + 60, rect.Y + 2), theme.Text,
-            TextFormatFlags.NoPadding | TextFormatFlags.WordEllipsis);
-        TextRenderer.DrawText(e.Graphics, $"{entry.Author}  {entry.Date}", metaFont,
-            new Point(rect.X + 60, rect.Y + 22), theme.Muted, TextFormatFlags.NoPadding);
-
-        using var sepPen = new Pen(theme.Border);
-        e.Graphics.DrawLine(sepPen, rect.X, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
+    private void StatusList_DoubleClick(object? sender, MouseEventArgs e)
+    {
+        int idx = _statusList.IndexFromPoint(e.Location);
+        if (idx < 0 || idx >= _statusList.Items.Count) return;
+        var text = _statusList.Items[idx].ToString() ?? "";
+        var entry = FindStatusEntry(text);
+        if (entry is not null && _git.RepoPath is not null)
+        {
+            var fullPath = Path.Combine(_git.RepoPath, entry.Path);
+            if (File.Exists(fullPath))
+                FileOpenRequested?.Invoke(fullPath);
+        }
     }
 
     public void SetTheme(Theme theme)
@@ -384,7 +498,8 @@ internal sealed class GitPanel : UserControl
         _closeButton.ForeColor = theme.Text;
         _refreshButton.ForeColor = theme.Text;
 
-        _bodyPanel.BackColor = theme.MenuBackground;
+        _bodySplit.BackColor = theme.Border;
+        _topPanel.BackColor = theme.MenuBackground;
         _statusHeader.ForeColor = theme.Text;
         _statusList.BackColor = theme.MenuBackground;
         _statusList.ForeColor = theme.Text;
@@ -415,6 +530,8 @@ internal sealed class GitPanel : UserControl
             c.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
         _commitBtn.FlatAppearance.MouseOverBackColor = ControlPaint.Light(theme.Accent);
         _pushBtn.FlatAppearance.MouseOverBackColor = ControlPaint.Light(theme.Accent);
+
+        _diffPanel.SetTheme(theme);
 
         ApplyScrollbarTheme(_statusList.Handle);
         ApplyScrollbarTheme(_commitList.Handle);
@@ -452,7 +569,6 @@ internal sealed class GitPanel : UserControl
         {
             textColor = isSelected ? theme.Text : theme.Text;
             font = new Font("Segoe UI", 8.5f, FontStyle.Regular);
-            // Color the status indicator
             if (text.Contains("[M]")) textColor = Color.FromArgb(200, 180, 50);
             else if (text.Contains("[A]")) textColor = Color.FromArgb(60, 180, 75);
             else if (text.Contains("[D]")) textColor = Color.FromArgb(200, 60, 60);
@@ -464,57 +580,32 @@ internal sealed class GitPanel : UserControl
         font.Dispose();
     }
 
-    private void StatusList_MouseClick(object? sender, MouseEventArgs e)
+    private void CommitList_DrawItem(object? sender, DrawItemEventArgs e)
     {
-        int idx = _statusList.IndexFromPoint(e.Location);
-        if (idx < 0 || idx >= _statusList.Items.Count) return;
-        var text = _statusList.Items[idx].ToString() ?? "";
+        if (e.Index < 0 || e.Index >= _commitList.Items.Count) return;
+        if (_commitList.Items[e.Index] is not CommitEntry entry) return;
 
-        // Toggle stage/unstage on click
-        var entry = FindStatusEntry(text);
-        if (entry is null) return;
+        var theme = ThemeManager.Instance.CurrentTheme;
+        var rect = e.Bounds;
+        bool isSelected = (e.State & DrawItemState.Selected) != 0;
 
-        if (entry.IsStaged)
-        {
-            _git.Unstage(entry.Path);
-            ThemedMessageBox.Show($"Unstaged: {entry.Path}", "Git", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-        else
-        {
-            _git.Stage(entry.Path);
-        }
-        RefreshStatus();
-    }
+        using var bgBrush = new SolidBrush(isSelected ? theme.ButtonHoverBackground : theme.MenuBackground);
+        e.Graphics.FillRectangle(bgBrush, rect);
 
-    private void StatusList_DoubleClick(object? sender, MouseEventArgs e)
-    {
-        int idx = _statusList.IndexFromPoint(e.Location);
-        if (idx < 0 || idx >= _statusList.Items.Count) return;
-        var text = _statusList.Items[idx].ToString() ?? "";
-        var entry = FindStatusEntry(text);
-        if (entry is not null && _git.RepoPath is not null)
-        {
-            var fullPath = Path.Combine(_git.RepoPath, entry.Path);
-            if (File.Exists(fullPath))
-                FileOpenRequested?.Invoke(fullPath);
-        }
-    }
+        using var shaFont = new Font("Segoe UI", 7.5f, FontStyle.Regular);
+        using var msgFont = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+        using var metaFont = new Font("Segoe UI", 7, FontStyle.Regular);
 
-    private StatusEntry? FindStatusEntry(string listText)
-    {
-        var trimmed = listText.TrimStart();
-        if (trimmed.StartsWith('['))
-        {
-            var close = trimmed.IndexOf(']');
-            if (close > 0)
-            {
-                var path = trimmed[(close + 1)..].Trim();
-                return _staged.FirstOrDefault(s => s.Path == path)
-                    ?? _unstaged.FirstOrDefault(s => s.Path == path)
-                    ?? _untracked.FirstOrDefault(s => s.Path == path);
-            }
-        }
-        return null;
+        TextRenderer.DrawText(e.Graphics, entry.Sha, shaFont,
+            new Point(rect.X + 4, rect.Y + 2), theme.Accent, TextFormatFlags.NoPadding);
+        TextRenderer.DrawText(e.Graphics, entry.Message, msgFont,
+            new Point(rect.X + 60, rect.Y + 2), theme.Text,
+            TextFormatFlags.NoPadding | TextFormatFlags.WordEllipsis);
+        TextRenderer.DrawText(e.Graphics, $"{entry.Author}  {entry.Date}", metaFont,
+            new Point(rect.X + 60, rect.Y + 22), theme.Muted, TextFormatFlags.NoPadding);
+
+        using var sepPen = new Pen(theme.Border);
+        e.Graphics.DrawLine(sepPen, rect.X, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
     }
 
     private void Commit_Click(object? sender, EventArgs e)
@@ -527,6 +618,9 @@ internal sealed class GitPanel : UserControl
         if (_git.Commit(_commitMessage.Text.Trim()))
         {
             _commitMessage.Text = "";
+            _diffPanel.ClearDiff();
+            _bodySplit.Panel2Collapsed = true;
+            _selectedDiffIndex = -1;
             RefreshStatus();
         }
     }
@@ -567,5 +661,9 @@ internal sealed class GitPanel : UserControl
     {
         base.OnResize(e);
         LayoutControls();
+        if (!_bodySplit.Panel2Collapsed)
+        {
+            _bodySplit.SplitterDistance = Math.Max(100, Math.Min(Height - 80, (int)(Height * 0.55)));
+        }
     }
 }
