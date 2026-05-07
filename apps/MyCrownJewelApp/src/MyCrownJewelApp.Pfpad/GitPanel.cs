@@ -435,7 +435,7 @@ internal sealed class GitPanel : UserControl
 
     private void LayoutControls()
     {
-        if (_statusList is null || _commitList is null || _commitMessage is null) return;
+        if (_topPanel is null || _statusList is null || _commitList is null || _commitMessage is null) return;
         int w = _topPanel.ClientSize.Width - 12;
         if (w < 100) w = 100;
 
@@ -660,6 +660,8 @@ internal sealed class GitPanel : UserControl
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        // Guard: _bodySplit is null during construction (MinimumSize triggers resize before field assignment)
+        if (_bodySplit is null) return;
         LayoutControls();
         if (!_bodySplit.Panel2Collapsed)
         {
