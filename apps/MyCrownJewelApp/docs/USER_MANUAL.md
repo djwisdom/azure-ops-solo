@@ -87,7 +87,7 @@ The menu strip at the top contains six menus: File, Edit, View, Panel, Run, and 
 | Clear Bookmarks | | Removes all bookmarks at once. |
 | Toggle Fold | `Ctrl+Shift+[` | Collapses or expands the code fold at the current line. |
 | Toggle All Folds | `Ctrl+Alt+[` | Collapses or expands all foldable regions. |
-| Go to Definition | `F12` | Navigates to the definition of the identifier at the cursor. Uses ctags or regex-based fallback. |
+| Go to Definition | `F12` | Navigates to the definition of the identifier at the cursor. For C# files, uses Roslyn's semantic model for ~98% accuracy — handles generics, partial classes, inherited members, and NuGet package types. Falls back to ctags or regex-based matching for other languages. |
 | Rename | `F2` | Opens a project-wide rename dialog for the identifier at the cursor. Regex-based, not semantic — it renames every occurrence in every workspace file. Preview before applying. |
 | Call Hierarchy | `Ctrl+Shift+H` | Shows incoming callers and outgoing calls for the method at the cursor. Tree view with clickable navigation. |
 | Parse Stack Trace | `Ctrl+Shift+T` | Parses a selected .NET, JavaScript, Python, or generic stack trace into clickable file:line frames. |
@@ -214,7 +214,8 @@ Appears below the Workspace panel when toggled on. Powered by LibGit2Sharp (no g
 
 - **Branch switcher** — Dropdown showing all local branches.
 - **Changes list** — Three sections: Staged, Unstaged, Untracked. Status letters: `[M]` modified, `[A]` added, `[D]` deleted, `[?]` untracked.
-- **Stage/Unstage** — Single-click toggles between staged and unstaged.
+- **Inline diff viewer** — Single-click any file in the changes list to open an inline diff panel below. Additions are highlighted with green backgrounds, deletions with red, and hunk headers in blue. Stage, Unstage, and Discard buttons appear in the diff panel header so you can act on individual files without looking away. The diff is generated from LibGit2Sharp's blob comparison — no git.exe involved.
+- **Stage/Unstage** — Single-click toggles between staged and unstaged (or use the Stage/Unstage buttons in the diff panel header).
 - **Double-click** on a file opens it in the editor.
 - **Stage All** — Stages all modified/new/deleted files at once.
 - **Commit** — Type a message and click Commit. Only enabled when there are staged changes AND a non-empty message.
@@ -236,7 +237,7 @@ An integrated terminal that auto-detects the available shell (PowerShell 7, Powe
 
 ### 4.4 Symbols Panel (Ctrl+Alt+S)
 
-A dockable sidebar listing every indexed symbol in the workspace. The symbol index is rebuilt on a background thread after each workspace scan, scanning every `.cs` file with regex patterns for:
+A dockable sidebar listing every indexed symbol in the workspace. The symbol index is rebuilt on a background thread after each workspace scan, scanning every `.cs` file with regex patterns and also pulling symbols from Roslyn when it's active for C# files:
 
 - `class`, `struct`, `interface`, `enum` declarations
 - `method`, `function`, `property`, `field`, `variable` declarations
@@ -355,10 +356,11 @@ The editor supports split panes in both vertical and horizontal orientations. Yo
 
 ### 5.12 Go to Definition (F12)
 
-Press F12 (or right-click → "Go to Definition") with the cursor on an identifier to navigate to its definition. The feature works via a two-tier approach:
+Press F12 (or right-click → "Go to Definition") with the cursor on an identifier to navigate to its definition. The feature works via a three-tier approach:
 
-1. **Tier 1**: Attempts to use `ctags.exe` if available (provides ~95% accuracy for 40+ languages).
-2. **Tier 2**: Falls back to per-language regex patterns that match class, method, property, function, and variable declarations.
+1. **Tier 1 (C#)**: Uses Roslyn's semantic model via the built-in `RoslynWorkspaceService`. If the current file is part of a .NET project (detected by walking up directories for a `.csproj` or `.sln`), Roslyn resolves the symbol with ~98% accuracy — including generics, partial classes, inherited members, and NuGet package types.
+2. **Tier 2**: Attempts to use `ctags.exe` if available (provides ~95% accuracy for 40+ languages).
+3. **Tier 3**: Falls back to per-language regex patterns that match class, method, property, function, and variable declarations.
 
 If there's a single match, you're taken directly to the file and line. Multiple matches show a picker dialog. No matches show a helpful message suggesting you open a workspace folder first — because the index needs something to index.
 
@@ -424,10 +426,12 @@ Each frame shows whether the file exists (checkmark) or doesn't (cross). Double-
 Hovering over an identifier in the editor for 400ms triggers a tooltip overlay showing:
 
 1. **Symbol kind** (class, method, property, etc.)
-2. **XML doc summary** — parsed from `///` comments in the source file
+2. **XML doc summary** — parsed from `///` comments in the source file (or via Roslyn when active for C#)
 3. **Declaration context** — the surrounding type and namespace
 
 The tooltip is a borderless form that auto-positions above the cursor. It dismisses when the cursor moves more than 10 pixels or after 400ms of inactivity — which is just enough time to read, but not enough time to recline.
+
+**While debugging**, hovering over a variable during a paused breakpoint shows its current value inline. The debugger evaluates the expression via netcoredbg's DAP `evaluate` request with `"hover"` context, and the tooltip displays `variableName = "value"` — the same result you'd see in the Variables panel, but without looking away from the code. This works for locals, parameters, fields, and simple expressions.
 
 ### 5.19 Signature Help
 
@@ -523,9 +527,10 @@ The editor includes a first-class **.NET debugger** built on the Debug Adapter P
 - Breakpoints persist between sessions (stored in `%APPDATA%`)
 
 **When a breakpoint is hit:**
-- The editor scrolls to the source line and highlights it
+- The editor scrolls to the source line and highlights it with a gold dot in the gutter
 - **Call Stack** panel opens showing the thread's frame list
 - **Variables** panel opens showing locals, parameters, and watch expressions
+- **Hover over any variable** to see its current value in a tooltip — the debugger evaluates it via DAP's `"hover"` context, no need to look away from the code
 - Expand objects in the Variables panel to inspect nested properties
 - Add watch expressions by typing in the watch input box and pressing Enter
 
@@ -535,19 +540,19 @@ The editor includes a first-class **.NET debugger** built on the Debug Adapter P
 - Auto-discovers the project directory by walking up from the current file
 - Finds the compiled assembly in `bin/Debug/net8.0/`, `net9.0/`, or `net10.0/`
 
-The test runner uses the TRX (Visual Studio Test Results) XML format for structured parsing rather than trying to parse console output — a deliberate choice for reliability over cleverness. The parser handles the standard `http://microsoft.com/schemas/VisualStudio/TeamTest/2010` namespace and extracts error info and stack traces from the `<ErrorInfo>` elements.
+---
 
-### 6.1 How It Works
+## 6. Git Integration
 
 The editor uses **LibGit2Sharp** (version 0.31.0) — a .NET wrapper around libgit2, the same library that GitHub, GitLab, and Visual Studio use under the hood. No `git.exe` required; the native binaries are bundled with the application.
 
-### 6.2 Status Bar
+### 6.1 Status Bar
 
 When you open a file that's inside a git repository, the status bar shows:
 - **Branch name** (e.g., "main", "feature/foo")
 - **Dirty indicator** (●) when there are uncommitted changes
 
-### 6.3 Source Control Panel (Ctrl+Alt+G)
+### 6.2 Source Control Panel (Ctrl+Alt+G)
 
 Opens a panel in the sidebar with:
 
@@ -721,7 +726,7 @@ Same features as Find, plus:
 
 ### 9.3 Find in Files / Global Search (`Ctrl+Shift+F`)
 
-Press `Ctrl+Shift+F` or go to Edit > Find in Files to open the **Global Search** dialog — a full-featured workspace search tool:
+Press `Ctrl+Shift+F` or go to Edit > Find in Files to open the **Global Search** dialog — a full-featured workspace search tool, fully theme-aware with dark title bars and scrollbars:
 
 - **Search text** with Enter to execute
 - **Replace text** with "Replace All" for bulk replacements across all matched files
@@ -784,6 +789,8 @@ Each theme defines 21 color slots covering:
 - **UI**: Background, text, menu background, panel background, borders, accents, highlights, disabled elements, hover states, muted text
 - **Syntax**: Keywords (one color), strings, comments, numbers, preprocessor directives, types
 - **Terminal**: Background, foreground, input area, header
+
+**Every dialog in the editor** — Go to Definition, Find/Replace, Rename, Call Hierarchy, Run Configurations, Dependencies, Impact Analysis, Stack Trace Parser, Coverage Summary, Global Search, External Tools, About, and all notification windows — supports dark mode with theme-matched backgrounds, foregrounds, and scrollbars. When you switch to a dark theme, the title bars and window frames turn dark as well, courtesy of `NativeThemed.ApplyDarkModeToWindow`. Light themes get the standard light window frame. There is no longer a jarring white flash when opening a dialog at 2 AM.
 
 ### 11.3 Theme Switching
 
@@ -931,9 +938,10 @@ Settings are saved automatically whenever you toggle a feature, and loaded on st
 - **Elastic tab stops** are computed on a background thread with caching (`TabMeasurementCache`) and debounced at 250ms.
 - **Git operations** use LibGit2Sharp (native binaries bundled). The editor doesn't shell out to `git.exe` — a deliberate choice to avoid dependency on external tools.
 - **RSS feed polling** runs on a background `HttpClient` loop within the `NotificationFeedService`. Feeds are fetched in parallel, with the minimum polling interval across enabled sources determining the loop delay.
-- **All code analysis is regex/text-based**, not Roslyn-based. This was a deliberate zero-dependency decision — the editor weighs ~48 MB self-contained. Adding `Microsoft.CodeAnalysis.CSharp` would add another ~50 MB and require the .NET 8 SDK on the target machine. The trade-off is acceptable: the analysis is ~80% as accurate for ~0% of the dependency cost.
+- **Code analysis is a hybrid approach**: Go to Definition, hover documentation, and signature help use **Roslyn's semantic model** for C# files (via `RoslynWorkspaceService` with automatic MSBuild workspace upgrade when a `.csproj` or `.sln` is detected). For non-C# languages, the regex/ctags symbol index serves as the fallback. The Roslyn assemblies add ~50 MB to the package, but the trade-off is justified for accurate navigation in the primary language.
 - **The lint engine** (`LintEngine.cs`) is decoupled from the editor via a debounced event pipeline: text change → 400ms debounce → background `Task.Run` → `IReadOnlyList<Diagnostic>` → UI thread → squiggly underlines + problems panel. Five rules ship by default; adding more requires implementing a single `Func<string, string, List<Diagnostic>>` signature.
 - **Squiggly underlines** are drawn in the RichTextBox's `WM_PAINT` handler using a dedicated `DrawSquiggles` method. The squiggle positions are pre-computed on the UI thread from the diagnostic data — no line-by-line scanning during paint.
+- **Debug hover values** piggyback on the existing hover tooltip infrastructure. When the debugger is paused, the 400ms hover timer fires a DAP `evaluate` request with `"hover"` context against the active stack frame, displays the result inline. The frame ID is cached when the debugger stops to avoid refetching the stack on every hover.
 - **The symbol index** (`SymbolIndexService.cs`) is rebuilt asynchronously after each workspace scan. It feeds the Symbols panel, Go to Definition fallback, Rename, and the "Add missing using" quick action. All consumers read from the same cached symbol list, which is published via an `Action OnIndexUpdated` event.
 - **The sidebar panel system** uses a nested `SplitContainer` layout: outer split (workspace left / everything else right), middle split (git + symbol split), inner split (symbols top / problems bottom). Each panel implements `SetTheme(Theme)` for color consistency and fires `CloseRequested` / `*Selected` events back to Form1.
 - **Test runner** (`TestResultParser.cs`) runs `dotnet test --logger trx` as a child process with a 5-minute timeout. Results are parsed from the TRX XML format (VSTest namespace) rather than scraping console output — structured data is always preferable to regex parsing of log text. The parser handles `<ErrorInfo>` elements for failure messages and stack traces.
