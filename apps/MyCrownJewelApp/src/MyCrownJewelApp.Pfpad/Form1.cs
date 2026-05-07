@@ -334,6 +334,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private DebugCallStackPanel? _debugCallStackPanel;
         private int _debugActiveLine = -1;
         private string? _debugActiveFile;
+        private int _debugActiveFrameId;
         public BreakpointManager DebugBreakpointManager => _breakpointManager;
         public int DebugActiveLine => _debugActiveLine;
         public string? CurrentFilePath => currentFilePath;
@@ -2160,6 +2161,13 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             if (currentSyntax?.Name == "C#" && _roslynWorkspace.IsReady)
             {
                 ShowHoverTooltipRoslyn(word, mouseLoc);
+                return;
+            }
+
+            // Debugger hover: show variable values when paused at breakpoint
+            if (_debugSession.State == DebugState.Paused && _debugActiveFrameId > 0)
+            {
+                ShowDebugHoverTooltipAsync(word, mouseLoc);
                 return;
             }
 
@@ -6339,6 +6347,23 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         #region Debugger Integration
 
+        private async void ShowDebugHoverTooltipAsync(string word, Point mouseLoc)
+        {
+            try
+            {
+                string? value = await _debugSession.EvaluateAsync(word, _debugActiveFrameId, "hover");
+                if (value is null) return;
+                var theme = ThemeManager.Instance.CurrentTheme;
+                Point screenLoc = textEditor.PointToScreen(mouseLoc);
+                _hoverTooltip.Dismiss();
+                _hoverTooltip.ShowAt(screenLoc, $"{word}", value, "Debugger");
+            }
+            catch
+            {
+                // Silently ignore — debugger may have moved on
+            }
+        }
+
         private void OnDebugStateChanged(DebugState state)
         {
             bool isRunning = state == DebugState.Running;
@@ -6361,6 +6386,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 {
                     _debugActiveLine = -1;
                     _debugActiveFile = null;
+                    _debugActiveFrameId = 0;
                     _debugVariablesPanel?.Close();
                     _debugVariablesPanel = null;
                     _debugCallStackPanel?.Close();
@@ -6381,6 +6407,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 var top = frames[0];
                 _debugActiveLine = top.Line;
                 _debugActiveFile = top.Source?.Path;
+                _debugActiveFrameId = top.Id;
 
                 if (_debugActiveFile != null && File.Exists(_debugActiveFile))
                     NavigateToFileLine(_debugActiveFile, _debugActiveLine);
