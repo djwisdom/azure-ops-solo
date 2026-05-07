@@ -270,6 +270,7 @@ internal sealed class GitPanel : UserControl
         _diffPanel.DiscardRequested += (path) => { _git.DiscardFile(path); RefreshStatus(); };
 
         // Body split: top = git controls, bottom = diff view
+        _diffPanel.Dock = DockStyle.Fill;
         _bodySplit = new SplitContainer
         {
             Dock = DockStyle.Fill,
