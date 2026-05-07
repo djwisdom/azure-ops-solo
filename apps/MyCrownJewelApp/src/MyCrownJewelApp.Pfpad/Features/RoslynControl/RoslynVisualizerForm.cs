@@ -125,6 +125,7 @@ public sealed class RoslynVisualizerForm : Form
         mainPanel.Controls.Add(_tabControl, 0, 1);
         Controls.Add(mainPanel);
 
+        ThemeManager.Instance.ThemeChanged += theme => { if (!IsDisposed) BeginInvoke(ApplyTheme); };
         ApplyTheme();
     }
 
@@ -331,23 +332,26 @@ public sealed class RoslynVisualizerForm : Form
 
     public void ApplyTheme()
     {
-        bool dark = true;
-        BackColor = dark ? Color.FromArgb(30, 30, 30) : SystemColors.Window;
-        ForeColor = dark ? Color.FromArgb(220, 220, 220) : SystemColors.ControlText;
-        _syntaxTreeView.BackColor = dark ? Color.FromArgb(37, 37, 38) : SystemColors.Window;
-        _syntaxTreeView.ForeColor = dark ? Color.FromArgb(220, 220, 220) : SystemColors.ControlText;
-        _semanticInfoView.BackColor = dark ? Color.FromArgb(37, 37, 38) : SystemColors.Window;
-        _semanticInfoView.ForeColor = dark ? Color.FromArgb(220, 220, 220) : SystemColors.ControlText;
-        _diagnosticsGrid.BackgroundColor = dark ? Color.FromArgb(37, 37, 38) : SystemColors.Window;
-        _diagnosticsGrid.DefaultCellStyle.BackColor = dark ? Color.FromArgb(37, 37, 38) : SystemColors.Window;
-        _diagnosticsGrid.DefaultCellStyle.ForeColor = dark ? Color.FromArgb(220, 220, 220) : SystemColors.ControlText;
-        _generatedSourcePreview.BackColor = dark ? Color.FromArgb(37, 37, 38) : SystemColors.Window;
-        _generatedSourcePreview.ForeColor = dark ? Color.FromArgb(220, 220, 220) : SystemColors.ControlText;
+        var theme = ThemeManager.Instance.CurrentTheme;
+        BackColor = theme.Background;
+        ForeColor = theme.Text;
+        _syntaxTreeView.BackColor = theme.EditorBackground;
+        _syntaxTreeView.ForeColor = theme.Text;
+        _semanticInfoView.BackColor = theme.Background;
+        _semanticInfoView.ForeColor = theme.Text;
+        _diagnosticsGrid.BackgroundColor = theme.Background;
+        _diagnosticsGrid.DefaultCellStyle.BackColor = theme.Background;
+        _diagnosticsGrid.DefaultCellStyle.ForeColor = theme.Text;
+        _diagnosticsGrid.ColumnHeadersDefaultCellStyle.BackColor = theme.PanelBackground;
+        _diagnosticsGrid.ColumnHeadersDefaultCellStyle.ForeColor = theme.Text;
+        _diagnosticsGrid.GridColor = theme.Border;
+        _generatedSourcePreview.BackColor = theme.EditorBackground;
+        _generatedSourcePreview.ForeColor = theme.Text;
 
         foreach (TabPage page in _tabControl.TabPages)
         {
-            page.BackColor = dark ? Color.FromArgb(45, 45, 48) : SystemColors.Control;
-            page.ForeColor = dark ? Color.FromArgb(220, 220, 220) : SystemColors.ControlText;
+            page.BackColor = theme.PanelBackground;
+            page.ForeColor = theme.Text;
         }
 
         Invalidate(true);

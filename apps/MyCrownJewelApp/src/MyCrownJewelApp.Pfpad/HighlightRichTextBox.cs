@@ -32,6 +32,7 @@ public class HighlightRichTextBox : RichTextBox
     private int _lastAppliedVersion = -1;
     private WinFormsTimer? _bracketDebounceTimer;
     private RainbowBracketResult? _renderedResult;
+    private bool _isApplyingBrackets;
 
     private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
     private static readonly Dictionary<char, char> _bracePairs = new()
@@ -121,6 +122,16 @@ public class HighlightRichTextBox : RichTextBox
         Invalidate();
     }
 
+    protected override void OnTextChanged(EventArgs e)
+    {
+        base.OnTextChanged(e);
+        if (_rainbowBracketsEnabled)
+        {
+            _bracketDebounceTimer?.Stop();
+            _bracketDebounceTimer?.Start();
+        }
+    }
+
     protected override void OnFontChanged(EventArgs e)
     {
         base.OnFontChanged(e);
@@ -195,7 +206,7 @@ public class HighlightRichTextBox : RichTextBox
 
     public void RefreshBrackets()
     {
-        if (!_rainbowBracketsEnabled) return;
+        if (!_rainbowBracketsEnabled || _isApplyingBrackets) return;
         _bracketDebounceTimer?.Stop();
         ParseAndApplyBrackets();
     }
@@ -206,14 +217,22 @@ public class HighlightRichTextBox : RichTextBox
 
     private void ParseAndApplyBrackets()
     {
-        if (!IsHandleCreated || TextLength == 0) return;
+        if (!IsHandleCreated || TextLength == 0 || _isApplyingBrackets) return;
         int version = Interlocked.Increment(ref _bracketVersion);
         var result = RainbowBracketEngine.Parse(Text, version);
         if (result.Version <= _lastAppliedVersion) return;
         _lastBracketResult = result;
         _renderedResult = result;
         _lastAppliedVersion = result.Version;
-        ApplyBracketColorsFormat(result);
+        _isApplyingBrackets = true;
+        try
+        {
+            ApplyBracketColorsFormat(result);
+        }
+        finally
+        {
+            _isApplyingBrackets = false;
+        }
     }
 
     private void ApplyBracketColorsFormat(RainbowBracketResult result)
@@ -235,6 +254,8 @@ public class HighlightRichTextBox : RichTextBox
         int origSelLen = SelectionLength;
         int origFirstVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
 
+        SendMessage(Handle, WM_SETREDRAW, 0, 0);
+
         var cf = new CHARFORMAT2W
         {
             cbSize = Marshal.SizeOf<CHARFORMAT2W>(),
@@ -253,13 +274,8 @@ public class HighlightRichTextBox : RichTextBox
                 cf.crTextColor = ColorTranslator.ToWin32(color);
                 Marshal.StructureToPtr(cf, cfPtr, false);
 
-                int saveVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
                 SendMessage(Handle, EM_SETSEL, b.Position, b.Position + 1);
                 SendMessage(Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
-
-                int currVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-                if (currVis != saveVis)
-                    SendMessage(Handle, EM_LINESCROLL, 0, saveVis - currVis);
             }
         }
         finally
@@ -267,10 +283,14 @@ public class HighlightRichTextBox : RichTextBox
             Marshal.FreeHGlobal(cfPtr);
         }
 
+        SendMessage(Handle, WM_SETREDRAW, 1, 0);
+
         SendMessage(Handle, EM_SETSEL, origSelStart, origSelStart + origSelLen);
         int finalVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
         if (finalVis != origFirstVis)
             SendMessage(Handle, EM_LINESCROLL, 0, origFirstVis - finalVis);
+
+        Invalidate();
     }
 
     private void DrawRainbowBracketOverlays(Graphics g)
@@ -677,6 +697,7 @@ public class HighlightRichTextBox : RichTextBox
     private const int CFM_COLOR = 0x40000000;
 
     private const int WM_NCPAINT = 0x0085;
+    private const int WM_SETREDRAW = 0x000B;
 
     private void PaintScrollbarCorner()
     {

@@ -206,6 +206,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         // Elastic tab stops system
         private System.Windows.Forms.Timer? elasticTabTimer;
         private System.Windows.Forms.Timer? _highlightTimer;
+        private System.Windows.Forms.Timer? _scrollHighlightTimer;
         private int _pendingHighlightLine = -1;
         private CancellationTokenSource? tabComputeCts;
         private readonly Stopwatch _highlightPerfSw = new();
@@ -596,6 +597,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     incrementalHighlighter?.MarkDirty(_pendingHighlightLine + 1);
                     _pendingHighlightLine = -1;
                 }
+            };
+
+            // Scroll highlight debounce — delays visible-range highlighting until scroll settles
+            _scrollHighlightTimer = new System.Windows.Forms.Timer();
+            _scrollHighlightTimer.Interval = 120;
+            _scrollHighlightTimer.Tick += (s, e) =>
+            {
+                _scrollHighlightTimer.Stop();
+                RequestVisibleHighlight();
             };
 
               // Git service: wire to current file location
@@ -5270,7 +5280,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             if (gutterPanel != null) gutterPanel.RefreshGutter();
             textEditor.Invalidate();
-            RequestVisibleHighlight();
+            _scrollHighlightTimer?.Stop();
+            _scrollHighlightTimer?.Start();
             UpdateStickyHeaders();
         }
 
@@ -5654,6 +5665,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             _highlightPerfSw.Restart();
+            _suspendSelectionChanged = true;
             _applyingHighlight = true;
 
             // Only apply patches for the currently visible range — non-visible lines
@@ -5661,10 +5673,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             // This keeps ApplyHighlightPatches fast (<5ms) so the UI thread stays responsive
             // during rapid scrolling.
             var (firstVisible, lastVisible) = GetVisibleLineRange();
-            if (firstVisible > lastVisible) { _applyingHighlight = false; return; }
+            if (firstVisible > lastVisible) { _applyingHighlight = false; _suspendSelectionChanged = false; return; }
 
             int savedSelStart = textEditor.SelectionStart;
             int savedSelLength = textEditor.SelectionLength;
+            int savedFirstVis = (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
             BeginUpdate(textEditor);
             textEditor.SuspendLayout();
             try
@@ -5730,8 +5743,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 textEditor.ResumeLayout();
                 _lastHighlightDurationMs = _highlightPerfSw.Elapsed.TotalMilliseconds;
                 textEditor.Select(savedSelStart, savedSelLength);
-                if (_rainbowBracketsEnabled) textEditor.RefreshBrackets();
+                int finalVis = (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+                if (finalVis != savedFirstVis)
+                    SendMessage(textEditor.Handle, EM_LINESCROLL, 0, savedFirstVis - finalVis);
                 _applyingHighlight = false;
+                _suspendSelectionChanged = false;
             }
         }
 
@@ -6264,6 +6280,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             elasticTabTimer?.Dispose();
             _highlightTimer?.Stop();
             _highlightTimer?.Dispose();
+            _scrollHighlightTimer?.Stop();
+            _scrollHighlightTimer?.Dispose();
             incrementalHighlighter?.Dispose();
             _roslynWorkspace.Dispose();
             _roslynService?.Dispose();
