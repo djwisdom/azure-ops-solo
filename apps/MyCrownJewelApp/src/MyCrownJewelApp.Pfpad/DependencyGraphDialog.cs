@@ -125,4 +125,11 @@ public sealed class DependencyGraphDialog : Form
         Controls.Add(_statusLabel);
         Controls.Add(closeBtn);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

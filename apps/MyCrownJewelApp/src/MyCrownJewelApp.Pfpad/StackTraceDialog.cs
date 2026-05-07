@@ -126,4 +126,11 @@ public sealed class StackTraceDialog : Form
         var tag = ((string file, int line))_frameList.SelectedItems[0].Tag!;
         FrameSelected?.Invoke(tag.file, tag.line);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

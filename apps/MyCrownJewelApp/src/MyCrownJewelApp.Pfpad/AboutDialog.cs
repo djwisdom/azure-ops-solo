@@ -199,4 +199,11 @@ public sealed class AboutDialog : Form
         catch { }
         return "unknown";
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

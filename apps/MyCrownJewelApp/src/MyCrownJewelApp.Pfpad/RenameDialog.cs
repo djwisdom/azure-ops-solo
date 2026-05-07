@@ -356,4 +356,11 @@ public sealed class RenameDialog : Form
         }
         base.Dispose(disposing);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

@@ -358,4 +358,11 @@ public sealed class RoslynVisualizerForm : Form
     }
 
     public event Action? OnRefreshRequested;
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

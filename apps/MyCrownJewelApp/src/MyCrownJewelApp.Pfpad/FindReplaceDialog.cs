@@ -211,4 +211,11 @@ public partial class FindReplaceDialog : Form
     {
         _mainForm.PerformFindInFiles(FindText, CaseSensitive, UseRegex);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

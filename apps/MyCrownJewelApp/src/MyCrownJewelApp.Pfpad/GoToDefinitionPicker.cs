@@ -127,4 +127,11 @@ internal sealed class GoToDefinitionPicker : Form
         using var p = new Pen(theme.Border, 1);
         e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

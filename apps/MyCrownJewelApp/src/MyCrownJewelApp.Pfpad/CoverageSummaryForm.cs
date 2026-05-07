@@ -106,4 +106,11 @@ public sealed class CoverageSummaryForm : Form
         if (_fileList.SelectedItems.Count > 0 && _fileList.SelectedItems[0].Tag is string file)
             FileSelected?.Invoke(file);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

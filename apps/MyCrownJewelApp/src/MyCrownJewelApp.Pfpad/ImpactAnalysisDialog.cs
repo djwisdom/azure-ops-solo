@@ -109,4 +109,11 @@ public sealed class ImpactAnalysisDialog : Form
         }
         return "(unknown)";
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

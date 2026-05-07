@@ -236,4 +236,11 @@ public sealed class RunConfigurationDialog : Form
         if (disposing) StopProcess();
         base.Dispose(disposing);
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }

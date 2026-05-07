@@ -21,11 +21,17 @@ internal sealed class GlobalSearchDialog : Form
     private readonly TreeView _resultsTree;
     private readonly ToolStripStatusLabel _statusLabel;
     private readonly StatusStrip _statusStrip;
+    private readonly Panel _topPanel;
 
     private CancellationTokenSource? _cts;
     private readonly HashSet<string> _defaultFilters;
     private string _workspaceRoot = "";
     private int _totalMatches;
+
+    private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
+
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
     private static readonly HashSet<string> DefaultIgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -67,7 +73,12 @@ internal sealed class GlobalSearchDialog : Form
             Padding = new Padding(8)
         };
 
-        var topPanel = new Panel { Height = 100, Dock = DockStyle.Top };
+        _topPanel = new Panel
+        {
+            Height = 100,
+            Dock = DockStyle.Top,
+            BackColor = theme.MenuBackground
+        };
 
         int y = 4;
         int inputW = 500;
@@ -77,7 +88,9 @@ internal sealed class GlobalSearchDialog : Form
         {
             Location = new Point(leftCol, y),
             Width = inputW,
-            Font = new Font("Segoe UI", 10)
+            Font = new Font("Segoe UI", 10),
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text
         };
         _searchBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; BeginSearch(); } };
 
@@ -86,7 +99,11 @@ internal sealed class GlobalSearchDialog : Form
             Text = "Search",
             Location = new Point(leftCol + inputW + 6, y - 1),
             Width = 75,
-            Height = 24
+            Height = 24,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = theme.Background,
+            ForeColor = theme.Text,
+            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
         };
         _searchButton.Click += (s, e) => BeginSearch();
 
@@ -96,18 +113,24 @@ internal sealed class GlobalSearchDialog : Form
             Location = new Point(leftCol + inputW + 87, y - 1),
             Width = 60,
             Height = 24,
-            Enabled = false
+            Enabled = false,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = theme.Background,
+            ForeColor = theme.Text,
+            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
         };
         _stopButton.Click += (s, e) => _cts?.Cancel();
 
-        topPanel.Controls.AddRange(new Control[] { _searchBox, _searchButton, _stopButton });
+        _topPanel.Controls.AddRange(new Control[] { _searchBox, _searchButton, _stopButton });
         y += 30;
 
         _replaceBox = new TextBox
         {
             Location = new Point(leftCol, y),
             Width = inputW,
-            Font = new Font("Segoe UI", 10)
+            Font = new Font("Segoe UI", 10),
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text
         };
         _replaceBox.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; BeginSearch(); } };
         var replaceLabel = new Label
@@ -119,8 +142,8 @@ internal sealed class GlobalSearchDialog : Form
             ForeColor = theme.Muted,
             Font = new Font("Segoe UI", 8.25f)
         };
-        topPanel.Controls.Add(replaceLabel);
-        topPanel.Controls.Add(_replaceBox);
+        _topPanel.Controls.Add(replaceLabel);
+        _topPanel.Controls.Add(_replaceBox);
         y += 28;
 
         _caseCheck = new CheckBox
@@ -153,7 +176,9 @@ internal sealed class GlobalSearchDialog : Form
             Text = "*.cs, *.ts, *.js, *.json, *.md, *.xml, *.yaml, *.html, *.css, *.py, *.go, *.rs, *.tf, *.ps1, *.sh",
             Location = new Point(leftCol + 180, y - 1),
             Width = 280,
-            Font = new Font("Segoe UI", 8.25f)
+            Font = new Font("Segoe UI", 8.25f),
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text
         };
 
         var excludeLabel = new Label
@@ -169,9 +194,11 @@ internal sealed class GlobalSearchDialog : Form
             Text = "node_modules, .git, bin, obj, .vs, packages, .terraform",
             Location = new Point(leftCol + 524, y - 1),
             Width = 340,
-            Font = new Font("Segoe UI", 8.25f)
+            Font = new Font("Segoe UI", 8.25f),
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text
         };
-        topPanel.Controls.AddRange(new Control[]
+        _topPanel.Controls.AddRange(new Control[]
         {
             _caseCheck, _regexCheck, filterLabel, _filterBox, excludeLabel, _excludeBox
         });
@@ -183,7 +210,11 @@ internal sealed class GlobalSearchDialog : Form
             Location = new Point(leftCol, y),
             Width = 100,
             Height = 24,
-            Enabled = false
+            Enabled = false,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = theme.Accent,
+            ForeColor = Color.White,
+            FlatAppearance = { BorderSize = 0, MouseOverBackColor = ControlPaint.Light(theme.Accent) }
         };
         _replaceAllButton.Click += (s, e) => PerformReplaceAll();
 
@@ -192,7 +223,11 @@ internal sealed class GlobalSearchDialog : Form
             Text = "Expand All",
             Location = new Point(leftCol + 106, y),
             Width = 80,
-            Height = 24
+            Height = 24,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = theme.Background,
+            ForeColor = theme.Text,
+            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
         };
         _expandAllButton.Click += (s, e) =>
         {
@@ -204,15 +239,19 @@ internal sealed class GlobalSearchDialog : Form
             Text = "Collapse All",
             Location = new Point(leftCol + 192, y),
             Width = 90,
-            Height = 24
+            Height = 24,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = theme.Background,
+            ForeColor = theme.Text,
+            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
         };
         _collapseAllButton.Click += (s, e) =>
         {
             if (_resultsTree is not null) _resultsTree.CollapseAll();
         };
 
-        topPanel.Controls.AddRange(new Control[] { _replaceAllButton, _expandAllButton, _collapseAllButton });
-        topPanel.Height = y + 32;
+        _topPanel.Controls.AddRange(new Control[] { _replaceAllButton, _expandAllButton, _collapseAllButton });
+        _topPanel.Height = y + 32;
 
         _resultsTree = new TreeView
         {
@@ -222,7 +261,9 @@ internal sealed class GlobalSearchDialog : Form
             FullRowSelect = true,
             ShowLines = true,
             ShowPlusMinus = true,
-            Font = new Font("Consolas", 9.25f)
+            Font = new Font("Consolas", 9.25f),
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text
         };
         _resultsTree.NodeMouseDoubleClick += ResultsTree_NodeMouseDoubleClick;
         _resultsTree.KeyDown += (s, e) =>
@@ -236,19 +277,22 @@ internal sealed class GlobalSearchDialog : Form
             BackColor = theme.TerminalHeaderBackground,
             ForeColor = theme.Text
         };
-        _statusLabel = new ToolStripStatusLabel("Ready");
+        _statusLabel = new ToolStripStatusLabel("Ready")
+        {
+            ForeColor = theme.Text
+        };
         _statusStrip.Items.Add(_statusLabel);
 
         var splitContainer = new SplitContainer
         {
             Dock = DockStyle.Fill,
             Orientation = Orientation.Horizontal,
-            SplitterDistance = topPanel.Height + 4,
+            SplitterDistance = _topPanel.Height + 4,
             IsSplitterFixed = true,
-            Panel1 = { Controls = { topPanel } },
+            Panel1 = { Controls = { _topPanel } },
             Panel2 = { Controls = { _resultsTree } }
         };
-        splitContainer.Panel1MinSize = topPanel.Height;
+        splitContainer.Panel1MinSize = _topPanel.Height;
 
         Controls.Add(splitContainer);
         Controls.Add(_statusStrip);
@@ -585,6 +629,7 @@ internal sealed class GlobalSearchDialog : Form
         base.OnHandleCreated(e);
         if (!ThemeManager.Instance.CurrentTheme.IsLight)
             NativeThemed.ApplyDarkModeToWindow(Handle);
+        SetWindowTheme(_resultsTree.Handle, DARK_MODE_SCROLLBAR, null);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

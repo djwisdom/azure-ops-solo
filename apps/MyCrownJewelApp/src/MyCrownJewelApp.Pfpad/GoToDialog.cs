@@ -92,5 +92,12 @@ public partial class GoToDialog : Form
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+    }
 }
 #pragma warning restore CS8618
