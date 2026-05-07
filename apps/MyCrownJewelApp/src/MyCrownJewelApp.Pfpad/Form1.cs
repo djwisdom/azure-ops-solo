@@ -213,6 +213,7 @@
         private const int HighlightTimerMaxInterval = 500;
         private int _typingBurstCount;
         private DateTime _lastKeyPress = DateTime.MinValue;
+        private int _previousTextLength;
 
         // Git integration via GitService
 
@@ -225,9 +226,21 @@
         internal SyntaxDefinition? currentSyntax;
         private IncrementalHighlighter? incrementalHighlighter;
 
+        // Sticky scroll
+        private StickyScrollService? _stickyScroll;
+        private bool _stickyScrollEnabled = true;
+
+        // Rainbow brackets
+        private bool _rainbowBracketsEnabled;
+
+        // Breadcrumbs
+        private bool _breadcrumbsEnabled;
+        private System.Windows.Forms.Timer? _breadcrumbDebounce;
+        private const int BreadcrumbDebounceMs = 100;
+
         // Column guide state
         internal int guideColumn = 80;
-        internal bool showGuide = true;
+        internal bool showGuide = false;
         private readonly Color guideColor = Color.FromArgb(60, 60, 60);
 
         // Theme management
@@ -275,7 +288,9 @@
             string WorkspaceRoot = "",
             bool ShowWhitespace = true,
             bool SymbolPanelVisible = false,
-            bool ProblemsPanelVisible = false
+            bool ProblemsPanelVisible = false,
+            bool RainbowBracketsEnabled = false,
+            bool BreadcrumbsEnabled = false
         );
 
         private string SettingsFilePath =>
@@ -440,12 +455,19 @@
             autoIndentMenuItem.Checked = autoIndentEnabled;
             smartTabsMenuItem.Checked = smartTabsEnabled;
             elasticTabsMenuItem.Checked = elasticTabsEnabled;
+            rainbowBracketsMenuItem.Checked = _rainbowBracketsEnabled;
+            breadcrumbMenuItem.Checked = _breadcrumbsEnabled;
+            breadcrumbPanel.Visible = _breadcrumbsEnabled;
+            gutterPanel.TopOffset = _breadcrumbsEnabled ? breadcrumbPanel.Height : 0;
 
             // Initialize incremental syntax highlighter if enabled
             if (syntaxHighlightingEnabled)
             {
                 CreateIncrementalHighlighter();
             }
+
+            // Track initial text length for paste detection
+            _previousTextLength = textEditor != null ? textEditor.TextLength : 0;
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
@@ -507,13 +529,37 @@
             // Initialize folding manager and scan regions
             _foldingManager = new FoldingManager(textEditor!);
             textEditor!.FoldingManager = _foldingManager;
+            _stickyScroll = new StickyScrollService();
             textEditor!.TextChanged += (s, e) =>
             {
                 if (!_suppressFoldRescan) _foldingManager?.ScanRegions();
                 gutterPanel?.RefreshGutter();
                 ScheduleLint();
+                RebuildStickyScopes();
             };
             _foldingManager.ScanRegions();
+            RebuildStickyScopes();
+
+            // Initialize sticky scroll panel position and font
+            stickyScrollPanel.Font = textEditor!.Font;
+            stickyScrollPanel.SyncWidth(textEditor.ClientSize.Width);
+            textEditor.Resize += (s, e) =>
+            {
+                if (textEditor != null && stickyScrollPanel.Visible)
+                    stickyScrollPanel.SyncWidth(textEditor.ClientSize.Width);
+            };
+
+            // Initialize breadcrumb panel
+            breadcrumbPanel.Font = textEditor.Font;
+            breadcrumbPanel.FilePath = currentFilePath ?? "";
+            _breadcrumbDebounce = new System.Windows.Forms.Timer { Interval = BreadcrumbDebounceMs };
+            _breadcrumbDebounce.Tick += (s, e) => { _breadcrumbDebounce.Stop(); UpdateBreadcrumbs(); };
+            textEditor.SelectionChanged += (s, e) => DebounceBreadcrumbs();
+            textEditor.VScroll += (s, e) => UpdateBreadcrumbsSync();
+            UpdateBreadcrumbs();
+
+            // Initialize rainbow brackets from loaded settings
+            textEditor.EnableRainbowBrackets(_rainbowBracketsEnabled);
 
             // Lint engine — wire diagnostics to problems panel + squiggles
             _quickActionProvider = new QuickActionProvider(_symbolIndex, _roslynWorkspace);
@@ -923,7 +969,7 @@
                {
                    if (gutterPanel != null) gutterPanel.Invalidate();
                };
-               gutterPanel.BreakpointClicked += (line) =>
+                gutterPanel!.BreakpointClicked += (line) =>
                {
                    if (currentFilePath != null)
                        _breakpointManager.ToggleBreakpoint(currentFilePath, line + 1);
@@ -1495,6 +1541,8 @@
                         _workspaceRoot = settings.WorkspaceRoot ?? "";
                         _symbolPanelVisible = settings.SymbolPanelVisible;
                         _problemsPanelVisible = settings.ProblemsPanelVisible;
+                        _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
+                        _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
                         bool showWhitespace = settings.ShowWhitespace;
                         if (whitespaceMenuItem != null)
                         {
@@ -1537,9 +1585,11 @@
                       WorkspaceVisible: _workspaceVisible,
                       WorkspaceWidth: _workspaceWidth,
                        WorkspaceRoot: _workspaceRoot,
-                       ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
-                       SymbolPanelVisible: _symbolPanelVisible,
-                       ProblemsPanelVisible: _problemsPanelVisible
+                        ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
+                        SymbolPanelVisible: _symbolPanelVisible,
+                        ProblemsPanelVisible: _problemsPanelVisible,
+                        RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
+                        BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -1598,7 +1648,71 @@
             
             // Update status bar to show Vim mode indicator
             UpdateStatusBar();
+            gutterPanel?.Invalidate();
+        }
+
+        private void ToggleStickyScroll_Click(object? sender, EventArgs e)
+        {
+            _stickyScrollEnabled = stickyScrollMenuItem.Checked;
+            if (_stickyScrollEnabled)
+                RebuildStickyScopes();
+            else
+                stickyScrollPanel.SetScopes(new(), -1);
+        }
+
+        private void ToggleRainbowBrackets_Click(object? sender, EventArgs e)
+        {
+            _rainbowBracketsEnabled = rainbowBracketsMenuItem.Checked;
+            if (textEditor != null)
+                textEditor.EnableRainbowBrackets(_rainbowBracketsEnabled);
             SaveSettings();
+        }
+
+        private void ToggleBreadcrumbs_Click(object? sender, EventArgs e)
+        {
+            _breadcrumbsEnabled = breadcrumbMenuItem.Checked;
+            breadcrumbPanel.Visible = _breadcrumbsEnabled;
+            gutterPanel.TopOffset = _breadcrumbsEnabled ? breadcrumbPanel.Height : 0;
+            gutterPanel.Invalidate();
+            RepositionStickyScrollPanel();
+            UpdateBreadcrumbs();
+            SaveSettings();
+        }
+
+        private void RepositionStickyScrollPanel()
+        {
+            stickyScrollPanel.Top = _breadcrumbsEnabled ? breadcrumbPanel.Height : 0;
+        }
+
+        private void DebounceBreadcrumbs()
+        {
+            if (!_breadcrumbsEnabled) return;
+            _breadcrumbDebounce?.Stop();
+            _breadcrumbDebounce?.Start();
+        }
+
+        private void UpdateBreadcrumbsSync()
+        {
+            if (!_breadcrumbsEnabled) return;
+            UpdateBreadcrumbs();
+        }
+
+        private void UpdateBreadcrumbs()
+        {
+            if (!_breadcrumbsEnabled || textEditor == null)
+            {
+                breadcrumbPanel.Visible = false;
+                return;
+            }
+            breadcrumbPanel.Visible = true;
+            breadcrumbPanel.FilePath = currentFilePath ?? "";
+            if (_stickyScroll != null)
+            {
+                int pos = textEditor.SelectionStart;
+                int line = textEditor.GetLineFromCharIndex(pos);
+                var scopes = _stickyScroll.GetEnclosingScopes(line);
+                breadcrumbPanel.CurrentScope = scopes.Count > 0 ? scopes[^1].HeaderText : "";
+            }
         }
 
         private void ToggleTerminal_Click(object? sender, EventArgs e)
@@ -2408,9 +2522,11 @@
                  string content = File.ReadAllText(path);
                  
                  // Update fields without triggering dirty
-                 textEditor.TextChanged -= TextEditor_TextChanged;
-                 textEditor.Text = content;
-                 textEditor.TextChanged += TextEditor_TextChanged;
+                  textEditor.TextChanged -= TextEditor_TextChanged;
+                  textEditor.Text = content;
+                  textEditor.TextChanged += TextEditor_TextChanged;
+
+                  _previousTextLength = textEditor.TextLength;
 
                   currentFilePath = path;
                   currentSyntax = SyntaxDefinition.GetDefinitionForFile(path);
@@ -3246,7 +3362,7 @@
 
         private void RunTestsWithCoverage()
         {
-            string testProj = FindTestProject();
+            string? testProj = FindTestProject();
             if (string.IsNullOrEmpty(testProj))
             {
                 ThemedMessageBox.Show("No test project found in the workspace folder.\n\nEnsure a .csproj with a test SDK reference exists.",
@@ -3330,7 +3446,7 @@
                 return;
             }
 
-            string testProj = FindTestProject();
+            string? testProj = FindTestProject();
             if (string.IsNullOrEmpty(testProj))
             {
                 ThemedMessageBox.Show("No test project found in the workspace folder.",
@@ -3385,7 +3501,7 @@
                 return;
             }
 
-            string testProj = _lastTestProject ?? FindTestProject();
+            string? testProj = _lastTestProject ?? FindTestProject();
             if (string.IsNullOrEmpty(testProj))
             {
                 ThemedMessageBox.Show("No test project found.",
@@ -4124,6 +4240,7 @@
             UpdateStatusBar();
             UpdateTabTitle(activeDocIndex);
             UpdateThemeColors(_currentTheme);
+            UpdateBreadcrumbs();
         }
 
         // Update tab title for document at index
@@ -4244,7 +4361,9 @@
             if (_tabDropdownButton == null || tabControl == null || tabControl.IsDisposed) return;
             Point tabScreen = tabControl.PointToScreen(Point.Empty);
             Point formClient = this.PointToClient(tabScreen);
-            int y = formClient.Y + (tabControl.Height - _tabDropdownButton.Height) / 2;
+
+            // Offset upward by 4px so the button doesn't cover the tab strip's bottom edge line
+            int y = formClient.Y + (tabControl.Height - _tabDropdownButton.Height) / 2 - 4;
 
             int lastTabIndex = tabControl.TabCount - 1;
             if (lastTabIndex >= 0)
@@ -4253,13 +4372,21 @@
                 int desiredX = formClient.X + lastTabRect.Right + 2;
                 int scrollBtnArea = 55;
                 int maxX = formClient.X + tabControl.Width - scrollBtnArea;
-                int x = Math.Min(desiredX, maxX);
-                _tabDropdownButton.Location = new Point(Math.Max(formClient.X, x), Math.Max(0, y));
+
+                // Snap to the right edge when there's a visible gap after the last tab
+                // (e.g., single tab with empty filler space in the header)
+                int x;
+                if (maxX - desiredX > _tabDropdownButton.Width * 2)
+                    x = maxX;
+                else
+                    x = Math.Min(desiredX, maxX);
+
+                _tabDropdownButton.Location = new Point(Math.Max(formClient.X, x), Math.Max(formClient.Y, y));
             }
             else
             {
                 int x = formClient.X + tabControl.Width - _tabDropdownButton.Width - 2;
-                _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(0, y));
+                _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(formClient.Y, y));
             }
             _tabDropdownButton.Visible = tabControl.TabCount > 0;
         }
@@ -4744,11 +4871,23 @@
                 return;
             }
 
+            // C# file but Roslyn not initialized — show helpful message
+            if (currentSyntax?.Name == "C#")
+            {
+                ThemedMessageBox.Show($"No definition found for '{word}'.\n\n" +
+                    "The Roslyn language service is not ready. Try reopening the file or " +
+                    "opening a .csproj/.sln to enable full C# support.",
+                    "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Non-C#: fall back to the regex/ctags symbol index
             if (!_symbolIndex.HasIndex)
             {
                 if (string.IsNullOrEmpty(_workspaceRoot))
                 {
-                    ThemedMessageBox.Show($"No definition found for '{word}'.\n\nTip: Open a workspace folder (View > Open Folder)\nand the symbol index will build automatically.",
+                    ThemedMessageBox.Show($"No definition found for '{word}'.\n\n" +
+                        "Open a workspace folder (View > Open Folder) to enable symbol indexing.",
                         "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
@@ -4781,11 +4920,8 @@
             using var picker = new GoToDefinitionPicker(word, matches);
             if (picker.ShowDialog(this) == DialogResult.OK && picker.SelectedFile is not null)
             {
-                if (File.Exists(picker.SelectedFile))
-                {
-                    OpenFileInNewTab(picker.SelectedFile);
-                    GoToLine(picker.SelectedLine);
-                }
+                OpenFileInNewTab(picker.SelectedFile);
+                GoToLine(picker.SelectedLine);
             }
         }
 
@@ -5089,12 +5225,22 @@
             if (_lastHighlightDurationMs > 30)
                 adaptiveInterval += _lastHighlightDurationMs * 0.5;
             int interval = (int)Math.Clamp(adaptiveInterval, HighlightTimerMinInterval, HighlightTimerMaxInterval);
-            _highlightTimer.Interval = interval;
+            _highlightTimer!.Interval = interval;
 
             // Debounce syntax highlighting — wait for pause in typing
             _pendingHighlightLine = lineIndex;
             _highlightTimer?.Stop();
             _highlightTimer?.Start();
+
+            // Paste/bulk-change detection: warm up highlight cache for large text changes
+            int textDelta = textEditor.TextLength - _previousTextLength;
+            if (Math.Abs(textDelta) > 500)
+            {
+                int cursorLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
+                incrementalHighlighter?.InvalidateFrom(cursorLine);
+                RequestVisibleHighlight();
+            }
+            _previousTextLength = textEditor.TextLength;
 
             UpdateStatusBar();
 
@@ -5124,6 +5270,7 @@
             if (gutterPanel != null) gutterPanel.RefreshGutter();
             textEditor.Invalidate();
             RequestVisibleHighlight();
+            UpdateStickyHeaders();
         }
 
         private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
@@ -5421,6 +5568,9 @@
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
             private const int WM_ERASEBKGND = 0x0014;
+            private const int WM_HSCROLL = 0x0114;
+            private const int SB_LINELEFT = 0;
+            private const int SB_LINERIGHT = 1;
             private readonly Form1 _owner;
             private readonly TabControl _target;
 
@@ -5443,6 +5593,23 @@
                         }
                         m.Result = (IntPtr)1;
                         return;
+                    case WM_HSCROLL:
+                        {
+                            int code = (int)(m.WParam.ToInt64() & 0xFFFF);
+                            if (code == SB_LINELEFT)
+                            {
+                                if (_target.SelectedIndex > 0)
+                                    _target.SelectedIndex--;
+                                return;
+                            }
+                            if (code == SB_LINERIGHT)
+                            {
+                                if (_target.SelectedIndex < _target.TabCount - 1)
+                                    _target.SelectedIndex++;
+                                return;
+                            }
+                            break;
+                        }
                 }
                 base.WndProc(ref m);
             }
@@ -5487,8 +5654,18 @@
             if (textEditor.IsDisposed || !textEditor.IsHandleCreated) return;
             _highlightPerfSw.Restart();
             _applyingHighlight = true;
+
+            // Only apply patches for the currently visible range — non-visible lines
+            // get formatted lazily when they scroll into view via RequestVisibleHighlight.
+            // This keeps ApplyHighlightPatches fast (<5ms) so the UI thread stays responsive
+            // during rapid scrolling.
+            var (firstVisible, lastVisible) = GetVisibleLineRange();
+            if (firstVisible > lastVisible) { _applyingHighlight = false; return; }
+
             int savedSelStart = textEditor.SelectionStart;
             int savedSelLength = textEditor.SelectionLength;
+            BeginUpdate(textEditor);
+            textEditor.SuspendLayout();
             try
             {
                 int lineCount = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, IntPtr.Zero, IntPtr.Zero);
@@ -5497,6 +5674,7 @@
                 foreach (var patch in patches)
                 {
                     int ln = patch.LineNumber;
+                    if (ln < firstVisible || ln > lastVisible) continue;
                     if (ln < minLine) minLine = ln;
                     if (ln > maxLine) maxLine = ln;
                 }
@@ -5520,6 +5698,7 @@
                     foreach (var patch in patches)
                     {
                         int line = patch.LineNumber;
+                        if (line < firstVisible || line > lastVisible) continue;
                         if (line < 0 || line >= lineCount) continue;
                         int lineStart = lineStarts[line];
                         if (lineStart < 0) continue;
@@ -5546,8 +5725,11 @@
             catch { }
             finally
             {
+                EndUpdate(textEditor);
+                textEditor.ResumeLayout();
                 _lastHighlightDurationMs = _highlightPerfSw.Elapsed.TotalMilliseconds;
                 textEditor.Select(savedSelStart, savedSelLength);
+                if (_rainbowBracketsEnabled) textEditor.RefreshBrackets();
                 _applyingHighlight = false;
             }
         }
@@ -5733,10 +5915,16 @@
         private string GetLineText(int lineIndex)
         {
             if (!textEditor.IsHandleCreated || textEditor.IsDisposed) return string.Empty;
-            var sb = new System.Text.StringBuilder(4096);
-            sb.Length = sb.Capacity;
-            int len = SendMessage(textEditor.Handle, EM_GETLINE, lineIndex, sb);
-            return len > 0 ? sb.ToString(0, len) : string.Empty;
+            int count = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, IntPtr.Zero);
+            if (lineIndex < 0 || lineIndex >= count) return string.Empty;
+            IntPtr ptr = Marshal.AllocCoTaskMem(4096 * 2);
+            try
+            {
+                Marshal.WriteInt16(ptr, (short)4096);
+                int len = (int)SendMessage(textEditor.Handle, EM_GETLINE, lineIndex, ptr);
+                return len > 0 ? Marshal.PtrToStringUni(ptr, len).TrimEnd('\r', '\n') : string.Empty;
+            }
+            finally { Marshal.FreeCoTaskMem(ptr); }
         }
 
         // Get total line count
@@ -5768,6 +5956,30 @@
         {
             SendMessage(rtb.Handle, EM_ENDUNDOACTION, IntPtr.Zero, IntPtr.Zero);
         }
+
+        #region Sticky Scroll
+
+        private void RebuildStickyScopes()
+        {
+            if (!_stickyScrollEnabled || _stickyScroll == null || textEditor == null || _foldingManager == null) return;
+            _stickyScroll.Rebuild(textEditor.Text, _foldingManager.GetAllRegions());
+            UpdateStickyHeaders();
+        }
+
+        private void UpdateStickyHeaders()
+        {
+            if (!_stickyScrollEnabled || _stickyScroll == null || textEditor == null) return;
+            int firstVis = GetFirstVisibleLine();
+            var enclosing = _stickyScroll.GetEnclosingScopes(firstVis);
+            stickyScrollPanel.SetScopes(enclosing, firstVis);
+            if (stickyScrollPanel.Visible)
+            {
+                RepositionStickyScrollPanel();
+                stickyScrollPanel.SyncWidth(textEditor.ClientSize.Width);
+            }
+        }
+
+        #endregion
 
         #region Git Integration
 
@@ -6117,7 +6329,9 @@
             BeginInvoke(() =>
             {
                 startDebugMenuItem.Enabled = !isActive && !isTerminated;
+                runWithoutDebugMenuItem.Enabled = !isActive && !isTerminated;
                 stopDebugMenuItem.Enabled = isActive;
+                restartDebugMenuItem.Enabled = isActive;
                 continueDebugMenuItem.Enabled = isPaused;
                 stepOverMenuItem.Enabled = isPaused;
                 stepIntoMenuItem.Enabled = isPaused;
@@ -6201,7 +6415,7 @@
                 return;
             }
 
-            string outputDll = FindOutputAssembly(projectDir);
+            string? outputDll = FindOutputAssembly(projectDir);
             if (outputDll == null)
             {
                 var result = ThemedMessageBox.Show("No build output found. Build the project first?",
@@ -6218,7 +6432,7 @@
                 }
             }
 
-            string? error = await _debugSession.StartAsync(outputDll, projectDir);
+            string? error = await _debugSession.StartAsync(outputDll!, projectDir);
             if (error != null)
             {
                 ThemedMessageBox.Show(error, "Debugger Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -6268,6 +6482,93 @@
             if (currentFilePath == null) return;
             int line = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
             _breakpointManager.ToggleBreakpoint(currentFilePath, line);
+        }
+
+        private async void RunWithoutDebug_Click(object? sender, EventArgs e)
+        {
+            if (string.IsNullOrEmpty(currentFilePath))
+            {
+                ThemedMessageBox.Show("Open a file first.", "Run", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string? projectDir = FindProjectDirectory(currentFilePath);
+            if (projectDir == null)
+            {
+                ThemedMessageBox.Show("Could not find a .csproj file.", "Run", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string? outputDll = FindOutputAssembly(projectDir);
+            if (outputDll == null)
+            {
+                var result = ThemedMessageBox.Show("No build output found. Build the project first?",
+                    "Run", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                {
+                    RunDotnetBuild(projectDir);
+                    outputDll = FindOutputAssembly(projectDir);
+                }
+                if (outputDll == null) return;
+            }
+
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = $"\"{outputDll}\"",
+                    WorkingDirectory = projectDir,
+                    UseShellExecute = true
+                };
+                System.Diagnostics.Process.Start(psi);
+                ShowNotification("Run", $"Started: {Path.GetFileName(outputDll)}");
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show($"Failed to start: {ex.Message}", "Run Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void RestartDebug_Click(object? sender, EventArgs e)
+        {
+            _debugSession.Dispose();
+            OnDebugStateChanged(DebugState.Terminated);
+            await Task.Delay(200);
+            StartDebug_Click(sender, e);
+        }
+
+        private void NewBreakpoint_Click(object? sender, EventArgs e)
+        {
+            if (currentFilePath == null) return;
+            string defaultLine = (textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1).ToString();
+            string? input = SimpleInputDialog.Show(this, "Enter line number:", "New Breakpoint", defaultLine);
+            if (input != null && int.TryParse(input, out int line) && line > 0)
+            {
+                _breakpointManager.ToggleBreakpoint(currentFilePath, line);
+                gutterPanel?.Invalidate();
+            }
+        }
+
+        private void EnableAllBreakpoints_Click(object? sender, EventArgs e)
+        {
+            _breakpointManager.EnableAll();
+            gutterPanel?.Invalidate();
+            ShowNotification("Breakpoints", "All breakpoints enabled.");
+        }
+
+        private void DisableAllBreakpoints_Click(object? sender, EventArgs e)
+        {
+            _breakpointManager.DisableAll();
+            gutterPanel?.Invalidate();
+            ShowNotification("Breakpoints", "All breakpoints disabled.");
+        }
+
+        private void RemoveAllBreakpoints_Click(object? sender, EventArgs e)
+        {
+            _breakpointManager.ClearAll();
+            gutterPanel?.Invalidate();
+            ShowNotification("Breakpoints", "All breakpoints removed.");
         }
 
         private static string? FindProjectDirectory(string filePath)

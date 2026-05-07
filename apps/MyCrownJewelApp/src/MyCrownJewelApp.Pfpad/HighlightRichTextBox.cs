@@ -1,9 +1,8 @@
-using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
 
 namespace MyCrownJewelApp.Pfpad;
@@ -21,13 +20,18 @@ public class HighlightRichTextBox : RichTextBox
     private Color _guideColor = Color.FromArgb(100, 120, 120, 120);
     private FoldingManager? _foldingManager;
     private Color _foldLineColor = Color.FromArgb(80, 80, 80);
-
     private List<(int start, int length, Color color)> _squiggles = new();
-    public void SetSquiggles(List<(int start, int length, Color color)> squiggles)
-    {
-        _squiggles = squiggles ?? new();
-        Invalidate();
-    }
+
+    // Rainbow brackets
+    private bool _rainbowBracketsEnabled;
+    private RainbowBracketResult? _lastBracketResult;
+    private Color[] _bracketPalette = RainbowBracketEngine.DefaultPalette;
+    private bool _useHighContrastPalette;
+    private bool _showAccessoryGuides;
+    private int _bracketVersion;
+    private int _lastAppliedVersion = -1;
+    private WinFormsTimer? _bracketDebounceTimer;
+    private RainbowBracketResult? _renderedResult;
 
     private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
     private static readonly Dictionary<char, char> _bracePairs = new()
@@ -53,7 +57,30 @@ public class HighlightRichTextBox : RichTextBox
         _invalidateTimer.Tick += (s, e) => { _invalidateTimer.Stop(); Invalidate(); };
 
         _caretBlinkTimer = new WinFormsTimer { Interval = 500 };
-        _caretBlinkTimer.Tick += (s, e) => { _caretVisible = !_caretVisible; Invalidate(); };
+        _caretBlinkTimer.Tick += (s, e) =>
+        {
+            _caretVisible = !_caretVisible;
+            try
+            {
+                int pos = SelectionStart;
+                if (pos > TextLength) return;
+                Point pt = GetPositionFromCharIndex(pos);
+                if (!pt.IsEmpty)
+                {
+                    int charW = Math.Max(1, (int)(8 * ZoomFactor));
+                    int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+                    Invalidate(new Rectangle(pt.X, pt.Y, charW, lineH));
+                }
+            }
+            catch { }
+        };
+
+        _bracketDebounceTimer = new WinFormsTimer { Interval = 150 };
+        _bracketDebounceTimer.Tick += (s, e) =>
+        {
+            _bracketDebounceTimer.Stop();
+            ParseAndApplyBrackets();
+        };
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -94,6 +121,13 @@ public class HighlightRichTextBox : RichTextBox
         Invalidate();
     }
 
+    protected override void OnFontChanged(EventArgs e)
+    {
+        base.OnFontChanged(e);
+        if (_rainbowBracketsEnabled)
+            Invalidate();
+    }
+
     [Category("Appearance")]
     [Description("Current line highlight mode.")]
     public CurrentLineHighlightMode CurrentLineHighlightMode
@@ -116,6 +150,139 @@ public class HighlightRichTextBox : RichTextBox
     {
         get => _highlightColor;
         set { _highlightColor = value; Invalidate(); }
+    }
+
+    #region Rainbow Brackets API
+
+    public void EnableRainbowBrackets(bool enable)
+    {
+        if (_rainbowBracketsEnabled == enable) return;
+        _rainbowBracketsEnabled = enable;
+        if (enable)
+        {
+            _bracketDebounceTimer?.Stop();
+            ParseAndApplyBrackets();
+        }
+        else
+        {
+            _lastBracketResult = null;
+            _renderedResult = null;
+            _lastAppliedVersion = -1;
+            Invalidate();
+        }
+    }
+
+    public void SetPalette(Color[] palette)
+    {
+        _bracketPalette = palette ?? RainbowBracketEngine.DefaultPalette;
+        if (_rainbowBracketsEnabled)
+            RefreshBrackets();
+    }
+
+    public void SetHighContrastPalette(bool enable)
+    {
+        _useHighContrastPalette = enable;
+        _bracketPalette = enable ? RainbowBracketEngine.HighContrastPalette : RainbowBracketEngine.DefaultPalette;
+        if (_rainbowBracketsEnabled)
+            RefreshBrackets();
+    }
+
+    public void SetAccessoryGuides(bool enable)
+    {
+        _showAccessoryGuides = enable;
+        Invalidate();
+    }
+
+    public void RefreshBrackets()
+    {
+        if (!_rainbowBracketsEnabled) return;
+        _bracketDebounceTimer?.Stop();
+        ParseAndApplyBrackets();
+    }
+
+    #endregion
+
+    #region Rainbow Brackets Internal
+
+    private void ParseAndApplyBrackets()
+    {
+        if (!IsHandleCreated || TextLength == 0) return;
+        int version = Interlocked.Increment(ref _bracketVersion);
+        var result = RainbowBracketEngine.Parse(Text, version);
+        if (result.Version <= _lastAppliedVersion) return;
+        _lastBracketResult = result;
+        _renderedResult = result;
+        _lastAppliedVersion = result.Version;
+        ApplyBracketColorsFormat(result);
+    }
+
+    private void ApplyBracketColorsFormat(RainbowBracketResult result)
+    {
+        if (!_rainbowBracketsEnabled || !IsHandleCreated || TextLength == 0) return;
+
+        int firstVisLine = Math.Max(0, GetLineFromCharIndex(
+            GetCharIndexFromPosition(new Point(0, 0))));
+        int lastVisLine = Math.Min(Lines.Length - 1,
+            GetLineFromCharIndex(GetCharIndexFromPosition(
+                new Point(0, ClientSize.Height))) + 1);
+        int startChar = GetFirstCharIndexFromLine(firstVisLine);
+        int endChar = TextLength;
+        if (lastVisLine + 1 < Lines.Length)
+            endChar = Math.Min(TextLength, GetFirstCharIndexFromLine(lastVisLine + 1));
+        if (startChar < 0) startChar = 0;
+
+        int origSelStart = SelectionStart;
+        int origSelLen = SelectionLength;
+        int origFirstVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+
+        var cf = new CHARFORMAT2W
+        {
+            cbSize = Marshal.SizeOf<CHARFORMAT2W>(),
+            dwMask = CFM_COLOR,
+            dwEffects = 0
+        };
+        IntPtr cfPtr = Marshal.AllocHGlobal(Marshal.SizeOf<CHARFORMAT2W>());
+
+        try
+        {
+            foreach (var b in result.Brackets)
+            {
+                if (b.Position < startChar || b.Position >= endChar) continue;
+
+                Color color = _bracketPalette[b.Depth % _bracketPalette.Length];
+                cf.crTextColor = ColorTranslator.ToWin32(color);
+                Marshal.StructureToPtr(cf, cfPtr, false);
+
+                int saveVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+                SendMessage(Handle, EM_SETSEL, b.Position, b.Position + 1);
+                SendMessage(Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
+
+                int currVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+                if (currVis != saveVis)
+                    SendMessage(Handle, EM_LINESCROLL, 0, saveVis - currVis);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(cfPtr);
+        }
+
+        SendMessage(Handle, EM_SETSEL, origSelStart, origSelStart + origSelLen);
+        int finalVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+        if (finalVis != origFirstVis)
+            SendMessage(Handle, EM_LINESCROLL, 0, origFirstVis - finalVis);
+    }
+
+    private void DrawRainbowBracketOverlays(Graphics g)
+    {
+    }
+
+    #endregion
+
+    public void SetSquiggles(List<(int start, int length, Color color)> squiggles)
+    {
+        _squiggles = squiggles ?? new();
+        Invalidate();
     }
 
     private Rectangle? GetCurrentLineRect()
@@ -154,7 +321,7 @@ public class HighlightRichTextBox : RichTextBox
             int guideX = basePos.X + (_guideColumn - 1) * charWidth;
             if (guideX <= 0 || guideX > ClientSize.Width) return;
 
-            using var pen = new Pen(_guideColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            using var pen = new Pen(_guideColor, 1) { DashStyle = DashStyle.Dot };
             g.DrawLine(pen, guideX, 0, guideX, ClientSize.Height);
         }
         catch { }
@@ -166,8 +333,6 @@ public class HighlightRichTextBox : RichTextBox
         {
             int pos = SelectionStart;
             if (pos > TextLength) return;
-            int line = GetLineFromCharIndex(pos);
-            int lineStart = GetFirstCharIndexFromLine(line);
             Point pt = GetPositionFromCharIndex(pos);
             if (pt.IsEmpty) return;
             int charW = Math.Max(1, (int)(8 * ZoomFactor));
@@ -198,7 +363,7 @@ public class HighlightRichTextBox : RichTextBox
             int firstVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, 0)));
             int lastVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, ClientSize.Height)));
 
-            using var pen = new Pen(_foldLineColor, 1) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dot };
+            using var pen = new Pen(_foldLineColor, 1) { DashStyle = DashStyle.Dot };
             foreach (var region in _foldingManager.GetAllRegions())
             {
                 if (region.IsCollapsed) continue;
@@ -287,18 +452,97 @@ public class HighlightRichTextBox : RichTextBox
             int pos = SelectionStart;
             if (pos < 0 || pos >= TextLength) return;
 
-            int? match = FindMatchingBrace(Text, pos);
-            if (match == null || match.Value == pos) return;
-
-            var theme = ThemeManager.Instance.CurrentTheme;
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
 
-            Color rectColor = theme.IsLight ? Color.FromArgb(180, 0, 0, 0) : Color.FromArgb(200, 255, 255, 255);
+            if (_rainbowBracketsEnabled && _renderedResult != null)
+            {
+                DrawRainbowBraceHighlights(g, pos, lineH);
+            }
+            else
+            {
+                int? match = FindMatchingBrace(Text, pos);
+                if (match == null || match.Value == pos) return;
 
-            DrawBraceRect(g, pos, lineH, rectColor);
-            DrawBraceRect(g, match.Value, lineH, rectColor);
+                Color rectColor = Color.FromArgb(200, 255, 255, 255);
+                DrawBraceRect(g, pos, lineH, rectColor);
+                DrawBraceRect(g, match.Value, lineH, rectColor);
+            }
         }
         catch { }
+    }
+
+    private void DrawRainbowBraceHighlights(Graphics g, int caretPos, int lineH)
+    {
+        var result = _renderedResult;
+        if (result == null) return;
+
+        int? bracketIndex = result.FindBraceAt(caretPos);
+        if (bracketIndex == null)
+        {
+            if (caretPos > 0) bracketIndex = result.FindBraceAt(caretPos - 1);
+            if (bracketIndex == null) return;
+        }
+
+        var b = result.Brackets[bracketIndex.Value];
+        Color pairColor = _bracketPalette[b.Depth % _bracketPalette.Length];
+
+        if (b.PairState == BracketPairState.Matched && b.PairIndex.HasValue)
+        {
+            var pair = result.Brackets[b.PairIndex.Value];
+            using var hlPen = new Pen(Color.FromArgb(220, 255, 255, 255), 2);
+            DrawBraceRect(g, b.Position, lineH, Color.FromArgb(220, 255, 255, 255));
+            DrawBraceRect(g, pair.Position, lineH, Color.FromArgb(220, 255, 255, 255));
+
+            if (_showAccessoryGuides)
+            {
+                using var guidePen = new Pen(Color.FromArgb(100, pairColor), 1) { DashStyle = DashStyle.Dot };
+                int minPos = Math.Min(b.Position, pair.Position);
+                int maxPos = Math.Max(b.Position, pair.Position);
+                Point pt1 = GetPositionFromCharIndex(minPos);
+                Point pt2 = GetPositionFromCharIndex(maxPos);
+                if (!pt1.IsEmpty && !pt2.IsEmpty)
+                {
+                    int x = pt1.X;
+                    g.DrawLine(guidePen, x, pt1.Y + lineH, x, pt2.Y);
+                }
+            }
+        }
+        else if (b.PairState == BracketPairState.Mismatched)
+        {
+            Point pt = GetPositionFromCharIndex(b.Position);
+            if (!pt.IsEmpty)
+            {
+                using var pen = new Pen(Color.Red, 2);
+                int charW = GetCharWidth(b.Position);
+                int squigglyY = pt.Y + lineH - 2;
+                DrawSquiggle(g, pen, pt.X, squigglyY, pt.X + charW, squigglyY + 2);
+            }
+        }
+    }
+
+    private int GetCharWidth(int pos)
+    {
+        if (pos + 1 < TextLength)
+        {
+            Point p0 = GetPositionFromCharIndex(pos);
+            Point p1 = GetPositionFromCharIndex(pos + 1);
+            return Math.Max(1, p1.X - p0.X);
+        }
+        return 8;
+    }
+
+    private static void DrawSquiggle(Graphics g, Pen pen, int x1, int y1, int x2, int y2)
+    {
+        int w = x2 - x1;
+        int segments = Math.Max(1, w / 4);
+        for (int i = 0; i < segments; i++)
+        {
+            int sx = x1 + (w * i / segments);
+            int nx = x1 + (w * (i + 1) / segments);
+            int sy = y1 + (i % 2 == 0 ? 0 : 2);
+            int ny = y1 + (i % 2 == 0 ? 2 : 0);
+            g.DrawLine(pen, sx, sy, nx, ny);
+        }
     }
 
     private void DrawSquiggles(Graphics g)
@@ -307,7 +551,6 @@ public class HighlightRichTextBox : RichTextBox
         try
         {
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
-            using var pen = new Pen(Color.Empty, 1);
 
             foreach (var (start, length, color) in _squiggles)
             {
@@ -323,7 +566,7 @@ public class HighlightRichTextBox : RichTextBox
                 int x1 = startPt.X;
                 int x2 = end != start ? endPt.X : startPt.X + 8;
 
-                pen.Color = color;
+                using var pen = new Pen(color, 1);
                 int waveLen = Math.Max(4, x2 - x1);
                 int segments = Math.Max(1, waveLen / 4);
                 for (int sx = 0; sx < segments && x1 + sx * 4 < x2; sx++)
@@ -343,12 +586,7 @@ public class HighlightRichTextBox : RichTextBox
         Point pt = GetPositionFromCharIndex(pos);
         if (pt.IsEmpty) return;
 
-        int charW = 1;
-        if (pos + 1 < TextLength)
-        {
-            Point nextPt = GetPositionFromCharIndex(pos + 1);
-            charW = Math.Max(1, nextPt.X - pt.X);
-        }
+        int charW = GetCharWidth(pos);
 
         using var pen = new Pen(color, 2);
         g.DrawRectangle(pen, pt.X, pt.Y, charW - 1, lineH - 1);
@@ -360,6 +598,7 @@ public class HighlightRichTextBox : RichTextBox
         {
             _invalidateTimer?.Dispose();
             _caretBlinkTimer?.Dispose();
+            _bracketDebounceTimer?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -408,17 +647,11 @@ public class HighlightRichTextBox : RichTextBox
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
     [DllImport("gdi32.dll")]
     private static extern int BitBlt(IntPtr hdc, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, int rop);
-
-    [DllImport("user32.dll")]
-    private static extern bool CreateCaret(IntPtr hWnd, IntPtr hBitmap, int nWidth, int nHeight);
-
-    [DllImport("user32.dll")]
-    private static extern bool DestroyCaret();
-
-    [DllImport("user32.dll")]
-    private static extern bool ShowCaret(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern bool HideCaret(IntPtr hWnd);
@@ -436,16 +669,21 @@ public class HighlightRichTextBox : RichTextBox
     private const int SM_CYHSCROLL = 3;
 
     private const int SRCCOPY = 0x00CC0020;
+    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+    private const int EM_LINESCROLL = 0x00B6;
+    private const int EM_SETSEL = 0x00B1;
+    private const int EM_SETCHARFORMAT = 0x0444;
+    private const int SCF_SELECTION = 0x0001;
+    private const int CFM_COLOR = 0x40000000;
 
     private const int WM_NCPAINT = 0x0085;
-    private const int SB_BOTH = 6;
 
     private void PaintScrollbarCorner()
     {
         if (IsDisposed || !IsHandleCreated || !Visible) return;
         try
         {
-            bool hasH = (GetWindowLong(Handle, GWL_STYLE) & WS_HSCROLL) != 0;
+            bool hasH = (GetWindowLong(Handle, GWL_STYLE) & WS_VSCROLL) != 0;
             bool hasV = (GetWindowLong(Handle, GWL_STYLE) & WS_VSCROLL) != 0;
             if (!hasH || !hasV) return;
 
@@ -457,7 +695,7 @@ public class HighlightRichTextBox : RichTextBox
             int cy = ClientSize.Height - scrollH;
             if (cx < 0 || cy < 0) return;
 
-            var theme = Pfpad.ThemeManager.Instance.CurrentTheme;
+            var theme = ThemeManager.Instance.CurrentTheme;
             using var g = Graphics.FromHwnd(Handle);
             using var brush = new SolidBrush(theme.EditorBackground);
             g.FillRectangle(brush, cx, cy, scrollW, scrollH);
@@ -496,6 +734,8 @@ public class HighlightRichTextBox : RichTextBox
                     try
                     {
                         using var g = Graphics.FromHdc(hdc);
+                        DrawRainbowBracketOverlays(g);
+
                         var lineRect = GetCurrentLineRect();
                         if (lineRect.HasValue)
                         {
@@ -550,9 +790,29 @@ public class HighlightRichTextBox : RichTextBox
         base.WndProc(ref m);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct CHARFORMAT2W
     {
-        public int left, top, right, bottom;
+        public int cbSize;
+        public int dwMask;
+        public int dwEffects;
+        public int yHeight;
+        public int yOffset;
+        public int crTextColor;
+        public byte bCharSet;
+        public byte bPitchAndFamily;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+        public char[] szFaceName;
+        public short wWeight;
+        public short sSpacing;
+        public int crBackColor;
+        public int lcid;
+        public int dwReserved;
+        public short sStyle;
+        public short wKerning;
+        public byte bUnderlineType;
+        public byte bAnimation;
+        public byte bRevAuthor;
+        public byte bUnderlineColor;
     }
 }
