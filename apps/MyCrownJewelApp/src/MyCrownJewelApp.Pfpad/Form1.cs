@@ -6561,15 +6561,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             try
             {
-                var psi = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "dotnet",
-                    Arguments = $"\"{outputDll}\"",
-                    WorkingDirectory = projectDir,
-                    UseShellExecute = true
-                };
-                System.Diagnostics.Process.Start(psi);
-                ShowNotification("Run", $"Started: {Path.GetFileName(outputDll)}");
+                // Run in terminal panel instead of separate window
+                var terminal = ActiveTerminal ?? AddTerminalTab(null);
+                terminal.ClearOutput();
+                var projectName = Path.GetFileName(projectDir);
+                if (_terminalTabControl?.SelectedTab is TabPage tab)
+                    tab.Text = projectName;
+                ShowTerminal();
+                terminal.SendInput($"dotnet run --project \"{projectDir}\"\r\n");
+                ShowNotification("Run", $"Started: {projectName}");
             }
             catch (Exception ex)
             {
