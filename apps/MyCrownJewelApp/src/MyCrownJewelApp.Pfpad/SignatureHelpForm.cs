@@ -61,8 +61,9 @@ public sealed class SignatureHelpForm : Form
         _docLabel.ForeColor = theme.Muted;
         _docLabel.Visible = !string.IsNullOrEmpty(paramDoc);
 
+        var screen = Screen.PrimaryScreen;
         Location = new Point(
-            Math.Max(0, Math.Min(screenLocation.X, Screen.PrimaryScreen.WorkingArea.Width - Width)),
+            Math.Max(0, Math.Min(screenLocation.X, (screen?.WorkingArea.Width ?? 0) - Width)),
             Math.Max(0, screenLocation.Y - Height - 4));
 
         if (!Visible) Show();

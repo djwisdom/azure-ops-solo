@@ -241,9 +241,9 @@ public class Form1FeatureTests : IDisposable
         {
             form.textEditor.Text = "class A\r\n{\r\n    void M()\r\n    {\r\n    }\r\n}";
             form.ToggleFold(1);
-            Assert.True(form.FoldingManager.IsCollapsed(1));
+            Assert.True(form.FoldingManager!.IsCollapsed(1));
             form.ToggleFold(1);
-            Assert.False(form.FoldingManager.IsCollapsed(1));
+            Assert.False(form.FoldingManager!.IsCollapsed(1));
         });
     }
 

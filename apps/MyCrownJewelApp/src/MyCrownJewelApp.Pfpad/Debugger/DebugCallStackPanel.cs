@@ -7,8 +7,6 @@ internal sealed class DebugCallStackPanel : Form
     private Dap.StackFrame[]? _frames;
     private readonly Form1 _mainForm;
 
-    public event Action<string, int>? NavigateToFile;
-
     public DebugCallStackPanel(DebugSession session, Form1 mainForm)
     {
         _session = session;
@@ -91,7 +89,7 @@ internal sealed class DebugCallStackPanel : Form
         _list.EndUpdate();
 
         if (_frames is { Length: > 0 })
-            _session.EvaluateAsync("0+0", _frames[0].Id, "hover");
+            _ = _session.EvaluateAsync("0+0", _frames[0].Id, "hover");
     }
 
     private void NavigateSelected()

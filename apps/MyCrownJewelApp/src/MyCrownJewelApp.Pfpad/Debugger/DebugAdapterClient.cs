@@ -16,7 +16,6 @@ public sealed class DebugAdapterClient : IDisposable
     private bool _disposed;
 
     public event Action<Dap.Event>? EventReceived;
-    public event Action<string>? OutputReceived;
     public event Action<string>? ErrorReceived;
 
     public async Task StartAsync(string adapterPath, string[] args)

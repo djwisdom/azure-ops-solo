@@ -252,8 +252,8 @@ public sealed class TestResultsDialog : Form
     private void DetailBox_LinkClicked(object? sender, LinkClickedEventArgs e)
     {
         // Handle file:line links
-        var parts = e.LinkText.Split(':');
-        if (parts.Length == 2 && int.TryParse(parts[1], out int line))
+        var parts = e.LinkText?.Split(':');
+        if (parts is { Length: 2 } && int.TryParse(parts[1], out int line))
             FrameSelected?.Invoke(parts[0], line);
     }
 

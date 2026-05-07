@@ -77,7 +77,7 @@ public sealed class RenameDialog : Form
             BorderStyle = BorderStyle.FixedSingle
         };
         _newNameBox.SelectAll();
-        _newNameBox.TextChanged += (s, args) => _okButton.Enabled = !string.IsNullOrWhiteSpace(_newNameBox.Text);
+        _newNameBox.TextChanged += (s, args) => _okButton!.Enabled = !string.IsNullOrWhiteSpace(_newNameBox.Text?.Trim());
         mainPanel.Controls.Add(_newNameBox, 0, 1);
         mainPanel.SetColumnSpan(_newNameBox, 2);
 

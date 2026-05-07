@@ -35,7 +35,11 @@ public sealed class AboutDialog : Form
             ? $"Windows_NT {os.Version.Major}.{os.Version.Minor} build {os.Version.Build}"
             : os.VersionString;
 
-        string version = "0.5.55";
+        var asm = typeof(AboutDialog).Assembly;
+        var verAttrs = asm.GetCustomAttributes(typeof(System.Reflection.AssemblyFileVersionAttribute), false);
+        string version = verAttrs.Length > 0
+            ? ((System.Reflection.AssemblyFileVersionAttribute)verAttrs[0]).Version
+            : asm.GetName().Version?.ToString() ?? "0.0.0.0";
         string commit = GetGitCommitHash();
         string date = GetCompileDate();
 

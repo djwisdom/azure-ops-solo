@@ -32,6 +32,8 @@ public class GutterPanel : Panel
 
     public event Action<int>? BreakpointClicked;
 
+    public int TopOffset { get; set; }
+
     public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
     {
         _quickActions = actions;
@@ -83,7 +85,7 @@ public class GutterPanel : Panel
         var editor = mainForm.textEditor;
         int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
         int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-        int lineIndex = firstVis + e.Y / lineHeight;
+        int lineIndex = firstVis + Math.Max(0, e.Y - TopOffset) / lineHeight;
 
         // Breakpoint click (left of line numbers)
         int bpEnd = QuickActionWidth + BookmarkMarginWidth;
@@ -147,7 +149,7 @@ public class GutterPanel : Panel
             var editor = mainForm.textEditor;
             int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
             int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-            int lineIndex = firstVis + e.Y / lineHeight;
+            int lineIndex = firstVis + Math.Max(0, e.Y - TopOffset) / lineHeight;
             if (_quickActions.Any(a => a.line == lineIndex + 1))
                 newHoverLine = lineIndex + 1;
         }
@@ -247,8 +249,8 @@ public class GutterPanel : Panel
             int lineY = GetLineY(editor, lineIndex);
             if (lineY < 0) continue;
 
-            if (lineY + lineHeight <= 0) continue;
-            if (lineY > editor.ClientSize.Height + 2) break;
+            if (lineY + lineHeight <= TopOffset) continue;
+            if (lineY > editor.ClientSize.Height + TopOffset + 2) break;
 
             int currentX = 0;
 
@@ -309,7 +311,7 @@ public class GutterPanel : Panel
         firstLine = nativeFirst;
 
         int clientHeight = editor.ClientSize.Height;
-        lineCount = (int)Math.Ceiling(clientHeight / (double)lineHeight) + 3;
+        lineCount = (int)Math.Ceiling((clientHeight - TopOffset) / (double)lineHeight) + 3;
         if (lineCount < 1) lineCount = 1;
     }
 
@@ -326,7 +328,7 @@ public class GutterPanel : Panel
             if (charIndex >= 0)
             {
                 Point charPos = editor.GetPositionFromCharIndex(charIndex);
-                return charPos.Y;
+                return charPos.Y + TopOffset;
             }
         }
         catch { }

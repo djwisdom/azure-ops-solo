@@ -10,14 +10,12 @@ public sealed class DebugSession : IDisposable
     private readonly DebugAdapterClient _client = new();
     private DebugState _state = DebugState.Idle;
     private int _activeThreadId;
-    private int? _currentFrameId;
     private string? _stoppedReason;
     private string _programPath = "";
     private string? _cwd;
 
     public DebugState State => _state;
     public int ActiveThreadId => _activeThreadId;
-    public int? CurrentFrameId => _currentFrameId;
     public string? StoppedReason => _stoppedReason;
     public DebugAdapterClient Client => _client;
 
@@ -31,12 +29,11 @@ public sealed class DebugSession : IDisposable
     {
         _programPath = programPath;
         _cwd = cwd;
-        string adapterPath = FindNetCoreDbg();
+        string? adapterPath = FindNetCoreDbg();
         if (adapterPath == null)
             return "netcoredbg not found. Install it and ensure it's on PATH or at %LOCALAPPDATA%\\netcoredbg\\netcoredbg.exe";
 
         _client.EventReceived += OnEvent;
-        _client.OutputReceived += msg => DebugOutput?.Invoke(msg);
         _client.ErrorReceived += msg => DebugOutput?.Invoke($"[ERR] {msg}");
 
         try

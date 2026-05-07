@@ -76,6 +76,9 @@ partial class Form1
     private ToolStripMenuItem gutterMenuItem;
     internal ToolStripMenuItem whitespaceMenuItem;
     private ToolStripMenuItem vimModeMenuItem;
+    private ToolStripMenuItem stickyScrollMenuItem;
+    private ToolStripMenuItem rainbowBracketsMenuItem;
+    private ToolStripMenuItem breadcrumbMenuItem;
     private ToolStripMenuItem splitVMenuItem;
     private ToolStripMenuItem splitHMenuItem;
     internal ToolStripMenuItem terminalMenuItem;
@@ -93,12 +96,18 @@ partial class Form1
     internal ToolStripMenuItem configureToolsMenuItem;
     private ToolStripMenuItem runMenu;
     internal ToolStripMenuItem startDebugMenuItem;
+    internal ToolStripMenuItem runWithoutDebugMenuItem;
     internal ToolStripMenuItem stopDebugMenuItem;
+    internal ToolStripMenuItem restartDebugMenuItem;
     internal ToolStripMenuItem continueDebugMenuItem;
     internal ToolStripMenuItem stepOverMenuItem;
     internal ToolStripMenuItem stepIntoMenuItem;
     internal ToolStripMenuItem stepOutMenuItem;
     internal ToolStripMenuItem toggleBreakpointMenuItem;
+    internal ToolStripMenuItem newBreakpointMenuItem;
+    internal ToolStripMenuItem enableAllBreakpointsMenuItem;
+    internal ToolStripMenuItem disableAllBreakpointsMenuItem;
+    internal ToolStripMenuItem removeAllBreakpointsMenuItem;
     private ToolStripMenuItem debugMenu;
 
     private TabControl tabControl;
@@ -109,6 +118,8 @@ partial class Form1
     internal GutterPanel gutterPanel;
     internal WhitespaceOverlayForm whitespaceOverlay;
     internal HighlightRichTextBox textEditor;
+    internal StickyScrollPanel stickyScrollPanel;
+    internal BreadcrumbPanel breadcrumbPanel;
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
     internal ToolStripStatusLabel lineColLabel;
@@ -299,6 +310,13 @@ partial class Form1
         minimapMenuItem.CheckOnClick = true;
         vimModeMenuItem = new ToolStripMenuItem("&Vim Mode", null, ToggleVimMode, Keys.Control | Keys.Alt | Keys.V);
         vimModeMenuItem.CheckOnClick = true;
+        stickyScrollMenuItem = new ToolStripMenuItem("Sticky &Scroll", null, ToggleStickyScroll_Click);
+        stickyScrollMenuItem.CheckOnClick = true;
+        stickyScrollMenuItem.Checked = true;
+        rainbowBracketsMenuItem = new ToolStripMenuItem("Rainbow &Brackets", null, ToggleRainbowBrackets_Click);
+        rainbowBracketsMenuItem.CheckOnClick = true;
+        breadcrumbMenuItem = new ToolStripMenuItem("&Breadcrumbs", null, ToggleBreadcrumbs_Click);
+        breadcrumbMenuItem.CheckOnClick = true;
         themeMenu = new ToolStripMenuItem("&Theme");
         darkThemeMenuItem = new ToolStripMenuItem("&Dark", null, DarkTheme_Click);
         lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
@@ -320,6 +338,9 @@ partial class Form1
         viewMenu.DropDownItems.Add(gutterMenuItem);
         viewMenu.DropDownItems.Add(whitespaceMenuItem);
         viewMenu.DropDownItems.Add(minimapMenuItem);
+        viewMenu.DropDownItems.Add(stickyScrollMenuItem);
+        viewMenu.DropDownItems.Add(rainbowBracketsMenuItem);
+        viewMenu.DropDownItems.Add(breadcrumbMenuItem);
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(fontMenuItem);
@@ -384,12 +405,14 @@ partial class Form1
         runMenu.DropDownItems.Add(runCoverageItem);
         var loadCoverageItem = new ToolStripMenuItem("&Load Coverage File...", null, LoadCoverage_Click);
         runMenu.DropDownItems.Add(loadCoverageItem);
-        runMenu.DropDownItems.Add(new ToolStripSeparator());
         // Debug menu items
         debugMenu = new ToolStripMenuItem("&Debug");
         startDebugMenuItem = new ToolStripMenuItem("&Start Debugging", null, StartDebug_Click, Keys.F5);
+        runWithoutDebugMenuItem = new ToolStripMenuItem("Run &Without Debugging", null, RunWithoutDebug_Click, Keys.Control | Keys.F5);
         stopDebugMenuItem = new ToolStripMenuItem("S&top Debugging", null, StopDebug_Click, Keys.Shift | Keys.F5);
         stopDebugMenuItem.Enabled = false;
+        restartDebugMenuItem = new ToolStripMenuItem("&Restart Debugging", null, RestartDebug_Click, Keys.Control | Keys.Shift | Keys.F5);
+        restartDebugMenuItem.Enabled = false;
         continueDebugMenuItem = new ToolStripMenuItem("&Continue", null, DebugContinue_Click, Keys.F5);
         continueDebugMenuItem.Enabled = false;
         stepOverMenuItem = new ToolStripMenuItem("Step &Over", null, StepOver_Click, Keys.F10);
@@ -400,15 +423,26 @@ partial class Form1
         stepOutMenuItem.Enabled = false;
         toggleBreakpointMenuItem = new ToolStripMenuItem("Toggle &Breakpoint", null, ToggleBreakpointMenu_Click, Keys.F9);
         toggleBreakpointMenuItem.Enabled = true;
+        newBreakpointMenuItem = new ToolStripMenuItem("&New Breakpoint...", null, NewBreakpoint_Click, Keys.Control | Keys.B);
+        enableAllBreakpointsMenuItem = new ToolStripMenuItem("&Enable All Breakpoints", null, EnableAllBreakpoints_Click);
+        disableAllBreakpointsMenuItem = new ToolStripMenuItem("&Disable All Breakpoints", null, DisableAllBreakpoints_Click);
+        removeAllBreakpointsMenuItem = new ToolStripMenuItem("&Remove All Breakpoints", null, RemoveAllBreakpoints_Click);
         debugMenu.DropDownItems.Add(startDebugMenuItem);
+        debugMenu.DropDownItems.Add(runWithoutDebugMenuItem);
         debugMenu.DropDownItems.Add(stopDebugMenuItem);
+        debugMenu.DropDownItems.Add(restartDebugMenuItem);
         debugMenu.DropDownItems.Add(new ToolStripSeparator());
-        debugMenu.DropDownItems.Add(continueDebugMenuItem);
         debugMenu.DropDownItems.Add(stepOverMenuItem);
         debugMenu.DropDownItems.Add(stepIntoMenuItem);
         debugMenu.DropDownItems.Add(stepOutMenuItem);
+        debugMenu.DropDownItems.Add(continueDebugMenuItem);
         debugMenu.DropDownItems.Add(new ToolStripSeparator());
         debugMenu.DropDownItems.Add(toggleBreakpointMenuItem);
+        debugMenu.DropDownItems.Add(newBreakpointMenuItem);
+        debugMenu.DropDownItems.Add(new ToolStripSeparator());
+        debugMenu.DropDownItems.Add(enableAllBreakpointsMenuItem);
+        debugMenu.DropDownItems.Add(disableAllBreakpointsMenuItem);
+        debugMenu.DropDownItems.Add(removeAllBreakpointsMenuItem);
         runMenu.DropDownItems.Add(new ToolStripSeparator());
         runMenu.DropDownItems.Add(debugMenu);
         menuStrip.Items.Add(runMenu);
@@ -490,7 +524,7 @@ partial class Form1
         textEditor.Resize += TextEditor_Resize;
 
         // Guide properties handled directly on textEditor
-        textEditor.ShowGuide = true;
+        textEditor.ShowGuide = false;
         textEditor.GuideColumn = 80;
         textEditor.GuideColor = Color.FromArgb(100, 120, 120, 120);
 
@@ -507,9 +541,21 @@ partial class Form1
         whitespaceOverlay = new WhitespaceOverlayForm();
         whitespaceOverlay.ShowGlyphs = false;
 
+        // Sticky scroll panel (overlays top of editor to show enclosing scope headers)
+        stickyScrollPanel = new StickyScrollPanel();
+        stickyScrollPanel.Visible = false;
+        stickyScrollPanel.TabStop = false;
+
+        // Breadcrumb panel (shows file/scope path at top of editor)
+        breadcrumbPanel = new BreadcrumbPanel();
+        breadcrumbPanel.Visible = false;
+
         // Assemble editor panel with textEditor + minimap
         editorPanel.Controls.Add(textEditor);
         editorPanel.Controls.Add(minimapControl);
+        editorPanel.Controls.Add(breadcrumbPanel);
+        editorPanel.Controls.Add(stickyScrollPanel);
+        stickyScrollPanel.BringToFront();
 
         // Assemble table
         mainTable.Controls.Add(gutterPanel, 0, 0);

@@ -45,7 +45,17 @@ public partial class Form1
         {
             int pos = textEditor.SelectionStart;
             var symbol = await Task.Run(() => _roslynWorkspace.FindSymbolAtPositionAsync(pos));
-            if (symbol is null) return;
+            if (symbol is null)
+            {
+                BeginInvoke(() => ThemedMessageBox.Show(
+                    $"No definition found for '{word}'.\n\nRoslyn could not resolve this symbol. " +
+                    "This may happen if:\n" +
+                    "- The symbol is from an external library not referenced by the project\n" +
+                    "- The file is not part of a .NET project\n" +
+                    "- The project needs to be built first",
+                    "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information));
+                return;
+            }
 
             var def = await Task.Run(() => _roslynWorkspace.FindSourceDefinitionAsync(symbol)) ?? symbol;
             var loc = def.Locations.FirstOrDefault(l => l.IsInSource);
@@ -55,8 +65,18 @@ public partial class Form1
                 BeginInvoke(() => { OpenFileInNewTab(filePath); GoToLine(line); });
                 return;
             }
+
+            BeginInvoke(() => ThemedMessageBox.Show(
+                $"No definition found for '{word}'.\n\nThe symbol resolves but has no source location. " +
+                "It may be defined in metadata or an external assembly.",
+                "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Information));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            BeginInvoke(() => ThemedMessageBox.Show(
+                $"Error resolving '{word}': {ex.Message}",
+                "Go to Definition", MessageBoxButtons.OK, MessageBoxIcon.Error));
+        }
     }
 
     private void ShowSignatureHelpRoslyn()

@@ -397,7 +397,7 @@ public class ColumnGuidePanelTests
     {
         var panel = new ColumnGuidePanel();
         Assert.Equal(80, panel.GuideColumn);
-        Assert.True(panel.ShowGuide);
+        Assert.False(panel.ShowGuide);
         panel.Dispose();
     }
 

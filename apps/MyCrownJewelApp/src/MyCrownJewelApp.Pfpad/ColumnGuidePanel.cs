@@ -8,7 +8,7 @@ public sealed class ColumnGuidePanel : Control
 {
     private RichTextBox? _editor;
     private int _guideColumn = 80;
-    private bool _showGuide = true;
+    private bool _showGuide = false;
 
     private const int WM_ERASEBKGND = 0x0014;
 

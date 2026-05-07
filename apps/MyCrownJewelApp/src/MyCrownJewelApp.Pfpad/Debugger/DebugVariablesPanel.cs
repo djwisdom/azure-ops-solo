@@ -59,7 +59,7 @@ internal sealed class DebugVariablesPanel : Form
             {
                 _watchExpressions.Add(_watchInput.Text.Trim());
                 _watchInput.Clear();
-                RefreshWatchesAsync();
+                _ = _ = RefreshWatchesAsync();
             }
         };
 
@@ -81,7 +81,7 @@ internal sealed class DebugVariablesPanel : Form
         header.Items.Add(new ToolStripButton("Clear Watch", null!, (s, e) =>
         {
             _watchExpressions.Clear();
-            RefreshWatchesAsync();
+            _ = _ = RefreshWatchesAsync();
         }) { DisplayStyle = ToolStripItemDisplayStyle.Text, Alignment = ToolStripItemAlignment.Right });
 
         Controls.Add(header);
@@ -91,7 +91,7 @@ internal sealed class DebugVariablesPanel : Form
     public async Task RefreshAsync(int frameId)
     {
         _currentFrameId = frameId;
-        RefreshWatchesAsync();
+        _ = RefreshWatchesAsync();
 
         var scopes = await _session.GetScopesAsync(frameId);
         if (scopes == null) return;

@@ -243,7 +243,7 @@ namespace MyCrownJewelApp.Pfpad
             {
                 using var vpBrush = new SolidBrush(ViewportColor);
                 g.FillRectangle(vpBrush, _viewportRect);
-                using var vpPen = new Pen(ViewportBorderColor, 1);
+                using var vpPen = new Pen(ViewportColor, 1);
                 g.DrawRectangle(vpPen, _viewportRect.X, _viewportRect.Y, _viewportRect.Width - 1, _viewportRect.Height - 1);
             }
         }
@@ -273,7 +273,6 @@ namespace MyCrownJewelApp.Pfpad
 
                 var tokens = _tokenProvider?.Invoke(line);
                 int x = 0;
-                bool hasContent = false;
 
                 for (int pos = 0; pos < text.Length; pos++)
                 {
@@ -292,7 +291,6 @@ namespace MyCrownJewelApp.Pfpad
                         color = Color.FromArgb(200, color);
                         using var brush = new SolidBrush(color);
                         mg.FillRectangle(brush, x, pixelY, 1, (int)LineContentHeight);
-                        hasContent = true;
                     }
                     x++;
                 }
@@ -363,6 +361,22 @@ namespace MyCrownJewelApp.Pfpad
             int visibleLines = visHeight / lineH + 1;
             int firstLine = Math.Max(0, Math.Min(targetLine, _totalLines - visibleLines));
             ScrollToLine(firstLine);
+
+            // Keep minimap scroll position in sync with editor immediately
+            // (not waiting for the 150ms poll timer), so the next OnMouseMove
+            // computes targetLine from a correct reference frame.
+            int newFirstVis = GetFirstVisibleLine();
+            int minimapContentLines = (int)(Height / PixelsPerLine);
+            if (_totalLines > minimapContentLines)
+            {
+                int halfContent = minimapContentLines / 2;
+                _mapFirstLine = Math.Max(0, Math.Min(_totalLines - minimapContentLines, newFirstVis - halfContent));
+            }
+            else
+            {
+                _mapFirstLine = 0;
+            }
+
             RaiseViewportChanged();
             Invalidate();
         }

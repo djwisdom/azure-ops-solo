@@ -89,6 +89,25 @@ public sealed class IncrementalHighlighter : IDisposable
         EnqueueLine(lineNumber);
     }
 
+    public void MarkDirtyRange(int startLine, int endLine)
+    {
+        if (startLine < 0) startLine = 0;
+        for (int line = startLine; line <= endLine; line++)
+        {
+            _cache.TryRemove(line, out _);
+            EnqueueLine(line);
+        }
+    }
+
+    public void InvalidateFrom(int startLine)
+    {
+        if (startLine < 0) return;
+        var keys = _cache.Keys.ToArray();
+        foreach (var key in keys)
+            if (key >= startLine)
+                _cache.TryRemove(key, out _);
+    }
+
     private void EnqueueLine(int line)
     {
         string? text = GetLineText(line);

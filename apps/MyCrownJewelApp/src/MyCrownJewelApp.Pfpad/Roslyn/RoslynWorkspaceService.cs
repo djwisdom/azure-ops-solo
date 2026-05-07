@@ -20,8 +20,8 @@ public sealed class RoslynWorkspaceService : IRoslynWorkspace
     private DocumentId _adhocDocumentId;
 
     // MSBuild tracking (only used when Kind == MSBuild)
-    private ProjectId _msbuildProjectId;
-    private DocumentId _msbuildDocumentId;
+    private ProjectId _msbuildProjectId = null!;
+    private DocumentId _msbuildDocumentId = null!;
 
     private string _filePath = "";
     private string _currentText = "";
@@ -170,8 +170,10 @@ public sealed class RoslynWorkspaceService : IRoslynWorkspace
         if (_disposed) return CurrentSolution;
         try
         {
+#pragma warning disable CS0618
             return await Renamer.RenameSymbolAsync(
                 CurrentSolution, symbol, newName, null, _cts.Token);
+#pragma warning restore CS0618
         }
         catch { return CurrentSolution; }
     }

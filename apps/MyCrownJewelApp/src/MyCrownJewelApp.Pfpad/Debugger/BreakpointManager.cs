@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 
 namespace MyCrownJewelApp.Pfpad.Debugger;
@@ -76,6 +77,32 @@ public sealed class BreakpointManager
     public void ClearAll()
     {
         _breakpoints.Clear();
+        Save();
+        BreakpointsChanged?.Invoke();
+    }
+
+    public void EnableAll()
+    {
+        var keys = _breakpoints.Keys.ToArray();
+        foreach (var file in keys)
+        {
+            var list = _breakpoints[file];
+            for (int i = 0; i < list.Count; i++)
+                list[i] = list[i] with { Enabled = true };
+        }
+        Save();
+        BreakpointsChanged?.Invoke();
+    }
+
+    public void DisableAll()
+    {
+        var keys = _breakpoints.Keys.ToArray();
+        foreach (var file in keys)
+        {
+            var list = _breakpoints[file];
+            for (int i = 0; i < list.Count; i++)
+                list[i] = list[i] with { Enabled = false };
+        }
         Save();
         BreakpointsChanged?.Invoke();
     }
