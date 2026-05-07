@@ -401,6 +401,19 @@ public sealed class RoslynWorkspaceService : IRoslynWorkspace
         return null;
     }
 
+    public async Task<Document?> GetCurrentDocumentAsync()
+    {
+        if (_disposed || !IsReady) return null;
+        try
+        {
+            var solution = CurrentSolution;
+            var doc = solution.GetDocument(CurrentDocumentId);
+            if (doc is null) return null;
+            return doc.WithText(SourceText.From(_currentText));
+        }
+        catch { return null; }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

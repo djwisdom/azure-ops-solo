@@ -3,6 +3,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
 using Microsoft.CodeAnalysis.FindSymbols;
 
+using Microsoft.CodeAnalysis.Text;
+
 namespace MyCrownJewelApp.Pfpad.Roslyn;
 
 public interface IRoslynWorkspace : IDisposable
@@ -14,6 +16,8 @@ public interface IRoslynWorkspace : IDisposable
     void OpenDocument(string filePath);
     void UpdateDocumentText(string newText);
     void CloseDocument();
+
+    Task<Document?> GetCurrentDocumentAsync();
 
     Task<ImmutableArray<ClassifiedSpan>> GetClassificationsAsync(int start, int length);
     Task<IReadOnlyList<ISymbol>> FindSymbolsAsync(string name);

@@ -15,6 +15,7 @@
  using System.Security.Cryptography;
  using System.Runtime.CompilerServices;
  using MyCrownJewelApp.Pfpad.Debugger;
+using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
  [assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
 
@@ -235,6 +236,7 @@
 
         // Breadcrumbs
         private bool _breadcrumbsEnabled;
+        private bool _analyzersEnabled = true;
         private System.Windows.Forms.Timer? _breadcrumbDebounce;
         private const int BreadcrumbDebounceMs = 100;
 
@@ -290,7 +292,8 @@
             bool SymbolPanelVisible = false,
             bool ProblemsPanelVisible = false,
             bool RainbowBracketsEnabled = false,
-            bool BreadcrumbsEnabled = false
+            bool BreadcrumbsEnabled = false,
+            bool AnalyzersEnabled = true
         );
 
         private string SettingsFilePath =>
@@ -399,6 +402,9 @@
             
             // Load persisted settings (overrides defaults below)
             LoadSettings();
+            // Apply persisted analyzer state to Roslyn service
+            if (_analyzersEnabled)
+                EnsureRoslynService().SetAnalyzersEnabledAsync(true).ConfigureAwait(false);
             RebuildExternalToolsMenu();
             
             // Apply loaded font after settings are loaded
@@ -1543,6 +1549,7 @@
                         _problemsPanelVisible = settings.ProblemsPanelVisible;
                         _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
                         _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
+                        _analyzersEnabled = settings.AnalyzersEnabled;
                         bool showWhitespace = settings.ShowWhitespace;
                         if (whitespaceMenuItem != null)
                         {
@@ -1588,8 +1595,9 @@
                         ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
                         SymbolPanelVisible: _symbolPanelVisible,
                         ProblemsPanelVisible: _problemsPanelVisible,
-                        RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
-                        BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false
+                         RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
+                         BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
+                         AnalyzersEnabled: _analyzersEnabled
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -6265,6 +6273,7 @@
             _highlightTimer?.Dispose();
             incrementalHighlighter?.Dispose();
             _roslynWorkspace.Dispose();
+            _roslynService?.Dispose();
             _gitService.Dispose();
             _gitPanel?.Dispose();
             _notificationFeed.Dispose();

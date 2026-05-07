@@ -110,6 +110,12 @@ partial class Form1
     internal ToolStripMenuItem removeAllBreakpointsMenuItem;
     private ToolStripMenuItem debugMenu;
 
+    internal ToolStripMenuItem restartAnalyzersMenuItem;
+    internal ToolStripMenuItem toggleAnalyzersMenuItem;
+    internal ToolStripMenuItem openVisualizerMenuItem;
+    internal ToolStripStatusLabel roslynToggleLabel;
+    internal ToolStripDropDownButton roslynDropDown;
+
     private TabControl tabControl;
     private TableLayoutPanel mainLayout;
     private SplitContainer splitContainer;
@@ -451,7 +457,21 @@ partial class Form1
         configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);
         configureToolsMenuItem.ShortcutKeys = Keys.Control | Keys.Alt | Keys.T;
         toolsMenu.DropDownItems.Add(configureToolsMenuItem);
+        // Roslyn control submenu
+        var roslynMenu = new ToolStripMenuItem("&Roslyn");
+        restartAnalyzersMenuItem = new ToolStripMenuItem("&Restart Analyzers", null, null, Keys.Control | Keys.Shift | Keys.R);
+        toggleAnalyzersMenuItem = new ToolStripMenuItem("&Toggle Analyzers", null, null, Keys.Control | Keys.Alt | Keys.A);
+        toggleAnalyzersMenuItem.CheckOnClick = true;
+        toggleAnalyzersMenuItem.Checked = true;
+        openVisualizerMenuItem = new ToolStripMenuItem("&Open Roslyn Visualizer", null, null, Keys.Control | Keys.Alt | Keys.V);
+        roslynMenu.DropDownItems.Add(restartAnalyzersMenuItem);
+        roslynMenu.DropDownItems.Add(toggleAnalyzersMenuItem);
+        roslynMenu.DropDownItems.Add(new ToolStripSeparator());
+        roslynMenu.DropDownItems.Add(openVisualizerMenuItem);
+        toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+        toolsMenu.DropDownItems.Add(roslynMenu);
         menuStrip.Items.Add(toolsMenu);
+
         // Help menu
         var helpMenu = new ToolStripMenuItem("&Help");
         var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
@@ -576,6 +596,7 @@ partial class Form1
         tabSizeDropDown.Text = "Tab: 4";
         tabSizeDropDown.Width = 60;
         tabSizeDropDown.Alignment = ToolStripItemAlignment.Left;
+        tabSizeDropDown.DropDownDirection = ToolStripDropDownDirection.AboveLeft;
         tabSizeDropDown.DropDownItems.Add("2", null, TabSize2_Click);
         tabSizeDropDown.DropDownItems.Add("4", null, TabSize4_Click);
         tabSizeDropDown.DropDownItems.Add("6", null, TabSize6_Click);
@@ -597,6 +618,23 @@ partial class Form1
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
         encodingLabel = new ToolStripStatusLabel("UTF-8");
+
+        // Roslyn status bar section
+        roslynDropDown = new ToolStripDropDownButton();
+        roslynDropDown.Text = "Roslyn";
+        roslynDropDown.Width = 60;
+        roslynDropDown.Padding = new Padding(4, 1, 4, 1);
+        roslynDropDown.DropDownDirection = ToolStripDropDownDirection.AboveLeft;
+        roslynDropDown.DropDownItems.Add(new ToolStripMenuItem("Restart Analyzers", null, null, Keys.Control | Keys.Shift | Keys.R));
+        roslynDropDown.DropDownItems.Add(new ToolStripSeparator());
+        roslynDropDown.DropDownItems.Add(new ToolStripMenuItem("Open Visualizer", null, null, Keys.Control | Keys.Alt | Keys.V));
+        roslynToggleLabel = new ToolStripStatusLabel("A: ON");
+        roslynToggleLabel.AutoSize = true;
+        roslynToggleLabel.Padding = new Padding(4, 1, 4, 1);
+        roslynToggleLabel.BorderSides = ToolStripStatusLabelBorderSides.Left;
+        roslynToggleLabel.IsLink = true;
+        roslynToggleLabel.LinkBehavior = LinkBehavior.HoverUnderline;
+
         scanProgressBar = new ToolStripProgressBar
         {
             Name = "scanProgressBar",
@@ -610,6 +648,7 @@ partial class Form1
         themeDropDown.Width = 60;
         themeDropDown.Padding = new Padding(4, 1, 4, 1);
         themeDropDown.Alignment = ToolStripItemAlignment.Right;
+        themeDropDown.DropDownDirection = ToolStripDropDownDirection.AboveLeft;
         themeDropDown.DropDownItems.Add("Dark", null, StatusBarDarkTheme_Click);
         themeDropDown.DropDownItems.Add("Light", null, StatusBarLightTheme_Click);
         fileTypeLabel = new ToolStripStatusLabel("");
@@ -632,6 +671,8 @@ partial class Form1
         statusStrip.Items.Add(zoomLabel);
         statusStrip.Items.Add(lineEndingsLabel);
         statusStrip.Items.Add(encodingLabel);
+        statusStrip.Items.Add(roslynDropDown);
+        statusStrip.Items.Add(roslynToggleLabel);
         statusStrip.Items.Add(themeDropDown);
         statusStrip.Items.Add(fileTypeLabel);
         statusStrip.Items.Add(scanProgressBar);

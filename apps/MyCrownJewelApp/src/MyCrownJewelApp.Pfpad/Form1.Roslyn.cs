@@ -1,3 +1,4 @@
+using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 using MyCrownJewelApp.Pfpad.Roslyn;
 
 namespace MyCrownJewelApp.Pfpad;
@@ -5,12 +6,18 @@ namespace MyCrownJewelApp.Pfpad;
 public partial class Form1
 {
     private readonly RoslynWorkspaceService _roslynWorkspace = new();
+    private RoslynService? _roslynService;
+    private RoslynVisualizerForm? _visualizerForm;
     private readonly TreeSitter.TreeSitterService _treeSitter = new();
+
+    private RoslynService EnsureRoslynService() =>
+        _roslynService ??= new RoslynService(_roslynWorkspace);
 
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
         WireRoslynTextSync();
+        InitializeRoslynCommands();
     }
 
     private void WireRoslynTextSync()
@@ -110,6 +117,130 @@ public partial class Form1
         string context = first.ContainingNamespace?.ToDisplayString() ?? "";
         Point screenLoc = textEditor.PointToScreen(mouseLoc);
         _hoverTooltip.ShowAt(screenLoc, title, summary, context);
+    }
+
+    private void InitializeRoslynCommands()
+    {
+        WireMenuItem(restartAnalyzersMenuItem, (s, e) => _ = RestartAnalyzersCommandAsync());
+        WireMenuItem(toggleAnalyzersMenuItem, (s, e) => ToggleAnalyzersCommand());
+
+        if (roslynDropDown?.DropDownItems is { Count: >= 3 } items)
+        {
+            if (items[0] is ToolStripMenuItem restartItem)
+                restartItem.Click += (s, e) => _ = RestartAnalyzersCommandAsync();
+            if (items[2] is ToolStripMenuItem visItem)
+                visItem.Click += (s, e) => OpenVisualizerCommand();
+        }
+
+        if (roslynToggleLabel is not null)
+            roslynToggleLabel.Click += OnRoslynToggleClick;
+    }
+
+    private void OnRoslynToggleClick(object? sender, EventArgs e)
+    {
+        try
+        {
+            ToggleAnalyzersCommand();
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed)
+                BeginInvoke(() => ThemedMessageBox.Show(
+                    $"Click error: {ex.GetType().Name}\n{ex.Message}\n{ex.StackTrace}",
+                    "Toggle Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
+        }
+    }
+
+    private void UpdateRoslynToggleLabel()
+    {
+        if (roslynToggleLabel is null) return;
+        roslynToggleLabel.Text = EnsureRoslynService().AreAnalyzersEnabled ? "A: ON" : "A: OFF";
+        roslynToggleLabel.ForeColor = EnsureRoslynService().AreAnalyzersEnabled
+            ? Color.FromArgb(80, 200, 80) : Color.FromArgb(220, 120, 120);
+    }
+
+    private static void WireMenuItem(ToolStripMenuItem? item, EventHandler handler)
+    {
+        if (item is not null)
+            item.Click += handler;
+    }
+
+    private async Task RestartAnalyzersCommandAsync()
+    {
+        if (!_roslynWorkspace.IsReady)
+        {
+            ShowNotification("Roslyn", "No document open. Open a C# file first.");
+            return;
+        }
+
+        await EnsureRoslynService().RestartAnalyzersAsync();
+    }
+
+    private async void ToggleAnalyzersCommand()
+    {
+        try
+        {
+            bool newState = !EnsureRoslynService().AreAnalyzersEnabled;
+            await EnsureRoslynService().SetAnalyzersEnabledAsync(newState);
+
+            if (IsDisposed) return;
+            BeginInvoke(() =>
+            {
+                try
+                {
+                    toggleAnalyzersMenuItem.Checked = newState;
+                    _analyzersEnabled = newState;
+                    UpdateRoslynToggleLabel();
+                    SaveSettings();
+                }
+                catch (Exception inner)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ToggleAnalyzers] UI marshal error: {inner}");
+                    ThemedMessageBox.Show(
+                        $"UI update error: {inner.GetType().Name}\n{inner.Message}\n{inner.StackTrace}",
+                        "Toggle Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ToggleAnalyzers] Async error: {ex}");
+            try
+            {
+                BeginInvoke(() => ThemedMessageBox.Show(
+                    $"Async error: {ex.GetType().Name}\n{ex.Message}\n{ex.StackTrace}",
+                    "Toggle Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
+            }
+            catch { /* form likely disposed, swallow */ }
+        }
+    }
+
+    private void OpenVisualizerCommand()
+    {
+        if (_visualizerForm is null || _visualizerForm.IsDisposed)
+        {
+            _visualizerForm = new RoslynVisualizerForm();
+            _visualizerForm.OnRefreshRequested += async () =>
+            {
+                var snapshot = await EnsureRoslynService().GetVisualizerSnapshotAsync();
+                _visualizerForm?.BeginInvoke(() => _visualizerForm?.UpdateSnapshot(snapshot));
+            };
+            _visualizerForm.FormClosed += (s, e) => _visualizerForm = null;
+            _visualizerForm.Show(this);
+        }
+        else
+        {
+            _visualizerForm.BringToFront();
+            _visualizerForm.Focus();
+            _ = RefreshVisualizerAsync();
+        }
+    }
+
+    private async Task RefreshVisualizerAsync()
+    {
+        var snapshot = await EnsureRoslynService().GetVisualizerSnapshotAsync();
+        if (_visualizerForm is not null && !_visualizerForm.IsDisposed)
+            _visualizerForm.BeginInvoke(() => _visualizerForm.UpdateSnapshot(snapshot));
     }
 
     private void InitializeRoslynRename(RenameDialog dlg)
