@@ -45,7 +45,8 @@ internal sealed class DiffPanel : UserControl
             Text = "Stage",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
-            Size = new Size(50, 20),
+            Size = new Size(56, 22),
+            Margin = new Padding(0, 1, 2, 1),
             Cursor = Cursors.Hand,
             TabStop = false,
             Visible = false
@@ -57,7 +58,8 @@ internal sealed class DiffPanel : UserControl
             Text = "Unstage",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
-            Size = new Size(55, 20),
+            Size = new Size(62, 22),
+            Margin = new Padding(0, 1, 2, 1),
             Cursor = Cursors.Hand,
             TabStop = false,
             Visible = false
@@ -69,7 +71,8 @@ internal sealed class DiffPanel : UserControl
             Text = "Discard",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
-            Size = new Size(55, 20),
+            Size = new Size(62, 22),
+            Margin = new Padding(0, 1, 0, 1),
             Cursor = Cursors.Hand,
             TabStop = false,
             Visible = false
@@ -90,7 +93,8 @@ internal sealed class DiffPanel : UserControl
         {
             Dock = DockStyle.Right,
             FlowDirection = FlowDirection.LeftToRight,
-            Size = new Size(180, 20),
+            Width = 190,
+            Padding = new Padding(0, 0, 2, 0),
             WrapContents = false
         };
         headerRightPanel.Controls.Add(_stageBtn);
@@ -101,9 +105,9 @@ internal sealed class DiffPanel : UserControl
         {
             Dock = DockStyle.Top,
             GripStyle = ToolStripGripStyle.Hidden,
-            Padding = new Padding(2, 0, 0, 0),
+            Padding = new Padding(2, 1, 0, 1),
             AutoSize = false,
-            Height = 24
+            Height = 28
         };
         _headerStrip.Items.Add(_headerLabel);
 
@@ -243,18 +247,23 @@ internal sealed class DiffPanel : UserControl
         _diffBox.BackColor = theme.EditorBackground;
         _diffBox.ForeColor = theme.Text;
 
-        var btnBack = theme.Background;
-        var btnFore = theme.Text;
-        var btnBorder = theme.Muted;
-        var hoverBack = theme.ButtonHoverBackground;
+        _stageBtn.BackColor = theme.Background;
+        _stageBtn.ForeColor = theme.Text;
+        _stageBtn.FlatAppearance.BorderColor = theme.Accent;
+        _stageBtn.FlatAppearance.BorderSize = 1;
+        _stageBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
 
-        foreach (var btn in new[] { _stageBtn, _unstageBtn, _discardBtn })
-        {
-            btn.BackColor = btnBack;
-            btn.ForeColor = btnFore;
-            btn.FlatAppearance.BorderColor = btnBorder;
-            btn.FlatAppearance.MouseOverBackColor = hoverBack;
-        }
+        _unstageBtn.BackColor = theme.Background;
+        _unstageBtn.ForeColor = theme.Text;
+        _unstageBtn.FlatAppearance.BorderColor = theme.Muted;
+        _unstageBtn.FlatAppearance.BorderSize = 1;
+        _unstageBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+
+        _discardBtn.BackColor = theme.Background;
+        _discardBtn.ForeColor = Color.FromArgb(220, 80, 80);
+        _discardBtn.FlatAppearance.BorderColor = Color.FromArgb(180, 60, 60);
+        _discardBtn.FlatAppearance.BorderSize = 1;
+        _discardBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 30, 30);
 
         ApplyScrollbarTheme(_diffBox.Handle);
     }
