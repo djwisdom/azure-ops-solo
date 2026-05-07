@@ -4030,13 +4030,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     themeDropDown.DropDownItems.Add(item);
                 }
             }
-            // Update tab size dropdown checkmarks
-            if (tabSizeDropDown != null && tabSizeDropDown.DropDownItems.Count >= 3)
-            {
-                tabSizeDropDown.DropDownItems[0].Text = tabSize == 2 ? "● 2" : "2";
-                tabSizeDropDown.DropDownItems[1].Text = tabSize == 4 ? "● 4" : "4";
-                tabSizeDropDown.DropDownItems[2].Text = tabSize == 8 ? "● 8" : "8";
-            }
         }
 
         #endregion
