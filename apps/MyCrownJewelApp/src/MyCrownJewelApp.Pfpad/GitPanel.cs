@@ -664,9 +664,5 @@ internal sealed class GitPanel : UserControl
         // Guard: _bodySplit is null during construction (MinimumSize triggers resize before field assignment)
         if (_bodySplit is null) return;
         LayoutControls();
-        if (!_bodySplit.Panel2Collapsed)
-        {
-            _bodySplit.SplitterDistance = Math.Max(100, Math.Min(Height - 80, (int)(Height * 0.55)));
-        }
     }
 }
