@@ -11,6 +11,10 @@ partial class Form1
     private ToolStripMenuItem openMenuItem;
     private ToolStripMenuItem recentMenuItem;
     private ToolStripMenuItem recentWorkspacesMenuItem;
+    private ToolStripMenuItem preferencesMenuItem;
+    internal ToolStripMenuItem preferencesProfileMenuItem;
+    internal ToolStripMenuItem preferencesSettingsMenuItem;
+    private ToolStripMenuItem cloneRepositoryMenuItem;
     private ToolStripMenuItem saveMenuItem;
     private ToolStripMenuItem saveAsMenuItem;
     private ToolStripMenuItem saveAllMenuItem;
@@ -19,7 +23,8 @@ partial class Form1
     private ToolStripMenuItem closeWindowMenuItem;
     private ToolStripMenuItem closeAllMenuItem;
     private ToolStripMenuItem exitMenuItem;
-    private ToolStripMenuItem cloneRepositoryMenuItem;
+
+    private ToolStripMenuItem goMenu;
 
     private ToolStripMenuItem editMenu;
     private ToolStripMenuItem undoMenuItem;
@@ -202,6 +207,8 @@ partial class Form1
         fileMenu.DropDownItems.Add(saveAllMenuItem);
         fileMenu.DropDownItems.Add(autoSaveMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
+        fileMenu.DropDownItems.Add(preferencesMenuItem);
+        fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(closeTabMenuItem);
         fileMenu.DropDownItems.Add(closeWindowMenuItem);
         fileMenu.DropDownItems.Add(closeAllMenuItem);
@@ -266,6 +273,38 @@ partial class Form1
         editMenu.DropDownItems.Add(new ToolStripSeparator());
         editMenu.DropDownItems.Add(toggleFoldMenuItem);
         editMenu.DropDownItems.Add(toggleAllFoldsMenuItem);
+
+        // Go menu
+        goMenu = new ToolStripMenuItem("&Go");
+        var goBackItem = new ToolStripMenuItem("&Back", null, GoBack_Click, Keys.Alt | Keys.Left);
+        var goForwardItem = new ToolStripMenuItem("&Forward", null, GoForward_Click, Keys.Alt | Keys.Right);
+        var goLastEditItem = new ToolStripMenuItem("Last &Edit Location", null, GoLastEditLocation_Click, Keys.Control | Keys.OemMinus);
+        goMenu.DropDownItems.Add(goBackItem);
+        goMenu.DropDownItems.Add(goForwardItem);
+        goMenu.DropDownItems.Add(goLastEditItem);
+        goMenu.DropDownItems.Add(new ToolStripSeparator());
+        var goToFileItem = new ToolStripMenuItem("Go to &File...", null, GoToFile_Click, Keys.Control | Keys.P);
+        var goToSymbolWsItem = new ToolStripMenuItem("Go to S&ymbol in Workspace...", null, GoToSymbolInWorkspace_Click, Keys.Control | Keys.Shift | Keys.O);
+        goMenu.DropDownItems.Add(goToFileItem);
+        goMenu.DropDownItems.Add(goToSymbolWsItem);
+        goMenu.DropDownItems.Add(new ToolStripSeparator());
+        var goToSymbolEdItem = new ToolStripMenuItem("Go to Symbol in &Editor...", null, GoToSymbolInEditor_Click, Keys.Control | Keys.OemPeriod);
+        var goToDefItem = new ToolStripMenuItem("Go to &Definition", null, GoToDefinition_Click, Keys.F12);
+        var goToDeclItem = new ToolStripMenuItem("Go to &Declaration", null, GoToDeclaration_Click, Keys.Control | Keys.F12);
+        var goToTypeDefItem = new ToolStripMenuItem("Go to &Type Definition", null, GoToTypeDefinition_Click);
+        var goToImplItem = new ToolStripMenuItem("Go to &Implementations", null, GoToImplementations_Click);
+        var goToRefsItem = new ToolStripMenuItem("Go to &References", null, GoToReferences_Click, Keys.Shift | Keys.F12);
+        goMenu.DropDownItems.Add(goToSymbolEdItem);
+        goMenu.DropDownItems.Add(goToDefItem);
+        goMenu.DropDownItems.Add(goToDeclItem);
+        goMenu.DropDownItems.Add(goToTypeDefItem);
+        goMenu.DropDownItems.Add(goToImplItem);
+        goMenu.DropDownItems.Add(goToRefsItem);
+        goMenu.DropDownItems.Add(new ToolStripSeparator());
+        var goToLineItem = new ToolStripMenuItem("Go to &Line/Column...", null, Goto_Click, Keys.Control | Keys.G);
+        var goToBracketItem = new ToolStripMenuItem("Go to &Bracket", null, GoToBracket_Click, Keys.Control | Keys.Shift | Keys.Back);
+        goMenu.DropDownItems.Add(goToLineItem);
+        goMenu.DropDownItems.Add(goToBracketItem);
 
         viewMenu = new ToolStripMenuItem("&View");
         zoomMenu = new ToolStripMenuItem("&Zoom");
@@ -347,6 +386,15 @@ partial class Form1
         themeMenu.DropDownItems.AddRange(new ToolStripItem[] {
             darkThemeMenuItem, lightThemeMenuItem
         });
+        // Preferences submenu — needs themeMenu which is now initialized
+        preferencesMenuItem = new ToolStripMenuItem("&Preferences");
+        preferencesProfileMenuItem = new ToolStripMenuItem("&Profile");
+        preferencesSettingsMenuItem = new ToolStripMenuItem("&Settings...", null, Settings_Click, Keys.Control | Keys.Oemcomma);
+        preferencesMenuItem.DropDownItems.Add(preferencesProfileMenuItem);
+        preferencesMenuItem.DropDownItems.Add(new ToolStripSeparator());
+        preferencesMenuItem.DropDownItems.Add(preferencesSettingsMenuItem);
+        preferencesMenuItem.DropDownItems.Add(new ToolStripSeparator());
+        preferencesMenuItem.DropDownItems.Add(themeMenu);
         viewMenu.DropDownItems.Add(zoomMenu);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(statusBarMenuItem);
@@ -368,7 +416,6 @@ partial class Form1
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(fontMenuItem);
-        viewMenu.DropDownItems.Add(themeMenu);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Shift | Keys.V);
         splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
@@ -416,6 +463,7 @@ partial class Form1
 
         menuStrip.Items.Add(fileMenu);
         menuStrip.Items.Add(editMenu);
+        menuStrip.Items.Add(goMenu);
         menuStrip.Items.Add(viewMenu);
         menuStrip.Items.Add(panelMenu);
         // Run menu

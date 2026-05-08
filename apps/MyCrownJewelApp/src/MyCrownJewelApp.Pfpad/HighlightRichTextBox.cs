@@ -481,7 +481,7 @@ public class HighlightRichTextBox : RichTextBox
         return "";
     }
 
-    private static int? FindMatchingBrace(string text, int pos)
+    internal static int? FindMatchingBrace(string text, int pos)
     {
         if (pos < 0 || pos >= text.Length) return null;
         char c = text[pos];

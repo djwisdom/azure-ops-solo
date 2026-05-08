@@ -412,7 +412,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     internal Form1(bool skipInitialDocument)
     {
         InitializeComponent();
-        this.Opacity = 0;
+        try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
         this.KeyDown += Form1_KeyDown;
         this.FormClosing += Form1_FormClosing;
@@ -521,13 +521,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             // Load persisted settings (overrides defaults below)
             LoadSettings();
             // Load active profile
-            _currentProfile = _profileManager.ActiveProfile ?? UserProfileManager.DefaultProfile;
-            // Apply profile workspace root if set and not overridden by CLI or session
-            if (!string.IsNullOrEmpty(_currentProfile.WorkspaceRoot) && string.IsNullOrEmpty(_workspaceRoot) && !_workspaceRootFromCli)
+            try
             {
-                _workspaceRoot = _currentProfile.WorkspaceRoot;
+                var p = _profileManager.ActiveProfile;
+                if (p != null) _currentProfile = p;
+                if (!string.IsNullOrEmpty(_currentProfile.WorkspaceRoot) && string.IsNullOrEmpty(_workspaceRoot) && !_workspaceRootFromCli)
+                    _workspaceRoot = _currentProfile.WorkspaceRoot;
             }
-            UpdateProfileDropdown();
+            catch { }
+            try { UpdateProfileDropdown(); } catch { }
+
             // Apply persisted analyzer state to Roslyn service
             if (_analyzersEnabled)
                 EnsureRoslynService().SetAnalyzersEnabledAsync(true).ConfigureAwait(false);
@@ -576,6 +579,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 textEditor.CurrentLineHighlightMode = currentLineHighlightMode;
             }
+
+            // Wire lazy population for File → Preferences → Profile submenu
+            preferencesProfileMenuItem.DropDownOpening += (s, e) => UpdateFileMenuProfileItems();
 
             // Initialize toggles to match loaded/default settings
             gutterMenuItem.Checked = gutterVisible;
@@ -1903,35 +1909,72 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
 
             UpdateProfileDropdown();
+            try { preferencesProfileMenuItem.Text = $"&Profile: {_currentProfile.Name}"; } catch { }
             SaveSettings();
         }
 
         private void UpdateProfileDropdown()
         {
-            if (profileDropDown == null) return;
-            profileDropDown.Text = $"Profile: {_currentProfile.Name}";
-            profileDropDown.DropDownItems.Clear();
-
-            foreach (string name in _profileManager.ProfileNames)
+            try
             {
-                var item = new ToolStripMenuItem(name, null, (s, e) =>
+                if (profileDropDown == null) return;
+                profileDropDown.Text = $"Profile: {_currentProfile.Name}";
+                profileDropDown.DropDownItems.Clear();
+
+                foreach (string name in _profileManager.ProfileNames)
                 {
-                    var profile = _profileManager.LoadProfile(name);
-                    if (profile != null)
-                        ApplyProfile(profile);
-                });
-                item.Checked = name == _currentProfile.Name;
-                profileDropDown.DropDownItems.Add(item);
-            }
+                    var item = new ToolStripMenuItem(name, null, (s, e) =>
+                    {
+                        var profile = _profileManager.LoadProfile(name);
+                        if (profile != null)
+                            ApplyProfile(profile);
+                    });
+                    item.Checked = name == _currentProfile.Name;
+                    profileDropDown.DropDownItems.Add(item);
+                }
 
-            profileDropDown.DropDownItems.Add(new ToolStripSeparator());
-            var manageItem = new ToolStripMenuItem("Manage Profiles...", null, (s, e) =>
+                profileDropDown.DropDownItems.Add(new ToolStripSeparator());
+                var manageItem = new ToolStripMenuItem("Manage Profiles...", null, (s, e) =>
+                {
+                    using var dlg = new ProfileManagerDialog(_profileManager, this);
+                    dlg.ShowDialog(this);
+                    UpdateProfileDropdown();
+                });
+                profileDropDown.DropDownItems.Add(manageItem);
+            }
+            catch { }
+        }
+
+        private void UpdateFileMenuProfileItems()
+        {
+            try
             {
-                using var dlg = new ProfileManagerDialog(_profileManager, this);
-                dlg.ShowDialog(this);
-                UpdateProfileDropdown();
-            });
-            profileDropDown.DropDownItems.Add(manageItem);
+                if (preferencesProfileMenuItem == null) return;
+                preferencesProfileMenuItem.Text = $"&Profile: {_currentProfile.Name}";
+                preferencesProfileMenuItem.DropDownItems.Clear();
+
+                foreach (string name in _profileManager.ProfileNames)
+                {
+                    var item = new ToolStripMenuItem(name, null, (s, e) =>
+                    {
+                        var profile = _profileManager.LoadProfile(name);
+                        if (profile != null)
+                            ApplyProfile(profile);
+                    });
+                    item.Checked = name == _currentProfile.Name;
+                    preferencesProfileMenuItem.DropDownItems.Add(item);
+                }
+
+                preferencesProfileMenuItem.DropDownItems.Add(new ToolStripSeparator());
+                var manageItem = new ToolStripMenuItem("Manage Profiles...", null, (s, e) =>
+                {
+                    using var dlg = new ProfileManagerDialog(_profileManager, this);
+                    dlg.ShowDialog(this);
+                    UpdateProfileDropdown();
+                });
+                preferencesProfileMenuItem.DropDownItems.Add(manageItem);
+            }
+            catch { }
         }
 
         private string ResolveBuildCommand()
@@ -4203,6 +4246,81 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void GoToDefinition_Click(object? sender, EventArgs e)
         {
             GoToDefinition();
+        }
+
+        private void GoBack_Click(object? sender, EventArgs e)
+        {
+            ShowNotification("Go", "Navigation history — Back not yet implemented");
+        }
+
+        private void GoForward_Click(object? sender, EventArgs e)
+        {
+            ShowNotification("Go", "Navigation history — Forward not yet implemented");
+        }
+
+        private void GoLastEditLocation_Click(object? sender, EventArgs e)
+        {
+            ShowNotification("Go", "Last edit location tracking not yet implemented");
+        }
+
+        private void GoToFile_Click(object? sender, EventArgs e)
+        {
+            ShowCommandPalette();
+        }
+
+        private void GoToSymbolInWorkspace_Click(object? sender, EventArgs e)
+        {
+            ToggleSymbolPanel();
+        }
+
+        private void GoToSymbolInEditor_Click(object? sender, EventArgs e)
+        {
+            ShowNotification("Go", "Symbol in editor — use Document Outline panel");
+        }
+
+        private void GoToDeclaration_Click(object? sender, EventArgs e)
+        {
+            GoToDefinition(); // Roslyn declaration is typically same as definition
+        }
+
+        private void GoToTypeDefinition_Click(object? sender, EventArgs e)
+        {
+            ShowNotification("Go", "Go to Type Definition not yet implemented");
+        }
+
+        private void GoToImplementations_Click(object? sender, EventArgs e)
+        {
+            ShowNotification("Go", "Go to Implementations not yet implemented");
+        }
+
+        private void GoToReferences_Click(object? sender, EventArgs e)
+        {
+            if (activeDocIndex < 0 || string.IsNullOrEmpty(currentFilePath))
+            {
+                ShowNotification("Go", "Open a file first");
+                return;
+            }
+            var word = GetWordAtCursor();
+            if (!string.IsNullOrEmpty(word))
+                GoToDefinitionRoslyn();
+            else
+                ShowNotification("Go", "No symbol at cursor");
+        }
+
+        private void GoToBracket_Click(object? sender, EventArgs e)
+        {
+            int pos = textEditor.SelectionStart;
+            int? match = HighlightRichTextBox.FindMatchingBrace(textEditor.Text, pos);
+            if (match.HasValue)
+            {
+                GoToLine(textEditor.GetLineFromCharIndex(match.Value) + 1);
+                textEditor.SelectionStart = match.Value;
+                textEditor.SelectionLength = 0;
+            }
+            else
+            {
+                ShowNotification("Go", "No matching bracket found");
+            }
         }
 
         #endregion
