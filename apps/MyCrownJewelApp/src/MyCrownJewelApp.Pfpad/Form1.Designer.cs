@@ -564,8 +564,8 @@ partial class Form1
         tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabControl.Alignment = TabAlignment.Top;
         tabControl.SizeMode = TabSizeMode.Normal;
-        tabControl.ItemSize = new Size(0, 30);
-        tabControl.Padding = new Point(17, 4);
+        tabControl.ItemSize = new Size(0, 34);
+        tabControl.Padding = new Point(20, 6);
         tabControl.Cursor = Cursors.Hand;
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
         tabControl.MouseDown += TabControl_MouseDown;
@@ -662,7 +662,7 @@ partial class Form1
         statusStrip.Dock = DockStyle.Fill;
         statusStrip.RenderMode = ToolStripRenderMode.Professional;
         statusStrip.SizingGrip = false;
-        statusStrip.Padding = new Padding(4, 1, 4, 1);
+        statusStrip.Padding = new Padding(6, 2, 6, 2);
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
         vimModeLabel = new ToolStripStatusLabel("");
         vimModeLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);
@@ -773,7 +773,7 @@ partial class Form1
         statusStrip.Items.Add(fileTypeLabel);
         statusStrip.Items.Add(scanProgressBar);
 
-        const int itemPadding = 8;
+        const int itemPadding = 10;
         lineColLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         charCountLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         tabSizeDropDown.Padding = new Padding(itemPadding, 1, itemPadding, 1);

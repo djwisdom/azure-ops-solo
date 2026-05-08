@@ -103,8 +103,8 @@ internal sealed class WorkspacePanel : UserControl
             FullRowSelect = true,
             HideSelection = false,
             LabelEdit = false,
-            Indent = 16,
-            ItemHeight = 20,
+            Indent = 20,
+            ItemHeight = 24,
             ImageList = FileIconProvider.ImageList
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
@@ -123,7 +123,7 @@ internal sealed class WorkspacePanel : UserControl
         _rootLabel = new ToolStripLabel("Workspace")
         {
             Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-            Margin = new Padding(4, 0, 0, 0)
+            Margin = new Padding(6, 2, 0, 2)
         };
 
         _refreshButton = new ToolStripButton
@@ -185,7 +185,7 @@ internal sealed class WorkspacePanel : UserControl
         {
             Dock = DockStyle.Top,
             GripStyle = ToolStripGripStyle.Hidden,
-            Padding = new Padding(2, 0, 0, 0),
+            Padding = new Padding(4, 0, 0, 0),
             AutoSize = false,
             Height = 24,
             Renderer = new FlatToolStripRenderer()
