@@ -207,8 +207,6 @@ partial class Form1
         fileMenu.DropDownItems.Add(saveAllMenuItem);
         fileMenu.DropDownItems.Add(autoSaveMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
-        fileMenu.DropDownItems.Add(preferencesMenuItem);
-        fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(closeTabMenuItem);
         fileMenu.DropDownItems.Add(closeWindowMenuItem);
         fileMenu.DropDownItems.Add(closeAllMenuItem);
@@ -395,6 +393,14 @@ partial class Form1
         preferencesMenuItem.DropDownItems.Add(preferencesSettingsMenuItem);
         preferencesMenuItem.DropDownItems.Add(new ToolStripSeparator());
         preferencesMenuItem.DropDownItems.Add(themeMenu);
+        // Preferences must be added to File menu here — after themeMenu exists but before View menu
+        // Insert before closeTabMenuItem (already in the collection from the File menu section above)
+        int ins = fileMenu.DropDownItems.IndexOf(closeTabMenuItem);
+        if (ins >= 0)
+        {
+            fileMenu.DropDownItems.Insert(ins, preferencesMenuItem);
+            fileMenu.DropDownItems.Insert(ins + 1, new ToolStripSeparator());
+        }
         viewMenu.DropDownItems.Add(zoomMenu);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(statusBarMenuItem);
