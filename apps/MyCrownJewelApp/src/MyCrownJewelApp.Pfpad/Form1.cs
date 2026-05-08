@@ -525,7 +525,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 Text = "\u25BC",
                 Font = new Font("Segoe UI", 7),
                 FlatStyle = FlatStyle.Flat,
-                Size = new Size(20, 30),
+                Size = new Size(20, 22),
                 Cursor = Cursors.Hand,
                 TabStop = false
             };
@@ -4460,7 +4460,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 if (i == tabControl.SelectedIndex)
                     item.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             }
-            cm.Show(_tabDropdownButton, new Point(_tabDropdownButton.Width / 2, _tabDropdownButton.Height / 2));
+            cm.Show(_tabDropdownButton, new Point(_tabDropdownButton.Width, _tabDropdownButton.Height), ToolStripDropDownDirection.BelowLeft);
         }
 
         private void EnsureSelectedTabVisible()
