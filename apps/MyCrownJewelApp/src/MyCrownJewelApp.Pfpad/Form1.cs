@@ -260,6 +260,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         // Per-buffer dirty-flag system: saved snapshot (hash)
         private string? savedContentHash = null;
 
+        // Session restore
+        private readonly SessionManager _sessionManager = new();
+        private bool _cliArgsProvided;
+        private bool _workspaceRootFromCli;
+
         // Recent files
         private const int MaxRecentFiles = 10;
         private List<string> recentFiles = new List<string>();
@@ -363,6 +368,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
           this.Shown += (s, e) =>
           {
               PositionTabDropdownButton();
+
+              if (!string.IsNullOrEmpty(_workspaceRoot) && _workspacePanel != null && _workspaceRootFromCli)
+              {
+                  _workspacePanel.SetRoot(_workspaceRoot);
+              }
+
+              if (!_cliArgsProvided)
+              {
+                  RestoreSession();
+              }
           };
 
         // Enable file drop support (client area + non-client area)
@@ -376,16 +391,25 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             // Process command line arguments (files)
             string[] args = Environment.GetCommandLineArgs();
+            _cliArgsProvided = false;
             if (args.Length > 1)
             {
+                bool hasFileArgs = false;
                 for (int i = 1; i < args.Length; i++)
                 {
                     string path = args[i];
-                    if (File.Exists(path))
+                    if (Directory.Exists(path))
+                    {
+                        _workspaceRoot = path;
+                        _workspaceRootFromCli = true;
+                    }
+                    else if (File.Exists(path))
                     {
                         OpenFileInNewTab(path);
+                        hasFileArgs = true;
                     }
                 }
+                _cliArgsProvided = hasFileArgs || !string.IsNullOrEmpty(_workspaceRoot);
             }
 
             // If no documents were opened, create a new untitled document
@@ -1562,8 +1586,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         if (settings.ExternalTools != null)
                             _externalTools = settings.ExternalTools;
                         _workspaceVisible = settings.WorkspaceVisible;
-                        _workspaceWidth = Math.Max(80, Math.Min(600, settings.WorkspaceWidth));
-                        _workspaceRoot = settings.WorkspaceRoot ?? "";
+                         _workspaceWidth = Math.Max(80, Math.Min(600, settings.WorkspaceWidth));
+                        if (!_workspaceRootFromCli)
+                            _workspaceRoot = settings.WorkspaceRoot ?? "";
                         _symbolPanelVisible = settings.SymbolPanelVisible;
                         _problemsPanelVisible = settings.ProblemsPanelVisible;
                         _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
@@ -2844,6 +2869,12 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             System.Diagnostics.Process.Start(Application.ExecutablePath);
         }
         private void Open_Click(object? sender, EventArgs e) => OpenFile();
+
+        private void CloneRepository_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new CloneRepositoryDialog(this);
+            dlg.ShowDialog(this);
+        }
         private void Save_Click(object? sender, EventArgs e) => SaveFile();
         private void SaveAs_Click(object? sender, EventArgs e) => SaveAsFile();
         private void SaveAll_Click(object? sender, EventArgs e) => SaveAllFiles();
@@ -3154,6 +3185,26 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 else
                     SaveSettings();
             }
+        }
+
+        internal void OpenWorkspaceFolder(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return;
+            _workspacePanel?.CancelScan();
+            _symbolIndexCts?.Cancel();
+            _symbolIndexCts = new CancellationTokenSource();
+            var token = _symbolIndexCts.Token;
+            _workspaceRoot = path;
+            _workspacePanel?.SetRoot(_workspaceRoot);
+            Task.Run(() =>
+            {
+                if (!token.IsCancellationRequested)
+                    _symbolIndex.RebuildIndex(_workspaceRoot);
+            }, token);
+            if (!_workspaceVisible)
+                ToggleWorkspace();
+            else
+                SaveSettings();
         }
 
         private void OnWorkspaceScanStarted()
@@ -6303,6 +6354,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     return;
                 }
             }
+            if (activeDocIndex >= 0)
+                SaveCurrentDocument();
+            _sessionManager.SaveSession(documents, activeDocIndex, _workspaceRoot, nextUntitledNumber);
             SaveSettings();
             _workspacePanel?.CancelScan();
             _symbolIndexCts?.Cancel();
@@ -6335,6 +6389,62 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void Form1_Activated(object? sender, EventArgs e)
         {
             CheckExternalChange();
+        }
+
+        private void RestoreSession()
+        {
+            var session = _sessionManager.RestoreSession();
+            if (session == null) return;
+
+            bool hadInitialTab = documents.Count == 1 &&
+                documents[0].FilePath == null &&
+                !documents[0].IsDirty;
+
+            bool hasDocsToRestore = session.Documents.Count > 0;
+
+            if (hasDocsToRestore)
+            {
+                if (hadInitialTab)
+                {
+                    documents.Clear();
+                    tabControl.TabPages.Clear();
+                }
+
+                foreach (var snap in session.Documents)
+                {
+                    if (File.Exists(snap.Path))
+                    {
+                        OpenFileInNewTab(snap.Path);
+                        var doc = documents.LastOrDefault();
+                        if (doc != null)
+                        {
+                            doc.SelectionStart = snap.SelectionStart;
+                            doc.SelectionLength = snap.SelectionLength;
+                            doc.FirstVisibleLine = snap.FirstVisibleLine;
+                        }
+                    }
+                }
+
+                if (session.ActiveTabIndex >= 0 && session.ActiveTabIndex < tabControl.TabPages.Count)
+                {
+                    tabControl.SelectedIndex = session.ActiveTabIndex;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(session.WorkspacePath) && Directory.Exists(session.WorkspacePath) && !_workspaceRootFromCli)
+            {
+                _workspaceRoot = session.WorkspacePath;
+                if (_workspacePanel != null)
+                {
+                    BeginInvoke(() =>
+                    {
+                        _workspacePanel.SetRoot(_workspaceRoot);
+                    });
+                }
+            }
+
+            if (session.NextUntitledNumber > nextUntitledNumber)
+                nextUntitledNumber = session.NextUntitledNumber;
         }
 
         public string? WorkspaceRoot => _workspacePanel?.RootPath ?? _workspaceRoot;

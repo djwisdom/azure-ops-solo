@@ -18,6 +18,7 @@ partial class Form1
     private ToolStripMenuItem closeWindowMenuItem;
     private ToolStripMenuItem closeAllMenuItem;
     private ToolStripMenuItem exitMenuItem;
+    private ToolStripMenuItem cloneRepositoryMenuItem;
 
     private ToolStripMenuItem editMenu;
     private ToolStripMenuItem undoMenuItem;
@@ -172,6 +173,7 @@ partial class Form1
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
         recentMenuItem = new ToolStripMenuItem("Recent Files");
+        cloneRepositoryMenuItem = new ToolStripMenuItem("Clone &Repository...", null, CloneRepository_Click, Keys.Control | Keys.Shift | Keys.C);
         saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click, Keys.Control | Keys.S);
         saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click, Keys.Control | Keys.Shift | Keys.S);
         saveAllMenuItem = new ToolStripMenuItem("Save A&ll", null, SaveAll_Click, Keys.Control | Keys.Alt | Keys.S);
@@ -186,6 +188,7 @@ partial class Form1
         fileMenu.DropDownItems.Add(newWindowMenuItem);
         fileMenu.DropDownItems.Add(openMenuItem);
         fileMenu.DropDownItems.Add(recentMenuItem);
+        fileMenu.DropDownItems.Add(cloneRepositoryMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(saveMenuItem);
         fileMenu.DropDownItems.Add(saveAsMenuItem);
