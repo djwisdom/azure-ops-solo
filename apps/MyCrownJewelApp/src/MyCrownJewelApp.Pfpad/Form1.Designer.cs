@@ -59,6 +59,7 @@ partial class Form1
     private ToolStripMenuItem currentLineOffMenuItem;
     private ToolStripMenuItem currentLineNumberOnlyMenuItem;
     private ToolStripMenuItem currentLineWholeLineMenuItem;
+    private ToolStripMenuItem currentLineNumberAndWholeLineMenuItem;
     private ToolStripMenuItem insertSpacesMenuItem;
     private ToolStripMenuItem tabSizeMenu;
     private ToolStripMenuItem tab2MenuItem;
@@ -98,6 +99,7 @@ partial class Form1
 
     private ToolStripMenuItem toolsMenu;
     internal ToolStripMenuItem configureToolsMenuItem;
+    internal ToolStripMenuItem settingsMenuItem;
     private ToolStripMenuItem runMenu;
     internal ToolStripMenuItem startDebugMenuItem;
     internal ToolStripMenuItem runWithoutDebugMenuItem;
@@ -146,6 +148,7 @@ partial class Form1
     internal ToolStripStatusLabel gitDirtyLabel;
     internal ToolStripStatusLabel gitSyncLabel;
     internal ToolStripStatusLabel workspaceStatusLabel;
+    private ToolStripDropDownButton profileDropDown;
     internal ToolStripProgressBar scanProgressBar;
 
     protected override void Dispose(bool disposing)
@@ -284,8 +287,9 @@ partial class Form1
         currentLineOffMenuItem = new ToolStripMenuItem("Off", null, CurrentLineHighlightMode_Click);
         currentLineNumberOnlyMenuItem = new ToolStripMenuItem("Line &Number Only", null, CurrentLineHighlightMode_Click);
         currentLineWholeLineMenuItem = new ToolStripMenuItem("&Whole Line", null, CurrentLineHighlightMode_Click);
+        currentLineNumberAndWholeLineMenuItem = new ToolStripMenuItem("N&umber + Whole Line", null, CurrentLineHighlightMode_Click);
         currentLineHighlightMenu.DropDownItems.AddRange(new ToolStripItem[] {
-            currentLineOffMenuItem, currentLineNumberOnlyMenuItem, currentLineWholeLineMenuItem
+            currentLineOffMenuItem, currentLineNumberOnlyMenuItem, currentLineWholeLineMenuItem, currentLineNumberAndWholeLineMenuItem
         });
         insertSpacesMenuItem = new ToolStripMenuItem("&Insert Spaces", null, InsertSpaces_Click);
         insertSpacesMenuItem.CheckOnClick = true;
@@ -471,6 +475,10 @@ partial class Form1
         configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);
         configureToolsMenuItem.ShortcutKeys = Keys.Control | Keys.Alt | Keys.T;
         toolsMenu.DropDownItems.Add(configureToolsMenuItem);
+        toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+        settingsMenuItem = new ToolStripMenuItem("&Settings...", null, Settings_Click, Keys.Control | Keys.Oemcomma);
+        toolsMenu.DropDownItems.Add(settingsMenuItem);
+        toolsMenu.DropDownItems.Add(new ToolStripSeparator());
         // Roslyn control submenu
         var roslynMenu = new ToolStripMenuItem("&Roslyn");
         restartAnalyzersMenuItem = new ToolStripMenuItem("&Restart Analyzers", null, null, Keys.Control | Keys.Shift | Keys.R);
@@ -629,6 +637,13 @@ partial class Form1
         gitSyncLabel.AutoSize = true;
         gitSyncLabel.Padding = new Padding(0, 1, 4, 1);
 
+        // Profile selector dropdown
+        profileDropDown = new ToolStripDropDownButton();
+        profileDropDown.Text = "Profile: Default";
+        profileDropDown.Width = 110;
+        profileDropDown.Alignment = ToolStripItemAlignment.Left;
+        profileDropDown.DropDownDirection = ToolStripDropDownDirection.AboveLeft;
+
         // Workspace status label (shows project/solution name)
         workspaceStatusLabel = new ToolStripStatusLabel("");
         workspaceStatusLabel.AutoSize = true;
@@ -689,6 +704,7 @@ partial class Form1
         statusStrip.Items.Add(gitBranchLabel);
         statusStrip.Items.Add(gitDirtyLabel);
         statusStrip.Items.Add(gitSyncLabel);
+        statusStrip.Items.Add(profileDropDown);
         statusStrip.Items.Add(workspaceStatusLabel);
         statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true, Padding = new Padding(0, 1, 0, 1) });
         statusStrip.Items.Add(linePositionLabel);

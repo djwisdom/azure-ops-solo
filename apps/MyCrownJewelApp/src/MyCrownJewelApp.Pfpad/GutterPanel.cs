@@ -376,7 +376,7 @@ public class GutterPanel : Panel
         RichTextBox editor = mainForm.textEditor;
 
         bool isCurrentLine = false;
-        if (mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly)
+        if (mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly || mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberAndWholeLine)
         {
             int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
             isCurrentLine = (lineNumber == currentLineNum);

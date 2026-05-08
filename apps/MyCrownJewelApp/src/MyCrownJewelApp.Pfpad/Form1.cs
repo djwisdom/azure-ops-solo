@@ -305,7 +305,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool BreadcrumbsEnabled = false,
             bool AnalyzersEnabled = true,
             bool AutoSaveEnabled = false,
-            List<string>? RecentWorkspaces = null
+            List<string>? RecentWorkspaces = null,
+            string WindowBounds = "",
+            string WindowState = ""
         );
 
         private string SettingsFilePath =>
@@ -323,14 +325,19 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private Button _tabDropdownButton = null!;
         private bool _applyingHighlight;
-        private bool _suppressDirty;
+
+        private readonly DateTime _startTime = DateTime.UtcNow;
+        private const int NotificationDelaySeconds = 15;
+        private readonly List<(string Title, string Summary)> _delayedNotifications = new();
 
         // Notification feed
         private readonly NotificationFeedService _notificationFeed = new();
+        private readonly UserProfileManager _profileManager = new();
+        private UserProfile _currentProfile = UserProfileManager.DefaultProfile;
         private NotificationCenterForm? _notificationCenter;
         private ToolStripStatusLabel _notificationStatusLabel = null!;
         private readonly HashSet<string> _toastedIds = new();
-        private NotificationToastForm? _currentToast;
+        private readonly List<NotificationToastForm> _activeToasts = new();
 
         // Symbol index for Go to Definition
         private readonly SymbolIndexService _symbolIndex = new();
@@ -356,6 +363,44 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         public int DebugActiveLine => _debugActiveLine;
         public string? CurrentFilePath => currentFilePath;
 
+        // Public property accessors for SettingsDialog
+        public string CurrentFontName => textEditor.Font.Name;
+        public float CurrentFontSize => textEditor.Font.Size;
+        public int CurrentTabSize => tabSize;
+        public bool CurrentInsertSpaces => insertSpaces;
+        public bool CurrentWordWrap => wordWrapEnabled;
+        public bool CurrentShowGuide => showGuide;
+        public int CurrentGuideColumn => guideColumn;
+        public string CurrentThemeName => _currentTheme.Name;
+        public bool CurrentGutterVisible => gutterVisible;
+        public bool CurrentStatusBarVisible => statusBarVisible;
+        public bool CurrentMinimapVisible => minimapMenuItem?.Checked ?? false;
+        public bool CurrentShowWhitespace => whitespaceMenuItem?.Checked ?? false;
+        public string CurrentLineHighlightName
+        {
+            get
+            {
+                if (currentLineHighlightMode == CurrentLineHighlightMode.NumberOnly) return "NumberOnly";
+                if (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine) return "WholeLine";
+                if (currentLineHighlightMode == CurrentLineHighlightMode.NumberAndWholeLine) return "NumberAndWholeLine";
+                return "None";
+            }
+        }
+        public bool CurrentSyntaxHighlighting => syntaxHighlightingEnabled;
+        public bool CurrentAutoIndent => autoIndentEnabled;
+        public bool CurrentSmartTabs => smartTabsEnabled;
+        public bool CurrentElasticTabs => elasticTabsEnabled;
+        public bool CurrentRainbowBrackets => _rainbowBracketsEnabled;
+        public bool CurrentBreadcrumbs => _breadcrumbsEnabled;
+        public bool CurrentAutoSave => _autoSaveEnabled;
+        public bool CurrentWorkspaceVisible => _workspaceVisible;
+        public bool CurrentSymbolPanelVisible => _symbolPanelVisible;
+        public bool CurrentProblemsPanelVisible => _problemsPanelVisible;
+        public bool CurrentTerminalVisible => _terminalVisible;
+        public int CurrentTerminalHeight => _terminalHeight;
+        public bool CurrentAnalyzersEnabled => _analyzersEnabled;
+        public string CurrentTerminalShell => _terminalShell;
+
     public Form1()
         : this(skipInitialDocument: false)
     {
@@ -367,6 +412,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     internal Form1(bool skipInitialDocument)
     {
         InitializeComponent();
+        this.Opacity = 0;
         this.KeyPreview = true;
         this.KeyDown += Form1_KeyDown;
         this.FormClosing += Form1_FormClosing;
@@ -374,6 +420,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
           this.Shown += (s, e) =>
           {
               PositionTabDropdownButton();
+
+              // Restore window bounds after LoadSettings has run
+              RestoreWindowBounds();
 
               if (!string.IsNullOrEmpty(_workspaceRoot) && _workspacePanel != null && _workspaceRootFromCli)
               {
@@ -386,6 +435,31 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               {
                   RestoreSession();
               }
+
+              // Start delayed notification timer
+              BeginInvoke(new Action(() =>
+              {
+                  var elapsed = (DateTime.UtcNow - _startTime).TotalSeconds;
+                  if (elapsed < NotificationDelaySeconds)
+                  {
+                      var remainingMs = (int)((NotificationDelaySeconds - elapsed) * 1000);
+                      var delayTimer = new System.Windows.Forms.Timer { Interval = remainingMs };
+                      delayTimer.Tick += (_, __) =>
+                      {
+                          delayTimer.Stop();
+                          delayTimer.Dispose();
+                          FlushDelayedNotifications();
+                      };
+                      delayTimer.Start();
+                  }
+                  else
+                  {
+                      FlushDelayedNotifications();
+                  }
+              }));
+
+              // Show the window now that everything is ready
+              this.Opacity = 1;
           };
 
         // Enable file drop support (client area + non-client area)
@@ -446,6 +520,14 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             
             // Load persisted settings (overrides defaults below)
             LoadSettings();
+            // Load active profile
+            _currentProfile = _profileManager.ActiveProfile ?? UserProfileManager.DefaultProfile;
+            // Apply profile workspace root if set and not overridden by CLI or session
+            if (!string.IsNullOrEmpty(_currentProfile.WorkspaceRoot) && string.IsNullOrEmpty(_workspaceRoot) && !_workspaceRootFromCli)
+            {
+                _workspaceRoot = _currentProfile.WorkspaceRoot;
+            }
+            UpdateProfileDropdown();
             // Apply persisted analyzer state to Roslyn service
             if (_analyzersEnabled)
                 EnsureRoslynService().SetAnalyzersEnabledAsync(true).ConfigureAwait(false);
@@ -1615,10 +1697,54 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                             whitespaceMenuItem.Checked = showWhitespace;
                             whitespaceOverlay.ShowGlyphs = showWhitespace;
                         }
+                        _savedWindowBounds = settings.WindowBounds;
+                        _savedWindowState = settings.WindowState;
                     }
                 }
             }
             catch { /* ignore settings load errors */ }
+        }
+
+        private string _savedWindowBounds = "";
+        private string _savedWindowState = "";
+
+        private void RestoreWindowBounds()
+        {
+            if (!string.IsNullOrEmpty(_savedWindowState))
+            {
+                try
+                {
+                    if (_savedWindowState == "Maximized")
+                        WindowState = FormWindowState.Maximized;
+                    else if (_savedWindowState == "Minimized")
+                        WindowState = FormWindowState.Normal; // don't start minimized
+                }
+                catch { }
+            }
+
+            if (!string.IsNullOrEmpty(_savedWindowBounds))
+            {
+                try
+                {
+                    var parts = _savedWindowBounds.Split(',');
+                    if (parts.Length == 4
+                        && int.TryParse(parts[0], out int x)
+                        && int.TryParse(parts[1], out int y)
+                        && int.TryParse(parts[2], out int w)
+                        && int.TryParse(parts[3], out int h))
+                    {
+                        // Validate against current screen working area
+                        var screen = Screen.FromPoint(new Point(x, y)).WorkingArea;
+                        x = Math.Max(screen.Left, Math.Min(x, screen.Right - 200));
+                        y = Math.Max(screen.Top, Math.Min(y, screen.Bottom - 100));
+                        w = Math.Max(400, Math.Min(w, screen.Width));
+                        h = Math.Max(200, Math.Min(h, screen.Height));
+                        Bounds = new Rectangle(x, y, w, h);
+                        StartPosition = FormStartPosition.Manual;
+                    }
+                }
+                catch { }
+            }
         }
 
         private void SaveSettings()
@@ -1656,16 +1782,174 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         ProblemsPanelVisible: _problemsPanelVisible,
                          RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
                          BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
-                          AnalyzersEnabled: _analyzersEnabled,
-                          AutoSaveEnabled: _autoSaveEnabled
-                );
+                           AnalyzersEnabled: _analyzersEnabled,
+                           AutoSaveEnabled: _autoSaveEnabled,
+                           WindowBounds: $"{Left},{Top},{Width},{Height}",
+                           WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal"
+                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
             }
              catch { /* ignore settings save errors */ }
          }
 
-          internal void ToggleGutter()
+        public void ApplySettings(
+            string fontName, float fontSize, int tabSize, bool insertSpaces,
+            bool wordWrap, bool showGuide, int guideColumn,
+            string themeName, bool gutterVisible, bool statusBarVisible,
+            bool minimapVisible, bool showWhitespace, string lineHighlightMode,
+            bool syntaxHighlighting, bool autoIndent, bool smartTabs, bool elasticTabs,
+            bool rainbowBrackets, bool breadcrumbs, bool autoSave,
+            bool workspaceVisible, bool symbolPanelVisible, bool problemsPanelVisible,
+            bool terminalVisible, int terminalHeight,
+            bool analyzersEnabled, string terminalShell)
+        {
+            // Apply theme first (affects colors of everything)
+            if (!string.IsNullOrEmpty(themeName) && ThemeManager.Themes.TryGetValue(themeName, out var theme))
+            {
+                _currentTheme = theme;
+                UpdateThemeColors(theme);
+            }
+
+            // Editor
+            this.tabSize = Math.Max(2, Math.Min(12, tabSize));
+            tabSizeDropDown.Text = $"Tab: {this.tabSize}";
+            this.insertSpaces = insertSpaces;
+            wordWrapEnabled = wordWrap;
+            textEditor.WordWrap = wordWrapEnabled;
+            this.showGuide = showGuide;
+            this.guideColumn = guideColumn;
+
+            // Font
+            if (!string.IsNullOrEmpty(fontName) && fontSize >= 6 && fontSize <= 72)
+            {
+                try
+                {
+                    var font = new Font(fontName, fontSize);
+                    textEditor.Font = font;
+                }
+                catch { }
+            }
+
+            // Appearance
+            this.gutterVisible = gutterVisible;
+            gutterPanel.Visible = this.gutterVisible;
+            this.statusBarVisible = statusBarVisible;
+            statusStrip.Visible = statusBarVisible;
+            if (minimapMenuItem != null) minimapMenuItem.Checked = minimapVisible;
+            if (whitespaceMenuItem != null)
+            {
+                whitespaceMenuItem.Checked = showWhitespace;
+                whitespaceOverlay.ShowGlyphs = showWhitespace;
+            }
+            currentLineHighlightMode = lineHighlightMode switch
+            {
+                "NumberOnly" => CurrentLineHighlightMode.NumberOnly,
+                "WholeLine" => CurrentLineHighlightMode.WholeLine,
+                "NumberAndWholeLine" => CurrentLineHighlightMode.NumberAndWholeLine,
+                _ => CurrentLineHighlightMode.Off
+            };
+
+            // Features
+            syntaxHighlightingEnabled = syntaxHighlighting;
+            autoIndentEnabled = autoIndent;
+            smartTabsEnabled = smartTabs;
+            elasticTabsEnabled = elasticTabs;
+            _rainbowBracketsEnabled = rainbowBrackets;
+            if (rainbowBracketsMenuItem != null) rainbowBracketsMenuItem.Checked = rainbowBrackets;
+            _breadcrumbsEnabled = breadcrumbs;
+            if (breadcrumbMenuItem != null) breadcrumbMenuItem.Checked = breadcrumbs;
+            _autoSaveEnabled = autoSave;
+            if (autoSaveMenuItem != null) autoSaveMenuItem.Checked = autoSave;
+            if (autoSave) _autoSaveTimer.Start(); else _autoSaveTimer.Stop();
+
+            // Panels
+            _workspaceVisible = workspaceVisible;
+            if (workspaceMenuItem != null) workspaceMenuItem.Checked = workspaceVisible;
+            _symbolPanelVisible = symbolPanelVisible;
+            if (symbolsMenuItem != null) symbolsMenuItem.Checked = symbolPanelVisible;
+            _problemsPanelVisible = problemsPanelVisible;
+            if (problemsMenuItem != null) problemsMenuItem.Checked = problemsPanelVisible;
+            _terminalVisible = terminalVisible;
+            if (terminalMenuItem != null) terminalMenuItem.Checked = terminalVisible;
+            _terminalHeight = Math.Max(60, Math.Min(600, terminalHeight));
+            _terminalShell = terminalShell ?? "";
+
+            // Advanced
+            _analyzersEnabled = analyzersEnabled;
+
+            // Sync menu item states
+            if (gutterMenuItem != null) gutterMenuItem.Checked = gutterVisible;
+            if (wordWrapMenuItem != null) wordWrapMenuItem.Checked = wordWrapEnabled;
+            if (autoIndentMenuItem != null) autoIndentMenuItem.Checked = autoIndentEnabled;
+            if (insertSpacesMenuItem != null) insertSpacesMenuItem.Checked = insertSpaces;
+
+            // Refresh UI
+            UpdateStatusBar();
+            UpdateBreadcrumbs();
+            RequestVisibleHighlight();
+            SaveSettings();
+        }
+
+        public void ApplyProfile(UserProfile profile)
+        {
+            _currentProfile = profile;
+            _profileManager.ActiveProfileName = profile.Name;
+
+            // Switch workspace root if profile specifies one
+            if (!string.IsNullOrEmpty(profile.WorkspaceRoot) && Directory.Exists(profile.WorkspaceRoot))
+            {
+                OpenWorkspaceFolder(profile.WorkspaceRoot);
+            }
+
+            UpdateProfileDropdown();
+            SaveSettings();
+        }
+
+        private void UpdateProfileDropdown()
+        {
+            if (profileDropDown == null) return;
+            profileDropDown.Text = $"Profile: {_currentProfile.Name}";
+            profileDropDown.DropDownItems.Clear();
+
+            foreach (string name in _profileManager.ProfileNames)
+            {
+                var item = new ToolStripMenuItem(name, null, (s, e) =>
+                {
+                    var profile = _profileManager.LoadProfile(name);
+                    if (profile != null)
+                        ApplyProfile(profile);
+                });
+                item.Checked = name == _currentProfile.Name;
+                profileDropDown.DropDownItems.Add(item);
+            }
+
+            profileDropDown.DropDownItems.Add(new ToolStripSeparator());
+            var manageItem = new ToolStripMenuItem("Manage Profiles...", null, (s, e) =>
+            {
+                using var dlg = new ProfileManagerDialog(_profileManager, this);
+                dlg.ShowDialog(this);
+                UpdateProfileDropdown();
+            });
+            profileDropDown.DropDownItems.Add(manageItem);
+        }
+
+        private string ResolveBuildCommand()
+        {
+            return _currentProfile.BuildCommand;
+        }
+
+        private string ResolveRunCommand()
+        {
+            return _currentProfile.RunCommand;
+        }
+
+        private string ResolveTestCommand()
+        {
+            return _currentProfile.TestCommand;
+        }
+
+        internal void ToggleGutter()
         {
             gutterVisible = !gutterVisible;
             gutterMenuItem.Checked = gutterVisible;
@@ -2104,7 +2388,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 CurrentLineHighlightMode.Off => CurrentLineHighlightMode.NumberOnly,
                 CurrentLineHighlightMode.NumberOnly => CurrentLineHighlightMode.WholeLine,
-                CurrentLineHighlightMode.WholeLine => CurrentLineHighlightMode.Off,
+                CurrentLineHighlightMode.WholeLine => CurrentLineHighlightMode.NumberAndWholeLine,
+                CurrentLineHighlightMode.NumberAndWholeLine => CurrentLineHighlightMode.Off,
                 _ => CurrentLineHighlightMode.Off
             };
             
@@ -2136,6 +2421,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 currentLineOffMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.Off);
                 currentLineNumberOnlyMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.NumberOnly);
                 currentLineWholeLineMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.WholeLine);
+                currentLineNumberAndWholeLineMenuItem.Checked = (currentLineHighlightMode == CurrentLineHighlightMode.NumberAndWholeLine);
             }
          }
 
@@ -2722,7 +3008,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         internal void SetDirty()
         {
             if (isModified) return;
-            if (_suppressDirty) return;
             isModified = true;
             if (activeDocIndex >= 0)
             {
@@ -3074,6 +3359,12 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 RebuildExternalToolsMenu();
                 SaveSettings();
             }
+        }
+
+        private void Settings_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new SettingsDialog(this);
+            dlg.ShowDialog(this);
         }
 
         private void RebuildExternalToolsMenu()
@@ -4120,11 +4411,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 return;
             }
 
-            if (_currentToast != null && !_currentToast.IsDisposed)
+            // Delay notifications during the first 15 seconds after launch
+            if ((DateTime.UtcNow - _startTime).TotalSeconds < NotificationDelaySeconds)
             {
-                _currentToast.Close();
-                _currentToast.Dispose();
-                _currentToast = null;
+                _delayedNotifications.Add((title, summary));
+                return;
             }
 
             _notificationFeed.AddNotification(title, summary);
@@ -4139,15 +4430,62 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 Published = DateTime.UtcNow,
                 IsRead = false
             };
-            _currentToast = new NotificationToastForm(item);
-            _currentToast.FormClosed += (s, e) =>
+            ShowToast(item);
+        }
+
+        private void ShowToast(FeedItem item, int stackIndex = -1)
+        {
+            var screen = Screen.PrimaryScreen!.WorkingArea;
+            int toastHeight = 130;
+            int gap = 8;
+            int yOffset = stackIndex >= 0
+                ? stackIndex * (toastHeight + gap)
+                : _activeToasts.Count * (toastHeight + gap);
+            int bottomY = screen.Bottom - toastHeight - 16 - yOffset;
+            bottomY = Math.Max(screen.Top + 16, bottomY);
+
+            var toast = new NotificationToastForm(item, bottomY);
+            toast.FormClosed += (s, e) =>
             {
-                _currentToast?.Dispose();
-                _currentToast = null;
+                _activeToasts.Remove(toast);
+                toast.Dispose();
+                RepositionToasts();
             };
-            _currentToast.Show(this);
+            _activeToasts.Add(toast);
+            toast.Show(this);
             if (textEditor.CanFocus)
                 textEditor.Focus();
+        }
+
+        private void RepositionToasts()
+        {
+            var screen = Screen.PrimaryScreen!.WorkingArea;
+            int toastHeight = 130;
+            int gap = 8;
+            for (int i = 0; i < _activeToasts.Count; i++)
+            {
+                var t = _activeToasts[i];
+                if (t.IsDisposed) continue;
+                int y = screen.Bottom - toastHeight - 16 - i * (toastHeight + gap);
+                y = Math.Max(screen.Top + 16, y);
+                t.Location = new Point(t.Location.X, y);
+            }
+        }
+
+        private void FlushDelayedNotifications()
+        {
+            foreach (var (title, summary) in _delayedNotifications)
+            {
+                _notificationFeed.AddNotification(title, summary);
+            }
+
+            var unread = _notificationFeed.AllItems.Where(i => !i.IsRead).ToList();
+            foreach (var item in unread)
+            {
+                if (_toastedIds.Add(item.Id))
+                    ShowToast(item);
+            }
+            _delayedNotifications.Clear();
         }
 
         private void UpdateNotificationBadge()
@@ -4173,18 +4511,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private void ShowToastForNewItems()
         {
+            // Suppress feed-generated toasts during the first 15 seconds
+            if ((DateTime.UtcNow - _startTime).TotalSeconds < NotificationDelaySeconds)
+                return;
+
             var unread = _notificationFeed.AllItems.Where(i => !i.IsRead).ToList();
             foreach (var item in unread)
             {
                 if (_toastedIds.Add(item.Id))
-                {
-                    var toast = new NotificationToastForm(item);
-                    toast.FormClosed += (s, e) => toast.Dispose();
-                    toast.Show(this);
-                    if (textEditor.CanFocus)
-                        textEditor.Focus();
-                    return;
-                }
+                    ShowToast(item);
             }
         }
 
@@ -4477,20 +4812,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             textEditor.TextChanged += TextEditor_TextChanged;
 
-            // Suppress dirty flag from deferred TextChanged events
-            // caused by subsequent operations (scroll restore, highlighting, status update)
-            _suppressDirty = true;
-
-            // Restore scroll position
-            if (doc.FirstVisibleLine > 0)
-            {
-                SendMessage(textEditor.Handle, EM_LINESCROLL, (IntPtr)doc.FirstVisibleLine, IntPtr.Zero);
-            }
-            else
-            {
-                SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
-            }
-
             // Recreate syntax highlighter based on current syntax
             CreateIncrementalHighlighter();
 
@@ -4499,7 +4820,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             UpdateTabTitle(activeDocIndex);
             UpdateThemeColors(_currentTheme);
             UpdateBreadcrumbs();
-            _suppressDirty = false;
         }
 
         // Update tab title for document at index
@@ -5461,6 +5781,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void TextEditor_TextChanged(object? sender, EventArgs e)
         {
             if (_applyingHighlight) return;
+            // Hash comparison catches spurious TextChanged from RichTextBox internals
+            // (line ending normalization, deferred messages, etc.) when content hasn't changed
+            if (!isModified && ComputeContentHash() == savedContentHash) return;
             SetDirty();
 
             // Recalculate gutter width when line count changes
@@ -6868,7 +7191,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 if (_terminalTabControl?.SelectedTab is TabPage tab)
                     tab.Text = projectName;
                 ShowTerminal();
-                terminal.SendInput($"dotnet run --project \"{projectDir}\"\r\n");
+                string runCmd = ResolveRunCommand();
+                terminal.SendInput($"{runCmd} --project \"{projectDir}\"\r\n");
                 ShowNotification("Run", $"Started: {projectName}");
             }
             catch (Exception ex)
@@ -6952,11 +7276,14 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             return null;
         }
 
-        private static void RunDotnetBuild(string projectDir)
+        private void RunDotnetBuild(string projectDir)
         {
             try
             {
-                var psi = new ProcessStartInfo("dotnet", "build")
+                string cmd = ResolveBuildCommand();
+                string exe = cmd.Split(' ')[0];
+                string args = cmd.Length > exe.Length ? cmd[(exe.Length + 1)..] : "";
+                var psi = new ProcessStartInfo(exe, args)
                 {
                     WorkingDirectory = projectDir,
                     UseShellExecute = false,

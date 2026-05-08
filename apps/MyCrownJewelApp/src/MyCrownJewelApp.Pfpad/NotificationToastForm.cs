@@ -4,32 +4,34 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-public sealed class NotificationToastForm : Form
-{
-    private readonly FeedItem _item;
-    private readonly System.Windows.Forms.Timer _autoCloseTimer;
-    private readonly System.Windows.Forms.Timer _fadeTimer;
-    private readonly Theme _theme;
-    private bool _closing;
-    private float _opacity = 0f;
-    private const int DisplaySeconds = 12;
-    private const int FadeStepMs = 30;
-    private const float FadeDelta = 0.06f;
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-
-    private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TOOLWINDOW = 0x00000080;
-    private const int WS_EX_NOACTIVATE = 0x08000000;
-
-    public NotificationToastForm(FeedItem item)
+    public sealed class NotificationToastForm : Form
     {
-        _item = item;
-        _theme = ThemeManager.Instance.CurrentTheme;
+        private readonly FeedItem _item;
+        private readonly int _yPosition;
+        private readonly System.Windows.Forms.Timer _autoCloseTimer;
+        private readonly System.Windows.Forms.Timer _fadeTimer;
+        private readonly Theme _theme;
+        private bool _closing;
+        private float _opacity = 0f;
+        private const int DisplaySeconds = 12;
+        private const int FadeStepMs = 30;
+        private const float FadeDelta = 0.06f;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;
+        private const int WS_EX_NOACTIVATE = 0x08000000;
+
+        public NotificationToastForm(FeedItem item, int yPosition = -1)
+        {
+            _item = item;
+            _yPosition = yPosition;
+            _theme = ThemeManager.Instance.CurrentTheme;
 
         ShowInTaskbar = false;
         ShowIcon = false;
@@ -163,7 +165,8 @@ public sealed class NotificationToastForm : Form
     private void PositionNearNotifyIcon()
     {
         var screen = Screen.PrimaryScreen!.WorkingArea;
-        Location = new Point(screen.Right - Width - 16, screen.Bottom - Height - 16);
+        int y = _yPosition >= 0 ? _yPosition : screen.Bottom - Height - 16;
+        Location = new Point(screen.Right - Width - 16, y);
     }
 
     protected override CreateParams CreateParams

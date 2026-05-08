@@ -343,7 +343,7 @@ public class HighlightRichTextBox : RichTextBox
 
     private Rectangle? GetCurrentLineRect()
     {
-        if (_highlightMode != CurrentLineHighlightMode.WholeLine || !Visible || IsDisposed || !Enabled || !Focused)
+        if (_highlightMode != CurrentLineHighlightMode.WholeLine && _highlightMode != CurrentLineHighlightMode.NumberAndWholeLine || !Visible || IsDisposed || !Enabled || !Focused)
             return null;
         if (Lines == null || Lines.Length == 0 || SelectionStart < 0)
             return null;
@@ -570,7 +570,7 @@ public class HighlightRichTextBox : RichTextBox
             DrawBraceRect(g, b.Position, lineH, Color.FromArgb(220, 255, 255, 255));
             DrawBraceRect(g, pair.Position, lineH, Color.FromArgb(220, 255, 255, 255));
 
-            if (_showAccessoryGuides)
+            if (_showAccessoryGuides && b.Depth > 0)
             {
                 using var guidePen = new Pen(Color.FromArgb(100, pairColor), 1) { DashStyle = DashStyle.Dot };
                 int minPos = Math.Min(b.Position, pair.Position);

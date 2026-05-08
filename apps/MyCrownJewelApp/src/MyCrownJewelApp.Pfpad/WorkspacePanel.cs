@@ -9,6 +9,23 @@ internal sealed class WorkspacePanel : UserControl
 
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+
+    private const int TVS_LINESATROOT = 0x1000;
+    private const int GWL_STYLE = -16;
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    private static void RemoveRootLinesStyle(IntPtr hWnd)
+    {
+        int style = GetWindowLong(hWnd, GWL_STYLE);
+        if ((style & TVS_LINESATROOT) != 0)
+            SetWindowLong(hWnd, GWL_STYLE, style & ~TVS_LINESATROOT);
+    }
+
     private readonly TreeView _tree;
     private readonly ToolStrip _headerStrip;
     private readonly ToolStripLabel _rootLabel;
@@ -81,7 +98,7 @@ internal sealed class WorkspacePanel : UserControl
             BorderStyle = BorderStyle.None,
             ShowLines = true,
             ShowPlusMinus = true,
-            ShowRootLines = true,
+            ShowRootLines = false,
             HotTracking = false,
             FullRowSelect = true,
             HideSelection = false,
@@ -96,7 +113,11 @@ internal sealed class WorkspacePanel : UserControl
         _tree.DragEnter += (s, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
         _tree.DragDrop += Tree_DragDrop;
         _tree.AllowDrop = true;
-        _tree.HandleCreated += (s, e) => ApplyScrollbarTheme(_tree.Handle);
+        _tree.HandleCreated += (s, e) =>
+        {
+            ApplyScrollbarTheme(_tree.Handle);
+            RemoveRootLinesStyle(_tree.Handle);
+        };
 
         _rootLabel = new ToolStripLabel("Workspace")
         {
@@ -655,6 +676,9 @@ internal sealed class WorkspacePanel : UserControl
         foreach (var sub in entry.SubDirs)
         {
             var node = CreateDirectoryNode(sub.FullPath);
+            // Recursive population fills children immediately — remove the "Loading..."
+            // placeholder so ApplyNodes' children aren't appended alongside it.
+            node.Nodes.Clear();
             parentNode.Nodes.Add(node);
             ApplyNodes(node, sub);
         }

@@ -12,5 +12,8 @@ public enum CurrentLineHighlightMode
     NumberOnly = 1,
 
     /// <summary>Highlight the entire line background.</summary>
-    WholeLine = 2
+    WholeLine = 2,
+
+    /// <summary>Highlight both gutter line number and the entire line background.</summary>
+    NumberAndWholeLine = 3
 }
