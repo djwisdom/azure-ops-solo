@@ -3763,7 +3763,81 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             scanProgressBar.Value = 0;
             statusStrip.BackColor = _originalStatusBarColor;
             UpdateWorkspaceStatus();
+            DetectAndSuggestProfile();
             ShowNotification("Workspace", "Folder scan complete");
+        }
+
+        private void DetectAndSuggestProfile()
+        {
+            try
+            {
+                // Only auto-suggest if the user is still on the Default profile
+                // (not if they explicitly selected a custom profile)
+                if (_currentProfile.Name != "Default") return;
+                if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot)) return;
+
+                string? detected = DetectLanguageFromWorkspace(_workspaceRoot);
+                if (detected == null) return;
+
+                // Try to find an existing profile whose name contains the detected language
+                string matchName = detected.ToLowerInvariant();
+                foreach (string pname in _profileManager.ProfileNames)
+                {
+                    if (pname == "Default") continue;
+                    if (pname.ToLowerInvariant().Contains(matchName))
+                    {
+                        var profile = _profileManager.LoadProfile(pname);
+                        if (profile != null)
+                        {
+                            ApplyProfile(profile);
+                            ShowNotification("Profile", $"Auto-switched to profile: {pname}");
+                            return;
+                        }
+                    }
+                }
+
+                // No matching profile found — suggest creating one
+                ShowNotification("Profile", $"Detected {detected} project — create a profile from File > Preferences > Profile");
+            }
+            catch { }
+        }
+
+        private static string? DetectLanguageFromWorkspace(string root)
+        {
+            try
+            {
+                // Check for common project files (top-level only for speed)
+                foreach (string f in Directory.EnumerateFiles(root, "*.*", SearchOption.TopDirectoryOnly))
+                {
+                    string name = Path.GetFileName(f).ToLowerInvariant();
+
+                    if (name.EndsWith(".csproj") || name == "*.sln")
+                        return "C#";
+
+                    if (name.EndsWith(".py") || name == "requirements.txt" || name == "setup.py")
+                        return "Python";
+
+                    if (name == "cmakelists.txt" || name.EndsWith(".cpp") || name.EndsWith(".c") || name.EndsWith(".h"))
+                        return "C++";
+
+                    if (name == "cargo.toml")
+                        return "Rust";
+
+                    if (name == "package.json")
+                        return "JavaScript";
+
+                    if (name.EndsWith(".go"))
+                        return "Go";
+
+                    if (name.EndsWith(".rs"))
+                        return "Rust";
+
+                    if (name.EndsWith(".java") || name == "pom.xml" || name == "build.gradle")
+                        return "Java";
+                }
+            }
+            catch { }
+            return null;
         }
 
         private void OnWorkspaceScanProgressChanged(string message)
@@ -5006,6 +5080,39 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 SwitchToTab(newIndex);
         }
 
+        // Close a specific tab by index without switching to it first.
+        // This avoids the "content disappears then reappears" flicker that
+        // happens when selecting + closing a non-active tab.
+        private void CloseTabAt(int index)
+        {
+            if (documents.Count <= 1) return;
+            if (index < 0 || index >= documents.Count) return;
+
+            // If it's the active tab, delegate to CloseCurrentTab
+            if (index == activeDocIndex) { CloseCurrentTab(); return; }
+
+            var doc = documents[index];
+            if (doc.IsDirty)
+            {
+                var result = ThemedMessageBox.Show(
+                    $"Save changes to \"{doc.DisplayName}\"?",
+                    "Close Tab", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                if (result == DialogResult.Cancel) return;
+                if (result == DialogResult.Yes)
+                {
+                    try { File.WriteAllText(doc.FilePath!, doc.Content); } catch { }
+                }
+            }
+
+            // Remove document and tab
+            documents.RemoveAt(index);
+            tabControl.TabPages.RemoveAt(index);
+
+            // Adjust activeDocIndex if the removed tab was before the active one
+            if (index < activeDocIndex)
+                activeDocIndex--;
+        }
+
         // Switch to document at given index (0-based)
         internal void SwitchToTab(int index)
         {
@@ -5132,8 +5239,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
                         if (btnRect.Contains(e.Location))
                         {
-                            tabControl.SelectedIndex = i;
-                            CloseCurrentTab();
+                            CloseTabAt(i);
                             return;
                         }
                         // Otherwise start potential drag
@@ -5259,8 +5365,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 var rect = tabControl.GetTabRect(i);
                 if (rect.Contains(location))
                 {
-                    tabControl.SelectedIndex = i;
-                    CloseCurrentTab();
+                    CloseTabAt(i);
                     break;
                 }
             }
