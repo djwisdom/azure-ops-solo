@@ -13,7 +13,6 @@ public sealed class MultiCaretManager
     private bool _active;
     private int _lastTextLength;
     private int _lastSelectionStart;
-    private string? _pendingInsertText;
 
     public bool Active => _active;
     public IReadOnlyList<int> Carets => _carets;
@@ -80,7 +79,6 @@ public sealed class MultiCaretManager
     {
         _carets.Clear();
         _active = false;
-        _pendingInsertText = null;
         _editor.Invalidate();
     }
 

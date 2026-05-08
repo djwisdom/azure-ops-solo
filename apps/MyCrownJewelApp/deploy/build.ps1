@@ -23,7 +23,7 @@
 
 param(
     [switch]$NoBuild,
-    [string]$Version = "1.0.19.0"
+    [string]$Version = "1.0.20.0"
 )
 
 $ErrorActionPreference = "Stop"

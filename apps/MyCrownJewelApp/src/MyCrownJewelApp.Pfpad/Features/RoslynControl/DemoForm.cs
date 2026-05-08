@@ -41,13 +41,6 @@ public sealed class DemoForm : Form
         _restartBtn.Click += async (s, e) => await _roslynService.RestartAnalyzersAsync();
 
         _toggleBtn = new Button { Text = "Toggle Analyzers", AutoSize = true };
-        _toggleBtn.Click += async (s, e) =>
-        {
-            bool newState = !_roslynService.AreAnalyzersEnabled;
-            await _roslynService.SetAnalyzersEnabledAsync(newState);
-            _toggleBtn.Text = newState ? "Toggle Analyzers (ON)" : "Toggle Analyzers (OFF)";
-            _toggleStateLabel.Text = newState ? "Analyzers: ON" : "Analyzers: OFF";
-        };
 
         _visualizerBtn = new Button { Text = "Open Visualizer (Ctrl+Alt+V)", AutoSize = true };
         _visualizerBtn.Click += (s, e) =>
@@ -71,6 +64,14 @@ public sealed class DemoForm : Form
             new Label { Text = "  ", AutoSize = true },
             _statusLabel,
         ]);
+
+        _toggleBtn.Click += async (s, e) =>
+        {
+            bool newState = !_roslynService.AreAnalyzersEnabled;
+            await _roslynService.SetAnalyzersEnabledAsync(newState);
+            _toggleBtn.Text = newState ? "Toggle Analyzers (ON)" : "Toggle Analyzers (OFF)";
+            _toggleStateLabel.Text = newState ? "Analyzers: ON" : "Analyzers: OFF";
+        };
 
         _editor = new RichTextBox
         {

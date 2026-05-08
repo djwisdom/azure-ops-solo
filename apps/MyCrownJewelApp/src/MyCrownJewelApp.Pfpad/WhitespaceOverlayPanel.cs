@@ -175,7 +175,7 @@ public sealed class WhitespaceOverlayForm : Form
                 if (spaceCount == 0 && !hasNewline)
                     continue;
 
-                int[] positions = null;
+                int[]? positions = null;
                 if (spaceCount > 0)
                 {
                     positions = new int[spaceCount];

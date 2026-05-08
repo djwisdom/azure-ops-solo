@@ -174,6 +174,7 @@ public class GutterPanel : Panel
         {
             _showFoldMarkers = inFoldMargin;
             _hoveredActionLine = newHoverLine;
+            _gutterDataDirty = true;
             Invalidate();
         }
     }

@@ -65,7 +65,7 @@ public sealed class AnalyzerController : IDisposable
                 var compilationWithAnalyzers = compilation.WithAnalyzers(
                     analyzers,
                     new CompilationWithAnalyzersOptions(
-                        null,
+                        null!,
                         (ex, analyzer, diag) =>
                             Debug.WriteLine($"[AnalyzerController] Analyzer '{analyzer}' threw: {ex.Message}"),
                         concurrentAnalysis: true,
@@ -160,7 +160,7 @@ public sealed class AnalyzerController : IDisposable
             return [.. project.AnalyzerReferences
                 .SelectMany(ar =>
                 {
-                    try { return ar.GetGenerators(); }
+                    try { return ar.GetGeneratorsForAllLanguages().OfType<ISourceGenerator>(); }
                     catch { return []; }
                 })
                 .OfType<ISourceGenerator>()];

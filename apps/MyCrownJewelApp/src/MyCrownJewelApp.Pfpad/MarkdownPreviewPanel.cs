@@ -9,7 +9,6 @@ namespace MyCrownJewelApp.Pfpad;
 public sealed class MarkdownPreviewPanel : Panel
 {
     private readonly WebBrowser _browser;
-    private readonly ToolStrip _headerStrip;
     private readonly ToolStripLabel _headerLabel;
     private readonly Button _closeButton;
     private string _currentSource = "";
