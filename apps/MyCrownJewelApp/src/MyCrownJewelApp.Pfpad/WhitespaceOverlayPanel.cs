@@ -10,7 +10,6 @@ public sealed class WhitespaceOverlayForm : Form
     private RichTextBox? linkedEditor;
     private Color glyphColor = Color.FromArgb(180, 180, 180);
     private bool showGlyphs = false;
-    private System.Windows.Forms.Timer? _syncTimer;
     private Form? _ownerForm;
 
     public Form? OwnerForm
@@ -35,9 +34,6 @@ public sealed class WhitespaceOverlayForm : Form
 
         SetStyle(ControlStyles.SupportsTransparentBackColor, false);
         DoubleBuffered = true;
-
-        _syncTimer = new System.Windows.Forms.Timer { Interval = 150 };
-        _syncTimer.Tick += (s, e) => SyncPosition();
     }
 
     protected override CreateParams CreateParams
@@ -95,12 +91,10 @@ public sealed class WhitespaceOverlayForm : Form
                     Show(_ownerForm);
                 else
                     Visible = true;
-                _syncTimer?.Start();
                 Invalidate();
             }
             else
             {
-                _syncTimer?.Stop();
                 Visible = false;
             }
         }
@@ -108,6 +102,7 @@ public sealed class WhitespaceOverlayForm : Form
 
     private void OnEditorChanged(object? sender, EventArgs e)
     {
+        if (!showGlyphs) return;
         SyncPosition();
         Invalidate();
     }
@@ -117,7 +112,6 @@ public sealed class WhitespaceOverlayForm : Form
     {
         if (linkedEditor == null || linkedEditor.IsDisposed || !linkedEditor.Visible || !showGlyphs)
         {
-            _syncTimer?.Stop();
             Visible = false;
             return;
         }
@@ -169,22 +163,50 @@ public sealed class WhitespaceOverlayForm : Form
 
                 int y = baseY + (lineIdx - firstVisible) * lineHeight;
 
+                int spaceCount = 0;
+                for (int i = 0; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (c == ' ' || c == '\t')
+                        spaceCount++;
+                }
+                bool hasNewline = lineStartIdx + line.Length < editor.TextLength;
+
+                if (spaceCount == 0 && !hasNewline)
+                    continue;
+
+                int[] positions = null;
+                if (spaceCount > 0)
+                {
+                    positions = new int[spaceCount];
+                    int idx = 0;
+                    for (int i = 0; i < line.Length; i++)
+                    {
+                        char c = line[i];
+                        if (c == ' ' || c == '\t')
+                        {
+                            Point p = editor.GetPositionFromCharIndex(lineStartIdx + i);
+                            positions[idx++] = p.IsEmpty ? -1 : p.X;
+                        }
+                    }
+                }
+
+                int posIdx = 0;
                 for (int i = 0; i < line.Length; i++)
                 {
                     char c = line[i];
                     if (c == ' ' || c == '\t')
                     {
-                        Point p = editor.GetPositionFromCharIndex(lineStartIdx + i);
-                        if (p == Point.Empty) continue;
-                        p.Y = y;
+                        int x = positions?[posIdx++] ?? -1;
+                        if (x < 0) continue;
                         string symbol = c == ' ' ? "\u00B7" : "\u2192";
-                        TextRenderer.DrawText(g, symbol, glyphFont, p, glyphColor, flags);
+                        TextRenderer.DrawText(g, symbol, glyphFont, new Point(x, y), glyphColor, flags);
                     }
                 }
 
-                int newlineIdx = lineStartIdx + line.Length;
-                if (newlineIdx < editor.TextLength)
+                if (hasNewline)
                 {
+                    int newlineIdx = lineStartIdx + line.Length;
                     Point pNew = editor.GetPositionFromCharIndex(newlineIdx);
                     if (pNew != Point.Empty)
                     {
@@ -207,8 +229,6 @@ public sealed class WhitespaceOverlayForm : Form
     {
         if (disposing)
         {
-            _syncTimer?.Stop();
-            _syncTimer?.Dispose();
             if (linkedEditor != null && !linkedEditor.IsDisposed)
                 linkedEditor.Disposed -= OnEditorDisposed;
         }

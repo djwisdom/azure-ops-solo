@@ -31,6 +31,7 @@ namespace MyCrownJewelApp.Pfpad
         private Bitmap? _fullMap;
         private bool _mapDirty = true;
         private int _mapGeneration;
+        private int _lastPollVersion;
 
         private const float PixelsPerLine = 2f;
         private const float LineContentHeight = 1f;
@@ -60,7 +61,7 @@ namespace MyCrownJewelApp.Pfpad
             Width = MinimapWidth;
             MinimumSize = new Size(40, 0);
 
-            _pollTimer = new System.Windows.Forms.Timer { Interval = 150 };
+            _pollTimer = new System.Windows.Forms.Timer { Interval = 300 };
             _pollTimer.Tick += (s, e) => PollEditor();
         }
 
@@ -166,8 +167,9 @@ namespace MyCrownJewelApp.Pfpad
         private void PollEditor()
         {
             if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
+
             int total = CountLines();
-            if (total != _totalLines) { _totalLines = total; MarkDirty(); Invalidate(); }
+            if (total != _totalLines) { _totalLines = total; MarkDirty(); }
 
             int firstVis = GetFirstVisibleLine();
             var editor = _attachedEditor;
@@ -195,12 +197,16 @@ namespace MyCrownJewelApp.Pfpad
             int vpH = Math.Max(3, (int)(visibleLines * PixelsPerLine));
             vpH = Math.Min(vpH, Height - vpY);
             var newRect = new Rectangle(0, Math.Max(0, vpY), Width, Math.Max(2, vpH));
-            if (newRect != _viewportRect)
-            {
-                _viewportRect = newRect;
-                Invalidate();
+
+            int version = _mapDirty ? _mapGeneration : -1;
+            if (newRect == _viewportRect && version == _lastPollVersion && _lastPollVersion >= 0)
+                return;
+
+            _lastPollVersion = version;
+            _viewportRect = newRect;
+            Invalidate();
+            if (version >= 0)
                 RaiseViewportChanged();
-            }
         }
 
         private void RaiseViewportChanged()
