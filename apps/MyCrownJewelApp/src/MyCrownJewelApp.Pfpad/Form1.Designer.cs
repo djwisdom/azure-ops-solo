@@ -746,10 +746,12 @@ partial class Form1
         fileTypeLabel = new ToolStripStatusLabel("");
         fileTypeLabel.Spring = false;
         fileTypeLabel.AutoSize = false;
-        fileTypeLabel.Width = 60;
+        fileTypeLabel.Width = 80;
         fileTypeLabel.Padding = new Padding(4, 1, 4, 1);
         fileTypeLabel.TextAlign = ContentAlignment.MiddleRight;
         fileTypeLabel.Alignment = ToolStripItemAlignment.Right;
+        fileTypeLabel.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+        fileTypeLabel.ImageAlign = ContentAlignment.MiddleLeft;
 
         statusStrip.Items.Add(vimModeLabel);
         statusStrip.Items.Add(lineColLabel);

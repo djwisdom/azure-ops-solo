@@ -104,7 +104,8 @@ internal sealed class WorkspacePanel : UserControl
             HideSelection = false,
             LabelEdit = false,
             Indent = 16,
-            ItemHeight = 20
+            ItemHeight = 20,
+            ImageList = FileIconProvider.ImageList
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
@@ -478,8 +479,8 @@ internal sealed class WorkspacePanel : UserControl
         var node = new TreeNode(Path.GetFileName(dirPath))
         {
             Tag = dirPath,
-            ImageIndex = -1,
-            SelectedImageIndex = -1
+            ImageIndex = FileIconProvider.FolderIconIndex,
+            SelectedImageIndex = FileIconProvider.FolderIconIndex
         };
         // Add a dummy child so the expand arrow shows
         node.Nodes.Add(new TreeNode("Loading..."));
@@ -498,11 +499,12 @@ internal sealed class WorkspacePanel : UserControl
 
     private static TreeNode CreateFileNode(string filePath)
     {
+        int iconIdx = FileIconProvider.GetIconIndex(filePath);
         return new TreeNode(Path.GetFileName(filePath))
         {
             Tag = filePath,
-            ImageIndex = -1,
-            SelectedImageIndex = -1
+            ImageIndex = iconIdx,
+            SelectedImageIndex = iconIdx
         };
     }
 

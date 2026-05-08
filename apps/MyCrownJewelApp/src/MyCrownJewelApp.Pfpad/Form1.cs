@@ -5731,11 +5731,24 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 e.Graphics.FillRectangle(brush, tabRect);
             }
 
-            // Tab text — reserve space for close button. Same positioning as terminal tabs.
+            // Tab icon
+            var doc = e.Index < documents.Count ? documents[e.Index] : null;
+            if (doc?.FilePath != null)
+            {
+                int iconIdx = FileIconProvider.GetIconIndex(doc.FilePath);
+                if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
+                {
+                    var iconRect = new Rectangle(tabRect.X + 4, tabRect.Y + 2, 16, 16);
+                    e.Graphics.DrawImage(FileIconProvider.ImageList.Images[iconIdx], iconRect);
+                }
+            }
+
+            // Tab text — reserve space for icon + close button
             string text = tabControl.TabPages[e.Index].Text;
+            int textOffset = doc?.FilePath != null ? 22 : 4;
             var textRect = new Rectangle(
-                tabRect.X + 4, tabRect.Y + 3,
-                tabRect.Right - 17 - tabRect.X - 10, tabRect.Height - 4);
+                tabRect.X + textOffset, tabRect.Y + 3,
+                tabRect.Right - 17 - tabRect.X - textOffset - 6, tabRect.Height - 4);
 
             TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
                 isSelected ? theme.Text : theme.Muted,
@@ -6332,6 +6345,24 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 fileType = def?.Name ?? "Plain Text";
             }
             fileTypeLabel.Text = fileType;
+
+            // Set file type icon
+            try
+            {
+                if (!string.IsNullOrEmpty(currentFilePath))
+                {
+                    int iconIdx = FileIconProvider.GetIconIndex(currentFilePath);
+                    if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
+                        fileTypeLabel.Image = FileIconProvider.ImageList.Images[iconIdx];
+                    else
+                        fileTypeLabel.Image = null;
+                }
+                else
+                {
+                    fileTypeLabel.Image = null;
+                }
+            }
+            catch { fileTypeLabel.Image = null; }
 }
 
         private void UpdateTabControlTheme()
