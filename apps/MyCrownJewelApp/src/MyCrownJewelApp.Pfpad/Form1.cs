@@ -962,7 +962,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   _workspacePanel.FileOpenRequested += (path) =>
                   {
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                          OpenFileInNewTab(path);
+                          OpenFileInNewTabAsync(path);
                   };
                   _workspacePanel.CloseRequested += () => ToggleWorkspace();
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
@@ -4906,6 +4906,79 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 ThemedMessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        // Open file asynchronously — shows tab immediately, loads content in background
+        internal void OpenFileInNewTabAsync(string path)
+        {
+            if (!File.Exists(path)) return;
+            var syntax = SyntaxDefinition.GetDefinitionForFile(path);
+            var doc = new Document
+            {
+                FilePath = path,
+                Content = "",
+                IsDirty = false,
+                ModifiedLines = new HashSet<int>(),
+                Bookmarks = new HashSet<int>(),
+                CollapsedRegions = new HashSet<int>(),
+                SavedHash = "",
+                LastWriteTime = File.GetLastWriteTimeUtc(path),
+                SelectionStart = 0,
+                SelectionLength = 0,
+                FirstVisibleLine = 0,
+                Syntax = syntax
+            };
+            documents.Add(doc);
+            int newIndex = documents.Count - 1;
+            var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+            tabControl.TabPages.Add(tabPage);
+            tabControl.SelectedIndex = newIndex;
+            activeDocIndex = newIndex;
+            EnsureSelectedTabVisible();
+
+            // Read file content on background thread, then populate editor
+            Task.Run(() =>
+            {
+                try
+                {
+                    string content = File.ReadAllText(path);
+                    return content;
+                }
+                catch { return null; }
+            }).ContinueWith(t =>
+            {
+                if (t.Result == null) return;
+                string content = t.Result;
+                BeginInvoke(() =>
+                {
+                    if (IsDisposed || activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
+                    var d = documents[activeDocIndex];
+                    if (d.FilePath != path) return;
+                    d.Content = content;
+                    d.SavedHash = ComputeContentHash(content);
+
+                    // Only update if this tab is currently active
+                    if (activeDocIndex == tabControl.SelectedIndex && tabControl.SelectedIndex >= 0)
+                    {
+                        if (textEditor != null && !textEditor.IsDisposed && textEditor.IsHandleCreated)
+                        {
+                            textEditor.TextChanged -= TextEditor_TextChanged;
+                            textEditor.Text = content;
+                            textEditor.TextChanged += TextEditor_TextChanged;
+                            savedContentHash = d.SavedHash;
+                            isModified = false;
+
+                            // Re-highlight and update UI
+                            CreateIncrementalHighlighter();
+                            UpdateStatusBar();
+                            UpdateTabTitle(activeDocIndex);
+                            UpdateThemeColors(_currentTheme);
+                            UpdateBreadcrumbs();
+                        }
+                    }
+                    ForceCleanState();
+                });
+            });
         }
 
         // Close current tab
