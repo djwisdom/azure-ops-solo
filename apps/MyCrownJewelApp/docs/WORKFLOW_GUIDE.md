@@ -107,7 +107,7 @@ This is the **primary entry point** for all Pfpad workflows. Every feature (symb
 | **Panel → Open Folder** (`Ctrl+Alt+O`) | Standard WinForms `FolderBrowserDialog` with title "Select a folder to open as workspace" | Sets workspace root, populates tree, triggers symbol index rebuild |
 | **Drag folder** onto Workspace panel | Drag from Explorer, drop on tree | Replaces current workspace root |
 | **Drag folder** onto editor title bar | Drag from Explorer, drop on title bar | Opens folder as workspace (same as above) |
-| **Launch with command-line args** | `Pfpad.exe "C:\path\to\folder"` | No — command-line args are treated as **files** to open, not folders |
+| **Launch with command-line args** | `Pfpad.exe "C:\path\to\folder"` | ✅ — directory args set workspace root; file args open as tabs |
 
 #### What Happens When You Open a Folder
 
@@ -196,7 +196,7 @@ If no folder has been opened (fresh launch with no command-line args), the works
 
 | Feature | Impact |
 |---------|--------|
-| **No folder-from-command-line** — `Pfpad.exe .` does nothing folder-wise | Must use `Ctrl+Alt+O` after launch |
+| ~~**No folder-from-command-line** — `Pfpad.exe .` does nothing folder-wise~~ | ✅ Fixed in 1.0.18 — directory args set workspace root |
 | **No "Open Folder" from File menu** — it's under the Panel menu | Non-obvious location for new users |
 | **No recent folders list** — only recent files | Must navigate to project folder each time |
 | **No solution-filtered view** — tree shows ALL text files, not just project files | Cluttered for large repos with mixed file types |
@@ -379,9 +379,13 @@ For simple workflows (stage → commit → push), the Source Control panel is su
 
 ### 6.1 Cloning Remote Repositories
 
-**Pfpad has no "Clone Repository" feature.** Not for GitHub, Azure DevOps, GitLab, Bitbucket, OneDev, Codeberg, Radicle, Gitea, Google Cloud Source Repositories, AWS CodeCommit, Launchpad, or any other hosting platform. The word "clone" does not appear anywhere in the codebase in a git-related context.
+**Pfpad has a Clone Repository dialog** (`Ctrl+Shift+C`) for GitHub, Azure DevOps, GitLab, Bitbucket, OneDev, Codeberg, Radicle, Gitea, Google Cloud Source Repositories, AWS CodeCommit, Launchpad, and any other git hosting platform.
 
-The `GitService.cs` class (backed by LibGit2Sharp) has no `Clone()` method, no `CloneOptions`, no remote URL input dialog, and no credential/authentication management whatsoever.
+The `CloneRepositoryDialog.cs` class provides a simple UI: enter the remote URL, pick a local path, and click Clone. It runs `git clone` in a background process with output streaming. On success, it auto-opens the cloned folder as the workspace root.
+
+For platforms where system git credential helpers are configured (GCM, SSH agent), authentication is handled transparently. For platforms that require manual PAT or SSH setup, credentials must be configured externally before using the dialog.
+
+The `GitService.cs` class (backed by LibGit2Sharp) has full support for local git operations via its `Clone()` method:
 
 #### Current Workflow
 
@@ -462,7 +466,7 @@ Once a repo is cloned externally and opened in Pfpad:
 
 | Gap | Impact |
 |-----|--------|
-| **No Clone dialog** — no way to enter a remote URL, pick a local path, and clone from within Pfpad | Must leave the editor to clone |
+| ~~**No Clone dialog** — no way to enter a remote URL, pick a local path, and clone from within Pfpad~~ | ✅ Fixed in 1.0.18 — `Ctrl+Shift+C` opens CloneRepositoryDialog, auto-opens folder |
 | **No credential management** — no username/password prompt, no PAT input, no SSH key config, no token storage | Remote ops silently fail if system credentials aren't cached |
 | **No remote management UI** — no way to add/change/remove remotes | Must use `git remote` CLI |
 | **No hosted-provider integration** — no OAuth flow for GitHub/Azure DevOps/GitLab/Bitbucket | No "Sign in with GitHub" flow |
@@ -506,18 +510,19 @@ Here is the complete end-to-end workflow as it exists today, from blank screen t
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  PHASE 0: CLONE (EXTERNAL)                             │
+│  PHASE 0: CLONE (VIA Pfpad)                             │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│  1. Open terminal (OS, not Pfpad)                       │
-│  2. git clone <remote-url> ./FlipCalc                   │
-│     (GitHub, Azure DevOps, GitLab, Bitbucket, etc.)     │
-│  3. Ctrl+Alt+O      Open Folder → select FlipCalc/      │
-│  4. GitService      Auto-detects .git, shows branch     │
-│  5. Ctrl+Alt+G      Source Control panel ready          │
+│  1. Ctrl+Shift+C    Open Clone Repository dialog        │
+│  2. Enter remote URL (GitHub, Azure DevOps, etc.)       │
+│  3. Browse or type local path                           │
+│  4. Click Clone → background git clone with progress    │
+│  5. On success: auto-opens folder as workspace          │
+│  6. GitService      Auto-detects .git, shows branch     │
+│  7. Ctrl+Alt+G      Source Control panel ready          │
 │                                                         │
-│  NOTE: Pfpad has NO clone feature. Must clone           │
-│  externally. This is the #1 missing Git operation.      │
+│  (Optional: still works to clone externally via         │
+│   terminal and Ctrl+Alt+O to open)                     │
 │                                                         │
 ├─────────────────────────────────────────────────────────┤
 │  CONTINUE TO PHASE 2: EDIT (same as Path A)            │
@@ -623,9 +628,9 @@ These are the most impactful workflow gaps, extracted from `SOLUTION_IDE_ASSESSM
 |-----|--------|------------|
 | **No "New Project" wizard** | Must use terminal to scaffold projects | `dotnet new` in terminal panel |
 | **No solution (.sln) creation/management** | No multi-project orchestration, no build order, no solution explorer | `dotnet new sln && dotnet sln add` in terminal |
-| **No Clone Repository** | Can't clone any remote repo from within Pfpad | `git clone` in terminal, then `Ctrl+Alt+O` to open |
+| ~~**No Clone Repository**~~ | ✅ Fixed 1.0.18 — `Ctrl+Shift+C` opens clone dialog, auto-opens folder | `CloneRepositoryDialog.cs` |
 | **No credential management** | Remote fetch/pull/push silently fail if system git credentials aren't cached | Configure `git-credential-manager` or SSH agent externally |
-| **No workspace root from CLI args** | `Pfpad.exe .` doesn't set workspace; must `Ctrl+Alt+O` after launch | Launch, then open folder manually |
+| ~~**No workspace root from CLI args**~~ | ✅ Fixed 1.0.18 — `Pfpad.exe .` sets workspace root | Directory detection in `Form1.cs` constructor |
 | **No recent folders list** | Must navigate to project folder each time | Bookmark in Windows Explorer |
 | **No multi-root workspace** | Only one folder open at a time | Switch roots manually |
 | **Open Folder is under Panel menu (not File)** | Non-obvious location for new users | Memorize `Ctrl+Alt+O` |

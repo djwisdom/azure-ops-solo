@@ -1,7 +1,7 @@
 # Personal Flip Pad — Feature Tracker
 
-**Current version:** 1.0.10.0
-**Last updated:** 2026-05-06
+**Current version:** 1.0.18.0
+**Last updated:** 2026-05-08
 
 ## Legend
 
@@ -22,6 +22,7 @@
 | New Window | `Ctrl+Shift+N` | `Form1.cs` | ✅ | 1.0.0.0 | Launches new process |
 | Open | `Ctrl+O` | `Form1.cs` | ✅ | 1.0.0.0 | Theme-aware dialog |
 | Recent Files | — | `Form1.cs` | ✅ | 1.0.0.0 | Last 10, persisted, "Clear Recent" |
+| Clone Repository | `Ctrl+Shift+C` | `CloneRepositoryDialog.cs`, `Form1.cs` | ✅ | 1.0.18.0 | URL + path picker + background git clone, auto-opens folder |
 | Save | `Ctrl+S` | `Form1.cs` | ✅ | 1.0.0.0 | Falls back to Save As if no path |
 | Save As | `Ctrl+Shift+S` | `Form1.cs` | ✅ | 1.0.0.0 | — |
 | Save All | `Ctrl+Alt+S` | `Form1.cs` | ✅ | 1.0.0.0 | Currently saves active file only |
@@ -29,6 +30,7 @@
 | Close Window | `Ctrl+Shift+W` | `Form1.cs` | ✅ | 1.0.0.0 | — |
 | Close All | `Ctrl+Alt+W` | `Form1.cs` | ✅ | 1.0.0.0 | Prompt for all modified |
 | Exit | — | `Form1.cs` | ✅ | 1.0.0.0 | — |
+| Open Folder from CLI | `Pfpad.exe <folder>` | `Form1.cs` | ✅ | 1.0.18.0 | Directory args set workspace root; flag prevents LoadSettings override |
 
 ## 2. Edit Operations
 
@@ -117,6 +119,12 @@
 | Light Owl | `ThemeManager.cs` | ✅ | 1.0.0.0 | Light |
 | Ayu Light | `ThemeManager.cs` | ✅ | 1.0.0.0 | Light |
 | Bluloco Light | `ThemeManager.cs` | ✅ | 1.0.0.0 | Light |
+| GitHub Dark | `ThemeManager.cs` | ✅ | 1.0.18.0 | Dark — official GitHub dark mode |
+| One Monokai | `ThemeManager.cs` | ✅ | 1.0.18.0 | Dark — Monokai-inspired |
+| Noctis Luxurious | `ThemeManager.cs` | ✅ | 1.0.18.0 | Dark — deep blue-gray |
+| Panda Dark | `ThemeManager.cs` | ✅ | 1.0.18.0 | Dark — teal/pink syntax |
+| 2077 (Cyberpunk) | `ThemeManager.cs` | ✅ | 1.0.18.0 | Dark — neon cyberpunk |
+| Moonlight | `ThemeManager.cs` | ✅ | 1.0.18.0 | Dark — frost blue tones |
 | Theme persistence | `ThemeManager.cs`, `Form1.cs` | ✅ | 1.0.0.0 | `settings.json` in `%APPDATA%` |
 | Theme-aware dialogs | `ThemedDialogs.cs` | ✅ | 1.0.0.0 | — |
 | Theme-aware menu | `ThemeAwareMenuRenderer.cs` | ✅ | 1.0.0.0 | — |
@@ -126,6 +134,7 @@
 | Feature | Shortcut | Source File(s) | Status | Version | Notes |
 |---------|----------|---------------|--------|---------|-------|
 | Open Folder | `Ctrl+Alt+O` | `Form1.cs` | ✅ | 1.0.0.0 | Sets workspace root |
+| Open Folder from CLI | `Pfpad.exe <folder>` | `Form1.cs` | ✅ | 1.0.18.0 | Directory CLI arg sets workspace root |
 | Workspace Panel | `Ctrl+Shift+W` | `WorkspacePanel.cs` | ✅ | 1.0.0.0 | Lazy-load file tree, 5s auto-refresh |
 | Source Control Panel | `Ctrl+Alt+G` | `GitPanel.cs`, `GitService.cs` | ✅ | 1.0.0.0 | LibGit2Sharp, stage/commit/push |
 | Source Control Window | `Ctrl+Shift+G` | `GitForm.cs` | ✅ | 1.0.0.0 | Standalone git form |
@@ -239,6 +248,7 @@
 | settings.json in %APPDATA% | `Form1.cs` | ✅ | 1.0.0.0 | Theme, tabs, font, panels, external tools |
 | Recent files (recent.txt) | `Form1.cs` | ✅ | 1.0.0.0 | Last 10 |
 | Auto-save on toggle | `Form1.cs` | ✅ | 1.0.0.0 | — |
+| Session restore | `SessionManager.cs`, `Form1.cs` | ✅ | 1.0.18.0 | Saves open files, cursor/scroll, active tab, workspace path on close; restores on Shown |
 
 ## 17. Installer & Deployment
 
@@ -297,3 +307,8 @@
 | Terraform 1.14.7 → 1.15.1 | ✅ | — | `required_version` bumped in infra/main.tf |
 | Test suite run | ✅ | — | 81 passed, 1 skipped, 0 failed |
 | Integrated debugger v1 (.NET via DAP/netcoredbg) | ✅ | 1.0.10.0 | DAP client, breakpoints, call stack, variables, watches, step/continue/stop, F5/F9/F10/F11 shortcuts, gutter decorations |
+| Session restore | ✅ | 1.0.18.0 | SessionManager.cs: saves open files/cursor/scroll/tab/workspace on close, restores on Shown |
+| CLI workspace folder | ✅ | 1.0.18.0 | `Pfpad.exe <folder>` sets workspace root; _workspaceRootFromCli flag prevents LoadSettings override |
+| Clone repository dialog | ✅ | 1.0.18.0 | CloneRepositoryDialog.cs: URL + path picker + background git clone with output streaming, auto-opens folder |
+| Dirty flag line-ending fix | ✅ | 1.0.18.0 | LoadDocument recomputes savedContentHash from post-normalization textEditor.Text to match RTB line-ending conversion |
+| 6 new dark themes | ✅ | 1.0.18.0 | GitHub Dark, One Monokai, Noctis Luxurious, Panda Dark, 2077 (Cyberpunk), Moonlight |

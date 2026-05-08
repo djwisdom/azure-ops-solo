@@ -4312,6 +4312,18 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             textEditor.Text = doc.Content ?? "";
             textEditor.SelectionStart = doc.SelectionStart;
             textEditor.SelectionLength = doc.SelectionLength;
+
+            // Recompute hash from post-normalization textEditor.Text
+            // RichTextBox normalizes line endings (\n → \r\n on Windows);
+            // the original doc.SavedHash was computed from the raw file string.
+            savedContentHash = ComputeContentHash();
+            doc.SavedHash = savedContentHash;
+
+            // Force scrollbar recalculation — native RichEdit can miss extents after .Text set
+            textEditor.WordWrap = !wordWrapEnabled;
+            textEditor.WordWrap = wordWrapEnabled;
+            textEditor.Refresh();
+
             textEditor.TextChanged += TextEditor_TextChanged;
 
             // Restore scroll position
@@ -4323,11 +4335,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 SendMessage(textEditor.Handle, WM_VSCROLL, (IntPtr)SB_TOP, IntPtr.Zero);
             }
-
-            // Force scrollbar recalculation — native RichEdit can miss extents after .Text set
-            textEditor.WordWrap = !wordWrapEnabled;
-            textEditor.WordWrap = wordWrapEnabled;
-            textEditor.Refresh();
 
             // Recreate syntax highlighter based on current syntax
             CreateIncrementalHighlighter();
@@ -5364,7 +5371,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void TextEditor_VScroll(object? sender, EventArgs e)
         {
             if (gutterPanel != null) gutterPanel.RefreshGutter();
-            textEditor.Invalidate();
             _scrollHighlightTimer?.Stop();
             _scrollHighlightTimer?.Start();
             UpdateStickyHeaders();

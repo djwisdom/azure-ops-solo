@@ -7,7 +7,7 @@
 #define MyAppName "Personal Flip Pad"
 #define MyAppShortName "Pfpad"
 #define MyAppExeName "MyCrownJewelApp.Pfpad.exe"
-#define MyAppVersion "1.0.18.0"
+#define MyAppVersion "1.0.19.0"
 #define MyAppPublisher "Personal Flip Pad"
 #define MyAppURL "https://github.com/casse/azure-ops-solo"
 #define MyAppAssocName "Source Code File"

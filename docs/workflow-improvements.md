@@ -1,7 +1,23 @@
 # Pfpad Workflow Improvements & Feature Recommendations
 
-Generated: 2026-05-08
-Target: Personal Flip Pad (Pfpad) — WinForms C# code editor
+**Generated:** 2026-05-08  
+**Target:** Personal Flip Pad (Pfpad) — WinForms C# code editor
+
+**Implementation status:** Several recommendations have been implemented since this document was written:
+- **P0 #1 Format Document** — ✅ implemented (4fae677)
+- **P0 #2 Auto-Save** — ✅ implemented (4fae677)  
+- **P0 #3 Git inline diff gutter** — ✅ implemented (aa51315)
+- **P1 #5 Session Restore** — ✅ implemented (0d8bdd8) via `SessionManager.cs`
+- **P1 #4 Command Palette** — ✅ implemented (4fae677) via `CommandPaletteForm.cs`
+- **P1 #6 Snippet Expansion** — ✅ implemented (4fae677) via `SnippetEngine.cs`
+- **P1 #7 File Watcher** — ✅ implemented (4fae677)
+- **P2 #9 Error Lens** — ✅ implemented (4fae677)
+- **P2 #10 Multi-Caret Editing** — ✅ implemented (4fae677) via `MultiCaretManager.cs`
+- **P3 #11 Markdown Preview** — ✅ implemented (4fae677) via `MarkdownPreviewPanel.cs`
+- **P3 #12 Document Outline** — ✅ implemented (4fae677) via `OutlinePanel.cs`
+- **P3 #13 Zen Mode** — ✅ implemented (4fae677)
+
+Remaining unimplemented recommendations retain their original priority estimates below.
 
 ---
 

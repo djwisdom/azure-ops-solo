@@ -1,10 +1,10 @@
 # Project Memory — Azure Ops Solo
 
 ## Current State
-- **Last session:** 2026-05-05
-- **Last commit:** `22dbfdd` — docs: update MEMORY.md with AI-relevant context
-- **Branch:** master (200 commits), up to date with origin/master
-- **Active work:** Syntax highlighting improvements, Vim notification routing, minimap bar rendering, whitespace overlay visibility, terminal exit fix
+- **Last session:** 2026-05-08
+- **Last commit:** `0d8bdd8` — add session restore, CLI workspace folder, and clone repository dialog
+- **Branch:** master (~205 commits), up to date with origin/master
+- **Active work:** Session restore (auto-save/restore tabs + cursor), CLI workspace folder arg, clone repository dialog (Ctrl+Shift+C), dirty-flag line-ending normalization fix, 6 new dark themes (GitHub Dark, One Monokai, Noctis Luxurious, Panda Dark, 2077 Cyberpunk, Moonlight)
 - **Stashed work:** `stash@{0}` — "Fix Tab pushing view down" (wrap single-caret insert with BeginUpdate/EndUpdate)
 
 ## Toolchain
@@ -19,13 +19,13 @@
 | Active Azure | Subscription: "Visual Studio Subscription", Tenant: 76e3921f-489b-4b7e-9547-9ea297add9b5 |
 
 ## Repository Map
-- **`apps/MyCrownJewelApp/`** — Main C# WinForms WPF text editor (Personal FlipPad)
-  - `src/MyCrownJewelApp.Pfpad/` — The editor itself (~40 .cs files)
+- **`apps/MyCrownJewelApp/`** — Main C# WinForms text editor (Personal FlipPad) v1.0.18
+  - `src/MyCrownJewelApp.Pfpad/` — The editor itself (~45 .cs files + debugger/roslyn/treesitter)
   - `src/MyCrownJewelApp.Core/` — Core library
   - `src/MyCrownJewelApp.Terminal/` — Terminal/Avalonia UI pane
   - `src/MyCrownJewelApp.Web/` — ASP.NET Core web project
   - `tests/` — 6 test files: Terminal, DirtyFlag, Form1Features, IncrementalHighlighter, Indentation, SyntaxHighlightRegression
-  - `deploy/` — WiX installer (PersonalFlipPad-Setup-1.0.5.56.exe) + build.ps1
+  - `deploy/` — Inno Setup installer (PersonalFlipPad-Setup-1.0.18.0.exe) + build.ps1
 - **`infra/`** — Terraform (azurerm ~>3.0, backend config commented out)
 - **`bicep/`** — Bicep templates (resourceGroup, keyVault, appService)
 - **`pipelines/`** — Azure DevOps YAML (deploy-app, patch-vms, patch-aks)
@@ -33,13 +33,15 @@
 - **`dist/MyCrownJewelApp.TextEditor/`** — Prebuilt release binary with localized satellite assemblies
 
 ## Hot Files (frequently modified / high churn)
+- `src/MyCrownJewelApp.Pfpad/Form1.cs` — Main editor form, UI integration (~6900 lines)
 - `src/MyCrownJewelApp.Pfpad/IncrementalHighlighter.cs` — Core syntax highlighting engine
-- `src/MyCrownJewelApp.Pfpad/Form1.cs` — Main editor form, UI integration
+- `src/MyCrownJewelApp.Pfpad/ThemeManager.cs` — Theme system (22 themes)
+- `src/MyCrownJewelApp.Pfpad/SessionManager.cs` — Session restore (file/cursor/scroll persistence)
+- `src/MyCrownJewelApp.Pfpad/CloneRepositoryDialog.cs` — Clone repository dialog
 - `src/MyCrownJewelApp.Pfpad/MinimapControl.cs` — Minimap overlay
 - `src/MyCrownJewelApp.Pfpad/GitService.cs` + `GitPanel.cs` — Git integration (LibGit2Sharp)
 - `src/MyCrownJewelApp.Pfpad/VimEngine.cs` — Vim keybinding mode
 - `src/MyCrownJewelApp.Pfpad/SymbolIndexService.cs` — Go-to-definition indexer
-- `src/MyCrownJewelApp.Pfpad/ThemeManager.cs` — Theme system
 
 ## Test Health
 - **Test framework:** xUnit (.NET 8.0-windows)
@@ -49,7 +51,7 @@
 
 ## Environment Quirks & Windows-Specific Notes
 - `head` and `tail` are NOT available as native commands in PowerShell — use `Select-Object -First`/`-Last`
-- Build artifact: `deploy/PersonalFlipPad-Setup-1.0.5.56.exe` (untracked binary in git)
+- Build artifact: `deploy/PersonalFlipPad-Setup-1.0.18.0.exe` (untracked binary in git)
 - WPF/WinForms projects require `net8.0-windows` TFM
 - `dist/` contains a prebuilt release of the editor with localized satellite assemblies
 - Terraform backend config is commented out — state is currently local-only
@@ -68,14 +70,24 @@
 - **Wiz open findings:** (not recorded)
 
 ## Recent Decisions
+- 2026-05-08 — Session restore added (SessionManager.cs): saves open files + cursor/scroll/tab/workspace on FormClosing, restores on Shown. Skips when CLI args provided.
+- 2026-05-08 — CLI workspace folder: `Pfpad.exe <folder>` sets workspace root. Flag prevents LoadSettings() from overriding.
+- 2026-05-08 — Clone repository dialog (CloneRepositoryDialog.cs): URL + path picker + background git clone with output streaming. Ctrl+Shift+C in File menu.
+- 2026-05-08 — Dirty flag fix: LoadDocument now recomputes savedContentHash from textEditor.Text after line-ending normalization, preventing files from loading as dirty.
+- 2026-05-08 — 6 new dark themes: GitHub Dark, One Monokai, Noctis Luxurious, Panda Dark, 2077 (Cyberpunk), Moonlight. Theme count: 22 total.
 - 2026-05-05 — MEMORY.md revamped to include AI-relevant context, toolchain versions, hot files, conventions, and environment quirks
 
 ## Next Steps
 - [x] Implement syntax highlighting improvements per PLAN.md
 - [x] Update Terraform from 1.14.7 → 1.15.1
 - [x] Run test suite and record pass/fail status here
+- [x] Implement session restore (SessionManager.cs)
+- [x] Implement CLI workspace folder arg (Pfpad.exe <folder>)
+- [x] Implement clone repository dialog (CloneRepositoryDialog.cs)
+- [x] Fix dirty flag on file load (line-ending normalization hash mismatch)
+- [x] Add 6 new dark themes (GitHub Dark, One Monokai, Noctis, Panda, 2077, Moonlight)
 
 ## What Not to Forget
 - Stash `stash@{0}` exists with Tab-fix work not yet committed
-- `PersonalFlipPad-Setup-1.0.5.56.exe` and `stash_diff.txt` are untracked and should not be committed
+- `PersonalFlipPad-Setup-1.0.18.0.exe` is untracked and should not be committed
 - `infra/modules/` only has a README — modules (networking, etc.) are stubbed out in main.tf comments

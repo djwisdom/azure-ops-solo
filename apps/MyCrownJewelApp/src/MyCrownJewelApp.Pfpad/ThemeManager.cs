@@ -35,6 +35,12 @@ public sealed class ThemeManager : IDisposable
         ["Light Owl"] = Theme.LightOwl,
         ["Ayu Light"] = Theme.AyuLight,
         ["Bluloco Light"] = Theme.BlulocoLight,
+        ["GitHub Dark"] = Theme.GitHubDark,
+        ["One Monokai"] = Theme.OneMonokai,
+        ["Noctis Luxurious"] = Theme.NoctisLuxurious,
+        ["Panda Dark"] = Theme.PandaDark,
+        ["2077 (Cyberpunk)"] = Theme.Cyberpunk2077,
+        ["Moonlight"] = Theme.Moonlight,
     };
 
     public static string[] ThemeNames => Themes.Keys.ToArray();
@@ -655,6 +661,166 @@ public readonly struct Theme
         terminalFg: Color.FromArgb(56, 58, 66),
         terminalInputBg: Color.FromArgb(228, 228, 228),
         terminalHeaderBg: Color.FromArgb(238, 238, 238)
+    );
+
+    // ════════════════════════════════════════════
+    // Additional Dark Themes
+    // ════════════════════════════════════════════
+
+    public static readonly Theme GitHubDark = new(
+        name: "GitHub Dark", isLight: false,
+        background: Color.FromArgb(13, 17, 23),
+        text: Color.FromArgb(201, 209, 217),
+        menuBg: Color.FromArgb(22, 27, 34),
+        menuFg: Color.FromArgb(201, 209, 217),
+        panel: Color.FromArgb(33, 38, 45),
+        border: Color.FromArgb(48, 54, 61),
+        accent: Color.FromArgb(88, 166, 255),        // blue
+        editorBg: Color.FromArgb(13, 17, 23),
+        highlight: Color.FromArgb(88, 166, 255, 40),
+        disabled: Color.FromArgb(110, 118, 129),
+        buttonHoverBackground: Color.FromArgb(48, 54, 61),
+        muted: Color.FromArgb(110, 118, 129),        // comments
+        keywordColor: Color.FromArgb(210, 125, 69),  // orange (control flow)
+        stringColor: Color.FromArgb(126, 231, 135),  // green
+        commentColor: Color.FromArgb(110, 118, 129), // gray
+        numberColor: Color.FromArgb(121, 192, 255),  // blue
+        preprocessorColor: Color.FromArgb(210, 168, 255), // purple
+        typeColor: Color.FromArgb(121, 192, 255),
+        terminalBg: Color.FromArgb(13, 17, 23),
+        terminalFg: Color.FromArgb(201, 209, 217),
+        terminalInputBg: Color.FromArgb(33, 38, 45),
+        terminalHeaderBg: Color.FromArgb(22, 27, 34)
+    );
+
+    public static readonly Theme OneMonokai = new(
+        name: "One Monokai", isLight: false,
+        background: Color.FromArgb(39, 40, 34),
+        text: Color.FromArgb(248, 248, 242),
+        menuBg: Color.FromArgb(33, 34, 28),
+        menuFg: Color.FromArgb(248, 248, 242),
+        panel: Color.FromArgb(50, 52, 44),
+        border: Color.FromArgb(70, 72, 62),
+        accent: Color.FromArgb(102, 217, 239),       // cyan
+        editorBg: Color.FromArgb(39, 40, 34),
+        highlight: Color.FromArgb(102, 217, 239, 40),
+        disabled: Color.FromArgb(117, 113, 94),
+        buttonHoverBackground: Color.FromArgb(60, 62, 52),
+        muted: Color.FromArgb(117, 113, 94),         // comment
+        keywordColor: Color.FromArgb(249, 38, 114),  // pink
+        stringColor: Color.FromArgb(166, 226, 46),   // green
+        commentColor: Color.FromArgb(117, 113, 94),  // gray
+        numberColor: Color.FromArgb(174, 129, 255),  // purple
+        preprocessorColor: Color.FromArgb(253, 151, 31), // orange
+        typeColor: Color.FromArgb(102, 217, 239),
+        terminalBg: Color.FromArgb(39, 40, 34),
+        terminalFg: Color.FromArgb(248, 248, 242),
+        terminalInputBg: Color.FromArgb(50, 52, 44),
+        terminalHeaderBg: Color.FromArgb(33, 34, 28)
+    );
+
+    public static readonly Theme NoctisLuxurious = new(
+        name: "Noctis Luxurious", isLight: false,
+        background: Color.FromArgb(27, 32, 41),
+        text: Color.FromArgb(197, 205, 217),
+        menuBg: Color.FromArgb(22, 26, 34),
+        menuFg: Color.FromArgb(197, 205, 217),
+        panel: Color.FromArgb(35, 41, 51),
+        border: Color.FromArgb(55, 62, 74),
+        accent: Color.FromArgb(200, 184, 255),       // lavender
+        editorBg: Color.FromArgb(27, 32, 41),
+        highlight: Color.FromArgb(200, 184, 255, 40),
+        disabled: Color.FromArgb(84, 110, 122),
+        buttonHoverBackground: Color.FromArgb(45, 52, 63),
+        muted: Color.FromArgb(84, 110, 122),         // comments
+        keywordColor: Color.FromArgb(224, 198, 114), // warm yellow
+        stringColor: Color.FromArgb(172, 211, 114),  // green
+        commentColor: Color.FromArgb(84, 110, 122),  // teal-gray
+        numberColor: Color.FromArgb(247, 140, 108),  // peach
+        preprocessorColor: Color.FromArgb(130, 170, 255), // blue
+        typeColor: Color.FromArgb(130, 200, 255),
+        terminalBg: Color.FromArgb(27, 32, 41),
+        terminalFg: Color.FromArgb(197, 205, 217),
+        terminalInputBg: Color.FromArgb(35, 41, 51),
+        terminalHeaderBg: Color.FromArgb(22, 26, 34)
+    );
+
+    public static readonly Theme PandaDark = new(
+        name: "Panda Dark", isLight: false,
+        background: Color.FromArgb(41, 42, 43),
+        text: Color.FromArgb(230, 230, 230),
+        menuBg: Color.FromArgb(31, 32, 33),
+        menuFg: Color.FromArgb(230, 230, 230),
+        panel: Color.FromArgb(51, 52, 53),
+        border: Color.FromArgb(71, 72, 75),
+        accent: Color.FromArgb(69, 169, 249),        // blue
+        editorBg: Color.FromArgb(41, 42, 43),
+        highlight: Color.FromArgb(69, 169, 249, 40),
+        disabled: Color.FromArgb(103, 107, 121),
+        buttonHoverBackground: Color.FromArgb(60, 62, 66),
+        muted: Color.FromArgb(103, 107, 121),        // comments
+        keywordColor: Color.FromArgb(255, 117, 160), // pink
+        stringColor: Color.FromArgb(25, 249, 217),   // teal
+        commentColor: Color.FromArgb(103, 107, 121), // gray
+        numberColor: Color.FromArgb(255, 204, 149),  // yellow
+        preprocessorColor: Color.FromArgb(176, 132, 235), // purple
+        typeColor: Color.FromArgb(69, 169, 249),
+        terminalBg: Color.FromArgb(41, 42, 43),
+        terminalFg: Color.FromArgb(230, 230, 230),
+        terminalInputBg: Color.FromArgb(51, 52, 53),
+        terminalHeaderBg: Color.FromArgb(31, 32, 33)
+    );
+
+    public static readonly Theme Cyberpunk2077 = new(
+        name: "2077 (Cyberpunk)", isLight: false,
+        background: Color.FromArgb(10, 10, 15),
+        text: Color.FromArgb(224, 224, 224),
+        menuBg: Color.FromArgb(16, 16, 24),
+        menuFg: Color.FromArgb(224, 224, 224),
+        panel: Color.FromArgb(20, 20, 30),
+        border: Color.FromArgb(45, 30, 60),
+        accent: Color.FromArgb(249, 240, 2),         // neon yellow
+        editorBg: Color.FromArgb(10, 10, 15),
+        highlight: Color.FromArgb(249, 240, 2, 35),
+        disabled: Color.FromArgb(74, 74, 90),
+        buttonHoverBackground: Color.FromArgb(30, 20, 50),
+        muted: Color.FromArgb(74, 74, 90),           // comments
+        keywordColor: Color.FromArgb(249, 240, 2),   // neon yellow
+        stringColor: Color.FromArgb(0, 240, 255),    // neon cyan
+        commentColor: Color.FromArgb(74, 74, 90),    // dark gray
+        numberColor: Color.FromArgb(255, 0, 102),    // neon pink
+        preprocessorColor: Color.FromArgb(188, 19, 254), // neon purple
+        typeColor: Color.FromArgb(0, 255, 65),       // neon green
+        terminalBg: Color.FromArgb(10, 10, 15),
+        terminalFg: Color.FromArgb(0, 240, 255),
+        terminalInputBg: Color.FromArgb(20, 20, 30),
+        terminalHeaderBg: Color.FromArgb(16, 16, 24)
+    );
+
+    public static readonly Theme Moonlight = new(
+        name: "Moonlight", isLight: false,
+        background: Color.FromArgb(25, 28, 37),
+        text: Color.FromArgb(200, 211, 245),
+        menuBg: Color.FromArgb(20, 23, 31),
+        menuFg: Color.FromArgb(200, 211, 245),
+        panel: Color.FromArgb(33, 37, 49),
+        border: Color.FromArgb(55, 62, 85),
+        accent: Color.FromArgb(130, 170, 255),       // frost blue
+        editorBg: Color.FromArgb(25, 28, 37),
+        highlight: Color.FromArgb(130, 170, 255, 40),
+        disabled: Color.FromArgb(84, 110, 122),
+        buttonHoverBackground: Color.FromArgb(43, 48, 64),
+        muted: Color.FromArgb(84, 110, 122),         // comments
+        keywordColor: Color.FromArgb(130, 170, 255), // frost blue
+        stringColor: Color.FromArgb(195, 232, 141),  // green
+        commentColor: Color.FromArgb(84, 110, 122),  // teal-gray
+        numberColor: Color.FromArgb(255, 203, 107),  // orange
+        preprocessorColor: Color.FromArgb(199, 146, 234), // purple
+        typeColor: Color.FromArgb(137, 221, 255),
+        terminalBg: Color.FromArgb(25, 28, 37),
+        terminalFg: Color.FromArgb(200, 211, 245),
+        terminalInputBg: Color.FromArgb(33, 37, 49),
+        terminalHeaderBg: Color.FromArgb(20, 23, 31)
     );
 }
 

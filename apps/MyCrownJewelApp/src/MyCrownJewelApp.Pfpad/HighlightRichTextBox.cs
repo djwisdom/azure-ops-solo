@@ -11,7 +11,9 @@ public class HighlightRichTextBox : RichTextBox
 {
     private CurrentLineHighlightMode _highlightMode = CurrentLineHighlightMode.Off;
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
-    private WinFormsTimer? _invalidateTimer;
+    private bool _overlayDirty = true;
+    private bool _scrollInProgress;
+    private System.Windows.Forms.Timer? _scrollDebounceTimer;
     private WinFormsTimer? _caretBlinkTimer;
     private bool _caretVisible = true;
 
@@ -51,13 +53,18 @@ public class HighlightRichTextBox : RichTextBox
 
     public HighlightRichTextBox()
     {
-        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, false);
         BorderStyle = BorderStyle.None;
         Margin = new Padding(0);
         Padding = new Padding(0);
 
-        _invalidateTimer = new WinFormsTimer { Interval = 16 };
-        _invalidateTimer.Tick += (s, e) => { _invalidateTimer.Stop(); Invalidate(); };
+        _scrollDebounceTimer = new WinFormsTimer { Interval = 80 };
+        _scrollDebounceTimer.Tick += (s, e) =>
+        {
+            _scrollDebounceTimer.Stop();
+            _scrollInProgress = false;
+            _overlayDirty = true;
+            Invalidate();
+        };
 
         _caretBlinkTimer = new WinFormsTimer { Interval = 500 };
         _caretBlinkTimer.Tick += (s, e) =>
@@ -106,6 +113,7 @@ public class HighlightRichTextBox : RichTextBox
         base.OnGotFocus(e);
         HideCaret(Handle);
         _caretBlinkTimer?.Start();
+        _overlayDirty = true;
         Invalidate();
     }
 
@@ -114,19 +122,23 @@ public class HighlightRichTextBox : RichTextBox
         base.OnLostFocus(e);
         _caretBlinkTimer?.Stop();
         _caretVisible = false;
+        _overlayDirty = true;
         Invalidate();
     }
 
     protected override void OnSelectionChanged(EventArgs e)
     {
         base.OnSelectionChanged(e);
+        if (_scrollInProgress) return;
         HideCaret(Handle);
+        _overlayDirty = true;
         Invalidate();
     }
 
     protected override void OnTextChanged(EventArgs e)
     {
         base.OnTextChanged(e);
+        _overlayDirty = true;
         if (_rainbowBracketsEnabled)
         {
             _bracketDebounceTimer?.Stop();
@@ -137,6 +149,7 @@ public class HighlightRichTextBox : RichTextBox
     protected override void OnFontChanged(EventArgs e)
     {
         base.OnFontChanged(e);
+        _overlayDirty = true;
         if (_rainbowBracketsEnabled)
             Invalidate();
     }
@@ -151,6 +164,7 @@ public class HighlightRichTextBox : RichTextBox
             if (_highlightMode != value)
             {
                 _highlightMode = value;
+                _overlayDirty = true;
                 Invalidate();
                 CurrentLineHighlightModeChanged?.Invoke(this, EventArgs.Empty);
             }
@@ -162,7 +176,12 @@ public class HighlightRichTextBox : RichTextBox
     public Color HighlightColor
     {
         get => _highlightColor;
-        set { _highlightColor = value; Invalidate(); }
+        set
+        {
+            _highlightColor = value;
+            _overlayDirty = true;
+            Invalidate();
+        }
     }
 
     #region Rainbow Brackets API
@@ -304,18 +323,21 @@ public class HighlightRichTextBox : RichTextBox
     public void SetSquiggles(List<(int start, int length, Color color)> squiggles)
     {
         _squiggles = squiggles ?? new();
+        _overlayDirty = true;
         Invalidate();
     }
 
     public void SetLineMessages(Dictionary<int, string> messages)
     {
         _lineMessages = messages ?? new Dictionary<int, string>();
+        _overlayDirty = true;
         Invalidate();
     }
 
     public void SetExtraCarets(List<int> positions)
     {
         _extraCarets = positions ?? new List<int>();
+        _overlayDirty = true;
         Invalidate();
     }
 
@@ -694,7 +716,7 @@ public class HighlightRichTextBox : RichTextBox
     {
         if (disposing)
         {
-            _invalidateTimer?.Dispose();
+            _scrollDebounceTimer?.Dispose();
             _caretBlinkTimer?.Dispose();
             _bracketDebounceTimer?.Dispose();
         }
@@ -705,35 +727,35 @@ public class HighlightRichTextBox : RichTextBox
     public int GuideColumn
     {
         get => _guideColumn;
-        set { _guideColumn = Math.Max(1, value); Invalidate(); }
+        set { _guideColumn = Math.Max(1, value); _overlayDirty = true; Invalidate(); }
     }
 
     [Category("Appearance")]
     public bool ShowGuide
     {
         get => _showGuide;
-        set { _showGuide = value; Invalidate(); }
+        set { _showGuide = value; _overlayDirty = true; Invalidate(); }
     }
 
     [Category("Appearance")]
     public Color GuideColor
     {
         get => _guideColor;
-        set { _guideColor = value; Invalidate(); }
+        set { _guideColor = value; _overlayDirty = true; Invalidate(); }
     }
 
     [Browsable(false)]
     public FoldingManager? FoldingManager
     {
         get => _foldingManager;
-        set { _foldingManager = value; Invalidate(); }
+        set { _foldingManager = value; _overlayDirty = true; Invalidate(); }
     }
 
     [Category("Appearance")]
     public Color FoldLineColor
     {
         get => _foldLineColor;
-        set { _foldLineColor = value; Invalidate(); }
+        set { _foldLineColor = value; _overlayDirty = true; Invalidate(); }
     }
 
     [DllImport("user32.dll")]
@@ -774,8 +796,12 @@ public class HighlightRichTextBox : RichTextBox
     private const int SCF_SELECTION = 0x0001;
     private const int CFM_COLOR = 0x40000000;
 
-    private const int WM_NCPAINT = 0x0085;
     private const int WM_SETREDRAW = 0x000B;
+    private const int WM_NCPAINT = 0x0085;
+    private const int WM_PRINTCLIENT = 0x0318;
+    private const int PRF_CLIENT = 0x00000004;
+    private const int PRF_ERASEBKGND = 0x00000008;
+    private const int PRF_NONCLIENT = 0x00000002;
 
     private void PaintScrollbarCorner()
     {
@@ -810,7 +836,6 @@ public class HighlightRichTextBox : RichTextBox
         const int WM_SIZE = 0x0005;
         const int WM_KEYUP = 0x0101;
         const int WM_LBUTTONUP = 0x0202;
-        const int WM_MOUSEMOVE = 0x0200;
         const int WM_MOUSEWHEEL = 0x020A;
         const int WM_SETFOCUS = 0x0007;
         const int WM_KILLFOCUS = 0x0008;
@@ -827,47 +852,67 @@ public class HighlightRichTextBox : RichTextBox
                     base.WndProc(ref m);
                     if (IsDisposed || !IsHandleCreated) return;
 
+                    if (_scrollInProgress)
+                    {
+                        _overlayDirty = true;
+                        return;
+                    }
+
+                    if (!_overlayDirty) return;
+                    _overlayDirty = false;
+
                     IntPtr hdc = GetDC(Handle);
                     if (hdc == IntPtr.Zero) return;
 
                     try
                     {
-                        using var g = Graphics.FromHdc(hdc);
-                        DrawRainbowBracketOverlays(g);
+                        int w = ClientSize.Width;
+                        int h = ClientSize.Height;
+                        if (w <= 0 || h <= 0) return;
 
-                        var lineRect = GetCurrentLineRect();
-                        if (lineRect.HasValue)
+                        using var fullBmp = new Bitmap(w, h);
+                        using (var g = Graphics.FromImage(fullBmp))
                         {
-                            var r = lineRect.Value;
-                            if (r.Height > 0 && r.Width > 0)
-                            {
-                                using var textBmp = new Bitmap(r.Width, r.Height, PixelFormat.Format32bppArgb);
-                                using (var bmpG = Graphics.FromImage(textBmp))
-                                {
-                                    IntPtr bmpHdc = bmpG.GetHdc();
-                                    BitBlt(bmpHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
-                                    bmpG.ReleaseHdc(bmpHdc);
-                                }
+                            IntPtr bmpHdc = g.GetHdc();
+                            BitBlt(bmpHdc, 0, 0, w, h, hdc, 0, 0, SRCCOPY);
+                            g.ReleaseHdc(bmpHdc);
+                        }
 
+                        using (var g = Graphics.FromImage(fullBmp))
+                        {
+                            var lineRect = GetCurrentLineRect();
+                            if (lineRect.HasValue)
+                            {
+                                var r = lineRect.Value;
                                 using var hlBrush = new SolidBrush(_highlightColor);
                                 g.FillRectangle(hlBrush, r);
 
+                                using var textBmp = new Bitmap(r.Width, r.Height);
+                                using (var textG = Graphics.FromImage(textBmp))
+                                {
+                                    IntPtr textHdc = textG.GetHdc();
+                                    BitBlt(textHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
+                                    textG.ReleaseHdc(textHdc);
+                                }
                                 var attrs = new ImageAttributes();
                                 attrs.SetColorKey(BackColor, BackColor);
                                 g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
                             }
+
+                            DrawColumnGuide(g);
+                            DrawFoldBracketLines(g);
+                            DrawMatchingBraces(g);
+                            DrawSquiggles(g);
+                            DrawErrorLens(g);
+
+                            if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
+                                DrawBlockCursor(g);
+
+                            DrawExtraCarets(g);
                         }
 
-                        DrawColumnGuide(g);
-                        DrawFoldBracketLines(g);
-                        DrawMatchingBraces(g);
-                        DrawSquiggles(g);
-                        DrawErrorLens(g);
-
-                        if (_caretVisible && Focused && IsHandleCreated && !IsDisposed)
-                            DrawBlockCursor(g);
-
-                        DrawExtraCarets(g);
+                        using (var g = Graphics.FromHdc(hdc))
+                            g.DrawImageUnscaled(fullBmp, 0, 0);
                     }
                     finally
                     {
@@ -877,15 +922,18 @@ public class HighlightRichTextBox : RichTextBox
                 }
             case WM_VSCROLL:
             case WM_HSCROLL:
+            case WM_MOUSEWHEEL:
+                _scrollInProgress = true;
+                _scrollDebounceTimer?.Stop();
+                _scrollDebounceTimer?.Start();
+                base.WndProc(ref m);
+                return;
             case WM_SIZE:
             case WM_KEYUP:
             case WM_LBUTTONUP:
-            case WM_MOUSEMOVE:
-            case WM_MOUSEWHEEL:
             case WM_SETFOCUS:
             case WM_KILLFOCUS:
-                _invalidateTimer?.Stop();
-                _invalidateTimer?.Start();
+                _overlayDirty = true;
                 break;
         }
 
