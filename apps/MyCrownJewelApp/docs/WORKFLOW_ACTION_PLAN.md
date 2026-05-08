@@ -1,7 +1,7 @@
 # Top 5 Workflows — Recommendation & Action Plan
 
-**Date:** 2026-05-07
-**Applies to:** Personal Flip Pad (Pfpad) v1.0.16
+**Date:** 2026-05-07 (Updated 2026-05-09)
+**Applies to:** Personal Flip Pad (Pfpad) v1.0.20
 **Audience:** Solo developer — limited time, maximum ROI per change
 
 ---
@@ -15,66 +15,54 @@
 
 ---
 
-## Priority Ranking
+## Priority Ranking (Updated 2026-05-09)
 
-| Priority | Workflow | Rationale |
-|----------|----------|-----------|
-| **P0** | Git diff view | Biggest daily-impact paper cut. Every commit cycle requires context-switch. |
-| **P1** | Debug hover values | Directly accelerates the most valuable existing workflow. |
-| **P1** | Roslyn Go to Definition for C# | Fixes the #1 accuracy complaint. Regex fallback remains for non-C#. |
-| **P2** | Run in Terminal | Closes the run-feedback loop. Eliminates the separate-window problem. |
-| **P3** | Lint rule expansion | Low-effort, high-visibility quality improvement. |
+| Priority | Workflow | Rationale | Status |
+|----------|----------|-----------|--------|
+| **P0** | Git diff view | Biggest daily-impact paper cut. Every commit cycle requires context-switch. | ✅ **Done** (aa51315) |
+| **P1** | Debug hover values | Directly accelerates the most valuable existing workflow. | ✅ **Done** (0d7ad87) |
+| **P1** | Roslyn Go to Definition for C# | Fixes the #1 accuracy complaint. Regex fallback remains for non-C#. | ✅ **Done** (4fae661) |
+| **P2** | Run in Terminal | Closes the run-feedback loop. Eliminates the separate-window problem. | ✅ **Done** (94e508e) |
+| **P3** | Lint rule expansion | Low-effort, high-visibility quality improvement. | ❌ Pending |
 
 ---
 
-## P0 — Git Diff View
+## P0 — Git Diff View ✅ COMPLETED (aa51315)
 
-### Current State
+### Current State (Was)
 The Git panel (section 6) can stage, commit, push, pull, fetch, and switch branches — but **there is no diff view**. The developer must drop to `git diff` in the terminal to see what changed before staging. This breaks flow on every single commit.
 
-### Recommendation
-Add an inline diff panel that opens when a file is selected in the Source Control panel's changes list.
+### Implementation
+- `DiffPanel.cs` — full implementation with LCS-based hunk computation
+- Staged/unstaged diffs via LibGit2Sharp `Diff.Compare<Tree, Tree>()` — no process spawning
+- Read-only `RichTextBox` with inline diff coloring (green/red line backgrounds, blue hunk headers)
+- Split panel: files list above, diff view below with resize handle
+- Stage/Unstage/Discard buttons in header strip
+- Max file size cutoff for large diffs
+- Fixes: splitter reset, panel dock filling, button sizing, launch NRE (commits 325aaa7, 9e93dcc, 53df29d, 79c445c)
 
-### Implementation Sketch
+### What Changed from Original Sketch
+- Architecture uses `DiffPanel.cs` as a standalone control embedded in `GitPanel.cs`
+- Diff coloring merged into a single `ApplyDiffColoring` method instead of raw RTB
+- Button styling matches professional color conventions
 
-```
-New file: DiffPanel.cs (or extend GitPanel.cs)
-
-Architecture:
-  ┌─ SourceControlPanel ─────────────────────┐
-  │  ┌─ Changes List ──────────────────────┐ │
-  │  │  [M] Program.cs          ← click    │ │
-  │  │  [M] Services/Auth.cs               │ │
-  │  └─────────────────────────────────────┘ │
-  │  ┌─ Diff View (opens below) ───────────┐ │
-  │  │  - public void OldMethod()          │ │
-  │  │  + public void NewMethod()          │ │
-  │  │  (syntax colored, line numbers)     │ │
-  │  └─────────────────────────────────────┘ │
-  └──────────────────────────────────────────┘
-```
-
-**Key decisions:**
-- Use LibGit2Sharp `Diff.Compare<Tree, Tree>()` to get patch content — no process spawning
-- Render in a read-only `RichTextBox` with basic diff coloring (green/red line backgrounds)
-- Show the diff below the files list in a `SplitContainer` (vertical resize handle)
-- Stage/unstage buttons directly in the diff panel header
-- Max file size cutoff (e.g., 500KB diffs show "File too large, view in terminal")
-
-**Estimated effort:** 1–2 days
-- Diff content fetching via LibGit2Sharp: 0.5 day
-- Diff rendering control (RichTextBox with syntax-colored +/- lines): 0.5 day
-- Panel integration (split, buttons, selection sync): 0.5 day
-- Edge cases (binary files, new files, deleted files, large files): 0.5 day
-
-**ROI:** Every commit cycle (multiple times per hour) saves 5–10 seconds of `git diff` + mental context-switch. Over a day: dozens of saved switches. Highest frequency workflow improvement available.
+**Effort spent:** ~3 days (including fixes), versus 1-2 day estimate
 
 ---
 
-## P1 — Debug Hover Value Tooltips
+## P1 — Debug Hover Value Tooltips ✅ COMPLETED (0d7ad87)
 
-### Current State
+### Current State (Was)
 The debugger (section 5) can inspect locals via the Variables panel (tree view, expand objects). But to see a variable's value, the developer must:
+
+### Implementation
+- `Form1.cs:6492` — `ShowDebugHoverTooltipAsync` wires DAP `evaluate` into the existing hover timer (`HoverTimer_Tick`)
+- When debugger is paused (`DebugState.Paused`), hover over an identifier calls `DebugAdapterClient.Evaluate(word, frameId)`
+- Reuses `HoverTooltipForm` to display value alongside or replacing doc tooltip
+- Frame ID is cached on breakpoint hit
+- DAP message uses `EvaluateArguments` with `context: "hover"`
+
+**Effort spent:** ~0.5 day
 
 1. Pause at breakpoint
 2. Look down at the Variables panel
@@ -94,35 +82,21 @@ Existing HoverTooltipForm (400ms hover, XML doc):
   ↓ Yes → call DebugAdapterClient.Evaluate(identifierName)
   ↓      → show "value = 42" in tooltip alongside or replacing doc
 
-Form1.cs mouse hover handler:
-  if (_debugSession?.State == DebugSession.DebugState.Paused)
-  {
-      var word = GetWordUnderCursor(e.Location);
-      var value = await _debugSession.Evaluate(word);
-      ShowTooltip(word, value); // reuse HoverTooltipForm
-  }
-```
-
-**DAP message:** `EvaluateArguments` with `context: "hover"` — netcoredbg supports this natively.
-
-**Estimated effort:** 0.5–1 day
-- DAP evaluate integration in hover handler: 0.25 day
-- Tooltip rendering (value types, long strings truncation, null display): 0.25 day
-- Edge cases (expressions, properties with side effects, error handling): 0.25 day
-
-**ROI:** Directly amplifies the #1 most valuable workflow. The difference between "glance at variable" and "search Variables panel" is ~1–2 seconds per inspection but is felt as a major flow interruption.
+**Effort spent:** ~0.5 day
 
 ---
 
-## P1 — Roslyn Go to Definition for C#
+## P1 — Roslyn Go to Definition for C# ✅ COMPLETED (4fae661)
 
-### Current State
-Go to Definition (F12) uses a two-tier approach: ctags (if available) → per-language regex fallback. For C#, this is ~80% accurate. It fails on generics, partial classes, inherited members, and anything involving NuGet package types. A Roslyn-powered path exists but only fires for hover and signature help, not for Go to Definition itself.
+### Current State (Was)
+Go to Definition (F12) uses a two-tier approach: ctags (if available) → per-language regex fallback. For C#, this is ~80% accurate.
 
-### Recommendation
-Wire the existing `RoslynWorkspaceService` into the F12 handler. When Roslyn's MSBuild workspace is active (`.csproj` or `.sln` found), prefer the Roslyn `SymbolFinder.FindSourceDefinitionAsync` / `FindReferencesAsync` result. Fall back to the regex path when Roslyn is unavailable or returns no results.
+### Implementation
+- `Form1.Roslyn.cs:46` — `GoToDefinitionRoslyn()` uses `SymbolFinder.FindSourceDefinitionAsync` via existing `RoslynWorkspaceService`
+- Wired into F12 keybinding path, with graceful fallback to ctags/regex when Roslyn unavailable or returns no results
+- Works for generics, partial classes, inherited members, NuGet package types
 
-### Implementation Sketch
+**Effort spent:** ~0.5 day
 
 ```
 Form1.cs GoToDefinition_Click (or Form1.Roslyn.cs):
@@ -133,53 +107,24 @@ Form1.cs GoToDefinition_Click (or Form1.Roslyn.cs):
   }
   // Fall through to existing ctags → regex path
 ```
+---
 
-**Note:** `RoslynService.cs` already has `GetGoToDefinitionLocation()` (line ~45 in `Form1.Roslyn.cs`) — it needs to be checked for completeness and wired to the F12 keybinding path rather than only to the Roslyn-specific menu.
+## P2 — Run in Terminal ✅ COMPLETED (94e508e)
 
-**Estimated effort:** 0.5 day
-- Audit existing `Form1.Roslyn.cs` GoToDefinition (line 45): 0.25 day
-- Wire into main F12 handler with graceful fallback: 0.25 day
+### Current State (Was)
+Run Without Debug (`Ctrl+F5`) launches the app in a **separate OS window**.
 
-**ROI:** Fixes the single most visible accuracy complaint. C# is the primary language for a .NET solo dev. 80% → 98% accuracy on F12 is a qualitative leap, not incremental.
+### Implementation
+- `Form1.cs:6676` — `RunWithoutDebug_Click` spawns `dotnet run --project "{projectPath}"` with redirected stdout/stderr piped into the embedded terminal panel
+- Stop button kills the process
+- Environment variables from `launchSettings.json` are supported via `LaunchProfileParser`
+- Output visible in-editor with ANSI escape handling, multi-tab support
+
+**Effort spent:** ~1 day
 
 ---
 
-## P2 — Run in Terminal
-
-### Current State
-Run Without Debug (`Ctrl+F5`) launches the app in a **separate OS window**. The Run Configurations dialog truncates output to 80 characters in a status label. The terminal panel exists but there's no integration — the developer must manually `dotnet run`.
-
-### Recommendation
-When `Ctrl+F5` is pressed, instead of launching a new window, spawn the process in the existing Terminal panel. Pipe stdout/stderr to the active terminal tab. Add a stop button to kill the process.
-
-### Implementation Sketch
-
-```
-Form1.cs RunWithoutDebug_Click:
-  // Old: Process.Start("dotnet", $"\"{outputDll}\"")  -- separate window
-  // New: 
-  var process = new Process
-  {
-      StartInfo = { FileName = "dotnet", Arguments = $"run --project \"{projectPath}\"" },
-      // redirect stdout/stderr
-  };
-  _terminalPanel.StartProcess(process);  // shows output in terminal tab
-  // Show stop button in terminal header
-```
-
-**Reuse:** The terminal panel already has ANSI escape handling, multi-tab support, and a stop button (for terminal Ctrl+C). Add a "process mode" where a managed process pipes into a terminal tab.
-
-**Estimated effort:** 1–2 days
-- Process launch + pipe into terminal control: 0.5 day
-- Process lifecycle management (start/stop/restart indicators): 0.5 day
-- Environment variable support (from launchSettings.json): 0.5 day
-- Edge cases (process exit code display, multi-project, quick successive restarts): 0.5 day
-
-**ROI:** Eliminates the jarring "popup window" workflow. Output visible in-editor. P2 because the terminal workaround exists and is adequate.
-
----
-
-## P3 — Lint Rule Expansion
+## P3 — Lint Rule Expansion (❌ Still Pending)
 
 ### Current State
 The lint engine fires 5 rules on a 400ms debounce. Rules are simple regex checks in `LintEngine.cs`. Three quick-action fixes exist (trailing whitespace, insert semicolon, add missing using).
@@ -206,28 +151,26 @@ Add 3–5 new lint rules that catch common solo-developer mistakes with minimal 
 
 ---
 
-## Summary Roadmap
+## Summary Roadmap (Updated 2026-05-09)
 
 ```
-Week 1 ─── P0: Git Diff View ───────────────── 1–2 days
+Week 1 ─── P0: Git Diff View ───────────────── 1–2 days  ✅ COMPLETED
            │
            └── Ships: developer no longer drops to terminal for every commit
 
-Week 2 ─── P1: Debug Hover Values ──────────── 0.5–1 day
+Week 2 ─── P1: Debug Hover Values ──────────── 0.5–1 day ✅ COMPLETED
            │
-           ├── P1: Roslyn Go to Definition ──── 0.5 day
+           ├── P1: Roslyn Go to Definition ──── 0.5 day   ✅ COMPLETED
            │
            └── Ships: debugger now feels "complete"
 
-Week 3 ─── P2: Run in Terminal ─────────────── 1–2 days
+Week 3 ─── P2: Run in Terminal ─────────────── 1–2 days  ✅ COMPLETED
            │
            └── Ships: no more popup windows, output visible in-editor
 
-Week 4 ─── P3: Lint Rule Expansion ─────────── 1–2 days
+Week 4 ─── P3: Lint Rule Expansion ─────────── 1–2 days  ❌ REMAINING
            │
            └── Ships: 5 new rules, "add readonly" quick action
-
-Total:     ~5–8 days of focused work
 ```
 
 ---
@@ -238,7 +181,7 @@ These are deliberately excluded from the P0–P3 plan:
 
 | Workflow | Why Not Now |
 |----------|-------------|
-| **Clone dialog** | Too large (credential management, SSH, OAuth). Terminal workaround is fine. |
+| **Clone dialog** | ✅ **Implemented** — `CloneRepositoryDialog.cs` ships with `Ctrl+Shift+C`. |
 | **Solution explorer** | Major architectural work (see SOLUTION_IDE_ASSESSMENT.md estimate: 10–14 days). Not worth the investment for a solo dev using single-project repos. |
 | **Build output panel** | Terminal workaround exists. Requires parsing MSBuild output format. Low ROI vs. effort. |
 | **Edit and Continue** | Deep DAP/CLR integration. Would take weeks. Deferred indefinitely. |

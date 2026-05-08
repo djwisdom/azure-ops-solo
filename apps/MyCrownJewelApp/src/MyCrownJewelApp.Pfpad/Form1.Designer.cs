@@ -10,6 +10,7 @@ partial class Form1
     private ToolStripMenuItem newWindowMenuItem;
     private ToolStripMenuItem openMenuItem;
     private ToolStripMenuItem recentMenuItem;
+    private ToolStripMenuItem recentWorkspacesMenuItem;
     private ToolStripMenuItem saveMenuItem;
     private ToolStripMenuItem saveAsMenuItem;
     private ToolStripMenuItem saveAllMenuItem;
@@ -144,6 +145,7 @@ partial class Form1
     private ToolStripStatusLabel gitBranchLabel;
     internal ToolStripStatusLabel gitDirtyLabel;
     internal ToolStripStatusLabel gitSyncLabel;
+    internal ToolStripStatusLabel workspaceStatusLabel;
     internal ToolStripProgressBar scanProgressBar;
 
     protected override void Dispose(bool disposing)
@@ -173,6 +175,7 @@ partial class Form1
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
         recentMenuItem = new ToolStripMenuItem("Recent Files");
+        recentWorkspacesMenuItem = new ToolStripMenuItem("Recent Workspaces");
         cloneRepositoryMenuItem = new ToolStripMenuItem("Clone &Repository...", null, CloneRepository_Click, Keys.Control | Keys.Shift | Keys.C);
         saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click, Keys.Control | Keys.S);
         saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click, Keys.Control | Keys.Shift | Keys.S);
@@ -188,6 +191,7 @@ partial class Form1
         fileMenu.DropDownItems.Add(newWindowMenuItem);
         fileMenu.DropDownItems.Add(openMenuItem);
         fileMenu.DropDownItems.Add(recentMenuItem);
+        fileMenu.DropDownItems.Add(recentWorkspacesMenuItem);
         fileMenu.DropDownItems.Add(cloneRepositoryMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(saveMenuItem);
@@ -624,6 +628,15 @@ partial class Form1
         gitSyncLabel = new ToolStripStatusLabel("");
         gitSyncLabel.AutoSize = true;
         gitSyncLabel.Padding = new Padding(0, 1, 4, 1);
+
+        // Workspace status label (shows project/solution name)
+        workspaceStatusLabel = new ToolStripStatusLabel("");
+        workspaceStatusLabel.AutoSize = true;
+        workspaceStatusLabel.Padding = new Padding(4, 1, 4, 1);
+        workspaceStatusLabel.BorderSides = ToolStripStatusLabelBorderSides.Left;
+        workspaceStatusLabel.IsLink = true;
+        workspaceStatusLabel.LinkBehavior = LinkBehavior.HoverUnderline;
+
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
@@ -676,6 +689,7 @@ partial class Form1
         statusStrip.Items.Add(gitBranchLabel);
         statusStrip.Items.Add(gitDirtyLabel);
         statusStrip.Items.Add(gitSyncLabel);
+        statusStrip.Items.Add(workspaceStatusLabel);
         statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true, Padding = new Padding(0, 1, 0, 1) });
         statusStrip.Items.Add(linePositionLabel);
         statusStrip.Items.Add(zoomLabel);

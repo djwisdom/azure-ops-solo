@@ -1,9 +1,9 @@
 # Pfpad Workflow Improvements & Feature Recommendations
 
-**Generated:** 2026-05-08  
+**Generated:** 2026-05-08 (Updated 2026-05-09)  
 **Target:** Personal Flip Pad (Pfpad) — WinForms C# code editor
 
-**Implementation status:** Several recommendations have been implemented since this document was written:
+**Implementation status:** All 13 recommendations have been implemented since this document was written:
 - **P0 #1 Format Document** — ✅ implemented (4fae677)
 - **P0 #2 Auto-Save** — ✅ implemented (4fae677)  
 - **P0 #3 Git inline diff gutter** — ✅ implemented (aa51315)
@@ -11,33 +11,36 @@
 - **P1 #4 Command Palette** — ✅ implemented (4fae677) via `CommandPaletteForm.cs`
 - **P1 #6 Snippet Expansion** — ✅ implemented (4fae677) via `SnippetEngine.cs`
 - **P1 #7 File Watcher** — ✅ implemented (4fae677)
+- **P2 #8 Auto-Import / Add Missing Using** — ✅ implemented (4fae661) via Roslyn
 - **P2 #9 Error Lens** — ✅ implemented (4fae677)
 - **P2 #10 Multi-Caret Editing** — ✅ implemented (4fae677) via `MultiCaretManager.cs`
 - **P3 #11 Markdown Preview** — ✅ implemented (4fae677) via `MarkdownPreviewPanel.cs`
 - **P3 #12 Document Outline** — ✅ implemented (4fae677) via `OutlinePanel.cs`
-- **P3 #13 Zen Mode** — ✅ implemented (4fae677)
+- **P3 #13 Zen Mode** — ✅ implemented (4fae677) via `ToggleFullScreen()`
 
-Remaining unimplemented recommendations retain their original priority estimates below.
+**All 13 recommendations are now implemented.** See `DEVELOPER_WORKFLOWS.md` and `WORKFLOW_ACTION_PLAN.md` for the remaining backlog (New Project Dialog, Welcome Page, Lint Rule Expansion, Build Config Selector, Solution Explorer).
+
+The feature descriptions below are preserved for reference.
 
 ---
 
-## Priority Matrix
+## Priority Matrix (Updated 2026-05-09 — All Implemented)
 
-| Priority | Effort | Feature | Impact |
-|---|---|---|---|
-| P0 | Low | Format Document (Roslyn) | High |
-| P0 | Low | Auto-Save | High |
-| P0 | Low | Git inline diff gutter | High |
-| P1 | Medium | Command Palette | High |
-| P1 | Medium | Session Restore | High |
-| P1 | Medium | Snippet Expansion | High |
-| P1 | Low | File Watcher (auto-refresh) | Medium |
-| P2 | Medium | Auto-Import / Add Missing Using | High |
-| P2 | Medium | Error Lens (inline diagnostics) | High |
-| P2 | High | Multi-Caret Editing | Medium |
-| P3 | Medium | Markdown Preview | Medium |
-| P3 | Medium | Document Outline | Medium |
-| P3 | Low | Zen Mode / Full Screen | Low |
+| Priority | Effort | Feature | Impact | Status |
+|---|---|---|---|---|
+| P0 | Low | Format Document (Roslyn) | High | ✅ |
+| P0 | Low | Auto-Save | High | ✅ |
+| P0 | Low | Git inline diff gutter | High | ✅ |
+| P1 | Medium | Command Palette | High | ✅ |
+| P1 | Medium | Session Restore | High | ✅ |
+| P1 | Medium | Snippet Expansion | High | ✅ |
+| P1 | Low | File Watcher (auto-refresh) | Medium | ✅ |
+| P2 | Medium | Auto-Import / Add Missing Using | High | ✅ |
+| P2 | Medium | Error Lens (inline diagnostics) | High | ✅ |
+| P2 | High | Multi-Caret Editing | Medium | ✅ |
+| P3 | Medium | Markdown Preview | Medium | ✅ |
+| P3 | Medium | Document Outline | Medium | ✅ |
+| P3 | Low | Zen Mode / Full Screen | Low | ✅ |
 
 ---
 
@@ -588,22 +591,22 @@ private void ToggleZenMode()
 
 ## Quick Wins Summary
 
-| # | Feature | Files to Create | Files to Modify | Est. Days |
-|---|---|---|---|---|
-| 1 | Format Document | — | `Form1.Roslyn.cs`, `Form1.cs` | 0.5 |
-| 2 | Auto-Save | — | `Form1.cs` | 0.5 |
-| 3 | Git inline diff gutter | — | `GitService.cs`, `GutterPanel.cs` | 1 |
-| 4 | Command Palette | `CommandPaletteForm.cs` | `Form1.cs` | 2 |
-| 5 | Session Restore | — | `Form1.cs` | 1 |
-| 6 | Snippet Expansion | `SnippetEngine.cs` | `Form1.cs` | 2 |
-| 7 | File Watcher (auto-refresh) | — | `WorkspacePanel.cs` | 1 |
-| 8 | Auto-Import / Add Using | `AddImportService.cs` | `Form1.Roslyn.cs`, `GutterPanel.cs` | 2 |
-| 9 | Error Lens (inline diagnostics) | — | `HighlightRichTextBox.cs`, `Form1.cs` | 1 |
-| 10 | Multi-Caret Editing | `MultiCaretManager.cs` | `Form1.cs` | 3 |
-| 11 | Markdown Preview | `MarkdownPreviewPanel.cs` | `Form1.cs` | 2 |
-| 12 | Document Outline | `OutlinePanel.cs` | `Form1.Designer.cs`, `Form1.cs` | 2 |
-| 13 | Zen Mode / Full Screen | — | `Form1.cs` | 0.5 |
+| # | Feature | Files to Create | Files to Modify | Est. Days | Status |
+|---|---|---|---|---|---|---|
+| 1 | Format Document | — | `Form1.Roslyn.cs`, `Form1.cs` | 0.5 | ✅ |
+| 2 | Auto-Save | — | `Form1.cs` | 0.5 | ✅ |
+| 3 | Git inline diff gutter | — | `GitService.cs`, `GutterPanel.cs` | 1 | ✅ |
+| 4 | Command Palette | `CommandPaletteForm.cs` | `Form1.cs` | 2 | ✅ |
+| 5 | Session Restore | `SessionManager.cs` | `Form1.cs` | 1 | ✅ |
+| 6 | Snippet Expansion | `SnippetEngine.cs` | `Form1.cs` | 2 | ✅ |
+| 7 | File Watcher (auto-refresh) | — | `WorkspacePanel.cs` | 1 | ✅ |
+| 8 | Auto-Import / Add Using | — | `Form1.Roslyn.cs`, `GutterPanel.cs` | 2 | ✅ |
+| 9 | Error Lens (inline diagnostics) | — | `HighlightRichTextBox.cs`, `Form1.cs` | 1 | ✅ |
+| 10 | Multi-Caret Editing | `MultiCaretManager.cs` | `Form1.cs` | 3 | ✅ |
+| 11 | Markdown Preview | `MarkdownPreviewPanel.cs` | `Form1.cs` | 2 | ✅ |
+| 12 | Document Outline | `OutlinePanel.cs` | `Form1.Designer.cs`, `Form1.cs` | 2 | ✅ |
+| 13 | Zen Mode / Full Screen | — | `Form1.cs` | 0.5 | ✅ |
 
-**Estimated total: 18.5 days**
+**All 13 features implemented. Estimated total: 18.5 days of work — delivered across commits 4fae677, aa51315, 0d8bdd8, 4fae661.**
 
 If I had to pick 3: **Format Document** (0.5d), **Auto-Save** (0.5d), **Session Restore** (1d) = 2 days for the highest bang-for-buck.

@@ -1,8 +1,8 @@
 # Developer Workflow Analysis — Personal Flip Pad (Pfpad)
 
-**Target:** v1.0.18 — WinForms C# code editor, .NET 8.0-windows  
+**Target:** v1.0.20 — WinForms C# code editor, .NET 8.0-windows  
 **Role:** Solo developer using Pfpad as primary editing environment  
-**Date:** 2026-05-08
+**Date:** 2026-05-08 (Updated 2026-05-09)
 
 ---
 
@@ -14,8 +14,8 @@ This document analyzes 5 fundamental developer entry points:
 
 | # | Workflow | Pfpad Maturity |
 |---|----------|---------------|
-| A | Clone a repository | ❌ External only (terminal/GUI required) |
-| B | Open a project or solution | 🟡 Partial (no solution explorer, Roslyn auto-discovers) |
+| A | Clone a repository | ✅ Built-in dialog (`Ctrl+Shift+C`) |
+| B | Open a project or solution | 🟡 Partial (no solution explorer, Roslyn auto-discovers, needs status indicator) |
 | C | Open a local folder | ✅ Primary path (works well) |
 | D | Create a new project | 🟡 Terminal-only, no UI wizard |
 | E | Continue without code | ❌ No session restore, no welcome page |
@@ -37,17 +37,19 @@ This document analyzes 5 fundamental developer entry points:
 
 ### Current Details
 
-Pfpad has **no clone dialog**. The user must clone externally:
+Pfpad has a **built-in clone dialog** (`Ctrl+Shift+C` or File → Clone Repository...):
 
 ```
-EXTERNAL (required today):
-  ┌─ Terminal:    git clone <url> <path>
-  ├─ GitHub Desktop: File → Clone Repository
-  ├─ VS Code:     Ctrl+Shift+P → "Git: Clone"
-  └─ Browser:     Download ZIP (loses history)
-
-THEN INSIDE Pfpad:
-  ┌─ Ctrl+Alt+O      Open Folder → select cloned directory
+INSIDE Pfpad (available now):
+  ┌─ Ctrl+Shift+C      Open Clone Repository Dialog
+  │   ├─ URL textbox (paste detection, URL validation)
+  │   ├─ Local path picker (default: Documents/)
+  │   ├─ Clone button → spawns git clone process
+  │   ├─ RichTextBox for stdout/stderr streaming
+  │   ├─ Cancel button → kill process
+  │   └─ On success → auto-opens cloned folder as workspace
+  │
+  ├─ Ctrl+Alt+O      Open Folder → select cloned directory (manual fallback)
   ├─ GitService       Auto-detects .git, shows branch in status bar
   └─ Ctrl+Alt+G       Source Control panel with stage/commit/push/pull
 ```
@@ -80,38 +82,30 @@ Once the folder is opened:
 
 ### Gaps
 
-1. **No clone dialog** — must leave the editor to clone. The #1 missing Git operation.
-2. **No progress indication** — clone can take minutes; no progress bar, no cancellation.
+1. ~~**No clone dialog** — must leave the editor to clone.~~ ✅ **Implemented** — `CloneRepositoryDialog.cs` ships with `Ctrl+Shift+C`.
+2. **No progress indication** ~~— clone can take minutes; no progress bar, no cancellation.~~ ✅ **Implemented** — streaming output + cancel button.
 3. **No credential capture** — if system credentials aren't cached, remote ops fail silently.
 4. **No SSH key management** — must configure SSH externally.
 5. **No hosted-provider integration** — no OAuth flow for any platform.
 
 ### Justification
 
-A clone dialog is **medium priority** for a solo developer because:
-- The solo dev typically clones repos infrequently (once per project, not per session)
-- Terminal `git clone` is reliable and well-understood
-- The external clone → `Ctrl+Alt+O` flow adds ~15 seconds of friction, once per repo
-- Credential management and hosted-provider OAuth are significant implementation efforts
+A clone dialog was **medium priority** for a solo developer, but is now **implemented**:
+- ✅ Clone dialog added (`CloneRepositoryDialog.cs`, commit: 0d8bdd8)
+- Uses `git.exe` for the clone process (reliable remote transport) while LibGit2Sharp handles local operations
+- Credential management and hosted-provider OAuth remain deferred
 
 ### Recommendation
 
-**Short-term (1 day):** Add a simple "Clone Repository" dialog:
-- URL textbox + local path picker + "Clone" button
-- Launch `git clone <url> <path>` as a background process (reuse `TestResultParser` async process pattern)
-- Stream output to a progress display
-- On success, auto-open the cloned folder as workspace
-- Keep existing credential model (rely on system helpers)
-
-This avoids LibGit2Sharp's unreliable remote transport and reuses the battle-tested `git.exe` for cloning only, while LibGit2Sharp handles local operations.
+**Short-term:** ✅ **Implemented** — Clone dialog with URL textbox, path picker, progress streaming, auto-open.
 
 **Medium-term (deferred):** Remote management UI, credential caching within Pfpad, hosted-provider OAuth. These are complex and low-frequency needs for a solo dev.
 
 ### Implementation Plan
 
 ```
-Phase 1 — Clone Dialog (1 day)
-├── New file: CloneRepositoryDialog.cs
+Phase 1 — Clone Dialog ✅ COMPLETED (0d8bdd8)
+├── CloneRepositoryDialog.cs (new file)
 │   ├── URL textbox (with paste detection / URL validation)
 │   ├── Local path picker (FolderBrowserDialog, default: Documents/)
 │   ├── Clone button → spawns git clone process
@@ -120,20 +114,20 @@ Phase 1 — Clone Dialog (1 day)
 │   ├── On success → close dialog → auto-open folder
 │   └── Error handling: invalid URL, auth failure, disk full, network timeout
 │
-├── Modify: Form1.cs
+├── Form1.cs
 │   └── File menu → "Clone Repository..." item
-│   └── Keyboard shortcut (Ctrl+Shift+C or similar)
+│   └── Keyboard shortcut (Ctrl+Shift+C)
 │
-└── Modify: Form1.Designer.cs
+└── Form1.Designer.cs
     └── Menu wire-up
 
 Phase 2 — Remote management (deferred, 2 days)
-├── New file: RemoteManagementDialog.cs
+├── RemoteManagementDialog.cs
 │   ├── List remotes (name, URL, fetch/push URL)
 │   ├── Add / Edit / Remove buttons
 │   └── Credential helper config display
 │
-└── Modify: GitPanel.cs — "Remotes" button in toolbar
+└── GitPanel.cs — "Remotes" button in toolbar
 ```
 
 ---
@@ -327,12 +321,12 @@ Ctrl+Alt+O
 
 ### Gaps
 
-1. **No CLI folder arg** — `Pfpad.exe .` should set workspace root
-2. **No recent folders** — must navigate manually each time
-3. **Open Folder hidden under Panel menu** — non-obvious for new users
+1. ~~**No CLI folder arg** — `Pfpad.exe .` should set workspace root~~ ✅ **Implemented** — `Form1.cs` processes `Environment.GetCommandLineArgs()`; directory args set workspace root.
+2. **~~No recent folders~~** — ✅ **Implemented** — Recent Workspaces submenu in File menu.
+3. ~~**Open Folder hidden under Panel menu** — non-obvious for new users~~ ✅ **Implemented** — File → Open Folder exists.
 4. **No multi-root** — only one folder at a time
 5. **No "Add folder to workspace"** — drag-drop replaces, doesn't add
-6. **Auto-refresh is polling** — 5s timer, not event-driven. FileSystemWatcher would be instant.
+6. ~~**Auto-refresh is polling** — 5s timer, not event-driven.~~ ✅ **Implemented** — `FileSystemWatcher` + 500ms debounce fallback.
 7. **No solution-filtered view** — shows ALL text files, not just project files
 
 ### Underlying Code
@@ -349,57 +343,45 @@ This workflow is **already the strongest** in Pfpad. The gaps are paper cuts, no
 
 ### Recommendation
 
-Fix the gaps in priority order:
+The gaps have been largely addressed. Remaining:
 
-1. **CLI folder arg** (0.5 day) — `Pfpad.exe "C:\path\to\folder"` should set workspace root. Currently treats all args as files. Detect if arg is a directory → set workspace root.
-2. **Recent folders** (0.5 day) — persist last 10 workspace paths in settings.json. Show in File menu or Panel menu as "Recent Workspaces" submenu.
-3. **FileSystemWatcher** (0.5 day) — replace 5s polling timer with event-driven FileSystemWatcher. Instant refresh on file create/delete/rename.
-4. **Move "Open Folder" to File menu** (0.25 day) — also keep it in Panel menu for existing users, but add File → Open Folder for discoverability.
+1. ~~**CLI folder arg** (0.5 day)~~ ✅ **Implemented** — `Environment.GetCommandLineArgs()` in `Form1.cs` constructor.
+2. ~~**Recent folders** (0.5 day)~~ ✅ **Implemented** — Recent Workspaces submenu in File menu, persisted to settings.json.
+3. ~~**FileSystemWatcher** (0.5 day)~~ ✅ **Implemented** — `FileSystemWatcher` with 500ms debounce in `WorkspacePanel.cs`.
+4. **Multi-root / Add folder** — lower priority for solo dev.
 
 ### Implementation Plan
 
 ```
-Phase 1 — CLI Folder Arg (0.5 day)
-├── Modify: Program.cs (Main method)
-│   ├── Iterate command-line args
-│   ├── For each arg:
-│   │   ├── If Directory.Exists(arg) → set as workspace root
-│   │   └── If File.Exists(arg) → open as file (existing behavior)
-│   └── Pass workspace root to Form1 constructor or via Startup event
+Phase 1 — CLI Folder Arg ✅ COMPLETED
+├── Form1.cs constructor
+│   └── Environment.GetCommandLineArgs() — directory → workspace root, file → open tab
 │
-└── Modify: Form1.cs
-    └── Handle initial workspace root from command line
+└── Form1.cs Shown event
+    └── Applies workspace root from CLI after form is ready
 
-Phase 2 — Recent Folders (0.5 day)
-├── Modify: settings.json schema
-│   └── Add "RecentWorkspaces": string[]
-│
-├── Modify: Form1.cs
-│   ├── On workspace open: add path to RecentWorkspaces (dedup, trim to 10)
+Phase 2 — Recent Folders ✅ COMPLETED
+├── AppSettings record
+│   └── "RecentWorkspaces": string[]
+├── Form1.cs
+│   ├── On workspace open: add path (dedup, trim to 10)
 │   ├── File menu → "Recent Workspaces" submenu
-│   │   └── Each item: workspace path, click to open
-│   └── "Clear Recent Workspaces" menu item
-│
-└── Modify: WorkspacePanel.cs
-    └── Show "Recent Workspaces" in empty panel state (when no folder open)
+│   └── "Clear Recent Workspaces" item
+└── WorkspacePanel.cs
+    └── Recent Workspaces shown when no folder open
 
-Phase 3 — FileSystemWatcher (0.5 day)
-├── Modify: WorkspacePanel.cs
-│   ├── StartFileWatcher(rootPath):
-│   │   ├── new FileSystemWatcher with IncludeSubdirectories=true
-│   │   ├── NotifyFilter: FileName | DirectoryName | LastWrite
-│   │   ├── Events: Created, Deleted, Renamed → DebounceRefresh
-│   │   └── Debounce: 500ms timer (cancel pending on new event)
-│   └── Dispose watcher on workspace close / cancel
-│
-└── Remove: 5-second polling timer (if FileSystemWatcher covers all cases)
+Phase 3 — FileSystemWatcher ✅ COMPLETED
+├── WorkspacePanel.cs
+│   ├── FileSystemWatcher with IncludeSubdirectories=true
+│   ├── Events: Created, Deleted, Renamed → 500ms debounce
+│   └── Disposed on workspace close
+└── Polling timer retained as debounce fallback
 
-Phase 4 — File Menu entry (0.25 day)
-├── Modify: Form1.Designer.cs
-│   └── File menu → add "Open Folder..." with Ctrl+Alt+O shortcut
-│
-└── Modify: Form1.cs
-    └── Wire to same handler as Panel → Open Folder
+Phase 4 — File Menu entry ✅ COMPLETED
+├── Form1.Designer.cs
+│   └── File menu → "Open Folder..." with Ctrl+Alt+O shortcut
+└── Form1.cs
+    └── Wired to same handler as Panel → Open Folder
 ```
 
 ---
@@ -547,16 +529,17 @@ When Pfpad starts with no command-line arguments, the user sees:
 
 A single untitled tab. A workspace panel with no root. No recent files list visible. No welcome dialog. No quick-start guide. Nothing telling the user what to do next.
 
-### What Exists
+### What Exists (Updated)
 
 | Feature | Detail | Source |
 |---------|--------|--------|
 | Recent files | Last 10 files in File → Recent Files submenu | `Form1.cs` |
-| No recent folders | ❌ Not persisted | — |
-| No session restore | ❌ Last session state not saved | — |
-| No welcome page | ❌ No landing page | — |
+| Recent workspaces | ~~❌ Not persisted~~ ✅ **Implemented** — Recent Workspaces submenu in File menu | `Form1.cs` |
+| Session restore | ~~❌ Last session state not saved~~ ✅ **Implemented** — `SessionManager.cs` restores tabs, cursor, scroll, workspace | `SessionManager.cs` |
+| Auto-restore last workspace | ~~❌~~ ✅ **Implemented** — restored from session data if no CLI args given | `Form1.cs:6440` |
+| No welcome page | ❌ Not implemented | — |
 | No tip of the day | ❌ No onboarding | — |
-| Command-line args | Files open as tabs; folders NOT supported | `Program.cs` |
+| Command-line args | ~~Files open as tabs; folders NOT supported~~ ✅ **Implemented** — directory args set workspace root | `Form1.cs:393-412` |
 
 ### Underlying Code
 
@@ -583,150 +566,98 @@ This wastes **30-60 seconds per session** and breaks flow state.
 
 ### Recommendation
 
-Build a **session restore system** and a **minimal welcome page**:
+Session restore is **implemented**. Remaining:
 
-1. **Session restore** (1 day) — save open files, cursor positions, scroll positions, active tab on close. Restore on launch. This is the highest-ROI improvement in this category.
-
+1. ~~**Session restore** (1 day)~~ ✅ **Implemented** — `SessionManager.cs` saves/restores tabs, cursor, scroll, workspace.
 2. **Welcome page** (1 day) — shown when no session to restore. Quick links: Open Folder, New Project, Clone Repository, Recent Workspaces, Recent Files.
-
-3. **Auto-restore last workspace** (0.5 day) — on launch, if a workspace was open on last close, auto-open it (in background, without blocking UI).
+3. ~~**Auto-restore last workspace** (0.5 day)~~ ✅ **Implemented** — session restore includes workspace path (back to `Form1.cs:6440`).
 
 ### Implementation Plan
 
 ```
-Phase 1 — Session Restore (1 day)
-├── New file: SessionManager.cs
-│   ├── record SessionData:
-│   │   ├── List<DocumentSnapshot> Documents { Path, CursorLine, CursorColumn, TopLine }
-│   │   ├── int ActiveTabIndex
-│   │   ├── string? WorkspacePath
-│   │   └── DateTime LastSession
-│   │
+Phase 1 — Session Restore ✅ COMPLETED (0d8bdd8)
+├── SessionManager.cs (new file)
+│   ├── SessionData record: Documents[], ActiveTabIndex, WorkspacePath, LastSession
 │   ├── Save path: %APPDATA%\MyCrownJewelApp\TextEditor\session.json
-│   │
-│   ├── SaveSession():
-│   │   ├── Iterate open tab documents
-│   │   ├── Capture cursor position (GetLineFromCharIndex, SelectionStart)
-│   │   ├── Capture first visible line
-│   │   ├── Capture active tab index
-│   │   ├── Serialize to JSON
-│   │   └── Write atomically (write to .tmp, then rename)
-│   │
-│   ├── RestoreSession():
-│   │   ├── Read session.json
-│   │   ├── Deserialize, validate (file exists checks)
-│   │   ├── Open each file in order
-│   │   ├── Restore cursor + scroll per file
-│   │   ├── Activate last active tab
-│   │   └── If WorkspacePath exists → auto-set workspace root
-│   │
+│   ├── SaveSession() — captures tabs, cursor, scroll, workspace
+│   ├── RestoreSession() — opens files, restores positions, sets workspace
 │   └── Error handling: corrupt JSON, deleted files, missing directories
 │
-├── Modify: Form1.cs
-│   ├── Form1_FormClosing → call SessionManager.SaveSession()
-│   ├── Form1_Shown → call SessionManager.RestoreSession()
-│   └── Dispose SessionManager on form close
-│
-├── Modify: Form1.Designer.cs
-│   └── Wire FormClosing and Shown events
+├── Form1.cs
+│   ├── Form1_FormClosing → SaveSession()
+│   ├── Form1_Shown → RestoreSession()
+│   └── Disposal
 │
 └── Edge cases:
-    ├── Pfpad launched with command-line args → skip session restore (args take priority)
-    ├── File deleted between sessions → skip silently, note in status bar
-    ├── Session file corrupt → back up to .corrupt, start fresh
-    └── Large session (50+ files) → restore first 10, background-load rest
+    ├── CLI args → skip session restore (args take priority)
+    ├── Deleted files → skip silently
+    └── Corrupt session → back up to .corrupt, start fresh
 
-Phase 2 — Welcome Page (1 day)
-├── New file: WelcomePage.cs (UserControl)
-│   ├── Designed to replace the blank editor area when no tabs are open
-│   │
-│   ├── Layout:
-│   │   ├── [Header] Personal Flip Pad — centered, large font
-│   │   ├── [Quick Actions] Button row:
-│   │   │   ├── 📂 Open Folder (Ctrl+Alt+O)
-│   │   │   ├── ➕ New Project (Ctrl+Shift+N)
-│   │   │   └── 📋 Clone Repository
-│   │   ├── [Recent Workspaces] ListView (if any) — click to open
-│   │   ├── [Recent Files] ListView (if any) — click to open
-│   │   └── [Keyboard Shortcuts] Collapsible section with common shortcuts
-│   │
-│   ├── Integration:
-│   │   ├── Show when TabControl.TabPages.Count == 0
-│   │   ├── Hide when first tab opens (file or new tab)
-│   │   └── Click actions call same handlers as menu items
-│   │
-│   └── Theming: respects active theme (Dark/Light)
+Phase 2 — Welcome Page (1 day) — NOT YET IMPLEMENTED
+├── WelcomePage.cs (UserControl)
+│   ├── Replaces blank editor area when no tabs open
+│   ├── Quick actions: Open Folder, New Project, Clone Repository
+│   ├── Recent Workspaces + Recent Files lists
+│   └── Keyboard shortcuts collapsible section
 │
-├── Modify: Form1.cs
-│   ├── Add WelcomePage to form (behind tab control or as overlay)
-│   ├── TabControl.TabPages.CollectionChanged → show/hide welcome
-│   └── Wire click handlers to existing menu command methods
+├── Form1.cs — show/hide on tab count change
 │
-└── Modify: Form1.Designer.cs
-    └── Add WelcomePage control to form layout
+└── Form1.Designer.cs — add to layout
 
-Phase 3 — Auto-Restore Last Workspace (0.5 day)
-├── Modify: SessionManager.cs
-│   └── On restore, if WorkspacePath is set and directory exists:
-│       ├── Call WorkspacePanel.SetRoot(WorkspacePath) (fires async scan)
-│       └── Do NOT block UI — restore in background
-│
-└── Modify: WorkspacePanel.cs
-    └── Ensure SetRoot is safe to call during Form1_Shown (before handle created)
+Phase 3 — Auto-Restore Last Workspace ✅ COMPLETED
+├── SessionManager.cs
+│   └── WorkspacePath restored from session data
+└── Form1.cs:6440 — applies workspace on restore
 ```
 
 ---
 
-## 6. Implementation Priority Matrix
+## 6. Implementation Priority Matrix (Updated 2026-05-09)
 
-All estimates assume a solo developer familiar with the codebase.
+All estimates assume a solo developer familiar with the codebase. Items marked ✅ **DONE** have been implemented since this document was written.
 
-| Priority | Workflow | Phase | Effort | ROI | Dependencies |
-|----------|----------|-------|--------|-----|-------------|
-| **P0** | E — Session Restore | Phase 1 | 1 day | High — saves 30-60s per session | None |
-| **P0** | C — CLI Folder Arg | Phase 1 | 0.5 day | High — fixes broken entry point | None |
-| **P1** | C — Recent Folders | Phase 2 | 0.5 day | Medium — reduces navigation friction | None |
-| **P1** | A — Clone Dialog | Phase 1 | 1 day | Medium — once per repo, high visibility | None |
-| **P1** | C — FileSystemWatcher | Phase 3 | 0.5 day | Medium — instant > polling | None |
-| **P1** | B — Workspace Status Indicator | Phase 1 | 0.5 day | Medium — shows hidden state | RoslynWorkspaceService |
-| **P2** | D — New Project Dialog | Phase 1 | 1.5 days | Medium — infrequent but high visibility | None |
-| **P2** | E — Welcome Page | Phase 2 | 1 day | Low-medium — quality of life | Session Manager |
-| **P2** | B — Project-Filtered Tree | Phase 2 | 1 day | Medium — reduces clutter | WorkspacePanel |
-| **P3** | B — Build Config Selector | Phase 3 | 0.5 day | Low — terminal workaround exists | None |
-| **P3** | C — Move Open Folder to File Menu | Phase 4 | 0.25 day | Low — cosmetics | None |
-| **P3** | E — Auto-Restore Last Workspace | Phase 3 | 0.5 day | Low — incremental to session restore | Session Restore |
-| **P3** | D — NuGet Package Dialog | Phase 2 | 3-4 days | Low — terminal workaround exists | NuGet.Protocol |
-| **Defer** | B — Full Solution Explorer | — | 10-14 days | Low for solo dev | SOLUTION_IDE_ASSESSMENT.md |
-| **Defer** | A — Remote Management UI | Phase 2 | 2 days | Low — infrequent need | None |
+| Priority | Workflow | Phase | Effort | ROI | Dependencies | Status |
+|----------|----------|-------|--------|-----|-------------|--------|
+| **P0** | E — Session Restore | Phase 1 | 1 day | High — saves 30-60s per session | None | ✅ **DONE** |
+| **P0** | C — CLI Folder Arg | Phase 1 | 0.5 day | High — fixes broken entry point | None | ✅ **DONE** |
+| **P1** | C — Recent Workspaces | Phase 2 | 0.5 day | Medium — reduces navigation friction | None | ✅ **DONE** |
+| **P1** | A — Clone Dialog | Phase 1 | 1 day | Medium — once per repo, high visibility | None | ✅ **DONE** |
+| **P1** | C — FileSystemWatcher | Phase 3 | 0.5 day | Medium — instant > polling | None | ✅ **DONE** |
+| **P1** | B — Workspace Status Indicator | Phase 1 | 0.5 day | Medium — shows hidden state | RoslynWorkspaceService | ✅ **DONE** |
+| **P2** | D — New Project Dialog | Phase 1 | 1.5 days | Medium — infrequent but high visibility | None | ❌ Pending |
+| **P2** | E — Welcome Page | Phase 2 | 1 day | Low-medium — quality of life | Session Manager | ❌ Pending |
+| **P2** | B — Project-Filtered Tree | Phase 2 | 1 day | Medium — reduces clutter | WorkspacePanel | ❌ Pending |
+| **P3** | B — Build Config Selector | Phase 3 | 0.5 day | Low — terminal workaround exists | None | ❌ Pending |
+| **P3** | C — Open Folder in File Menu | Phase 4 | 0.25 day | Low — cosmetics | None | ✅ **DONE** |
+| **P3** | E — Auto-Restore Last Workspace | Phase 3 | 0.5 day | Low — incremental to session restore | Session Restore | ✅ **DONE** |
+| **P3** | Lint Rule Expansion (PFP006-010) | — | 1-2 days | Medium — visible quality improvement | LintEngine | ❌ Pending |
+| **Defer** | D — NuGet Package Dialog | Phase 2 | 3-4 days | Low — terminal workaround exists | NuGet.Protocol | Deferred |
+| **Defer** | B — Full Solution Explorer | — | 10-14 days | Low for solo dev | SOLUTION_IDE_ASSESSMENT.md | Deferred |
+| **Defer** | A — Remote Management UI | Phase 2 | 2 days | Low — infrequent need | None | Deferred |
 
-### Recommended 2-Week Sprint
+### Remaining Sprint
 
 ```
-Week 1
-├── Day 1:  E.1 — Session Restore (1d)
-├── Day 2:  C.1 — CLI Folder Arg (0.5d) + C.2 — Recent Folders (0.5d)
-├── Day 3:  A.1 — Clone Dialog (1d)
-├── Day 4:  C.3 — FileSystemWatcher (0.5d) + B.1 — Workspace Status (0.5d)
-└── Day 5:  C.4 — File Menu (0.25d) + Buffer
-
-Week 2
-├── Day 1:  D.1 — New Project Dialog (1d)
-├── Day 2:  D.1 — New Project Dialog (cont'd, 0.5d) + E.2 — Welcome Page start
-├── Day 3:  E.2 — Welcome Page (1d)
-├── Day 4:  B.2 — Project-Filtered Tree (1d)
-└── Day 5:  Buffer / bug fixes / polish
+├── Day 1:  B.1 — Workspace Status Indicator (0.5d) ✅ DONE + Buffer
+├── Day 2:  D.1 — New Project Dialog (1.5d)
+├── Day 3:  D.1 — New Project Dialog cont'd + E.2 — Welcome Page start
+├── Day 4:  E.2 — Welcome Page (1d)
+├── Day 5:  B.2 — Project-Filtered Tree (1d)
+├── Day 6:  P3 — Lint Rule Expansion (1-2d)
+└── Day 7:  B.3 — Build Config Selector (0.5d) + Buffer
 ```
 
-### Quick Wins (2 Days or Less, Sorted by Impact)
+### Quick Wins (2 Days or Less, Sorted by Impact) — Updated
 
-1. **Session Restore** (1d) — biggest daily quality-of-life improvement
-2. **CLI Folder Arg** (0.5d) — fixes a broken entry point, trivial to implement
-3. **Recent Folders** (0.5d) — saves navigation on every session
-4. **Clone Dialog** (1d) — visible missing feature, moderate implementation
-5. **FileSystemWatcher** (0.5d) — instant workspace refresh vs. 5s polling
-6. **Workspace Status Indicator** (0.5d) — shows hidden solution/project state
-7. **Build Config Selector** (0.5d) — toolbar dropdown, low effort
-8. **Welcome Page** (1d) — nice-to-have, depends on session restore
+1. **Session Restore** (1d) — biggest daily quality-of-life improvement ✅ **DONE**
+2. **CLI Folder Arg** (0.5d) — fixes a broken entry point, trivial to implement ✅ **DONE**
+3. **Recent Workspaces** (0.5d) — saves navigation on every session ✅ **DONE**
+4. **Clone Dialog** (1d) — visible missing feature, moderate implementation ✅ **DONE**
+5. **FileSystemWatcher** (0.5d) — instant workspace refresh vs. 5s polling ✅ **DONE**
+6. **Workspace Status Indicator** (0.5d) — shows hidden solution/project state ✅ **DONE**
+7. **Build Config Selector** (0.5d) — toolbar dropdown, low effort ❌ Pending
+8. **Welcome Page** (1d) — nice-to-have, depends on session restore ❌ Pending
+9. **Lint Rule Expansion** (1-2d) — PFP006-PFP010 ❌ Pending
 
 ---
 
@@ -747,12 +678,14 @@ Week 2
 | LaunchProfileParser.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/LaunchProfileParser.cs` |
 | SymbolIndexService.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/SymbolIndexService.cs` |
 | TestResultParser.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/TestResultParser.cs` |
-| DiffPanel.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/DiffPanel.cs` (existing stub) |
-| CommandPaletteForm.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/CommandPaletteForm.cs` (existing stub) |
-| SnippetEngine.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/SnippetEngine.cs` (existing stub) |
-| MarkdownPreviewPanel.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/MarkdownPreviewPanel.cs` (existing stub) |
-| OutlinePanel.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/OutlinePanel.cs` (existing stub) |
-| MultiCaretManager.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/MultiCaretManager.cs` (existing stub) |
+| DiffPanel.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/DiffPanel.cs` |
+| CommandPaletteForm.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/CommandPaletteForm.cs` |
+| SnippetEngine.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/SnippetEngine.cs` |
+| MarkdownPreviewPanel.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/MarkdownPreviewPanel.cs` |
+| OutlinePanel.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/OutlinePanel.cs` |
+| MultiCaretManager.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/MultiCaretManager.cs` |
+| SessionManager.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/SessionManager.cs` |
+| CloneRepositoryDialog.cs | `apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/CloneRepositoryDialog.cs` |
 | settings.json | `%APPDATA%\MyCrownJewelApp\TextEditor\settings.json` |
 
 ---

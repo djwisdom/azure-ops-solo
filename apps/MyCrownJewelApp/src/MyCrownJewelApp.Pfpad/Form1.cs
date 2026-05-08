@@ -269,6 +269,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private const int MaxRecentFiles = 10;
         private List<string> recentFiles = new List<string>();
 
+        // Recent workspaces
+        private const int MaxRecentWorkspaces = 10;
+        private List<string> _recentWorkspaces = new List<string>();
+
         // Settings persistence
         private record AppSettings(
             bool WordWrapEnabled,
@@ -300,7 +304,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool RainbowBracketsEnabled = false,
             bool BreadcrumbsEnabled = false,
             bool AnalyzersEnabled = true,
-            bool AutoSaveEnabled = false
+            bool AutoSaveEnabled = false,
+            List<string>? RecentWorkspaces = null
         );
 
         private string SettingsFilePath =>
@@ -318,6 +323,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private Button _tabDropdownButton = null!;
         private bool _applyingHighlight;
+        private bool _suppressDirty;
 
         // Notification feed
         private readonly NotificationFeedService _notificationFeed = new();
@@ -372,6 +378,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               if (!string.IsNullOrEmpty(_workspaceRoot) && _workspacePanel != null && _workspaceRootFromCli)
               {
                   _workspacePanel.SetRoot(_workspaceRoot);
+                  AddToRecentWorkspaces(_workspaceRoot);
+                  UpdateWorkspaceStatus();
               }
 
               if (!_cliArgsProvided)
@@ -431,6 +439,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             
             LoadRecentFiles();
             UpdateRecentMenu();
+
+            LoadRecentWorkspaces();
+            UpdateRecentWorkspacesMenu();
+            UpdateWorkspaceStatus();
             
             // Load persisted settings (overrides defaults below)
             LoadSettings();
@@ -868,6 +880,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
                   _workspacePanel.ScanCompleted += OnWorkspaceScanCompleted;
                   _workspacePanel.ScanProgressChanged += OnWorkspaceScanProgressChanged;
+                  workspaceStatusLabel.Click += WorkspaceStatusLabel_Click;
 
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
@@ -2709,6 +2722,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         internal void SetDirty()
         {
             if (isModified) return;
+            if (_suppressDirty) return;
             isModified = true;
             if (activeDocIndex >= 0)
             {
@@ -2855,6 +2869,79 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 recentMenuItem.DropDownItems.Add(new ToolStripSeparator());
                 var clearItem = new ToolStripMenuItem("Clear Recent", null, (s, e) => { recentFiles.Clear(); UpdateRecentMenu(); SaveRecentFiles(); });
                 recentMenuItem.DropDownItems.Add(clearItem);
+            }
+        }
+
+        // Recent workspaces
+        private void LoadRecentWorkspaces()
+        {
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string appFolder = Path.Combine(appData, "MyCrownJewelApp", "TextEditor");
+                string path = Path.Combine(appFolder, "recentWorkspaces.json");
+                if (File.Exists(path))
+                {
+                    string json = File.ReadAllText(path);
+                    var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
+                    if (list != null)
+                    {
+                        _recentWorkspaces.Clear();
+                        _recentWorkspaces.AddRange(list);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void SaveRecentWorkspaces()
+        {
+            try
+            {
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string appFolder = Path.Combine(appData, "MyCrownJewelApp", "TextEditor");
+                Directory.CreateDirectory(appFolder);
+                string path = Path.Combine(appFolder, "recentWorkspaces.json");
+                string json = System.Text.Json.JsonSerializer.Serialize(_recentWorkspaces.Take(MaxRecentWorkspaces).ToList());
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, json);
+                File.Move(tmp, path, overwrite: true);
+            }
+            catch { }
+        }
+
+        private void AddToRecentWorkspaces(string path)
+        {
+            _recentWorkspaces.RemoveAll(w => string.Equals(w, path, StringComparison.OrdinalIgnoreCase));
+            _recentWorkspaces.Insert(0, path);
+            if (_recentWorkspaces.Count > MaxRecentWorkspaces)
+                _recentWorkspaces.RemoveRange(MaxRecentWorkspaces, _recentWorkspaces.Count - MaxRecentWorkspaces);
+            UpdateRecentWorkspacesMenu();
+            SaveRecentWorkspaces();
+        }
+
+        private void UpdateRecentWorkspacesMenu()
+        {
+            recentWorkspacesMenuItem.DropDownItems.Clear();
+            if (_recentWorkspaces.Count == 0)
+            {
+                recentWorkspacesMenuItem.Enabled = false;
+                recentWorkspacesMenuItem.DropDownItems.Add("(No recent workspaces)").Enabled = false;
+            }
+            else
+            {
+                recentWorkspacesMenuItem.Enabled = true;
+                for (int i = 0; i < _recentWorkspaces.Count; i++)
+                {
+                    string wsPath = _recentWorkspaces[i];
+                    string display = $"{(i + 1)} {Path.GetFileName(wsPath)}";
+                    var item = new ToolStripMenuItem(display, null, (s, e) => OpenWorkspaceFolder(wsPath));
+                    item.ToolTipText = wsPath;
+                    recentWorkspacesMenuItem.DropDownItems.Add(item);
+                }
+                recentWorkspacesMenuItem.DropDownItems.Add(new ToolStripSeparator());
+                var clearItem = new ToolStripMenuItem("Clear Recent Workspaces", null, (s, e) => { _recentWorkspaces.Clear(); UpdateRecentWorkspacesMenu(); SaveRecentWorkspaces(); });
+                recentWorkspacesMenuItem.DropDownItems.Add(clearItem);
             }
         }
 
@@ -3174,6 +3261,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 var token = _symbolIndexCts.Token;
                 _workspaceRoot = dlg.SelectedPath;
                 _workspacePanel?.SetRoot(_workspaceRoot);
+                AddToRecentWorkspaces(_workspaceRoot);
+                UpdateWorkspaceStatus();
                 // Symbol index rebuild on background thread — cancellation prevents stale overwrites
                 Task.Run(() =>
                 {
@@ -3196,6 +3285,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             var token = _symbolIndexCts.Token;
             _workspaceRoot = path;
             _workspacePanel?.SetRoot(_workspaceRoot);
+            AddToRecentWorkspaces(_workspaceRoot);
+            UpdateWorkspaceStatus();
             Task.Run(() =>
             {
                 if (!token.IsCancellationRequested)
@@ -3205,6 +3296,65 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 ToggleWorkspace();
             else
                 SaveSettings();
+        }
+
+        private void UpdateWorkspaceStatus()
+        {
+            try
+            {
+                string root = _workspaceRoot;
+                if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+                {
+                    workspaceStatusLabel.Text = "";
+                    workspaceStatusLabel.ToolTipText = "";
+                    workspaceStatusLabel.Visible = false;
+                    return;
+                }
+
+                // Prefer solution files, then csproj
+                var slnFiles = Directory.GetFiles(root, "*.sln", SearchOption.TopDirectoryOnly);
+                if (slnFiles.Length > 0)
+                {
+                    string name = Path.GetFileNameWithoutExtension(slnFiles[0]);
+                    int count = slnFiles.Length;
+                    workspaceStatusLabel.Text = count > 1 ? $"Solution: {name} +{count - 1}" : $"Solution: {name}";
+                    workspaceStatusLabel.ToolTipText = slnFiles[0];
+                    workspaceStatusLabel.Visible = true;
+                    return;
+                }
+
+                var csprojFiles = Directory.GetFiles(root, "*.csproj", SearchOption.TopDirectoryOnly);
+                if (csprojFiles.Length > 0)
+                {
+                    string name = Path.GetFileNameWithoutExtension(csprojFiles[0]);
+                    int count = csprojFiles.Length;
+                    workspaceStatusLabel.Text = count > 1 ? $"Project: {name} +{count - 1}" : $"Project: {name}";
+                    workspaceStatusLabel.ToolTipText = csprojFiles[0];
+                    workspaceStatusLabel.Visible = true;
+                    return;
+                }
+
+                workspaceStatusLabel.Text = "Folder";
+                workspaceStatusLabel.ToolTipText = root;
+                workspaceStatusLabel.Visible = true;
+            }
+            catch
+            {
+                workspaceStatusLabel.Text = "";
+                workspaceStatusLabel.Visible = false;
+            }
+        }
+
+        private void WorkspaceStatusLabel_Click(object? sender, EventArgs e)
+        {
+            if (!string.IsNullOrEmpty(workspaceStatusLabel.ToolTipText))
+            {
+                string? dir = Path.GetDirectoryName(workspaceStatusLabel.ToolTipText);
+                if (dir != null && Directory.Exists(dir))
+                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{workspaceStatusLabel.ToolTipText}\"");
+                else if (Directory.Exists(workspaceStatusLabel.ToolTipText))
+                    System.Diagnostics.Process.Start("explorer.exe", $"\"{workspaceStatusLabel.ToolTipText}\"");
+            }
         }
 
         private void OnWorkspaceScanStarted()
@@ -3225,6 +3375,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             scanProgressBar.Visible = false;
             scanProgressBar.Value = 0;
             statusStrip.BackColor = _originalStatusBarColor;
+            UpdateWorkspaceStatus();
             ShowNotification("Workspace", "Folder scan complete");
         }
 
@@ -4326,6 +4477,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             textEditor.TextChanged += TextEditor_TextChanged;
 
+            // Suppress dirty flag from deferred TextChanged events
+            // caused by subsequent operations (scroll restore, highlighting, status update)
+            _suppressDirty = true;
+
             // Restore scroll position
             if (doc.FirstVisibleLine > 0)
             {
@@ -4344,6 +4499,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             UpdateTabTitle(activeDocIndex);
             UpdateThemeColors(_currentTheme);
             UpdateBreadcrumbs();
+            _suppressDirty = false;
         }
 
         // Update tab title for document at index
@@ -6445,6 +6601,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     BeginInvoke(() =>
                     {
                         _workspacePanel.SetRoot(_workspaceRoot);
+                        AddToRecentWorkspaces(_workspaceRoot);
+                        UpdateWorkspaceStatus();
                     });
                 }
             }
