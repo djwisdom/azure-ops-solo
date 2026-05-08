@@ -21,6 +21,8 @@ public class HighlightRichTextBox : RichTextBox
     private FoldingManager? _foldingManager;
     private Color _foldLineColor = Color.FromArgb(80, 80, 80);
     private List<(int start, int length, Color color)> _squiggles = new();
+    private Dictionary<int, string> _lineMessages = new();
+    private List<int> _extraCarets = new();
 
     // Rainbow brackets
     private bool _rainbowBracketsEnabled;
@@ -305,6 +307,18 @@ public class HighlightRichTextBox : RichTextBox
         Invalidate();
     }
 
+    public void SetLineMessages(Dictionary<int, string> messages)
+    {
+        _lineMessages = messages ?? new Dictionary<int, string>();
+        Invalidate();
+    }
+
+    public void SetExtraCarets(List<int> positions)
+    {
+        _extraCarets = positions ?? new List<int>();
+        Invalidate();
+    }
+
     private Rectangle? GetCurrentLineRect()
     {
         if (_highlightMode != CurrentLineHighlightMode.WholeLine || !Visible || IsDisposed || !Enabled || !Focused)
@@ -359,6 +373,27 @@ public class HighlightRichTextBox : RichTextBox
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
             using var brush = new SolidBrush(ForeColor);
             g.FillRectangle(brush, pt.X, pt.Y, charW, lineH);
+        }
+        catch { }
+    }
+
+    private void DrawExtraCarets(Graphics g)
+    {
+        if (_extraCarets.Count == 0 || !IsHandleCreated) return;
+        try
+        {
+            int currentPrimary = SelectionStart;
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            int charW = Math.Max(1, (int)(8 * ZoomFactor));
+            using var caretBrush = new SolidBrush(ForeColor);
+
+            foreach (int pos in _extraCarets)
+            {
+                if (pos == currentPrimary || pos < 0 || pos >= TextLength) continue;
+                Point pt = GetPositionFromCharIndex(pos);
+                if (pt.IsEmpty) continue;
+                g.FillRectangle(caretBrush, pt.X, pt.Y, charW, lineH);
+            }
         }
         catch { }
     }
@@ -601,6 +636,49 @@ public class HighlightRichTextBox : RichTextBox
         catch { }
     }
 
+    private void DrawErrorLens(Graphics g)
+    {
+        if (_lineMessages.Count == 0 || !IsHandleCreated || TextLength == 0) return;
+        try
+        {
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            int firstVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, 0)));
+            int lastVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, ClientSize.Height)));
+
+            using var lensFont = new Font("Consolas", 8);
+            using var lensBrush = new SolidBrush(Color.FromArgb(160, Color.FromArgb(180, 160, 80)));
+
+            foreach (var kvp in _lineMessages)
+            {
+                int line = kvp.Key;
+                if (line < firstVisLine || line > lastVisLine) continue;
+
+                int charIdx = GetFirstCharIndexFromLine(line);
+                if (charIdx < 0 || charIdx >= TextLength) continue;
+
+                int lineEnd = line + 1 < Lines.Length
+                    ? GetFirstCharIndexFromLine(line + 1) - 1
+                    : TextLength;
+
+                if (lineEnd <= charIdx) continue;
+
+                int lineLen = lineEnd - charIdx;
+                Point lineEndPos = GetPositionFromCharIndex(Math.Min(charIdx + lineLen - 1, TextLength - 1));
+                if (lineEndPos.IsEmpty) continue;
+
+                int textX = lineEndPos.X + 24;
+                if (textX + 10 >= ClientSize.Width) continue;
+
+                int textY = lineEndPos.Y;
+                string message = kvp.Value;
+                if (message.Length > 60) message = message[..57] + "...";
+
+                g.DrawString($"// {message}", lensFont, lensBrush, textX, textY);
+            }
+        }
+        catch { }
+    }
+
     private void DrawBraceRect(Graphics g, int pos, int lineH, Color color)
     {
         Point pt = GetPositionFromCharIndex(pos);
@@ -784,9 +862,12 @@ public class HighlightRichTextBox : RichTextBox
                         DrawFoldBracketLines(g);
                         DrawMatchingBraces(g);
                         DrawSquiggles(g);
+                        DrawErrorLens(g);
 
                         if (_caretVisible && Focused && IsHandleCreated && !IsDisposed)
                             DrawBlockCursor(g);
+
+                        DrawExtraCarets(g);
                     }
                     finally
                     {

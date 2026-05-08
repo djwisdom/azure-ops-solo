@@ -305,6 +305,43 @@ public sealed class GitService : IDisposable
         }
     }
 
+    /// <summary>Returns per-new-line diff status: 0=none, 1=added, 2=modified.</summary>
+    public Dictionary<int, byte> GetLineDiffs(string path)
+    {
+        var result = new Dictionary<int, byte>();
+        if (_repo is null) return result;
+        try
+        {
+            string? headContent = ReadBlobContent(_repo.Head.Tip?.Tree, path);
+            if (headContent is null) return result;
+
+            string? wdContent = File.Exists(Path.Combine(_repo.Info.WorkingDirectory, path))
+                ? File.ReadAllText(Path.Combine(_repo.Info.WorkingDirectory, path))
+                : null;
+            if (wdContent is null) return result;
+
+            var headLines = headContent.Split('\n');
+            var wdLines = wdContent.Split('\n');
+            var hunks = ComputeHunks(headLines, wdLines);
+
+            foreach (var hunk in hunks)
+            {
+                int newLine = hunk.NewStart;
+                foreach (var line in hunk.Lines)
+                {
+                    if (line.Type == DiffLineType.Added)
+                        result[newLine] = 1;
+                    else if (line.Type == DiffLineType.Removed)
+                    { }
+                    else
+                        newLine++;
+                }
+            }
+        }
+        catch { }
+        return result;
+    }
+
     private string? ReadBlobContent(Tree? tree, string path)
     {
         var entry = tree?[path];

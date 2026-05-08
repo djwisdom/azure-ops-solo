@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Formatting;
 using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 using MyCrownJewelApp.Pfpad.Roslyn;
 
@@ -245,5 +246,25 @@ public partial class Form1
 
     private void InitializeRoslynRename(RenameDialog dlg)
     {
+    }
+
+    private async void FormatDocumentAsync()
+    {
+        if (textEditor is null || !_roslynWorkspace.IsReady) return;
+        try
+        {
+            var doc = await _roslynWorkspace.GetCurrentDocumentAsync();
+            if (doc is null) return;
+            var formatted = await Formatter.FormatAsync(doc);
+            if (formatted is null) return;
+            string newText = (await formatted.GetTextAsync()).ToString();
+            if (string.IsNullOrEmpty(newText) || newText == textEditor.Text) return;
+            textEditor.Text = newText;
+            _roslynWorkspace.UpdateDocumentText(newText);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[FormatDocument] {ex.Message}");
+        }
     }
 }

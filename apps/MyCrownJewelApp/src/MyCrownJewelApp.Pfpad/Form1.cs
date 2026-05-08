@@ -294,7 +294,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool ProblemsPanelVisible = false,
             bool RainbowBracketsEnabled = false,
             bool BreadcrumbsEnabled = false,
-            bool AnalyzersEnabled = true
+            bool AnalyzersEnabled = true,
+            bool AutoSaveEnabled = false
         );
 
         private string SettingsFilePath =>
@@ -322,6 +323,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         // Symbol index for Go to Definition
         private readonly SymbolIndexService _symbolIndex = new();
+        private SnippetEngine? _snippetEngine;
+        private MultiCaretManager? _multiCaret;
+        // Auto-save
+        private readonly System.Windows.Forms.Timer _autoSaveTimer = new() { Interval = 30000 };
+        private bool _autoSaveEnabled;
 
         // Workspace scan state
         private Color _originalStatusBarColor;
@@ -619,6 +625,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
               textEditor.Enter += (s, e) => { if (vimModeEnabled) vimEngine?.SetEditor(textEditor); };
+               _snippetEngine = new SnippetEngine(textEditor!);
+               _multiCaret = new MultiCaretManager(textEditor!);
               vimEngine.SaveRequested += () => { if (currentFilePath != null) { SaveFile(); ShowNotification("Vim", "File saved"); } else { SaveAsFile(); } };
               vimEngine.SaveAsRequested += (filename) =>
               {
@@ -1561,6 +1569,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
                         _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
                         _analyzersEnabled = settings.AnalyzersEnabled;
+                        _autoSaveEnabled = settings.AutoSaveEnabled;
+                        if (_autoSaveEnabled) _autoSaveTimer.Start();
                         bool showWhitespace = settings.ShowWhitespace;
                         if (whitespaceMenuItem != null)
                         {
@@ -1608,7 +1618,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         ProblemsPanelVisible: _problemsPanelVisible,
                          RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
                          BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
-                         AnalyzersEnabled: _analyzersEnabled
+                          AnalyzersEnabled: _analyzersEnabled,
+                          AutoSaveEnabled: _autoSaveEnabled
                 );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -2594,8 +2605,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                      catch { }
                  }
 
-                // Resume column guide updates after load completes
-                   elasticTabTimer?.Start();
+                 // Resume column guide updates after load completes
+                    elasticTabTimer?.Start();
+                    ForceCleanState();
             }
              catch (Exception ex)
               {
@@ -2698,6 +2710,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
             UpdateWindowTitle();
             UpdateActiveTabTitle();
+        }
+
+        private void ForceCleanState()
+        {
+            isModified = false;
+            if (activeDocIndex >= 0 && activeDocIndex < documents.Count)
+            {
+                documents[activeDocIndex].IsDirty = false;
+            }
         }
 
         private void UpdateWindowTitle()
@@ -2826,6 +2847,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void Save_Click(object? sender, EventArgs e) => SaveFile();
         private void SaveAs_Click(object? sender, EventArgs e) => SaveAsFile();
         private void SaveAll_Click(object? sender, EventArgs e) => SaveAllFiles();
+        private void ToggleAutoSave_Click(object? sender, EventArgs e) { _autoSaveEnabled = autoSaveMenuItem.Checked; if (_autoSaveEnabled) _autoSaveTimer.Start(); else _autoSaveTimer.Stop(); SaveSettings(); }
         private void CloseTab_Click(object? sender, EventArgs e) => CloseCurrentTab();
         private void CloseWindow_Click(object? sender, EventArgs e) => this.Close();
         private void CloseAll_Click(object? sender, EventArgs e)
@@ -3219,6 +3241,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             using var dlg = new GoToDialog(this);
             dlg.ShowDialog(this);
         }
+
+        private void FormatDocument_Click(object? sender, EventArgs e) { FormatDocumentAsync(); }
+        private void ShowCommandPalette() { var palette = new CommandPaletteForm(new List<CommandPaletteForm.CommandEntry>()); palette.ShowDialog(this); }
 
         private void RenameSymbol()
         {
@@ -4167,6 +4192,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 tabControl.SelectedIndex = newIndex; // triggers SwitchToTab when handle exists
                 activeDocIndex = newIndex;
                 EnsureSelectedTabVisible();
+                ForceCleanState();
             }
             catch (Exception ex)
             {
@@ -6738,6 +6764,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 gutterPanel?.Invalidate();
                 return true;
             }
+
+            if (keyData == (Keys.Alt | Keys.Shift | Keys.F)) { FormatDocumentAsync(); return true; }
+            if (keyData == (Keys.Control | Keys.Shift | Keys.P)) { ShowCommandPalette(); return true; }
 
             if (vimModeEnabled && vimEngine != null)
             {

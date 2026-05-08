@@ -29,6 +29,7 @@ public class GutterPanel : Panel
 
     private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
     private Dictionary<int, int>? _coverageHits; // line → hit count
+    private Dictionary<int, byte> _lineDiffs = new(); // 1=added, 2=modified
 
     public event Action<int>? BreakpointClicked;
 
@@ -43,6 +44,12 @@ public class GutterPanel : Panel
     public void SetCoverage(Dictionary<int, int>? lineHits)
     {
         _coverageHits = lineHits;
+        Invalidate();
+    }
+
+    public void SetLineDiffs(Dictionary<int, byte> diffs)
+    {
+        _lineDiffs = diffs ?? new Dictionary<int, byte>();
         Invalidate();
     }
 
@@ -420,7 +427,20 @@ public class GutterPanel : Panel
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
 
         bool modified = mainForm.ModifiedLines.Contains(lineIndex);
-        if (modified)
+        if (_lineDiffs.TryGetValue(lineIndex + 1, out byte diffType))
+        {
+            int barWidth = 4;
+            int barX = x + (ChangeMarginWidth - barWidth) / 2;
+            int lineH = Math.Max(1, (int)Math.Ceiling(mainForm.textEditor.Font.GetHeight() * mainForm.textEditor.ZoomFactor));
+            Color c = diffType switch
+            {
+                1 => Color.FromArgb(80, 200, 80),
+                _ => Color.FromArgb(220, 180, 60),
+            };
+            using var brush = new SolidBrush(c);
+            g.FillRectangle(brush, barX, y + 2, barWidth, lineH - 4);
+        }
+        else if (modified)
         {
             int barWidth = 4;
             int barX = x + (ChangeMarginWidth - barWidth) / 2;

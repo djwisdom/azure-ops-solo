@@ -13,6 +13,7 @@ partial class Form1
     private ToolStripMenuItem saveMenuItem;
     private ToolStripMenuItem saveAsMenuItem;
     private ToolStripMenuItem saveAllMenuItem;
+    private ToolStripMenuItem autoSaveMenuItem;
     private ToolStripMenuItem closeTabMenuItem;
     private ToolStripMenuItem closeWindowMenuItem;
     private ToolStripMenuItem closeAllMenuItem;
@@ -41,6 +42,7 @@ partial class Form1
     private ToolStripMenuItem toggleFoldMenuItem;
     private ToolStripMenuItem toggleAllFoldsMenuItem;
     #pragma warning restore CS0169
+    private ToolStripMenuItem formatDocumentMenuItem;
 
     private ToolStripMenuItem viewMenu;
     private ToolStripMenuItem panelMenu;
@@ -173,6 +175,8 @@ partial class Form1
         saveMenuItem = new ToolStripMenuItem("&Save", null, Save_Click, Keys.Control | Keys.S);
         saveAsMenuItem = new ToolStripMenuItem("Save &As...", null, SaveAs_Click, Keys.Control | Keys.Shift | Keys.S);
         saveAllMenuItem = new ToolStripMenuItem("Save A&ll", null, SaveAll_Click, Keys.Control | Keys.Alt | Keys.S);
+        autoSaveMenuItem = new ToolStripMenuItem("Auto Sa&ve", null, ToggleAutoSave_Click);
+        autoSaveMenuItem.CheckOnClick = true;
         closeTabMenuItem = new ToolStripMenuItem("Close Tab", null, CloseTab_Click, Keys.Control | Keys.W);
         closeWindowMenuItem = new ToolStripMenuItem("Close Window", null, CloseWindow_Click, Keys.Control | Keys.Shift | Keys.W);
         closeAllMenuItem = new ToolStripMenuItem("Close All", null, CloseAll_Click, Keys.Control | Keys.Alt | Keys.W);
@@ -186,6 +190,7 @@ partial class Form1
         fileMenu.DropDownItems.Add(saveMenuItem);
         fileMenu.DropDownItems.Add(saveAsMenuItem);
         fileMenu.DropDownItems.Add(saveAllMenuItem);
+        fileMenu.DropDownItems.Add(autoSaveMenuItem);
         fileMenu.DropDownItems.Add(new ToolStripSeparator());
         fileMenu.DropDownItems.Add(closeTabMenuItem);
         fileMenu.DropDownItems.Add(closeWindowMenuItem);
@@ -213,6 +218,8 @@ partial class Form1
         editMenu.DropDownItems.Add(callHierarchyMenuItem);
         var parseStackTraceMenuItem = new ToolStripMenuItem("Parse Stack &Trace", null, ParseStackTrace_Click, Keys.Control | Keys.Shift | Keys.T);
         editMenu.DropDownItems.Add(parseStackTraceMenuItem);
+        formatDocumentMenuItem = new ToolStripMenuItem("&Format Document", null, FormatDocument_Click, Keys.Alt | Keys.Shift | Keys.F);
+        editMenu.DropDownItems.Add(formatDocumentMenuItem);
         selectAllMenuItem = new ToolStripMenuItem("Select &All", null, SelectAll_Click, Keys.Control | Keys.A);
         timeDateMenuItem = new ToolStripMenuItem("Time/&Date", null, TimeDate_Click, Keys.F5);
         fontMenuItem = new ToolStripMenuItem("&Font...", null, Font_Click, Keys.Control | Keys.Shift | Keys.F);

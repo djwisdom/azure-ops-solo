@@ -23,6 +23,8 @@ internal sealed class WorkspacePanel : UserControl
 #pragma warning restore CS0649
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private CancellationTokenSource? _scanCts;
+    private FileSystemWatcher? _fileWatcher;
+    private bool _pendingRefresh;
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
@@ -49,6 +51,7 @@ internal sealed class WorkspacePanel : UserControl
         {
             CancelScan();
             _refreshTimer?.Dispose();
+            _fileWatcher?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -188,10 +191,12 @@ internal sealed class WorkspacePanel : UserControl
 
         SetTheme(ThemeManager.Instance.CurrentTheme);
 
-        _refreshTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+        // Debounced refresh timer (used by both polling fallback and FileSystemWatcher)
+        _refreshTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _refreshTimer.Tick += (s, e) =>
         {
-            if (!string.IsNullOrEmpty(_rootPath) && _tree.Nodes.Count > 0 && _tree.Nodes[0].IsExpanded)
+            _refreshTimer.Stop();
+            if (!string.IsNullOrEmpty(_rootPath) && _tree.Nodes.Count > 0)
                 RefreshTree();
         };
     }
@@ -230,6 +235,8 @@ internal sealed class WorkspacePanel : UserControl
     public void SetRoot(string path)
     {
         CancelScan();
+        _fileWatcher?.Dispose();
+        _fileWatcher = null;
         _rootPath = path;
         _rootLabel.Text = !string.IsNullOrEmpty(path) ? Path.GetFileName(path) : "Workspace";
         _rootLabel.ToolTipText = path;
@@ -246,10 +253,32 @@ internal sealed class WorkspacePanel : UserControl
                 // Handle not yet created (e.g. startup) — do sync fallback
                 rootNode.Expand();
             }
+
+            // Start FileSystemWatcher for instant refresh on file/dir changes
+            try
+            {
+                _fileWatcher = new FileSystemWatcher(path)
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite
+                };
+                _fileWatcher.Created += OnWatcherChange;
+                _fileWatcher.Deleted += OnWatcherChange;
+                _fileWatcher.Renamed += OnWatcherChange;
+                _fileWatcher.Changed += OnWatcherChange;
+                _fileWatcher.EnableRaisingEvents = true;
+            }
+            catch { }
         }
         _refreshTimer.Stop();
-        if (!string.IsNullOrEmpty(path))
-            _refreshTimer.Start();
+    }
+
+    private void OnWatcherChange(object sender, FileSystemEventArgs e)
+    {
+        if (!IsHandleCreated || _pendingRefresh) return;
+        _pendingRefresh = true;
+        try { BeginInvoke(() => { _pendingRefresh = false; RefreshTree(); }); }
+        catch { _pendingRefresh = false; }
     }
 
     public void RefreshTree()
@@ -366,16 +395,32 @@ internal sealed class WorkspacePanel : UserControl
             // Add new dirs and recurse
             foreach (var d in actualDirs)
             {
-                if (!currentDirs.Contains(d))
+                TreeNode? existing = null;
+                if (currentDirs.Contains(d))
+                    existing = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(n.Tag as string, d, StringComparison.OrdinalIgnoreCase));
+
+                if (existing is null)
                 {
                     var dn = CreateDirectoryNode(d);
                     int insertIdx = FindSortedInsertIndex(node.Nodes, Path.GetFileName(d));
                     node.Nodes.Insert(insertIdx, dn);
+
+                    // Immediately populate the new node if the parent is expanded
+                    // so RefreshTree shows files inside newly discovered directories.
+                    if (node.IsExpanded)
+                        PopulateDirectoryNode(dn, d);
                 }
                 else
                 {
-                    var existing = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(n.Tag as string, d, StringComparison.OrdinalIgnoreCase));
-                    if (existing != null && existing.IsExpanded)
+                    // Resolve "Loading..." placeholder if not yet populated
+                    if (existing.Nodes.Count == 1 && existing.Nodes[0].Text == "Loading...")
+                    {
+                        existing.Nodes.Clear();
+                        PopulateDirectoryNode(existing, d);
+                    }
+
+                    // Recurse into expanded dirs to pick up new entries within
+                    if (existing.IsExpanded)
                         RefreshNodeRecursive(existing, d);
                 }
             }
