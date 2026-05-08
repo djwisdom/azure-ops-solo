@@ -563,7 +563,7 @@ partial class Form1
         tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabControl.Alignment = TabAlignment.Top;
         tabControl.SizeMode = TabSizeMode.Normal;
-        tabControl.ItemSize = new Size(0, 36);
+        tabControl.ItemSize = new Size(0, 38);
         tabControl.Padding = new Point(20, 6);
         tabControl.Cursor = Cursors.Hand;
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
@@ -787,7 +787,7 @@ partial class Form1
         mainLayout.ColumnCount = 1;
         mainLayout.RowCount = 4;
         mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 0: menu
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42)); // row 1: tabs
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // row 1: tabs
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 2: editor
         mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 3: status
         mainLayout.Margin = new Padding(0);

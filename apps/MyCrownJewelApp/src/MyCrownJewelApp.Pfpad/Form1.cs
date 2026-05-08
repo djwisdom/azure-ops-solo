@@ -5727,7 +5727,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             var theme = _currentTheme;
             var tabRect = e.Bounds;
-            tabRect.Height = tabControl.ItemSize.Height;
 
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
