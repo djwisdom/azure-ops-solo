@@ -1908,9 +1908,62 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 OpenWorkspaceFolder(profile.WorkspaceRoot);
             }
 
+            // Apply per-profile settings overrides on top of global settings
+            ApplyProfileOverrides(profile);
+
             UpdateProfileDropdown();
             try { preferencesProfileMenuItem.Text = $"&Profile: {_currentProfile.Name}"; } catch { }
             SaveSettings();
+        }
+
+        private void ApplyProfileOverrides(UserProfile profile)
+        {
+            bool changed = false;
+            if (profile.OverrideTabSize.HasValue)
+            {
+                int ts = Math.Max(2, Math.Min(12, profile.OverrideTabSize.Value));
+                if (ts != tabSize) { tabSize = ts; tabSizeDropDown.Text = $"Tab: {ts}"; changed = true; }
+            }
+            if (profile.OverrideInsertSpaces.HasValue)
+            {
+                if (profile.OverrideInsertSpaces.Value != insertSpaces)
+                { insertSpaces = profile.OverrideInsertSpaces.Value; changed = true; }
+            }
+            if (profile.OverrideFontSize.HasValue)
+            {
+                float fs = Math.Max(6, Math.Min(72, profile.OverrideFontSize.Value));
+                if (Math.Abs(fs - fontSize) > 0.1f)
+                {
+                    fontSize = fs;
+                    try { textEditor.Font = new Font(fontName, fontSize); } catch { }
+                    changed = true;
+                }
+            }
+            if (!string.IsNullOrEmpty(profile.OverrideThemeName))
+            {
+                if (profile.OverrideThemeName != _currentTheme.Name && ThemeManager.Themes.TryGetValue(profile.OverrideThemeName, out var theme))
+                {
+                    _currentTheme = theme;
+                    UpdateThemeColors(theme);
+                    changed = true;
+                }
+            }
+            if (profile.OverrideWordWrap.HasValue)
+            {
+                if (profile.OverrideWordWrap.Value != wordWrapEnabled)
+                {
+                    wordWrapEnabled = profile.OverrideWordWrap.Value;
+                    textEditor.WordWrap = wordWrapEnabled;
+                    if (wordWrapMenuItem != null) wordWrapMenuItem.Checked = wordWrapEnabled;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                UpdateStatusBar();
+                RequestVisibleHighlight();
+            }
         }
 
         private void UpdateProfileDropdown()
