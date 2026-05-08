@@ -558,7 +558,6 @@ partial class Form1
         // Tab Control for multi-file editing
         tabControl = new TabControl();
         tabControl.Dock = DockStyle.Fill;
-        tabControl.Height = 30;
         tabControl.Multiline = false;
         tabControl.HotTrack = true;
         tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
@@ -788,7 +787,7 @@ partial class Form1
         mainLayout.ColumnCount = 1;
         mainLayout.RowCount = 4;
         mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 0: menu
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30)); // row 1: tabs
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36)); // row 1: tabs
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 2: editor
         mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 3: status
         mainLayout.Margin = new Padding(0);
