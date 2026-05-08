@@ -272,6 +272,6 @@ internal sealed class DiffPanel : UserControl
     {
         if (handle == IntPtr.Zero) return;
         var theme = ThemeManager.Instance.CurrentTheme;
-        SetWindowTheme(handle, !theme.IsLight ? DARK_MODE_SCROLLBAR : null, null);
+        SetWindowTheme(handle, !theme.IsLight ? DARK_MODE_SCROLLBAR : "", null);
     }
 }

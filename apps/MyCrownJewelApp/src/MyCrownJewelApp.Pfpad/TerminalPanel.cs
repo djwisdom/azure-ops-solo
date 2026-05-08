@@ -60,7 +60,7 @@ internal sealed class TerminalPanel : UserControl, IDisposable
         _outputBox.HandleCreated += (s, e) =>
         {
             _outputBox.SetLinkColor(Color.FromArgb(80, 140, 255));
-            SetWindowTheme(_outputBox.Handle, _isDark ? DARK_MODE_SCROLLBAR : null, null);
+            SetWindowTheme(_outputBox.Handle, _isDark ? DARK_MODE_SCROLLBAR : "", null);
         };
 
         _inputBox = new TextBox
@@ -178,7 +178,7 @@ internal sealed class TerminalPanel : UserControl, IDisposable
         if (_outputBox.IsHandleCreated)
         {
             _outputBox.SetLinkColor(Color.FromArgb(80, 140, 255));
-            SetWindowTheme(_outputBox.Handle, _isDark ? DARK_MODE_SCROLLBAR : null, null);
+            SetWindowTheme(_outputBox.Handle, _isDark ? DARK_MODE_SCROLLBAR : "", null);
         }
 
         _inputBox.BackColor = _inputBox.Focused ? _inputBgFocused : _inputBg;

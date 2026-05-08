@@ -427,7 +427,7 @@ internal sealed class GitForm : Form
     {
         if (handle == IntPtr.Zero) return;
         var theme = ThemeManager.Instance.CurrentTheme;
-        SetWindowTheme(handle, theme.IsLight ? null : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(handle, theme.IsLight ? "" : DARK_MODE_SCROLLBAR, null);
     }
 
     private void ThemeControl(Control c, Theme theme)

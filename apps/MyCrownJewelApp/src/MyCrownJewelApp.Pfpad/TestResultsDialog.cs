@@ -302,7 +302,7 @@ public sealed class TestResultsDialog : Form
     {
         if (handle == IntPtr.Zero) return;
         var theme = ThemeManager.Instance.CurrentTheme;
-        SetWindowTheme(handle, !theme.IsLight ? "DarkMode_Explorer" : null, null);
+        SetWindowTheme(handle, !theme.IsLight ? "DarkMode_Explorer" : "", null);
     }
 
     [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]

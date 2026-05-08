@@ -627,9 +627,10 @@ internal sealed class GlobalSearchDialog : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+        bool isLight = ThemeManager.Instance.CurrentTheme.IsLight;
+        if (!isLight)
             NativeThemed.ApplyDarkModeToWindow(Handle);
-        SetWindowTheme(_resultsTree.Handle, DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_resultsTree.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
