@@ -5370,7 +5370,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private void TextEditor_VScroll(object? sender, EventArgs e)
         {
-            if (gutterPanel != null) gutterPanel.RefreshGutter();
+            if (gutterPanel != null) gutterPanel.Invalidate();
             _scrollHighlightTimer?.Stop();
             _scrollHighlightTimer?.Start();
             UpdateStickyHeaders();

@@ -31,6 +31,11 @@ public class GutterPanel : Panel
     private Dictionary<int, int>? _coverageHits; // line → hit count
     private Dictionary<int, byte> _lineDiffs = new(); // 1=added, 2=modified
 
+    // Dirty-region tracking
+    private int _lastFirstLine = -1;
+    private int _lastVisibleCount = -1;
+    private bool _gutterDataDirty = true;
+
     public event Action<int>? BreakpointClicked;
 
     public int TopOffset { get; set; }
@@ -38,18 +43,21 @@ public class GutterPanel : Panel
     public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
     {
         _quickActions = actions;
+        _gutterDataDirty = true;
         Invalidate();
     }
 
     public void SetCoverage(Dictionary<int, int>? lineHits)
     {
         _coverageHits = lineHits;
+        _gutterDataDirty = true;
         Invalidate();
     }
 
     public void SetLineDiffs(Dictionary<int, byte> diffs)
     {
         _lineDiffs = diffs ?? new Dictionary<int, byte>();
+        _gutterDataDirty = true;
         Invalidate();
     }
 
@@ -139,6 +147,7 @@ public class GutterPanel : Panel
         {
             mainForm.ToggleFold(lineIndex);
             _showFoldMarkers = true;
+            _gutterDataDirty = true;
             Invalidate();
         }
     }
@@ -175,6 +184,7 @@ public class GutterPanel : Panel
         {
             _showFoldMarkers = false;
             _hoveredActionLine = -1;
+            _gutterDataDirty = true;
             Invalidate();
         }
     }
@@ -209,6 +219,7 @@ public class GutterPanel : Panel
         lineNumberWidth += 8; // left edge padding
         LineNumberMarginWidth = lineNumberWidth;
         Width = GetTotalMarginWidth();
+        _gutterDataDirty = true;
         Invalidate();
     }
 
@@ -228,6 +239,15 @@ public class GutterPanel : Panel
 
     protected override void OnPaint(PaintEventArgs e)
     {
+        GetVisibleLineRange(out int firstLine, out int visibleCount);
+
+        if (firstLine == _lastFirstLine && visibleCount == _lastVisibleCount && !_gutterDataDirty)
+            return;
+
+        _lastFirstLine = firstLine;
+        _lastVisibleCount = visibleCount;
+        _gutterDataDirty = false;
+
         base.OnPaint(e);
         DrawGutter(e.Graphics);
     }
@@ -523,6 +543,7 @@ public class GutterPanel : Panel
 
     public void RefreshGutter()
     {
+        _gutterDataDirty = true;
         Invalidate();
     }
 }
