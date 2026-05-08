@@ -400,6 +400,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         public int CurrentTerminalHeight => _terminalHeight;
         public bool CurrentAnalyzersEnabled => _analyzersEnabled;
         public string CurrentTerminalShell => _terminalShell;
+        public bool CurrentVimMode => vimModeEnabled;
+        public bool CurrentStickyScroll => _stickyScrollEnabled;
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -1808,7 +1810,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool rainbowBrackets, bool breadcrumbs, bool autoSave,
             bool workspaceVisible, bool symbolPanelVisible, bool problemsPanelVisible,
             bool terminalVisible, int terminalHeight,
-            bool analyzersEnabled, string terminalShell)
+            bool analyzersEnabled, string terminalShell,
+            bool vimMode = false, bool stickyScroll = true)
         {
             // Apply theme first (affects colors of everything)
             if (!string.IsNullOrEmpty(themeName) && ThemeManager.Themes.TryGetValue(themeName, out var theme))
@@ -1883,6 +1886,17 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             // Advanced
             _analyzersEnabled = analyzersEnabled;
+
+            // Vim mode
+            vimModeEnabled = vimMode;
+            if (vimModeMenuItem != null) vimModeMenuItem.Checked = vimMode;
+            vimModeLabel.Visible = vimMode;
+            if (!vimMode) vimModeLabel.Text = "";
+
+            // Sticky scroll
+            _stickyScrollEnabled = stickyScroll;
+            if (stickyScrollMenuItem != null) stickyScrollMenuItem.Checked = stickyScroll;
+            stickyScrollPanel.Visible = stickyScroll;
 
             // Sync menu item states
             if (gutterMenuItem != null) gutterMenuItem.Checked = gutterVisible;
