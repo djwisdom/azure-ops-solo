@@ -524,9 +524,9 @@ private TreeNode CreateDirectoryNode(string dirPath)
         bool focused = (e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused;
         bool hovered = (e.State & TreeNodeStates.Hot) == TreeNodeStates.Hot;
 
-        Color bg = selected
-            ? (focused ? theme.Highlight : Color.FromArgb(80, theme.Highlight))
-            : (hovered ? theme.ButtonHoverBackground : Color.Transparent);
+         Color bg = selected
+             ? (focused ? theme.Highlight : Color.FromArgb(80, theme.Highlight))
+              : (hovered ? Color.FromArgb(240, theme.Highlight) : Color.Transparent);
 
         using var bgBrush = new SolidBrush(bg);
         e.Graphics.FillRectangle(bgBrush, e.Bounds);
