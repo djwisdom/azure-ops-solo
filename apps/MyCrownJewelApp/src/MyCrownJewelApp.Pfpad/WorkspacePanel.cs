@@ -524,12 +524,19 @@ private TreeNode CreateDirectoryNode(string dirPath)
         bool focused = (e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused;
         bool hovered = (e.State & TreeNodeStates.Hot) == TreeNodeStates.Hot;
 
-         Color bg = selected
-             ? (focused ? theme.Highlight : Color.FromArgb(80, theme.Highlight))
-              : (hovered ? Color.FromArgb(240, theme.Highlight) : Color.Transparent);
+        if (hovered && !selected)
+        {
+            var fullRowRect = new Rectangle(0, e.Bounds.Y, _tree.ClientSize.Width, e.Bounds.Height);
+            using var hoverBrush = new SolidBrush(Color.FromArgb(50, 255, 255, 255));
+            e.Graphics.FillRectangle(hoverBrush, fullRowRect);
+        }
 
-        using var bgBrush = new SolidBrush(bg);
-        e.Graphics.FillRectangle(bgBrush, e.Bounds);
+        if (selected)
+        {
+            Color fill = focused ? theme.Highlight : Color.FromArgb(80, theme.Highlight);
+            using var bgBrush = new SolidBrush(fill);
+            e.Graphics.FillRectangle(bgBrush, e.Bounds);
+        }
 
         var node = e.Node;
         if (node?.Tag is not string) return;
@@ -872,3 +879,4 @@ private TreeNode CreateDirectoryNode(string dirPath)
         return !string.IsNullOrEmpty(_rootPath) ? _rootPath : null;
     }
 }
+
