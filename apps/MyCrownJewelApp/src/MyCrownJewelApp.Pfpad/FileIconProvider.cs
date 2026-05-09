@@ -97,11 +97,16 @@ public static class FileIconProvider
         index++;
         FolderIconIndex = index;
         _imageList.Images.Add(CreateFolderIcon());
+        index++;
+
+        BlankIconIndex = index;
+        _imageList.Images.Add(CreateBlankIcon());
     }
 
     public static ImageList ImageList => _imageList!;
     public static int FolderIconIndex { get; private set; } = -1;
     public static int DefaultFileIconIndex => _defaultIndex;
+    public static int BlankIconIndex { get; private set; } = -1;
 
     public static int GetIconIndex(string filePath)
     {
@@ -284,5 +289,10 @@ public static class FileIconProvider
         g.DrawLine(pen, 15, 13, 1, 13);
         g.DrawLine(pen, 1, 13, 1, 4);
         return bmp;
+    }
+
+    private static Bitmap CreateBlankIcon()
+    {
+        return new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
     }
 }

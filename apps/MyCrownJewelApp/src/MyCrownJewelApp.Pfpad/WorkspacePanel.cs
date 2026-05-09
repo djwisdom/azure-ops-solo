@@ -478,8 +478,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         var node = new TreeNode(Path.GetFileName(dirPath))
         {
             Tag = dirPath,
-            ImageIndex = -1,
-            SelectedImageIndex = -1
+            ImageIndex = FileIconProvider.BlankIconIndex,
+            SelectedImageIndex = FileIconProvider.BlankIconIndex
         };
         node.Nodes.Add(new TreeNode("Loading..."));
         return node;
