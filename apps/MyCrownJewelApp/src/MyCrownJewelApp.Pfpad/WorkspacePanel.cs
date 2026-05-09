@@ -99,13 +99,13 @@ internal sealed class WorkspacePanel : UserControl
             ShowLines = true,
             ShowPlusMinus = true,
             ShowRootLines = false,
-            HotTracking = true,
+            HotTracking = false,
             FullRowSelect = true,
             HideSelection = false,
             LabelEdit = false,
             Indent = 20,
             ItemHeight = 24,
-            DrawMode = TreeViewDrawMode.OwnerDrawText
+            DrawMode = TreeViewDrawMode.Normal
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
@@ -515,42 +515,6 @@ private TreeNode CreateDirectoryNode(string dirPath)
             node.Nodes.Clear();
             PopulateDirectoryNode(node, path);
         }
-    }
-
-    private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
-    {
-        var theme = ThemeManager.Instance.CurrentTheme;
-        bool selected = (e.State & TreeNodeStates.Selected) == TreeNodeStates.Selected;
-        bool focused = (e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused;
-
-        if (selected)
-        {
-            Color fill = focused ? theme.Highlight : Color.FromArgb(80, theme.Highlight);
-            using var bgBrush = new SolidBrush(fill);
-            e.Graphics.FillRectangle(bgBrush, e.Bounds);
-        }
-
-        var node = e.Node;
-        if (node?.Tag is not string) return;
-        bool isDir = Directory.Exists(node.Tag as string);
-
-        if (!isDir && node.Tag is string filePath)
-        {
-            int iconIdx = FileIconProvider.GetIconIndex(filePath);
-            if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
-            {
-                var iconRect = new Rectangle(e.Bounds.X, e.Bounds.Y + (e.Bounds.Height - 16) / 2, 16, 16);
-                e.Graphics.DrawImage(FileIconProvider.ImageList.Images[iconIdx], iconRect);
-            }
-        }
-
-        int textOffset = isDir ? 0 : 18;
-        var textRect = new Rectangle(e.Bounds.X + textOffset, e.Bounds.Y,
-            e.Bounds.Width - textOffset, e.Bounds.Height);
-
-        TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textRect, theme.Text,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
-            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
     private void PopulateDirectoryNode(TreeNode node, string dirPath)
