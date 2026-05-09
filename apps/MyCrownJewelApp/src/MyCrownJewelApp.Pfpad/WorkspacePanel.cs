@@ -104,10 +104,8 @@ internal sealed class WorkspacePanel : UserControl
             HideSelection = false,
             LabelEdit = false,
             Indent = 20,
-            ItemHeight = 24,
-            DrawMode = TreeViewDrawMode.OwnerDrawText
+            ItemHeight = 24
         };
-        _tree.DrawNode += Tree_DrawNode;
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
         _tree.MouseDown += Tree_MouseDown;
@@ -498,12 +496,11 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private static TreeNode CreateFileNode(string filePath)
     {
-        int iconIdx = FileIconProvider.GetIconIndex(filePath);
         return new TreeNode(Path.GetFileName(filePath))
         {
             Tag = filePath,
-            ImageIndex = iconIdx,
-            SelectedImageIndex = iconIdx
+            ImageIndex = -1,
+            SelectedImageIndex = -1
         };
     }
 
