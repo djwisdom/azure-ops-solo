@@ -473,15 +473,14 @@ internal sealed class WorkspacePanel : UserControl
         return i;
     }
 
-    private TreeNode CreateDirectoryNode(string dirPath)
+private TreeNode CreateDirectoryNode(string dirPath)
     {
         var node = new TreeNode(Path.GetFileName(dirPath))
         {
             Tag = dirPath,
-            ImageIndex = FileIconProvider.FolderIconIndex,
-            SelectedImageIndex = FileIconProvider.FolderIconIndex
+            ImageIndex = -1,
+            SelectedImageIndex = -1
         };
-        // Add a dummy child so the expand arrow shows
         node.Nodes.Add(new TreeNode("Loading..."));
         return node;
     }
