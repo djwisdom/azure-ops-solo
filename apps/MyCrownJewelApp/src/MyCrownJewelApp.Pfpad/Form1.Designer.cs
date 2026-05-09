@@ -704,6 +704,7 @@ partial class Form1
         workspaceStatusLabel.BorderSides = ToolStripStatusLabelBorderSides.Left;
         workspaceStatusLabel.IsLink = true;
         workspaceStatusLabel.LinkBehavior = LinkBehavior.HoverUnderline;
+        workspaceStatusLabel.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
 
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");

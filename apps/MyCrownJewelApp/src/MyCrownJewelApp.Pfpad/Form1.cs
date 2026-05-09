@@ -3709,6 +3709,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     workspaceStatusLabel.Text = "";
                     workspaceStatusLabel.ToolTipText = "";
                     workspaceStatusLabel.Visible = false;
+                    workspaceStatusLabel.Image = null;
                     return;
                 }
 
@@ -3721,6 +3722,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     workspaceStatusLabel.Text = count > 1 ? $"Solution: {name} +{count - 1}" : $"Solution: {name}";
                     workspaceStatusLabel.ToolTipText = slnFiles[0];
                     workspaceStatusLabel.Visible = true;
+                    workspaceStatusLabel.Image = FileIconProvider.ImageList.Images[FileIconProvider.FolderIconIndex];
                     return;
                 }
 
@@ -3732,17 +3734,20 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     workspaceStatusLabel.Text = count > 1 ? $"Project: {name} +{count - 1}" : $"Project: {name}";
                     workspaceStatusLabel.ToolTipText = csprojFiles[0];
                     workspaceStatusLabel.Visible = true;
+                    workspaceStatusLabel.Image = FileIconProvider.ImageList.Images[FileIconProvider.FolderIconIndex];
                     return;
                 }
 
                 workspaceStatusLabel.Text = "Folder";
                 workspaceStatusLabel.ToolTipText = root;
                 workspaceStatusLabel.Visible = true;
+                workspaceStatusLabel.Image = FileIconProvider.ImageList.Images[FileIconProvider.FolderIconIndex];
             }
             catch
             {
                 workspaceStatusLabel.Text = "";
                 workspaceStatusLabel.Visible = false;
+                workspaceStatusLabel.Image = null;
             }
         }
 
