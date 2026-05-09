@@ -5751,7 +5751,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 int iconIdx = FileIconProvider.GetIconIndex(doc.FilePath);
                 if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
                 {
-                    var iconRect = new Rectangle(tabRect.X + 8, tabRect.Y + (tabRect.Height - 16) / 2, 16, 16);
+                    var iconRect = new Rectangle(tabRect.X + 8, tabRect.Y + 3, 16, 16);
                     e.Graphics.DrawImage(FileIconProvider.ImageList.Images[iconIdx], iconRect);
                 }
             }
@@ -5765,11 +5765,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
                 isSelected ? theme.Text : theme.Muted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
+                TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
                 TextFormatFlags.EndEllipsis);
 
             // Close button (×)
-            var closeRect = new Rectangle(tabRect.Right - 22, tabRect.Y + (tabRect.Height - 16) / 2, 16, 16);
+            var closeRect = new Rectangle(tabRect.Right - 22, tabRect.Y + 3, 16, 16);
             using (var xFont = new Font("Segoe UI", 11, FontStyle.Bold))
             {
                 TextRenderer.DrawText(e.Graphics, "\u00D7", xFont, closeRect, theme.Muted,

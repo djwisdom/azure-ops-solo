@@ -75,7 +75,7 @@ public static class FileIconProvider
         foreach (var kvp in _extensionMap)
         {
             _extensionIndex[kvp.Key] = index;
-            _imageList.Images.Add(CreateIcon(kvp.Value.Color, kvp.Value.Label));
+            _imageList.Images.Add(CreateIcon(kvp.Value.Label));
             index++;
         }
 
@@ -121,31 +121,38 @@ public static class FileIconProvider
         return (Color.Gray, "FL");
     }
 
-    private static Bitmap CreateIcon(Color color, string label)
+    private static Bitmap CreateIcon(string label)
     {
         var bmp = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // Rounded rectangle background
+        Color outlineColor = Color.FromArgb(120, 120, 120);
+
+        // Rounded rectangle outline (no fill)
         using var path = new GraphicsPath();
-        path.AddArc(0, 0, 4, 4, 180, 90);
-        path.AddArc(12, 0, 4, 4, 270, 90);
-        path.AddArc(12, 12, 4, 4, 0, 90);
-        path.AddArc(0, 12, 4, 4, 90, 90);
+        int m = 1;
+        int s = 14;
+        path.AddArc(m, m, 4, 4, 180, 90);
+        path.AddArc(m + s - 4, m, 4, 4, 270, 90);
+        path.AddArc(m + s - 4, m + s - 4, 4, 4, 0, 90);
+        path.AddArc(m, m + s - 4, 4, 4, 90, 90);
         path.CloseFigure();
 
-        using var brush = new SolidBrush(color);
-        g.FillPath(brush, path);
+        using var pen = new Pen(outlineColor, 1);
+        g.DrawPath(pen, path);
 
-        // White label text
+        // Outline text
         using var font = new Font("Segoe UI", 6, FontStyle.Bold);
         using var sf = new StringFormat
         {
             Alignment = StringAlignment.Center,
             LineAlignment = StringAlignment.Center
         };
-        g.DrawString(label, font, Brushes.White, new Rectangle(0, 0, 16, 16), sf);
+        using var textPath = new GraphicsPath();
+        textPath.AddString(label, font.FontFamily, (int)FontStyle.Bold, 7, new Point(8, 8), sf);
+        using var textPen = new Pen(outlineColor, 1);
+        g.DrawPath(textPen, textPath);
 
         return bmp;
     }
@@ -156,6 +163,8 @@ public static class FileIconProvider
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
+        Color outlineColor = Color.FromArgb(100, 100, 100);
+
         using var path = new GraphicsPath();
         path.AddArc(1, 1, 3, 3, 180, 90);
         path.AddArc(12, 1, 3, 3, 270, 90);
@@ -163,16 +172,8 @@ public static class FileIconProvider
         path.AddArc(1, 12, 3, 3, 90, 90);
         path.CloseFigure();
 
-        using var brush = new SolidBrush(Color.FromArgb(140, 140, 140));
-        g.FillPath(brush, path);
-
-        using var font = new Font("Segoe UI", 5.5f, FontStyle.Regular);
-        using var sf = new StringFormat
-        {
-            Alignment = StringAlignment.Center,
-            LineAlignment = StringAlignment.Center
-        };
-        g.DrawString("_", font, Brushes.White, new Rectangle(0, 0, 16, 16), sf);
+        using var pen = new Pen(outlineColor, 1);
+        g.DrawPath(pen, path);
 
         return bmp;
     }
@@ -183,16 +184,17 @@ public static class FileIconProvider
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // Folder shape
+        Color outlineColor = Color.FromArgb(120, 120, 120);
+
+        // Folder outline shape
         using var path = new GraphicsPath();
-        // Folder tab (left side)
         path.AddLine(0, 3, 5, 3);
-        path.AddLine(7, 5, 16, 5);
-        path.AddLine(16, 14, 0, 14);
+        path.AddLine(7, 5, 15, 5);
+        path.AddLine(15, 13, 0, 13);
         path.CloseFigure();
 
-        using var brush = new SolidBrush(Color.FromArgb(200, 180, 60));
-        g.FillPath(brush, path);
+        using var pen = new Pen(outlineColor, 1);
+        g.DrawPath(pen, path);
 
         return bmp;
     }
