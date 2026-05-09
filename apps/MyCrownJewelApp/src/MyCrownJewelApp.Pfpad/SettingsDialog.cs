@@ -34,8 +34,9 @@ internal sealed class SettingsDialog : Form
     private ToggleSwitch _togRainbowBrackets = null!;
     private ToggleSwitch _togBreadcrumbs = null!;
     private ToggleSwitch _togVimMode = null!;
-    private ToggleSwitch _togAutoSave = null!;
-    private ToggleSwitch _togAnalyzers = null!;
+     private ToggleSwitch _togAutoSave = null!;
+     private ToggleSwitch _togAnalyzers = null!;
+     private ToggleSwitch _togHoverLineHighlight = null!;
 
     public SettingsDialog(Form1 mainForm)
     {
@@ -71,6 +72,7 @@ internal sealed class SettingsDialog : Form
         y = AddToggleRow(panel, y, "Word Wrap", out _togWordWrap);
         y = AddToggleRow(panel, y, "Syntax Highlighting", out _togSyntaxHighlight);
         y = AddChoiceRow(panel, y, "Current Line Highlight", out _lineHighlightCombo, "None", "NumberOnly", "WholeLine", "NumberAndWholeLine");
+        y = AddToggleRow(panel, y, "Hover Line Highlight", out _togHoverLineHighlight);
         y = AddToggleRow(panel, y, "Insert Spaces", out _togInsertSpaces);
         y = AddChoiceRow(panel, y, "Tab Size", out _tabSizeCombo, "2", "4", "6", "8", "10", "12");
         y = AddToggleRow(panel, y, "Auto Indent", out _togAutoIndent);
@@ -295,8 +297,9 @@ internal sealed class SettingsDialog : Form
             smartTabs: _togSmartTabs.Checked,
             elasticTabs: _togElasticTabs.Checked,
             rainbowBrackets: _togRainbowBrackets.Checked,
-            breadcrumbs: _togBreadcrumbs.Checked,
-            autoSave: _togAutoSave.Checked,
+             breadcrumbs: _togBreadcrumbs.Checked,
+             hoverLineHighlight: _togHoverLineHighlight.Checked,
+             autoSave: _togAutoSave.Checked,
             workspaceVisible: true,
             symbolPanelVisible: false,
             problemsPanelVisible: false,

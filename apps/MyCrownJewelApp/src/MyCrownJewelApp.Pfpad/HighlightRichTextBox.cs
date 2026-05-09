@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -14,29 +14,33 @@ public class HighlightRichTextBox : RichTextBox
     private bool _overlayDirty = true;
     private bool _scrollInProgress;
     private System.Windows.Forms.Timer? _scrollDebounceTimer;
-    private WinFormsTimer? _caretBlinkTimer;
-    private bool _caretVisible = true;
+        private WinFormsTimer? _caretBlinkTimer;
+        private bool _caretVisible = true;
 
-    private int _guideColumn = 80;
-    private bool _showGuide = false;
-    private Color _guideColor = Color.FromArgb(100, 120, 120, 120);
-    private FoldingManager? _foldingManager;
-    private Color _foldLineColor = Color.FromArgb(80, 80, 80);
-    private List<(int start, int length, Color color)> _squiggles = new();
-    private Dictionary<int, string> _lineMessages = new();
-    private List<int> _extraCarets = new();
+        private int _guideColumn = 80;
+        private bool _showGuide = false;
+        private Color _guideColor = Color.FromArgb(100, 120, 120, 120);
+        private FoldingManager? _foldingManager;
+        private Color _foldLineColor = Color.FromArgb(80, 80, 80);
+        private List<(int start, int length, Color color)> _squiggles = new();
+        private Dictionary<int, string> _lineMessages = new();
+        private List<int> _extraCarets = new();
 
-    // Rainbow brackets
-    private bool _rainbowBracketsEnabled;
-    private RainbowBracketResult? _lastBracketResult;
-    private Color[] _bracketPalette = RainbowBracketEngine.DefaultPalette;
-    private bool _useHighContrastPalette;
-    private bool _showAccessoryGuides;
-    private int _bracketVersion;
-    private int _lastAppliedVersion = -1;
-    private WinFormsTimer? _bracketDebounceTimer;
-    private RainbowBracketResult? _renderedResult;
-    private bool _isApplyingBrackets;
+        // Rainbow brackets
+        private bool _rainbowBracketsEnabled;
+        private RainbowBracketResult? _lastBracketResult;
+        private Color[] _bracketPalette = RainbowBracketEngine.DefaultPalette;
+        private bool _useHighContrastPalette;
+        private bool _showAccessoryGuides;
+        private int _bracketVersion;
+        private int _lastAppliedVersion = -1;
+        private WinFormsTimer? _bracketDebounceTimer;
+        private RainbowBracketResult? _renderedResult;
+        private bool _isApplyingBrackets;
+
+        // Hover line highlight
+        private int _hoverLine = -1;
+        private bool _hoverLineHighlightEnabled = false;
 
     private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
     private static readonly Dictionary<char, char> _bracePairs = new()
@@ -70,19 +74,7 @@ public class HighlightRichTextBox : RichTextBox
         _caretBlinkTimer.Tick += (s, e) =>
         {
             _caretVisible = !_caretVisible;
-            try
-            {
-                int pos = SelectionStart;
-                if (pos > TextLength) return;
-                Point pt = GetPositionFromCharIndex(pos);
-                if (!pt.IsEmpty)
-                {
-                    int charW = Math.Max(1, (int)(8 * ZoomFactor));
-                    int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
-                    Invalidate(new Rectangle(pt.X, pt.Y, charW, lineH));
-                }
-            }
-            catch { }
+            Invalidate();
         };
 
         _bracketDebounceTimer = new WinFormsTimer { Interval = 150 };
@@ -878,38 +870,57 @@ public class HighlightRichTextBox : RichTextBox
                             g.ReleaseHdc(bmpHdc);
                         }
 
-                        using (var g = Graphics.FromImage(fullBmp))
-                        {
-                            var lineRect = GetCurrentLineRect();
-                            if (lineRect.HasValue)
-                            {
-                                var r = lineRect.Value;
-                                using var hlBrush = new SolidBrush(_highlightColor);
-                                g.FillRectangle(hlBrush, r);
+                         using (var g = Graphics.FromImage(fullBmp))
+                         {
+                             var lineRect = GetCurrentLineRect();
+                             if (lineRect.HasValue)
+                             {
+                                 var r = lineRect.Value;
+                                 using var hlBrush = new SolidBrush(_highlightColor);
+                                 g.FillRectangle(hlBrush, r);
 
-                                using var textBmp = new Bitmap(r.Width, r.Height);
-                                using (var textG = Graphics.FromImage(textBmp))
-                                {
-                                    IntPtr textHdc = textG.GetHdc();
-                                    BitBlt(textHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
-                                    textG.ReleaseHdc(textHdc);
-                                }
-                                var attrs = new ImageAttributes();
-                                attrs.SetColorKey(BackColor, BackColor);
-                                g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
-                            }
+                                 using var textBmp = new Bitmap(r.Width, r.Height);
+                                 using (var textG = Graphics.FromImage(textBmp))
+                                 {
+                                     IntPtr textHdc = textG.GetHdc();
+                                     BitBlt(textHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
+                                     textG.ReleaseHdc(textHdc);
+                                 }
+                                 var attrs = new ImageAttributes();
+                                 attrs.SetColorKey(BackColor, BackColor);
+                                 g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
+                             }
 
-                            DrawColumnGuide(g);
-                            DrawFoldBracketLines(g);
-                            DrawMatchingBraces(g);
-                            DrawSquiggles(g);
-                            DrawErrorLens(g);
+                             // Draw hover line highlight
+                             if (_hoverLineHighlightEnabled && _hoverLine >= 0)
+                             {
+                                 int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
+                                 if (lineHeight <= 0) lineHeight = 1;
+                                 
+                                 int firstCharIdx = GetFirstCharIndexFromLine(_hoverLine);
+                                 if (firstCharIdx >= 0)
+                                 {
+                                     Point pt = GetPositionFromCharIndex(firstCharIdx);
+                                     if (!pt.IsEmpty)
+                                     {
+                                         int lineWidth = ClientSize.Width;
+                                         using var hoverBrush = new SolidBrush(Color.FromArgb(60, 60, 60, 60));
+                                         g.FillRectangle(hoverBrush, pt.X, pt.Y, lineWidth, lineHeight);
+                                     }
+                                 }
+                             }
 
-                            if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
-                                DrawBlockCursor(g);
+                             DrawColumnGuide(g);
+                             DrawFoldBracketLines(g);
+                             DrawMatchingBraces(g);
+                             DrawSquiggles(g);
+                             DrawErrorLens(g);
 
-                            DrawExtraCarets(g);
-                        }
+                             if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
+                                 DrawBlockCursor(g);
+
+                             DrawExtraCarets(g);
+                         }
 
                         using (var g = Graphics.FromHdc(hdc))
                             g.DrawImageUnscaled(fullBmp, 0, 0);

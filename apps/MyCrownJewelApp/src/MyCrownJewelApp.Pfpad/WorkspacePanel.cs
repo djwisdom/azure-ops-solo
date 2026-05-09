@@ -99,12 +99,13 @@ internal sealed class WorkspacePanel : UserControl
             ShowLines = true,
             ShowPlusMinus = true,
             ShowRootLines = false,
-            HotTracking = false,
+            HotTracking = true,
             FullRowSelect = true,
             HideSelection = false,
             LabelEdit = false,
             Indent = 20,
-            ItemHeight = 24
+            ItemHeight = 24,
+            DrawMode = TreeViewDrawMode.OwnerDrawText
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;

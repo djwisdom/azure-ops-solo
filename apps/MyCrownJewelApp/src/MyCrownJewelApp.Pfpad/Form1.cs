@@ -88,6 +88,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         internal float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
+        private int _hoverLine = -1;
+        private bool _hoverLineHighlightEnabled = false;
 
         // Vim mode state
         private bool vimModeEnabled = false;
@@ -132,6 +134,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private TestRunResult? _lastTestResult;
         private string? _lastTestProject;
         private bool _testsRunning;
+
+        // Resize debounce timer — coalesces rapid resize events (snap, drag)
+        private System.Windows.Forms.Timer _resizeDebounceTimer = null!;
 
         // Hover docs + signature help
         private readonly HoverTooltipForm _hoverTooltip = new();
@@ -246,6 +251,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         internal bool showGuide = false;
         private readonly Color guideColor = Color.FromArgb(60, 60, 60);
 
+        // Ruler
+        private RulerPanel rulerPanel = null!;
+
         // Theme management
         private ThemeManager _themeManager = ThemeManager.Instance;
         private string fontName = "Consolas";
@@ -305,6 +313,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool BreadcrumbsEnabled = false,
             bool AnalyzersEnabled = true,
             bool AutoSaveEnabled = false,
+            bool HoverLineHighlightEnabled = false,
             List<string>? RecentWorkspaces = null,
             string WindowBounds = "",
             string WindowState = ""
@@ -402,6 +411,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         public string CurrentTerminalShell => _terminalShell;
         public bool CurrentVimMode => vimModeEnabled;
         public bool CurrentStickyScroll => _stickyScrollEnabled;
+        public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
 
     public Form1()
         : this(skipInitialDocument: false)
@@ -546,6 +556,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 ApplyScrollbarTheme();
                 PositionMinimap();
+                rulerPanel.AttachEditor(textEditor!);
                 if (syntaxHighlightingEnabled)
                 {
                     CreateIncrementalHighlighter();
@@ -657,6 +668,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             };
             _tabDropdownButton.FlatAppearance.BorderSize = 0;
             _tabDropdownButton.Click += TabDropdownButton_Click;
+
+            // Re-enable tab dropdown button — bounds-safe after DrawItem guard
             if (tabControl != null)
             {
                 this.Controls.Add(_tabDropdownButton);
@@ -686,7 +699,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             textEditor.Resize += (s, e) =>
             {
                 if (textEditor != null && stickyScrollPanel.Visible)
-                    stickyScrollPanel.SyncWidth(textEditor.ClientSize.Width);
+                    stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
             };
 
             // Initialize breadcrumb panel
@@ -1135,8 +1148,44 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                };
                _debugSession.DebugOutput += (msg) => ShowNotification("Debug", msg);
 
-               // Ensure initial dirty flag is clear after all initialization
-             isModified = false;
+// Ensure initial dirty flag is clear after all initialization
+              isModified = false;
+
+            // Resize debounce: coalesces rapid resize events (snap, drag, DPI changes)
+            // so overlay positioning runs once after layout fully settles.
+            _resizeDebounceTimer = new System.Windows.Forms.Timer { Interval = 50 };
+            _resizeDebounceTimer.Tick += (s, e) =>
+            {
+                _resizeDebounceTimer.Stop();
+                PositionMinimap();
+                if (stickyScrollPanel.Visible)
+                    stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
+                PositionTabDropdownButton();
+                // Force a clean repaint of the text editor after layout settles
+                // to prevent stale painting artifacts during snap/drag resize.
+                if (textEditor != null && !textEditor.IsDisposed)
+                    textEditor.Invalidate();
+            };
+
+            this.Resize += (s, e) =>
+            {
+                _resizeDebounceTimer.Stop();
+                _resizeDebounceTimer.Start();
+            };
+            mainLayout.Layout += (s, e) =>
+            {
+                PositionMinimap();
+                if (stickyScrollPanel.Visible)
+                    stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
+                PositionTabDropdownButton();
+            };
+            editorPanel.SizeChanged += (s, e) =>
+            {
+                if (_pendingMinimapVisible)
+                    PositionMinimap();
+                if (stickyScrollPanel.Visible)
+                    stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
+            };
          }
 
         #region File Drop Support
@@ -1553,6 +1602,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _tabDropdownButton.ForeColor = theme.Muted;
                 _tabDropdownButton.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
             }
+            if (rulerPanel != null)
+            {
+                rulerPanel.Invalidate();
+            }
             textEditor!.Invalidate();
             if (textEditor != null)
             {
@@ -1694,8 +1747,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                             _workspaceRoot = settings.WorkspaceRoot ?? "";
                         _symbolPanelVisible = settings.SymbolPanelVisible;
                         _problemsPanelVisible = settings.ProblemsPanelVisible;
-                        _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
-                        _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
+                         _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
+                         _hoverLineHighlightEnabled = settings.HoverLineHighlightEnabled;
+                         _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
                         _analyzersEnabled = settings.AnalyzersEnabled;
                         _autoSaveEnabled = settings.AutoSaveEnabled;
                         if (_autoSaveEnabled) _autoSaveTimer.Start();
@@ -1811,7 +1865,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool workspaceVisible, bool symbolPanelVisible, bool problemsPanelVisible,
             bool terminalVisible, int terminalHeight,
             bool analyzersEnabled, string terminalShell,
-            bool vimMode = false, bool stickyScroll = true)
+            bool vimMode = false, bool stickyScroll = true, bool hoverLineHighlight = false)
         {
             // Apply theme first (affects colors of everything)
             if (!string.IsNullOrEmpty(themeName) && ThemeManager.Themes.TryGetValue(themeName, out var theme))
@@ -1859,18 +1913,19 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _ => CurrentLineHighlightMode.Off
             };
 
-            // Features
-            syntaxHighlightingEnabled = syntaxHighlighting;
-            autoIndentEnabled = autoIndent;
-            smartTabsEnabled = smartTabs;
-            elasticTabsEnabled = elasticTabs;
-            _rainbowBracketsEnabled = rainbowBrackets;
-            if (rainbowBracketsMenuItem != null) rainbowBracketsMenuItem.Checked = rainbowBrackets;
-            _breadcrumbsEnabled = breadcrumbs;
-            if (breadcrumbMenuItem != null) breadcrumbMenuItem.Checked = breadcrumbs;
-            _autoSaveEnabled = autoSave;
-            if (autoSaveMenuItem != null) autoSaveMenuItem.Checked = autoSave;
-            if (autoSave) _autoSaveTimer.Start(); else _autoSaveTimer.Stop();
+             // Features
+             syntaxHighlightingEnabled = syntaxHighlighting;
+             autoIndentEnabled = autoIndent;
+             smartTabsEnabled = smartTabs;
+             elasticTabsEnabled = elasticTabs;
+             _rainbowBracketsEnabled = rainbowBrackets;
+             if (rainbowBracketsMenuItem != null) rainbowBracketsMenuItem.Checked = rainbowBrackets;
+             _breadcrumbsEnabled = breadcrumbs;
+             if (breadcrumbMenuItem != null) breadcrumbMenuItem.Checked = breadcrumbs;
+             _autoSaveEnabled = autoSave;
+             if (autoSaveMenuItem != null) autoSaveMenuItem.Checked = autoSave;
+             if (autoSave) _autoSaveTimer.Start(); else _autoSaveTimer.Stop();
+             _hoverLineHighlightEnabled = hoverLineHighlight;
 
             // Panels
             _workspaceVisible = workspaceVisible;
@@ -2134,16 +2189,28 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             _breadcrumbsEnabled = breadcrumbMenuItem.Checked;
             breadcrumbPanel.Visible = _breadcrumbsEnabled;
-            gutterPanel.TopOffset = _breadcrumbsEnabled ? breadcrumbPanel.Height : 0;
+            gutterPanel.TopOffset = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (rulerMenuItem.Checked ? rulerPanel.Height : 0);
             gutterPanel.Invalidate();
             RepositionStickyScrollPanel();
             UpdateBreadcrumbs();
             SaveSettings();
         }
 
+        private bool _rulerEnabled = false;
+
+        private void ToggleRuler_Click(object? sender, EventArgs e)
+        {
+            _rulerEnabled = rulerMenuItem.Checked;
+            rulerPanel.Visible = _rulerEnabled;
+            gutterPanel.TopOffset = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (_rulerEnabled ? rulerPanel.Height : 0);
+            gutterPanel.Invalidate();
+            RepositionStickyScrollPanel();
+            SaveSettings();
+        }
+
         private void RepositionStickyScrollPanel()
         {
-            stickyScrollPanel.Top = _breadcrumbsEnabled ? breadcrumbPanel.Height : 0;
+            stickyScrollPanel.Top = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (_rulerEnabled ? rulerPanel.Height : 0);
         }
 
         private void DebounceBreadcrumbs()
@@ -2573,22 +2640,31 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
         }
 
-        private void TextEditor_MouseMoveHover(object? sender, MouseEventArgs e)
-        {
-            _hoverTimer.Stop();
-            if (textEditor is null) return;
-            int charIdx = textEditor.GetCharIndexFromPosition(e.Location);
-            if (charIdx < 0 || charIdx >= textEditor.TextLength) { _hoverTooltip.Dismiss(); return; }
-            string word = GetWordAtCharIndex(charIdx);
-            if (string.IsNullOrEmpty(word) || word == _lastHoveredWord)
-            {
-                if (string.IsNullOrEmpty(word)) _hoverTooltip.Dismiss();
-                return;
-            }
-            _lastHoveredWord = word;
-            _hoverTimer.Tag = (e.Location, word);
-            _hoverTimer.Start();
-        }
+         private void TextEditor_MouseMoveHover(object? sender, MouseEventArgs e)
+         {
+             _hoverTimer.Stop();
+             if (textEditor is null) return;
+             int charIdx = textEditor.GetCharIndexFromPosition(e.Location);
+             if (charIdx < 0 || charIdx >= textEditor.TextLength) { _hoverTooltip.Dismiss(); return; }
+             
+             // Update hover line for current line highlight
+             int lineNumber = textEditor.GetLineFromCharIndex(charIdx);
+             if (lineNumber != _hoverLine)
+             {
+                 _hoverLine = lineNumber;
+                 textEditor.Invalidate();
+             }
+             
+             string word = GetWordAtCharIndex(charIdx);
+             if (string.IsNullOrEmpty(word) || word == _lastHoveredWord)
+             {
+                 if (string.IsNullOrEmpty(word)) _hoverTooltip.Dismiss();
+                 return;
+             }
+             _lastHoveredWord = word;
+             _hoverTimer.Tag = (e.Location, word);
+             _hoverTimer.Start();
+         }
 
         private void HoverTimer_Tick(object? sender, EventArgs e)
         {
@@ -3655,10 +3731,17 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             };
             if (dlg.ShowDialog() == DialogResult.OK)
             {
-                // Cancel any in-flight scan and symbol rebuild
-                _workspacePanel?.CancelScan();
-                _symbolIndexCts?.Cancel();
-                _symbolIndexCts = new CancellationTokenSource();
+                 // Cancel any in-flight scan and symbol rebuild
+                 _workspacePanel?.CancelScan();
+                 try
+                 {
+                     _symbolIndexCts?.Cancel();
+                 }
+                 catch (ObjectDisposedException)
+                 {
+                     // Ignore if already disposed
+                 }
+                 _symbolIndexCts = new CancellationTokenSource();
                 var token = _symbolIndexCts.Token;
                 _workspaceRoot = dlg.SelectedPath;
                 _workspacePanel?.SetRoot(_workspaceRoot);
@@ -3681,7 +3764,14 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return;
             _workspacePanel?.CancelScan();
-            _symbolIndexCts?.Cancel();
+            try
+            {
+                _symbolIndexCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore if already disposed
+            }
             _symbolIndexCts = new CancellationTokenSource();
             var token = _symbolIndexCts.Token;
             _workspaceRoot = path;
@@ -5310,32 +5400,60 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             Point tabScreen = tabControl.PointToScreen(Point.Empty);
             Point formClient = this.PointToClient(tabScreen);
 
+            if (formClient.IsEmpty) return;
+
             // Offset upward by 4px so the button doesn't cover the tab strip's bottom edge line
             int y = formClient.Y + (tabControl.Height - _tabDropdownButton.Height) / 2 - 4;
 
+            int btnW = _tabDropdownButton.Width;
+            int tabRightEdge = formClient.X + tabControl.Width;
+
             int lastTabIndex = tabControl.TabCount - 1;
-            if (lastTabIndex >= 0)
+            if (lastTabIndex >= 0 && lastTabIndex < tabControl.TabPages.Count)
             {
                 Rectangle lastTabRect = tabControl.GetTabRect(lastTabIndex);
-                int desiredX = formClient.X + lastTabRect.Right + 2;
-                int scrollBtnArea = 55;
-                int maxX = formClient.X + tabControl.Width - scrollBtnArea;
 
-                // Snap to the right edge when there's a visible gap after the last tab
-                // (e.g., single tab with empty filler space in the header)
-                int x;
-                if (maxX - desiredX > _tabDropdownButton.Width * 2)
-                    x = maxX;
+                // Detect whether horizontal scroll buttons are showing.
+                // When tabs overflow, GetTabRect(0).Left < 0 (tabs scrolled left)
+                // or lastTabRect.Right > tabControl.ClientSize.Width (tabs extend past right).
+                bool hScroll = tabControl.GetTabRect(0).Left < 0
+                               || lastTabRect.Right > tabControl.ClientSize.Width;
+
+                if (hScroll)
+                {
+                    // Scroll arrows are visible on the LEFT side of the tab strip.
+                    // The right side of the tab header is free — anchor the dropdown there.
+                    // Use the system scroll-bar width as margin from the right edge.
+                    int scrollMargin = SystemInformation.VerticalScrollBarWidth;
+                    int x = tabRightEdge - scrollMargin - btnW - 2;
+                    x = Math.Max(formClient.X + 2, Math.Min(x, tabRightEdge - btnW - 2));
+                    _tabDropdownButton.Location = new Point(x, y);
+                }
                 else
-                    x = Math.Min(desiredX, maxX);
+                {
+                    // No scroll: position after the last tab if there is a meaningful gap,
+                    // otherwise right-align within the tab control.
+                    int desiredX = formClient.X + lastTabRect.Right + 2;
+                    int maxX = tabRightEdge - btnW - 2;
+                    int x;
+                    if (maxX - desiredX > btnW * 2)
+                        x = maxX; // snap to right edge (large empty gap)
+                    else
+                        x = Math.Min(desiredX, maxX); // follow last tab
 
-                _tabDropdownButton.Location = new Point(Math.Max(formClient.X, x), Math.Max(formClient.Y, y));
+                    _tabDropdownButton.Location = new Point(
+                        Math.Max(formClient.X + 2, x),
+                        Math.Max(formClient.Y, y));
+                }
             }
             else
             {
-                int x = formClient.X + tabControl.Width - _tabDropdownButton.Width - 2;
-                _tabDropdownButton.Location = new Point(Math.Max(0, x), Math.Max(formClient.Y, y));
+                // No tabs — hide button
+                _tabDropdownButton.Location = new Point(
+                    Math.Max(formClient.X + 2, tabRightEdge - btnW - 2),
+                    Math.Max(formClient.Y, y));
             }
+
             _tabDropdownButton.Visible = tabControl.TabCount > 0;
         }
 
@@ -5728,7 +5846,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private void TabControl_DrawItem(object? sender, DrawItemEventArgs e)
         {
-            if (tabControl.TabPages.Count == 0) return;
+            if (tabControl == null || tabControl.TabPages.Count == 0) return;
+            if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
+            if (e.Index < 0 || e.Index >= documents.Count) return;
 
             var theme = _currentTheme;
             var tabRect = e.Bounds;
@@ -6398,8 +6518,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         #region Minimap Methods
 
         /// <summary>
-        /// Positions the minimap as an overlay within the textEditor control, anchored to the right edge.
-        /// The minimap is positioned to the left of the vertical scrollbar (non-client area).
+        /// Positions the minimap as an overlay within the editor panel, anchored to the right edge.
+        /// The minimap is always shown when enabled. Its width may be reduced to fit if the panel
+        /// is too narrow, and the X position is clamped so it never extends past the left edge.
         /// </summary>
         private void PositionMinimap()
         {
@@ -6412,12 +6533,25 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 if (textEditor != null && textEditor.IsHandleCreated)
                 {
                     int scrollBarWidth = SystemInformation.VerticalScrollBarWidth;
-                    int mw = Math.Min(minimapControl.MinimapWidth,
-                        textEditor.Width - scrollBarWidth - 10);
-                    int x = textEditor.Right - scrollBarWidth - mw;
-                    x = Math.Max(0, x);
+                    int mw = minimapControl.MinimapWidth;
+                    int x = editorPanel.ClientSize.Width - scrollBarWidth - mw - 5;
+
+                    // If the minimap would extend past the left edge, shift it left
+                    // and reduce its width so it always stays fully inside the panel.
+                    if (x < 0)
+                    {
+                        mw += x;          // shrink width to what fits
+                        x = 0;
+                    }
+
+                    // Absolute floor: keep at least a thin strip visible if any space exists at all
+                    if (mw < 20)
+                    {
+                        mw = Math.Max(1, editorPanel.ClientSize.Width - scrollBarWidth - 10);
+                    }
+
                     minimapControl.Location = new Point(x, textEditor.Top);
-                    minimapControl.Size = new Size(mw, textEditor.ClientSize.Height);
+                    minimapControl.Size = new Size(Math.Max(1, mw), Math.Max(1, textEditor.ClientSize.Height));
                     minimapControl.AttachEditor(textEditor);
                 }
             }
@@ -7242,8 +7376,22 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             _sessionManager.SaveSession(documents, activeDocIndex, _workspaceRoot, nextUntitledNumber);
             SaveSettings();
             _workspacePanel?.CancelScan();
-            _symbolIndexCts?.Cancel();
-            _symbolIndexCts?.Dispose();
+            try
+            {
+                _symbolIndexCts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore if already disposed
+            }
+            try
+            {
+                _symbolIndexCts?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore if already disposed
+            }
             _hoverTooltip.Dispose();
             _signatureHelp.Dispose();
             _hoverTimer.Dispose();

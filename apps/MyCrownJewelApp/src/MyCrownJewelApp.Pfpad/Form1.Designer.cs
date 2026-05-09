@@ -89,6 +89,7 @@ partial class Form1
     private ToolStripMenuItem stickyScrollMenuItem;
     private ToolStripMenuItem rainbowBracketsMenuItem;
     private ToolStripMenuItem breadcrumbMenuItem;
+    private ToolStripMenuItem rulerMenuItem;
     private ToolStripMenuItem splitVMenuItem;
     private ToolStripMenuItem splitHMenuItem;
     internal ToolStripMenuItem terminalMenuItem;
@@ -171,8 +172,8 @@ partial class Form1
         SuspendLayout();
         AutoScaleMode = AutoScaleMode.Font;
         Padding = new Padding(0);
-        ClientSize = new Size(780, 540);
-        MinimumSize = new Size(400, 250);
+        ClientSize = new Size(400, 340);
+        MinimumSize = new Size(300, 250);
         Text = "Personal Flip Pad";
         StartPosition = FormStartPosition.CenterScreen;
 
@@ -378,6 +379,8 @@ partial class Form1
         rainbowBracketsMenuItem.CheckOnClick = true;
         breadcrumbMenuItem = new ToolStripMenuItem("&Breadcrumbs", null, ToggleBreadcrumbs_Click);
         breadcrumbMenuItem.CheckOnClick = true;
+        rulerMenuItem = new ToolStripMenuItem("&Ruler", null, ToggleRuler_Click);
+        rulerMenuItem.CheckOnClick = true;
         themeMenu = new ToolStripMenuItem("&Theme");
         darkThemeMenuItem = new ToolStripMenuItem("&Dark", null, DarkTheme_Click);
         lightThemeMenuItem = new ToolStripMenuItem("&Light", null, LightTheme_Click);
@@ -419,6 +422,7 @@ partial class Form1
         viewMenu.DropDownItems.Add(stickyScrollMenuItem);
         viewMenu.DropDownItems.Add(rainbowBracketsMenuItem);
         viewMenu.DropDownItems.Add(breadcrumbMenuItem);
+        viewMenu.DropDownItems.Add(rulerMenuItem);
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(fontMenuItem);
@@ -589,11 +593,17 @@ partial class Form1
         mainTable.Margin = new Padding(0);
         mainTable.Padding = new Padding(0);
 
-        // Editor panel wraps textEditor + minimap, with minimap docked to right
+        // Editor panel wraps textEditor + minimap + ruler, with minimap docked to right
         editorPanel = new Panel();
         editorPanel.Dock = DockStyle.Fill;
         editorPanel.Margin = new Padding(0);
         editorPanel.Padding = new Padding(0);
+
+        // Ruler panel (character position ticks, placed between breadcrumb and textEditor)
+        rulerPanel = new RulerPanel();
+        rulerPanel.Dock = DockStyle.Top;
+        rulerPanel.Margin = new Padding(0);
+        rulerPanel.Visible = false;
 
         // Gutter Panel
         gutterPanel = new GutterPanel(this);
@@ -645,10 +655,11 @@ partial class Form1
         breadcrumbPanel = new BreadcrumbPanel();
         breadcrumbPanel.Visible = false;
 
-        // Assemble editor panel with textEditor + minimap
+        // Assemble editor panel with textEditor + minimap + ruler
         editorPanel.Controls.Add(textEditor);
         editorPanel.Controls.Add(minimapControl);
         editorPanel.Controls.Add(breadcrumbPanel);
+        editorPanel.Controls.Add(rulerPanel);
         editorPanel.Controls.Add(stickyScrollPanel);
         stickyScrollPanel.BringToFront();
 
@@ -790,7 +801,7 @@ partial class Form1
         mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 0: menu
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // row 1: tabs
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 2: editor
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 3: status
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));  // row 3: status (fixed)
         mainLayout.Margin = new Padding(0);
         mainLayout.Padding = new Padding(0);
         mainLayout.Controls.Add(menuStrip, 0, 0);
