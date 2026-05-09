@@ -105,8 +105,9 @@ internal sealed class WorkspacePanel : UserControl
             LabelEdit = false,
             Indent = 20,
             ItemHeight = 24,
-            ImageList = FileIconProvider.ImageList
+            DrawMode = TreeViewDrawMode.OwnerDrawText
         };
+        _tree.DrawNode += Tree_DrawNode;
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
         _tree.MouseDown += Tree_MouseDown;
@@ -478,8 +479,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         var node = new TreeNode(Path.GetFileName(dirPath))
         {
             Tag = dirPath,
-            ImageIndex = FileIconProvider.BlankIconIndex,
-            SelectedImageIndex = FileIconProvider.BlankIconIndex
+            ImageIndex = -1,
+            SelectedImageIndex = -1
         };
         node.Nodes.Add(new TreeNode("Loading..."));
         return node;
@@ -511,12 +512,48 @@ private TreeNode CreateDirectoryNode(string dirPath)
         var node = e.Node;
         if (node?.Tag is not string path || !Directory.Exists(path)) return;
 
-        // Check if the node has already been populated
         if (node.Nodes.Count == 1 && node.Nodes[0].Text == "Loading...")
         {
             node.Nodes.Clear();
             PopulateDirectoryNode(node, path);
         }
+    }
+
+    private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
+    {
+        var theme = ThemeManager.Instance.CurrentTheme;
+        bool selected = (e.State & TreeNodeStates.Selected) == TreeNodeStates.Selected;
+        bool focused = (e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused;
+        bool hovered = (e.State & TreeNodeStates.Hot) == TreeNodeStates.Hot;
+
+        Color bg = selected
+            ? (focused ? theme.Highlight : Color.FromArgb(80, theme.Highlight))
+            : (hovered ? theme.ButtonHoverBackground : Color.Transparent);
+
+        using var bgBrush = new SolidBrush(bg);
+        e.Graphics.FillRectangle(bgBrush, e.Bounds);
+
+        var node = e.Node;
+        if (node?.Tag is not string) return;
+        bool isDir = Directory.Exists(node.Tag as string);
+
+        if (!isDir && node.Tag is string filePath)
+        {
+            int iconIdx = FileIconProvider.GetIconIndex(filePath);
+            if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
+            {
+                var iconRect = new Rectangle(e.Bounds.X, e.Bounds.Y + (e.Bounds.Height - 16) / 2, 16, 16);
+                e.Graphics.DrawImage(FileIconProvider.ImageList.Images[iconIdx], iconRect);
+            }
+        }
+
+        int textOffset = isDir ? 0 : 18;
+        var textRect = new Rectangle(e.Bounds.X + textOffset, e.Bounds.Y,
+            e.Bounds.Width - textOffset, e.Bounds.Height);
+
+        TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textRect, theme.Text,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+            TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
     }
 
     private void PopulateDirectoryNode(TreeNode node, string dirPath)
