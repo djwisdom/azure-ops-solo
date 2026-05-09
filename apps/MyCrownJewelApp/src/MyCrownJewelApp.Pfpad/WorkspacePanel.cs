@@ -282,12 +282,11 @@ internal sealed class WorkspacePanel : UserControl
                 _fileWatcher = new FileSystemWatcher(path)
                 {
                     IncludeSubdirectories = true,
-                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
                 };
                 _fileWatcher.Created += OnWatcherChange;
                 _fileWatcher.Deleted += OnWatcherChange;
                 _fileWatcher.Renamed += OnWatcherChange;
-                _fileWatcher.Changed += OnWatcherChange;
                 _fileWatcher.EnableRaisingEvents = true;
             }
             catch { }

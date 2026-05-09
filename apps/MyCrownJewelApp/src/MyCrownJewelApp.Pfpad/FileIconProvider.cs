@@ -173,25 +173,24 @@ public static class FileIconProvider
 
     private static void DrawLines(Graphics g, Color color)
     {
-        // Four horizontal lines with varying lengths
         using var pen = new Pen(color, 1);
-        int cx = 8;
-        for (int i = 0; i < 4; i++)
+        g.DrawLine(pen, 2, 1, 14, 1);
+        g.DrawLine(pen, 14, 1, 14, 15);
+        g.DrawLine(pen, 14, 15, 2, 15);
+        g.DrawLine(pen, 2, 15, 2, 1);
+        for (int i = 0; i < 3; i++)
         {
-            int y = 2 + i * 3;
-            int len = 11 - i * 2; // 11, 9, 7, 5 — decreasing
-            g.DrawLine(pen, cx - len / 2, y, cx + len / 2, y);
+            int y = 4 + i * 4;
+            g.DrawLine(pen, 5, y, 12, y);
         }
     }
 
     private static void DrawDownArrow(Graphics g, Color color)
     {
-        // Stout downward arrow
-        using var pen = new Pen(color, 1.5f);
-        int cx = 8, cy = 6;
-        // vertical line
+        // Thick downward arrow
+        using var pen = new Pen(color, 2.5f);
+        int cx = 8, cy = 5;
         g.DrawLine(pen, cx, cy, cx, cy + 5);
-        // arrowhead
         g.DrawLine(pen, cx - 4, cy + 2, cx, cy + 6);
         g.DrawLine(pen, cx + 4, cy + 2, cx, cy + 6);
     }
