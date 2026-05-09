@@ -527,7 +527,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         if (hovered && !selected)
         {
             var fullRowRect = new Rectangle(0, e.Bounds.Y, _tree.ClientSize.Width, e.Bounds.Height);
-            using var hoverBrush = new SolidBrush(Color.FromArgb(50, 255, 255, 255));
+            var hoverColor = theme.IsLight ? Color.FromArgb(20, 0, 0, 0) : Color.FromArgb(50, 255, 255, 255);
+            using var hoverBrush = new SolidBrush(hoverColor);
             e.Graphics.FillRectangle(hoverBrush, fullRowRect);
         }
 
@@ -879,4 +880,3 @@ private TreeNode CreateDirectoryNode(string dirPath)
         return !string.IsNullOrEmpty(_rootPath) ? _rootPath : null;
     }
 }
-
