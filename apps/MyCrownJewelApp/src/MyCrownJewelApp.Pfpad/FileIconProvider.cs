@@ -46,9 +46,12 @@ public static class FileIconProvider
         _extensionMap[".rs"] = (Color.FromArgb(0xDE, 0xA5, 0x84), "RS");      // Rust tan
         _extensionMap[".c"] = (Color.FromArgb(0x28, 0x3B, 0xD7), "C");       // C blue
         _extensionMap[".h"] = (Color.FromArgb(0x28, 0x3B, 0xD7), "H");
-        _extensionMap[".cpp"] = (Color.FromArgb(0x00, 0x52, 0x8F), "CP");     // C++ dark blue
+        _extensionMap[".cpp"] = (Color.FromArgb(0x00, 0x52, 0x8F), "C+");     // C++ dark blue
         _extensionMap[".cxx"] = (Color.FromArgb(0x00, 0x52, 0x8F), "C+");
-        _extensionMap[".hpp"] = (Color.FromArgb(0x00, 0x52, 0x8F), "HP");
+        _extensionMap[".cc"] = (Color.FromArgb(0x00, 0x52, 0x8F), "C+");
+        _extensionMap[".hpp"] = (Color.FromArgb(0x00, 0x52, 0x8F), "C+");
+        _extensionMap[".hxx"] = (Color.FromArgb(0x00, 0x52, 0x8F), "C+");
+        _extensionMap[".hh"] = (Color.FromArgb(0x00, 0x52, 0x8F), "C+");
         _extensionMap[".swift"] = (Color.FromArgb(0xF0, 0x51, 0x38), "SW");   // Swift orange
         _extensionMap[".rb"] = (Color.FromArgb(0xCC, 0x34, 0x2D), "RB");      // Ruby red
         _extensionMap[".php"] = (Color.FromArgb(0x77, 0x7B, 0xB4), "PH");     // PHP purple
@@ -63,6 +66,10 @@ public static class FileIconProvider
         _extensionMap[".gitignore"] = (Color.FromArgb(0xE4, 0x4D, 0x26), "GI"); // Git orange
         _extensionMap[".sln"] = (Color.FromArgb(0x68, 0x4D, 0x95), "SL");     // Solution purple
         _extensionMap[".csproj"] = (Color.FromArgb(0x9B, 0x4F, 0x96), "CS");  // C# project purple
+        _extensionMap[".txt"] = (Color.Gray, "TXT");                         // Text
+        _extensionMap[".gitignore"] = (Color.FromArgb(0xE4, 0x4D, 0x26), "DOT"); // Dotfile
+        _extensionMap[".editorconfig"] = (Color.FromArgb(0x8C, 0x8C, 0x8C), "DOT");
+        _extensionMap[".gitattributes"] = (Color.Gray, "DOT");
 
         BuildImageList();
     }
@@ -126,35 +133,76 @@ public static class FileIconProvider
         var bmp = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
+        Color c = Color.FromArgb(130, 130, 130);
 
-        Color outlineColor = Color.FromArgb(120, 120, 120);
-
-        // Rounded rectangle outline (no fill)
-        using var path = new GraphicsPath();
-        int m = 1;
-        int s = 14;
-        path.AddArc(m, m, 4, 4, 180, 90);
-        path.AddArc(m + s - 4, m, 4, 4, 270, 90);
-        path.AddArc(m + s - 4, m + s - 4, 4, 4, 0, 90);
-        path.AddArc(m, m + s - 4, 4, 4, 90, 90);
-        path.CloseFigure();
-
-        using var pen = new Pen(outlineColor, 1);
-        g.DrawPath(pen, path);
-
-        // Outline text
-        using var font = new Font("Segoe UI", 6, FontStyle.Bold);
-        using var sf = new StringFormat
+        switch (label)
         {
-            Alignment = StringAlignment.Center,
-            LineAlignment = StringAlignment.Center
-        };
-        using var textPath = new GraphicsPath();
-        textPath.AddString(label, font.FontFamily, (int)FontStyle.Bold, 7, new Point(8, 8), sf);
-        using var textPen = new Pen(outlineColor, 1);
-        g.DrawPath(textPen, textPath);
-
+            case "C":
+                DrawBigChar(g, c, 'C');
+                break;
+            case "C+":
+            case "CP":
+            case "HP":
+                DrawCpp(g, c);
+                break;
+            case "DOT":
+            case "TXT":
+                DrawLines(g, c);
+                break;
+            default:
+                DrawLabel(g, c, label);
+                break;
+        }
         return bmp;
+    }
+
+    private static void DrawBigChar(Graphics g, Color color, char ch)
+    {
+        using var font = new Font("Segoe UI", 10, FontStyle.Bold);
+        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var path = new GraphicsPath();
+        path.AddString(ch.ToString(), font.FontFamily, (int)FontStyle.Bold, 12, new Point(8, 8), sf);
+        using var pen = new Pen(color, 1.2f);
+        g.DrawPath(pen, path);
+    }
+
+    private static void DrawCpp(Graphics g, Color color)
+    {
+        using var font = new Font("Segoe UI", 5.5f, FontStyle.Bold);
+        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var path = new GraphicsPath();
+        path.AddString("c++", font.FontFamily, (int)FontStyle.Bold, 7, new Point(8, 8), sf);
+        using var pen = new Pen(color, 1);
+        g.DrawPath(pen, path);
+    }
+
+    private static void DrawLines(Graphics g, Color color)
+    {
+        // Four horizontal jagged/zigzag lines representing text content
+        var pts = new Point[5];
+        int cx = 8, cy = 8;
+        using var pen = new Pen(color, 1);
+
+        for (int i = 0; i < 4; i++)
+        {
+            int y = cy - 5 + i * 3;
+            int x0 = cx - 5;
+            int x1 = cx + 5;
+            // Simple zigzag: short line segment
+            g.DrawLine(pen, x0, y, x0 + 4, y - 1);
+            g.DrawLine(pen, x0 + 4, y - 1, x0 + 8, y);
+            g.DrawLine(pen, x0 + 8, y, x1, y - 1);
+        }
+    }
+
+    private static void DrawLabel(Graphics g, Color color, string text)
+    {
+        using var font = new Font("Segoe UI", 6, FontStyle.Bold);
+        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+        using var path = new GraphicsPath();
+        path.AddString(text, font.FontFamily, (int)FontStyle.Bold, 7, new Point(8, 8), sf);
+        using var pen = new Pen(color, 1);
+        g.DrawPath(pen, path);
     }
 
     private static Bitmap CreateDefaultIcon()
@@ -162,19 +210,8 @@ public static class FileIconProvider
         var bmp = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
-
-        Color outlineColor = Color.FromArgb(100, 100, 100);
-
-        using var path = new GraphicsPath();
-        path.AddArc(1, 1, 3, 3, 180, 90);
-        path.AddArc(12, 1, 3, 3, 270, 90);
-        path.AddArc(12, 12, 3, 3, 0, 90);
-        path.AddArc(1, 12, 3, 3, 90, 90);
-        path.CloseFigure();
-
-        using var pen = new Pen(outlineColor, 1);
-        g.DrawPath(pen, path);
-
+        Color c = Color.FromArgb(130, 130, 130);
+        DrawLines(g, c);
         return bmp;
     }
 
@@ -184,17 +221,16 @@ public static class FileIconProvider
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        Color outlineColor = Color.FromArgb(120, 120, 120);
+        Color c = Color.FromArgb(130, 130, 130);
+        using var pen = new Pen(c, 1.2f);
 
-        // Folder outline shape
-        using var path = new GraphicsPath();
-        path.AddLine(0, 3, 5, 3);
-        path.AddLine(7, 5, 15, 5);
-        path.AddLine(15, 13, 0, 13);
-        path.CloseFigure();
-
-        using var pen = new Pen(outlineColor, 1);
-        g.DrawPath(pen, path);
+        // Folder outline without fill: open folder shape (tab on left, angled right side)
+        g.DrawLine(pen, 1, 4, 5, 4);       // top tab
+        g.DrawLine(pen, 5, 4, 7, 7);       // tab angle
+        g.DrawLine(pen, 7, 7, 15, 7);      // top edge
+        g.DrawLine(pen, 15, 7, 15, 13);    // right edge
+        g.DrawLine(pen, 15, 13, 1, 13);    // bottom edge
+        g.DrawLine(pen, 1, 13, 1, 4);      // left edge
 
         return bmp;
     }
