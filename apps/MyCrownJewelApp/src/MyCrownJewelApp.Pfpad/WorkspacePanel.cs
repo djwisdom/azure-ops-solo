@@ -522,15 +522,6 @@ private TreeNode CreateDirectoryNode(string dirPath)
         var theme = ThemeManager.Instance.CurrentTheme;
         bool selected = (e.State & TreeNodeStates.Selected) == TreeNodeStates.Selected;
         bool focused = (e.State & TreeNodeStates.Focused) == TreeNodeStates.Focused;
-        bool hovered = (e.State & TreeNodeStates.Hot) == TreeNodeStates.Hot;
-
-        if (hovered && !selected)
-        {
-            var fullRowRect = new Rectangle(0, e.Bounds.Y, _tree.ClientSize.Width, e.Bounds.Height);
-            var hoverColor = theme.IsLight ? Color.FromArgb(20, 0, 0, 0) : Color.FromArgb(50, 255, 255, 255);
-            using var hoverBrush = new SolidBrush(hoverColor);
-            e.Graphics.FillRectangle(hoverBrush, fullRowRect);
-        }
 
         if (selected)
         {
