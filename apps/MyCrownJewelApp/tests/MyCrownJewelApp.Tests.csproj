@@ -27,8 +27,5 @@
       <ProjectReference Include="..\src\MyCrownJewelApp.Pfpad\MyCrownJewelApp.Pfpad.csproj" />
     </ItemGroup>
 
-   <ItemGroup>
-     <Compile Remove="MyCrownJewelApp.Terminal.Tests\**\*.cs" />
-   </ItemGroup>
 
 </Project>

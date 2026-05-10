@@ -218,6 +218,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private System.Windows.Forms.Timer? _highlightTimer;
         private System.Windows.Forms.Timer? _scrollHighlightTimer;
         private readonly System.Windows.Forms.Timer _lockKeysTimer = new() { Interval = 500 };
+        private System.Windows.Forms.Timer? _tabScrollDebounce;
+        private int _pendingTabScrollIndex = -1;
         private int _pendingHighlightLine = -1;
         private CancellationTokenSource? tabComputeCts;
         private readonly Stopwatch _highlightPerfSw = new();
@@ -1198,6 +1200,21 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _resizeDebounceTimer.Stop();
                 _resizeDebounceTimer.Start();
             };
+
+            // Tab scroll debounce: coalesces rapid mouse wheel tab scrolling
+            // so the expensive LoadDocument/SwitchToTab cascade only runs once
+            // the user stops scrolling, preventing the "content disappears then
+            // reappears" flicker on every scroll tick.
+            _tabScrollDebounce = new System.Windows.Forms.Timer { Interval = 120 };
+            _tabScrollDebounce.Tick += (s, e) =>
+            {
+                _tabScrollDebounce.Stop();
+                if (_pendingTabScrollIndex >= 0 && _pendingTabScrollIndex < tabControl.TabCount)
+                {
+                    tabControl.SelectedIndex = _pendingTabScrollIndex;
+                    _pendingTabScrollIndex = -1;
+                }
+            };
             mainLayout.Layout += (s, e) =>
             {
                 PositionMinimap();
@@ -1684,6 +1701,28 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             if (_notificationCenter is not null && !_notificationCenter.IsDisposed)
                 _notificationCenter.UpdateTheme(theme);
             UpdateNotificationBadge();
+
+            if (syntaxHighlightingEnabled && incrementalHighlighter != null)
+            {
+                _applyingHighlight = true;
+                ResetVisibleRangeToBase(theme.Text);
+                _applyingHighlight = false;
+                var (first, last) = GetVisibleLineRange();
+                for (int l = first; l <= last; l++)
+                    incrementalHighlighter.MarkDirty(l);
+            }
+        }
+
+        // Lightweight editor-color refresh for tab switches (avoids repainting
+        // menus, status bar, dropdowns, notification center, etc. on every switch).
+        private void ApplyEditorColors()
+        {
+            var theme = _currentTheme;
+            textEditor!.BackColor = theme.EditorBackground;
+            textEditor.ForeColor = theme.Text;
+            gutterPanel.BackColor = theme.EditorBackground;
+            gutterPanel.ForeColor = theme.Text;
+            rulerPanel?.Invalidate();
 
             if (syntaxHighlightingEnabled && incrementalHighlighter != null)
             {
@@ -5173,10 +5212,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         internal void SwitchToTab(int index)
         {
             if (index < 0 || index >= documents.Count) return;
-            if (activeDocIndex == index) return; // already active
+            if (activeDocIndex == index) return;
 
-            // Save current document state before leaving
-            if (activeDocIndex >= 0)
+            if (activeDocIndex >= 0 && isModified)
             {
                 SaveCurrentDocument();
             }
@@ -5214,9 +5252,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             doc.SavedHash = savedContentHash;
 
             // Force scrollbar recalculation — native RichEdit can miss extents after .Text set
-            textEditor.WordWrap = !wordWrapEnabled;
-            textEditor.WordWrap = wordWrapEnabled;
-            textEditor.Refresh();
+            textEditor.PerformLayout();
 
             textEditor.TextChanged += TextEditor_TextChanged;
 
@@ -5226,8 +5262,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             // Update UI (must be after CreateIncrementalHighlighter so file type is current)
             UpdateStatusBar();
             UpdateTabTitle(activeDocIndex);
-            UpdateThemeColors(_currentTheme);
             UpdateBreadcrumbs();
+            ApplyEditorColors();
         }
 
         // Update tab title for document at index
@@ -5338,8 +5374,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             int next = tabControl.SelectedIndex + dir;
             if (next >= 0 && next < tabControl.TabCount)
             {
-                tabControl.SelectedIndex = next;
-                EnsureSelectedTabVisible();
+                _tabScrollDebounce?.Stop();
+                _pendingTabScrollIndex = next;
+                _tabScrollDebounce?.Start();
             }
         }
 
