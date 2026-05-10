@@ -58,3 +58,7 @@ See `MEMORY.md` for current session state, active work, and next steps.
 
 ## Security
 See `SECURITY.md` for data handling rules, PII boundaries, and compliance requirements.
+
+<p align="center">
+   ![Personal Flip Pad Editor](pfpad.png)
+</p>
