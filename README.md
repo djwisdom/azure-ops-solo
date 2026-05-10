@@ -60,5 +60,5 @@ See `MEMORY.md` for current session state, active work, and next steps.
 See `SECURITY.md` for data handling rules, PII boundaries, and compliance requirements.
 
 <p align="center">
-   ![Personal Flip Pad Editor](pfpad.png)
+  <img src="pfpad.png" alt="Personal Flip Pad Editor" />
 </p>
