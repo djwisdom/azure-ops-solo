@@ -81,14 +81,33 @@ public sealed class MarkdownPreviewPanel : Panel
 
     public void RenderMarkdown(string markdown, string? fileName)
     {
+        string html;
         if (string.IsNullOrEmpty(markdown))
         {
-            _browser.DocumentText = "<html><body style='color:#888;font-family:sans-serif;padding:20px'><p>No content</p></body></html>";
-            return;
+            html = "<html><body style='color:#888;font-family:sans-serif;padding:20px'><p>No content</p></body></html>";
+        }
+        else
+        {
+            _currentSource = markdown;
+            html = ConvertToHtml(markdown);
         }
 
-        _currentSource = markdown;
-        _browser.DocumentText = ConvertToHtml(markdown);
+        try
+        {
+            if (_browser.Document != null && _browser.Document.Body != null)
+            {
+                _browser.Document.OpenNew(true);
+                _browser.Document.Write(html);
+            }
+            else
+            {
+                _browser.DocumentText = html;
+            }
+        }
+        catch
+        {
+            _browser.DocumentText = html;
+        }
     }
 
     public void SetTheme(Theme theme)
@@ -110,7 +129,7 @@ public sealed class MarkdownPreviewPanel : Panel
         html.Append("pre code{background:transparent;padding:0;color:#d4d4d4}");
         html.Append("a{color:#569cd6}");
         html.Append("blockquote{border-left:3px solid #569cd6;margin:10px 0;padding:4px 12px;color:#888}");
-        html.Append("table{border-collapse:collapse;width:100%}");
+        html.Append("table{border-collapse:collapse;width:100%;margin:8px 0}");
         html.Append("th,td{border:1px solid #333;padding:6px 10px;text-align:left}");
         html.Append("th{background:#2d2d2d}");
         html.Append("hr{border:none;border-top:1px solid #333}");
@@ -119,6 +138,8 @@ public sealed class MarkdownPreviewPanel : Panel
 
         var lines = md.Replace("\r\n", "\n").Split('\n');
         bool inCodeBlock = false;
+        bool inTable = false;
+        var tableRows = new List<string>();
         var codeBlockLines = new StringBuilder();
 
         foreach (var rawLine in lines)
@@ -128,6 +149,7 @@ public sealed class MarkdownPreviewPanel : Panel
             // Code blocks
             if (line.TrimStart().StartsWith("```"))
             {
+                FlushTable(html, tableRows, ref inTable);
                 if (inCodeBlock)
                 {
                     html.Append("<pre><code>");
@@ -149,6 +171,22 @@ public sealed class MarkdownPreviewPanel : Panel
                 continue;
             }
 
+            // Table rows — lines starting with |
+            string trimmed = line.TrimStart();
+            if (trimmed.StartsWith("|"))
+            {
+                if (!inTable)
+                {
+                    inTable = true;
+                    tableRows.Clear();
+                }
+                tableRows.Add(trimmed);
+                continue;
+            }
+
+            // Flush table when a non-table line is encountered
+            FlushTable(html, tableRows, ref inTable);
+
             // Empty line = paragraph break
             if (string.IsNullOrWhiteSpace(line))
             {
@@ -158,17 +196,17 @@ public sealed class MarkdownPreviewPanel : Panel
             // Headers
             if (line.StartsWith("### "))
             {
-                html.Append($"<h3>{Escape(line[4..])}</h3>");
+                html.Append($"<h3>{FormatInline(line[4..])}</h3>");
                 continue;
             }
             if (line.StartsWith("## "))
             {
-                html.Append($"<h2>{Escape(line[3..])}</h2>");
+                html.Append($"<h2>{FormatInline(line[3..])}</h2>");
                 continue;
             }
             if (line.StartsWith("# "))
             {
-                html.Append($"<h1>{Escape(line[2..])}</h1>");
+                html.Append($"<h1>{FormatInline(line[2..])}</h1>");
                 continue;
             }
 
@@ -182,14 +220,14 @@ public sealed class MarkdownPreviewPanel : Panel
             // Blockquote
             if (line.StartsWith("> "))
             {
-                html.Append($"<blockquote>{Escape(line[2..])}</blockquote>");
+                html.Append($"<blockquote>{FormatInline(line[2..])}</blockquote>");
                 continue;
             }
 
             // Unordered list
             if (line.StartsWith("- ") || line.StartsWith("* "))
             {
-                html.Append($"<li>{Escape(line[2..])}</li>");
+                html.Append($"<li>{FormatInline(line[2..])}</li>");
                 continue;
             }
 
@@ -197,39 +235,91 @@ public sealed class MarkdownPreviewPanel : Panel
             var orderedMatch = Regex.Match(line, @"^\d+\.\s(.+)$");
             if (orderedMatch.Success)
             {
-                html.Append($"<li>{Escape(orderedMatch.Groups[1].Value)}</li>");
+                html.Append($"<li>{FormatInline(orderedMatch.Groups[1].Value)}</li>");
                 continue;
             }
 
-            // Inline formatting for regular paragraphs
-            string processed = Escape(line);
-
-            // Inline code
-            processed = Regex.Replace(processed, @"`([^`]+)`", "<code>$1</code>");
-
-            // Bold
-            processed = Regex.Replace(processed, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
-            processed = Regex.Replace(processed, @"__(.+?)__", "<strong>$1</strong>");
-
-            // Italic
-            processed = Regex.Replace(processed, @"\*(.+?)\*", "<em>$1</em>");
-            processed = Regex.Replace(processed, @"_(.+?)_", "<em>$1</em>");
-
-            // Links
-            processed = Regex.Replace(processed, @"\[([^\]]+)\]\(([^)]+)\)", "<a href='$2'>$1</a>");
-
-            html.Append($"<p>{processed}</p>");
+            // Regular paragraph with inline formatting
+            html.Append($"<p>{FormatInline(line)}</p>");
         }
 
+        // Flush remaining code block or table
         if (inCodeBlock && codeBlockLines.Length > 0)
         {
             html.Append("<pre><code>");
             html.Append(System.Web.HttpUtility.HtmlEncode(codeBlockLines.ToString()));
             html.Append("</code></pre>");
         }
+        FlushTable(html, tableRows, ref inTable);
 
         html.Append("</body></html>");
         return html.ToString();
+    }
+
+    private static void FlushTable(StringBuilder html, List<string> rows, ref bool inTable)
+    {
+        if (!inTable || rows.Count == 0) return;
+        inTable = false;
+
+        if (rows.Count < 2) return;
+
+        // Parse alignment from separator row (second row)
+        string sep = rows[1].Trim();
+        var alignments = new List<string>();
+        foreach (var part in sep.Split('|', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string c = part.Trim();
+            if (c.StartsWith(":") && c.EndsWith(":"))
+                alignments.Add("center");
+            else if (c.EndsWith(":"))
+                alignments.Add("right");
+            else
+                alignments.Add("left");
+        }
+
+        html.Append("<table>");
+
+        // Header row
+        html.Append("<thead><tr>");
+        var headerCells = rows[0].Split('|', StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < headerCells.Length; i++)
+        {
+            string a = i < alignments.Count ? alignments[i] : "left";
+            html.Append($"<th style='text-align:{a}'>{FormatInline(headerCells[i].Trim())}</th>");
+        }
+        html.Append("</tr></thead>");
+
+        // Body rows
+        if (rows.Count > 2)
+        {
+            html.Append("<tbody>");
+            for (int r = 2; r < rows.Count; r++)
+            {
+                html.Append("<tr>");
+                var bodyCells = rows[r].Split('|', StringSplitOptions.RemoveEmptyEntries);
+                for (int i = 0; i < bodyCells.Length; i++)
+                {
+                    string a = i < alignments.Count ? alignments[i] : "left";
+                    html.Append($"<td style='text-align:{a}'>{FormatInline(bodyCells[i].Trim())}</td>");
+                }
+                html.Append("</tr>");
+            }
+            html.Append("</tbody>");
+        }
+
+        html.Append("</table>");
+    }
+
+    private static string FormatInline(string text)
+    {
+        string processed = Escape(text);
+        processed = Regex.Replace(processed, @"`([^`]+)`", "<code>$1</code>");
+        processed = Regex.Replace(processed, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+        processed = Regex.Replace(processed, @"__(.+?)__", "<strong>$1</strong>");
+        processed = Regex.Replace(processed, @"\*(.+?)\*", "<em>$1</em>");
+        processed = Regex.Replace(processed, @"_(.+?)_", "<em>$1</em>");
+        processed = Regex.Replace(processed, @"\[([^\]]+)\]\(([^)]+)\)", "<a href='$2'>$1</a>");
+        return processed;
     }
 
     private static string Escape(string text) =>

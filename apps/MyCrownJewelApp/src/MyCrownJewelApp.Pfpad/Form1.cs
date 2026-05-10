@@ -130,6 +130,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private ProblemsPanel? _problemsPanel;
         private bool _problemsPanelVisible;
 
+        // Markdown preview state
+        private MarkdownPreviewPanel? _markdownPreviewPanel;
+        private SplitContainer? _editorSplitContainer;
+        private bool _markdownPreviewVisible;
+
         // Test runner state
         private TestRunResult? _lastTestResult;
         private string? _lastTestProject;
@@ -1089,8 +1094,29 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   mainLayout.Controls.Remove(_terminalSplitContainer);
                   _workspaceSplitContainer.Panel1.Controls.Add(_sidebarSplit);
                   _workspaceSplitContainer.Panel1.BackColor = _currentTheme.MenuBackground;
-                  _workspaceSplitContainer.Panel2.Controls.Add(_terminalSplitContainer);
-                  _workspaceSplitContainer.Panel2.BackColor = _currentTheme.EditorBackground;
+
+                  // Editor split: editor+terminal on left, markdown preview on right (collapsed by default)
+                  _editorSplitContainer = new SplitContainer
+                  {
+                      Dock = DockStyle.Fill,
+                      Orientation = Orientation.Vertical,
+                      Panel1MinSize = 100,
+                      Panel2MinSize = 120,
+                      SplitterWidth = 4,
+                      SplitterIncrement = 8,
+                      Panel2Collapsed = !_markdownPreviewVisible,
+                      BorderStyle = BorderStyle.None
+                  };
+                  _editorSplitContainer.Panel1.Controls.Add(_terminalSplitContainer);
+                  _editorSplitContainer.Panel1.BackColor = _currentTheme.EditorBackground;
+
+                  _markdownPreviewPanel = new MarkdownPreviewPanel();
+                  _markdownPreviewPanel.CloseRequested += () => ToggleMarkdownPreview();
+                  _markdownPreviewPanel.SetTheme(_currentTheme);
+                  _editorSplitContainer.Panel2.Controls.Add(_markdownPreviewPanel);
+                  _editorSplitContainer.Panel2.BackColor = _currentTheme.EditorBackground;
+
+                  _workspaceSplitContainer.Panel2.Controls.Add(_editorSplitContainer);
 
                   if (_workspaceVisible || _gitPanelVisible)
                       _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
@@ -1105,6 +1131,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               workspaceMenuItem.Checked = _workspaceVisible;
               symbolsMenuItem.Checked = _symbolPanelVisible;
               problemsMenuItem.Checked = _problemsPanelVisible;
+              markdownPreviewPanelMenuItem.Checked = _markdownPreviewVisible;
 
              // Set initial splitter position if terminal should be visible
              if (_terminalVisible)
@@ -2303,6 +2330,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _sidebarSplit.BackColor = theme.MenuBackground;
             if (_botSidebarSplit != null)
                 _botSidebarSplit.BackColor = theme.MenuBackground;
+            if (_markdownPreviewPanel != null)
+                _markdownPreviewPanel.SetTheme(theme);
+            if (_editorSplitContainer != null)
+                _editorSplitContainer.BackColor = theme.EditorBackground;
         }
 
         private TerminalPanel AddTerminalTab(string? shellPath)
@@ -5149,6 +5180,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             var doc = documents[activeDocIndex];
             LoadDocument(doc);
             UpdateWindowTitle();
+            UpdateMarkdownPreview();
         }
 
         // Load document state into editor and UI
@@ -5223,6 +5255,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 SwitchToTab(tabControl.SelectedIndex);
             }
             RefreshGitRepo();
+            UpdateMarkdownPreview();
         }
 
         private void TabControl_DoubleClick(object? sender, EventArgs e)
@@ -6240,6 +6273,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             // Restart debounce timer for elastic tab stops recompute
             elasticTabTimer?.Stop();
             elasticTabTimer?.Start();
+
+            UpdateMarkdownPreview();
         }
 
         private void TextEditor_SelectionChanged(object? sender, EventArgs e)
@@ -7110,6 +7145,39 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             ToggleProblemsPanel();
             if (sender is ToolStripMenuItem item)
                 item.Checked = _problemsPanelVisible;
+        }
+
+        private void ToggleMarkdownPreview()
+        {
+            if (_editorSplitContainer is null || _markdownPreviewPanel is null) return;
+
+            _markdownPreviewVisible = !_markdownPreviewVisible;
+            _editorSplitContainer.Panel2Collapsed = !_markdownPreviewVisible;
+
+            if (_markdownPreviewVisible)
+                UpdateMarkdownPreview();
+        }
+
+        private void ToggleMarkdownPreview(object? sender, EventArgs e)
+        {
+            ToggleMarkdownPreview();
+            if (sender is ToolStripMenuItem item)
+                item.Checked = _markdownPreviewVisible;
+        }
+
+        private void UpdateMarkdownPreview()
+        {
+            if (_markdownPreviewPanel is null || _editorSplitContainer is null) return;
+            if (!_markdownPreviewVisible) return;
+
+            string? file = currentFilePath;
+            if (string.IsNullOrEmpty(file) || !file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                _markdownPreviewPanel.RenderMarkdown("", null);
+                return;
+            }
+
+            _markdownPreviewPanel.RenderMarkdown(textEditor?.Text ?? "", file);
         }
 
         private void ToggleRunConfigPanel()

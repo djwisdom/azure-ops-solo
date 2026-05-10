@@ -154,6 +154,7 @@ partial class Form1
     internal ToolStripStatusLabel gitDirtyLabel;
     internal ToolStripStatusLabel gitSyncLabel;
     internal ToolStripProgressBar scanProgressBar;
+    internal ToolStripMenuItem markdownPreviewPanelMenuItem;
 
     protected override void Dispose(bool disposing)
     {
@@ -449,6 +450,9 @@ partial class Form1
         problemsMenuItem = new ToolStripMenuItem("&Problems", null, ToggleProblemsPanel, Keys.Control | Keys.Alt | Keys.P);
         problemsMenuItem.CheckOnClick = true;
         panelMenu.DropDownItems.Add(problemsMenuItem);
+        markdownPreviewPanelMenuItem = new ToolStripMenuItem("Markdown &Preview", null, ToggleMarkdownPreview, Keys.Control | Keys.Shift | Keys.M);
+        markdownPreviewPanelMenuItem.CheckOnClick = true;
+        panelMenu.DropDownItems.Add(markdownPreviewPanelMenuItem);
         panelMenu.DropDownItems.Add(new ToolStripSeparator());
         terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
         terminalMenuItem.Checked = false;
