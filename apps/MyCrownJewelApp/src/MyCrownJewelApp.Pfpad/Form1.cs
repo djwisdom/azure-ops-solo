@@ -5157,11 +5157,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             // Remove document and tab
             documents.RemoveAt(index);
-            tabControl.TabPages.RemoveAt(index);
 
-            // Adjust activeDocIndex if the removed tab was before the active one
+            // Adjust activeDocIndex BEFORE removing the tab page, because
+            // TabPages.RemoveAt can fire SelectedIndexChanged → SwitchToTab → SaveCurrentDocument,
+            // which would use a stale out-of-range activeDocIndex.
             if (index < activeDocIndex)
                 activeDocIndex--;
+            else if (index == activeDocIndex)
+                activeDocIndex = -1;
+
+            tabControl.TabPages.RemoveAt(index);
         }
 
         // Switch to document at given index (0-based)
