@@ -11,7 +11,6 @@ public class HighlightRichTextBox : RichTextBox
 {
     private CurrentLineHighlightMode _highlightMode = CurrentLineHighlightMode.Off;
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
-    private bool _overlayDirty = true;
     private bool _scrollInProgress;
     private System.Windows.Forms.Timer? _scrollDebounceTimer;
         private WinFormsTimer? _caretBlinkTimer;
@@ -66,8 +65,7 @@ public class HighlightRichTextBox : RichTextBox
         {
             _scrollDebounceTimer.Stop();
             _scrollInProgress = false;
-            _overlayDirty = true;
-            Invalidate();
+                        Invalidate();
         };
 
         _caretBlinkTimer = new WinFormsTimer { Interval = 500 };
@@ -105,8 +103,7 @@ public class HighlightRichTextBox : RichTextBox
         base.OnGotFocus(e);
         HideCaret(Handle);
         _caretBlinkTimer?.Start();
-        _overlayDirty = true;
-        Invalidate();
+                Invalidate();
     }
 
     protected override void OnLostFocus(EventArgs e)
@@ -114,8 +111,7 @@ public class HighlightRichTextBox : RichTextBox
         base.OnLostFocus(e);
         _caretBlinkTimer?.Stop();
         _caretVisible = false;
-        _overlayDirty = true;
-        Invalidate();
+                Invalidate();
     }
 
     protected override void OnSelectionChanged(EventArgs e)
@@ -123,15 +119,13 @@ public class HighlightRichTextBox : RichTextBox
         base.OnSelectionChanged(e);
         if (_scrollInProgress) return;
         HideCaret(Handle);
-        _overlayDirty = true;
-        Invalidate();
+                Invalidate();
     }
 
     protected override void OnTextChanged(EventArgs e)
     {
         base.OnTextChanged(e);
-        _overlayDirty = true;
-        if (_rainbowBracketsEnabled)
+                if (_rainbowBracketsEnabled)
         {
             _bracketDebounceTimer?.Stop();
             _bracketDebounceTimer?.Start();
@@ -141,8 +135,7 @@ public class HighlightRichTextBox : RichTextBox
     protected override void OnFontChanged(EventArgs e)
     {
         base.OnFontChanged(e);
-        _overlayDirty = true;
-        if (_rainbowBracketsEnabled)
+                if (_rainbowBracketsEnabled)
             Invalidate();
     }
 
@@ -156,8 +149,7 @@ public class HighlightRichTextBox : RichTextBox
             if (_highlightMode != value)
             {
                 _highlightMode = value;
-                _overlayDirty = true;
-                Invalidate();
+                                Invalidate();
                 CurrentLineHighlightModeChanged?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -171,8 +163,7 @@ public class HighlightRichTextBox : RichTextBox
         set
         {
             _highlightColor = value;
-            _overlayDirty = true;
-            Invalidate();
+                        Invalidate();
         }
     }
 
@@ -315,22 +306,19 @@ public class HighlightRichTextBox : RichTextBox
     public void SetSquiggles(List<(int start, int length, Color color)> squiggles)
     {
         _squiggles = squiggles ?? new();
-        _overlayDirty = true;
-        Invalidate();
+                Invalidate();
     }
 
     public void SetLineMessages(Dictionary<int, string> messages)
     {
         _lineMessages = messages ?? new Dictionary<int, string>();
-        _overlayDirty = true;
-        Invalidate();
+                Invalidate();
     }
 
     public void SetExtraCarets(List<int> positions)
     {
         _extraCarets = positions ?? new List<int>();
-        _overlayDirty = true;
-        Invalidate();
+                Invalidate();
     }
 
     private Rectangle? GetCurrentLineRect()
@@ -432,7 +420,7 @@ public class HighlightRichTextBox : RichTextBox
             int firstVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, 0)));
             int lastVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, ClientSize.Height)));
 
-            using var pen = new Pen(_foldLineColor, 1) { DashStyle = DashStyle.Dot };
+            using var pen = new Pen(_foldLineColor, 1);
             foreach (var region in _foldingManager.GetAllRegions())
             {
                 if (region.IsCollapsed) continue;
@@ -529,11 +517,18 @@ public class HighlightRichTextBox : RichTextBox
             }
             else
             {
+                // Check cursor position AND cursor-1 (cursor between a pair)
                 int? match = FindMatchingBrace(Text, pos);
-                if (match == null || match.Value == pos) return;
+                int bracePos = pos;
+                if (match == null && pos > 0)
+                {
+                    bracePos = pos - 1;
+                    match = FindMatchingBrace(Text, bracePos);
+                }
+                if (match == null || match.Value == bracePos) return;
 
                 Color rectColor = Color.FromArgb(200, 255, 255, 255);
-                DrawBraceRect(g, pos, lineH, rectColor);
+                DrawBraceRect(g, bracePos, lineH, rectColor);
                 DrawBraceRect(g, match.Value, lineH, rectColor);
             }
         }
@@ -719,35 +714,35 @@ public class HighlightRichTextBox : RichTextBox
     public int GuideColumn
     {
         get => _guideColumn;
-        set { _guideColumn = Math.Max(1, value); _overlayDirty = true; Invalidate(); }
+        set { _guideColumn = Math.Max(1, value); Invalidate(); }
     }
 
     [Category("Appearance")]
     public bool ShowGuide
     {
         get => _showGuide;
-        set { _showGuide = value; _overlayDirty = true; Invalidate(); }
+        set { _showGuide = value; Invalidate(); }
     }
 
     [Category("Appearance")]
     public Color GuideColor
     {
         get => _guideColor;
-        set { _guideColor = value; _overlayDirty = true; Invalidate(); }
+        set { _guideColor = value; Invalidate(); }
     }
 
     [Browsable(false)]
     public FoldingManager? FoldingManager
     {
         get => _foldingManager;
-        set { _foldingManager = value; _overlayDirty = true; Invalidate(); }
+        set { _foldingManager = value; Invalidate(); }
     }
 
     [Category("Appearance")]
     public Color FoldLineColor
     {
         get => _foldLineColor;
-        set { _foldLineColor = value; _overlayDirty = true; Invalidate(); }
+        set { _foldLineColor = value; Invalidate(); }
     }
 
     [DllImport("user32.dll")]
@@ -846,12 +841,8 @@ public class HighlightRichTextBox : RichTextBox
 
                     if (_scrollInProgress)
                     {
-                        _overlayDirty = true;
-                        return;
+                                                return;
                     }
-
-                    if (!_overlayDirty) return;
-                    _overlayDirty = false;
 
                     IntPtr hdc = GetDC(Handle);
                     if (hdc == IntPtr.Zero) return;
@@ -944,8 +935,7 @@ public class HighlightRichTextBox : RichTextBox
             case WM_LBUTTONUP:
             case WM_SETFOCUS:
             case WM_KILLFOCUS:
-                _overlayDirty = true;
-                break;
+                                break;
         }
 
         base.WndProc(ref m);

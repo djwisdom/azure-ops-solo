@@ -66,6 +66,10 @@ public static class FileIconProvider
         _extensionMap[".sln"] = (Color.FromArgb(0x68, 0x4D, 0x95), "SL");
         _extensionMap[".csproj"] = (Color.FromArgb(0x9B, 0x4F, 0x96), "CS");
         _extensionMap[".txt"] = (Color.Gray, "TXT");
+        _extensionMap[".log"] = (Color.Gray, "TXT");
+        _extensionMap[".a"] = (Color.Gray, "TXT");
+        _extensionMap[".o"] = (Color.Gray, "TXT");
+        _extensionMap[".swp"] = (Color.Gray, "TXT");
 
         // Filename-based entries (must be exact match)
         _extensionMap["Makefile"] = (Color.FromArgb(0xE4, 0x4D, 0x26), "MK");
@@ -178,26 +182,47 @@ public static class FileIconProvider
 
     private static void DrawLines(Graphics g, Color color)
     {
-        using var pen = new Pen(color, 1);
-        g.DrawLine(pen, 2, 1, 14, 1);
-        g.DrawLine(pen, 14, 1, 14, 15);
-        g.DrawLine(pen, 14, 15, 2, 15);
-        g.DrawLine(pen, 2, 15, 2, 1);
-        for (int i = 0; i < 3; i++)
+        // Horizontal-bar document glyph: 2px bars at 100%, 50%, 100%, 75%
+        // widths, each separated by 2px gaps, from the top of a 16x16 icon.
+        // Uses a semi-transparent brush so it works on both dark and light backgrounds.
+        using var brush = new SolidBrush(Color.FromArgb(140, color));
+        int y = 0;
+        (int width, int x)[] bars =
         {
-            int y = 4 + i * 4;
-            g.DrawLine(pen, 5, y, 12, y);
+            (16, 0),        // 100%
+            (8,  4),        // 50%, centered: (16-8)/2 = 4
+            (16, 0),        // 100%
+            (12, 2),        // 75%, centered: (16-12)/2 = 2
+        };
+        for (int i = 0; i < bars.Length; i++)
+        {
+            g.FillRectangle(brush, bars[i].x, y, bars[i].width, 2);
+            y += 4; // 2px bar + 2px gap
         }
     }
 
     private static void DrawDownArrow(Graphics g, Color color)
     {
-        // Thick downward arrow
-        using var pen = new Pen(color, 2.5f);
-        int cx = 8, cy = 5;
-        g.DrawLine(pen, cx, cy, cx, cy + 5);
-        g.DrawLine(pen, cx - 4, cy + 2, cx, cy + 6);
-        g.DrawLine(pen, cx + 4, cy + 2, cx, cy + 6);
+        // 16x16 pixel-art down arrow glyph.
+        // Each row is a 16-bit bitmask (LSB = column 0, MSB = column 15).
+        Span<ushort> rows = stackalloc ushort[]
+        {
+            0x2004, 0x300C, 0x381C, 0x3C3C,
+            0x3E7C, 0x1FFC, 0x1FFC, 0x1FFC,
+            0x7FFF, 0x3FFE, 0x1FFC, 0x0FF8,
+            0x07F0, 0x03E0, 0x01C0, 0x0080,
+        };
+
+        using var brush = new SolidBrush(color);
+        for (int y = 0; y < 16; y++)
+        {
+            ushort mask = rows[y];
+            for (int x = 0; x < 16; x++)
+            {
+                if ((mask & (1 << x)) != 0)
+                    g.FillRectangle(brush, x, y, 1, 1);
+            }
+        }
     }
 
     private static void DrawDollar(Graphics g, Color color)

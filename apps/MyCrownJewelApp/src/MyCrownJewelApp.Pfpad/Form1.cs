@@ -209,9 +209,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private bool _suspendSelectionChanged = false;
 
         // Elastic tab stops system
-        private System.Windows.Forms.Timer? elasticTabTimer;
+        private readonly System.Windows.Forms.Timer? elasticTabTimer;
         private System.Windows.Forms.Timer? _highlightTimer;
         private System.Windows.Forms.Timer? _scrollHighlightTimer;
+        private readonly System.Windows.Forms.Timer _lockKeysTimer = new() { Interval = 500 };
         private int _pendingHighlightLine = -1;
         private CancellationTokenSource? tabComputeCts;
         private readonly Stopwatch _highlightPerfSw = new();
@@ -440,7 +441,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               {
                   _workspacePanel.SetRoot(_workspaceRoot);
                   AddToRecentWorkspaces(_workspaceRoot);
-                  UpdateWorkspaceStatus();
               }
 
               if (!_cliArgsProvided)
@@ -528,7 +528,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
             LoadRecentWorkspaces();
             UpdateRecentWorkspacesMenu();
-            UpdateWorkspaceStatus();
             
             // Load persisted settings (overrides defaults below)
             LoadSettings();
@@ -541,8 +540,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     _workspaceRoot = _currentProfile.WorkspaceRoot;
             }
             catch { }
-            try { UpdateProfileDropdown(); } catch { }
-
+            
             // Apply persisted analyzer state to Roslyn service
             if (_analyzersEnabled)
                 EnsureRoslynService().SetAnalyzersEnabledAsync(true).ConfigureAwait(false);
@@ -628,7 +626,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 textEditor!.ShowGuide = true;
                 textEditor!.GuideColumn = guideColumn;
             }
-            minimapControl.Visible = _pendingMinimapVisible;
             statusStrip.Visible = statusBarVisible;
             
             // Set initial column widths for visible state
@@ -644,12 +641,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 }
             }
             
-            // Attach minimap to editor
+            // Attach minimap to editor events (visibility/position handled by HandleCreated/Layout/Resize)
             if (minimapControl != null && textEditor != null)
             {
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
                 minimapControl.SetTokenProvider(GetTokensForLine);
-                PositionMinimap();
             }
 
             // Wire whitespace overlay (transparent overlay form)
@@ -753,6 +749,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _scrollHighlightTimer.Stop();
                 RequestVisibleHighlight();
             };
+
+            // Lock-key indicator: polls CapsLock / NumLock / ScrollLock every 500ms
+            _lockKeysTimer.Tick += (s, e) => UpdateLockKeysLabel();
+            _lockKeysTimer.Start();
 
               // Git service: wire to current file location
               _gitService.OnRepoChanged += () => BeginInvoke(UpdateGitStatusBar);
@@ -983,8 +983,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
                   _workspacePanel.ScanCompleted += OnWorkspaceScanCompleted;
                   _workspacePanel.ScanProgressChanged += OnWorkspaceScanProgressChanged;
-                  workspaceStatusLabel.Click += WorkspaceStatusLabel_Click;
-
+ 
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
                   _gitPanel.FileOpenRequested += (path) =>
@@ -1980,7 +1979,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             // Apply per-profile settings overrides on top of global settings
             ApplyProfileOverrides(profile);
 
-            UpdateProfileDropdown();
             try { preferencesProfileMenuItem.Text = $"&Profile: {_currentProfile.Name}"; } catch { }
             SaveSettings();
         }
@@ -2035,38 +2033,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
         }
 
-        private void UpdateProfileDropdown()
-        {
-            try
-            {
-                if (profileDropDown == null) return;
-                profileDropDown.Text = $"Profile: {_currentProfile.Name}";
-                profileDropDown.DropDownItems.Clear();
-
-                foreach (string name in _profileManager.ProfileNames)
-                {
-                    var item = new ToolStripMenuItem(name, null, (s, e) =>
-                    {
-                        var profile = _profileManager.LoadProfile(name);
-                        if (profile != null)
-                            ApplyProfile(profile);
-                    });
-                    item.Checked = name == _currentProfile.Name;
-                    profileDropDown.DropDownItems.Add(item);
-                }
-
-                profileDropDown.DropDownItems.Add(new ToolStripSeparator());
-                var manageItem = new ToolStripMenuItem("Manage Profiles...", null, (s, e) =>
-                {
-                    using var dlg = new ProfileManagerDialog(_profileManager, this);
-                    dlg.ShowDialog(this);
-                    UpdateProfileDropdown();
-                });
-                profileDropDown.DropDownItems.Add(manageItem);
-            }
-            catch { }
-        }
-
         private void UpdateFileMenuProfileItems()
         {
             try
@@ -2092,8 +2058,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 {
                     using var dlg = new ProfileManagerDialog(_profileManager, this);
                     dlg.ShowDialog(this);
-                    UpdateProfileDropdown();
-                });
+                        });
                 preferencesProfileMenuItem.DropDownItems.Add(manageItem);
             }
             catch { }
@@ -3485,7 +3450,20 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private void Delete_Click(object? sender, EventArgs e)
         {
-            if (textEditor.SelectionLength > 0) textEditor.SelectedText = "";
+            if (textEditor.SelectionLength > 0)
+            {
+                textEditor.SelectedText = "";
+            }
+            else if (textEditor.SelectionStart < textEditor.TextLength)
+            {
+                // Delete the character after the caret (forward delete)
+                int start = textEditor.SelectionStart;
+                textEditor.SelectionStart = start;
+                textEditor.SelectionLength = 1;
+                textEditor.SelectedText = "";
+                // Restore caret position at the original start (after deletion)
+                textEditor.SelectionStart = start;
+            }
         }
 
         private void SelectAll_Click(object? sender, EventArgs e)
@@ -3746,8 +3724,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _workspaceRoot = dlg.SelectedPath;
                 _workspacePanel?.SetRoot(_workspaceRoot);
                 AddToRecentWorkspaces(_workspaceRoot);
-                UpdateWorkspaceStatus();
-                // Symbol index rebuild on background thread — cancellation prevents stale overwrites
+                    // Symbol index rebuild on background thread — cancellation prevents stale overwrites
                 Task.Run(() =>
                 {
                     if (!token.IsCancellationRequested)
@@ -3777,7 +3754,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             _workspaceRoot = path;
             _workspacePanel?.SetRoot(_workspaceRoot);
             AddToRecentWorkspaces(_workspaceRoot);
-            UpdateWorkspaceStatus();
             Task.Run(() =>
             {
                 if (!token.IsCancellationRequested)
@@ -3787,70 +3763,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 ToggleWorkspace();
             else
                 SaveSettings();
-        }
-
-        private void UpdateWorkspaceStatus()
-        {
-            try
-            {
-                string root = _workspaceRoot;
-                if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
-                {
-                    workspaceStatusLabel.Text = "";
-                    workspaceStatusLabel.ToolTipText = "";
-                    workspaceStatusLabel.Visible = false;
-                    workspaceStatusLabel.Image = null;
-                    return;
-                }
-
-                // Prefer solution files, then csproj
-                var slnFiles = Directory.GetFiles(root, "*.sln", SearchOption.TopDirectoryOnly);
-                if (slnFiles.Length > 0)
-                {
-                    string name = Path.GetFileNameWithoutExtension(slnFiles[0]);
-                    int count = slnFiles.Length;
-                    workspaceStatusLabel.Text = count > 1 ? $"Solution: {name} +{count - 1}" : $"Solution: {name}";
-                    workspaceStatusLabel.ToolTipText = slnFiles[0];
-                    workspaceStatusLabel.Visible = true;
-                    workspaceStatusLabel.Image = FileIconProvider.ImageList.Images[FileIconProvider.FolderIconIndex];
-                    return;
-                }
-
-                var csprojFiles = Directory.GetFiles(root, "*.csproj", SearchOption.TopDirectoryOnly);
-                if (csprojFiles.Length > 0)
-                {
-                    string name = Path.GetFileNameWithoutExtension(csprojFiles[0]);
-                    int count = csprojFiles.Length;
-                    workspaceStatusLabel.Text = count > 1 ? $"Project: {name} +{count - 1}" : $"Project: {name}";
-                    workspaceStatusLabel.ToolTipText = csprojFiles[0];
-                    workspaceStatusLabel.Visible = true;
-                    workspaceStatusLabel.Image = FileIconProvider.ImageList.Images[FileIconProvider.FolderIconIndex];
-                    return;
-                }
-
-                workspaceStatusLabel.Text = "Folder";
-                workspaceStatusLabel.ToolTipText = root;
-                workspaceStatusLabel.Visible = true;
-                workspaceStatusLabel.Image = FileIconProvider.ImageList.Images[FileIconProvider.FolderIconIndex];
-            }
-            catch
-            {
-                workspaceStatusLabel.Text = "";
-                workspaceStatusLabel.Visible = false;
-                workspaceStatusLabel.Image = null;
-            }
-        }
-
-        private void WorkspaceStatusLabel_Click(object? sender, EventArgs e)
-        {
-            if (!string.IsNullOrEmpty(workspaceStatusLabel.ToolTipText))
-            {
-                string? dir = Path.GetDirectoryName(workspaceStatusLabel.ToolTipText);
-                if (dir != null && Directory.Exists(dir))
-                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{workspaceStatusLabel.ToolTipText}\"");
-                else if (Directory.Exists(workspaceStatusLabel.ToolTipText))
-                    System.Diagnostics.Process.Start("explorer.exe", $"\"{workspaceStatusLabel.ToolTipText}\"");
-            }
         }
 
         private void OnWorkspaceScanStarted()
@@ -3871,7 +3783,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             scanProgressBar.Visible = false;
             scanProgressBar.Value = 0;
             statusStrip.BackColor = _originalStatusBarColor;
-            UpdateWorkspaceStatus();
             DetectAndSuggestProfile();
             ShowNotification("Workspace", "Folder scan complete");
         }
@@ -6352,7 +6263,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             if (gutterPanel != null) gutterPanel.Invalidate();
             _scrollHighlightTimer?.Stop();
             _scrollHighlightTimer?.Start();
-            UpdateStickyHeaders();
+            try { UpdateStickyHeaders(); } catch { }
+            PositionMinimap();
         }
 
         private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
@@ -6402,6 +6314,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private int _lastStatusLine = -1;
         private int _lastStatusCol = -1;
 
+        internal void UpdateLockKeysLabel()
+        {
+            var parts = new List<string>(3);
+            if (Control.IsKeyLocked(Keys.CapsLock)) parts.Add("CAPS");
+            if (Control.IsKeyLocked(Keys.NumLock))  parts.Add("NUM");
+            if (Control.IsKeyLocked(Keys.Scroll))   parts.Add("SCRLK");
+            lockKeysLabel.Text = parts.Count > 0 ? string.Join(" ", parts) : "";
+        }
+
         internal void UpdateStatusBar()
         {
             if (statusStrip == null || textEditor == null) return;
@@ -6416,7 +6337,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
 
             // Character count
-            charCountLabel.Text = $"{textEditor.Text.Length:N0} characters";
 
             // Tab size
             tabSizeDropDown.Text = $"Tab: {tabSize}";
@@ -6518,48 +6438,55 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         #region Minimap Methods
 
         /// <summary>
-        /// Positions the minimap as an overlay within the editor panel, anchored to the right edge.
-        /// The minimap is always shown when enabled. Its width may be reduced to fit if the panel
-        /// is too narrow, and the X position is clamped so it never extends past the left edge.
+        /// Positions the minimap as an overlay inside the editor panel, overlapping the
+        /// text editor's right edge but staying left of the vertical scrollbar.
         /// </summary>
         private void PositionMinimap()
         {
-            if (minimapControl == null || editorPanel == null) return;
+            if (minimapControl == null || editorPanel == null || textEditor == null) return;
+            if (!textEditor.IsHandleCreated) return;
 
-            if (_pendingMinimapVisible)
+            if (!_pendingMinimapVisible)
             {
-                minimapControl.Visible = true;
-                minimapControl.BringToFront();
-                if (textEditor != null && textEditor.IsHandleCreated)
-                {
-                    int scrollBarWidth = SystemInformation.VerticalScrollBarWidth;
-                    int mw = minimapControl.MinimapWidth;
-                    int x = editorPanel.ClientSize.Width - scrollBarWidth - mw - 5;
-
-                    // If the minimap would extend past the left edge, shift it left
-                    // and reduce its width so it always stays fully inside the panel.
-                    if (x < 0)
-                    {
-                        mw += x;          // shrink width to what fits
-                        x = 0;
-                    }
-
-                    // Absolute floor: keep at least a thin strip visible if any space exists at all
-                    if (mw < 20)
-                    {
-                        mw = Math.Max(1, editorPanel.ClientSize.Width - scrollBarWidth - 10);
-                    }
-
-                    minimapControl.Location = new Point(x, textEditor.Top);
-                    minimapControl.Size = new Size(Math.Max(1, mw), Math.Max(1, textEditor.ClientSize.Height));
-                    minimapControl.AttachEditor(textEditor);
-                }
-            }
-            else
-            {
+                if (minimapControl.Parent != editorPanel)
+                    editorPanel.Controls.Add(minimapControl);
                 minimapControl.Visible = false;
                 minimapControl.DetachEditor();
+                return;
             }
+
+            if (minimapControl.Parent != editorPanel)
+                editorPanel.Controls.Add(minimapControl);
+            minimapControl.Visible = true;
+            minimapControl.BringToFront();
+            minimapControl.AttachEditor(textEditor);
+
+            // Detect horizontal scrollbar visibility – when visible,
+            // reduce minimap height so it doesn't overlap the scrollbar.
+            bool hasHScroll = false;
+            try
+            {
+                int style = GetWindowLong(textEditor.Handle, GWL_STYLE);
+                hasHScroll = (style & WS_HSCROLL) != 0;
+            }
+            catch { }
+
+            // Keep at least 20px of text area visible.  Shrink minimap
+            // proportionally when narrow, but never below 20px so it stays
+            // usable even at extreme widths.
+            int mw = Math.Min(
+                minimapControl.MinimapWidth,
+                Math.Max(20, textEditor.ClientSize.Width - 20));
+
+            int x = Math.Max(0, textEditor.ClientSize.Width - mw);
+
+            // Height: account for horizontal scrollbar
+            int h = textEditor.ClientSize.Height;
+            if (hasHScroll)
+                h -= SystemInformation.HorizontalScrollBarHeight;
+
+            minimapControl.Location = new Point(x, textEditor.Top);
+            minimapControl.Size = new Size(Math.Max(1, mw), Math.Max(1, h));
         }
 
         #endregion
@@ -6965,6 +6892,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private const int GWL_STYLE = -16;
         private const int GWL_EXSTYLE = -20;
         private const int WS_BORDER = 0x00800000;
+        private const int WS_VSCROLL = 0x00200000;
+        private const int WS_HSCROLL = 0x00100000;
         private const int WS_EX_CLIENTEDGE = 0x00000200;
         private const int TCM_SETBKCOLOR = 0x1301;
 
@@ -7401,6 +7330,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             _highlightTimer?.Dispose();
             _scrollHighlightTimer?.Stop();
             _scrollHighlightTimer?.Dispose();
+            _lockKeysTimer.Stop();
+            _lockKeysTimer.Dispose();
             incrementalHighlighter?.Dispose();
             _roslynWorkspace.Dispose();
             _roslynService?.Dispose();
@@ -7471,8 +7402,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     {
                         _workspacePanel.SetRoot(_workspaceRoot);
                         AddToRecentWorkspaces(_workspaceRoot);
-                        UpdateWorkspaceStatus();
-                    });
+                                });
                 }
             }
 

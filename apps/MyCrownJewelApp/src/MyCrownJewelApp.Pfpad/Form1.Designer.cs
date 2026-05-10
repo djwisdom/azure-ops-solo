@@ -141,7 +141,7 @@ partial class Form1
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
     internal ToolStripStatusLabel lineColLabel;
-    internal ToolStripStatusLabel charCountLabel;
+    internal ToolStripStatusLabel lockKeysLabel;
     private ToolStripDropDownButton tabSizeDropDown;
     internal ToolStripStatusLabel linePositionLabel;
     internal ToolStripStatusLabel zoomLabel;
@@ -153,8 +153,6 @@ partial class Form1
     private ToolStripStatusLabel gitBranchLabel;
     internal ToolStripStatusLabel gitDirtyLabel;
     internal ToolStripStatusLabel gitSyncLabel;
-    internal ToolStripStatusLabel workspaceStatusLabel;
-    private ToolStripDropDownButton profileDropDown;
     internal ToolStripProgressBar scanProgressBar;
 
     protected override void Dispose(bool disposing)
@@ -677,7 +675,7 @@ partial class Form1
         vimModeLabel = new ToolStripStatusLabel("");
         vimModeLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);
         vimModeLabel.Visible = false;
-        charCountLabel = new ToolStripStatusLabel("0 characters");
+        lockKeysLabel = new ToolStripStatusLabel("");
         tabSizeDropDown = new ToolStripDropDownButton();
         tabSizeDropDown.Text = "Tab: 4";
         tabSizeDropDown.Width = 60;
@@ -702,21 +700,6 @@ partial class Form1
         gitSyncLabel.Padding = new Padding(0, 1, 4, 1);
 
         // Profile selector dropdown
-        profileDropDown = new ToolStripDropDownButton();
-        profileDropDown.Text = "Profile: Default";
-        profileDropDown.Width = 110;
-        profileDropDown.Alignment = ToolStripItemAlignment.Left;
-        profileDropDown.DropDownDirection = ToolStripDropDownDirection.AboveLeft;
-
-        // Workspace status label (shows project/solution name)
-        workspaceStatusLabel = new ToolStripStatusLabel("");
-        workspaceStatusLabel.AutoSize = true;
-        workspaceStatusLabel.Padding = new Padding(4, 1, 4, 1);
-        workspaceStatusLabel.BorderSides = ToolStripStatusLabelBorderSides.Left;
-        workspaceStatusLabel.IsLink = true;
-        workspaceStatusLabel.LinkBehavior = LinkBehavior.HoverUnderline;
-        workspaceStatusLabel.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
-
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
@@ -766,13 +749,11 @@ partial class Form1
 
         statusStrip.Items.Add(vimModeLabel);
         statusStrip.Items.Add(lineColLabel);
-        statusStrip.Items.Add(charCountLabel);
+        statusStrip.Items.Add(lockKeysLabel);
         statusStrip.Items.Add(tabSizeDropDown);
         statusStrip.Items.Add(gitBranchLabel);
         statusStrip.Items.Add(gitDirtyLabel);
         statusStrip.Items.Add(gitSyncLabel);
-        statusStrip.Items.Add(profileDropDown);
-        statusStrip.Items.Add(workspaceStatusLabel);
         statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true, Padding = new Padding(0, 1, 0, 1) });
         statusStrip.Items.Add(linePositionLabel);
         statusStrip.Items.Add(zoomLabel);
@@ -786,7 +767,7 @@ partial class Form1
 
         const int itemPadding = 10;
         lineColLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
-        charCountLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        lockKeysLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         tabSizeDropDown.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         linePositionLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         zoomLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);

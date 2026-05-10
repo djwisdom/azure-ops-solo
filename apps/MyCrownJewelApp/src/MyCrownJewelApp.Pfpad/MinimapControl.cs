@@ -414,6 +414,11 @@ namespace MyCrownJewelApp.Pfpad
             }
         }
 
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+        }
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);

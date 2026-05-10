@@ -41,7 +41,6 @@ internal sealed class WorkspacePanel : UserControl
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private CancellationTokenSource? _scanCts;
     private FileSystemWatcher? _fileWatcher;
-    private bool _pendingRefresh;
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
@@ -105,7 +104,8 @@ internal sealed class WorkspacePanel : UserControl
             LabelEdit = false,
             Indent = 20,
             ItemHeight = 24,
-            DrawMode = TreeViewDrawMode.Normal
+            DrawMode = TreeViewDrawMode.Normal,
+            ImageList = FileIconProvider.ImageList
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
@@ -296,10 +296,10 @@ internal sealed class WorkspacePanel : UserControl
 
     private void OnWatcherChange(object sender, FileSystemEventArgs e)
     {
-        if (!IsHandleCreated || _pendingRefresh) return;
-        _pendingRefresh = true;
-        try { BeginInvoke(() => { _pendingRefresh = false; RefreshTree(); }); }
-        catch { _pendingRefresh = false; }
+        if (!IsHandleCreated) return;
+        // The debounce timer already rate-limits; no need for _pendingRefresh gating.
+        try { BeginInvoke(() => RefreshTree()); }
+        catch { }
     }
 
     public void RefreshTree()
@@ -413,12 +413,22 @@ internal sealed class WorkspacePanel : UserControl
                 }
             }
 
-            // Add new dirs and recurse
+            // Add new files
+            foreach (var f in actualFiles)
+            {
+                if (!currentFiles.Contains(f))
+                {
+                    var fn = CreateFileNode(f);
+                    int insertIdx = FindSortedInsertIndex(node.Nodes, Path.GetFileName(f));
+                    node.Nodes.Insert(insertIdx, fn);
+                }
+            }
+
+            // Add new directories and recurse
             foreach (var d in actualDirs)
             {
-                TreeNode? existing = null;
-                if (currentDirs.Contains(d))
-                    existing = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(n.Tag as string, d, StringComparison.OrdinalIgnoreCase));
+                TreeNode? existing = node.Nodes.Cast<TreeNode>()
+                    .FirstOrDefault(n => string.Equals(n.Tag as string, d, StringComparison.OrdinalIgnoreCase));
 
                 if (existing is null)
                 {
@@ -426,21 +436,20 @@ internal sealed class WorkspacePanel : UserControl
                     int insertIdx = FindSortedInsertIndex(node.Nodes, Path.GetFileName(d));
                     node.Nodes.Insert(insertIdx, dn);
 
-                    // Immediately populate the new node if the parent is expanded
-                    // so RefreshTree shows files inside newly discovered directories.
                     if (node.IsExpanded)
                         PopulateDirectoryNode(dn, d);
                 }
                 else
                 {
-                    // Resolve "Loading..." placeholder if not yet populated
-                    if (existing.Nodes.Count == 1 && existing.Nodes[0].Text == "Loading...")
+                    bool isUnpopulated = existing.Nodes.Count == 0 ||
+                                         (existing.Nodes.Count == 1 && existing.Nodes[0].Text == "Loading...");
+
+                    if (isUnpopulated)
                     {
                         existing.Nodes.Clear();
                         PopulateDirectoryNode(existing, d);
                     }
 
-                    // Recurse into expanded dirs to pick up new entries within
                     if (existing.IsExpanded)
                         RefreshNodeRecursive(existing, d);
                 }
@@ -478,8 +487,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         var node = new TreeNode(Path.GetFileName(dirPath))
         {
             Tag = dirPath,
-            ImageIndex = -1,
-            SelectedImageIndex = -1
+            ImageIndex = FileIconProvider.FolderIconIndex,
+            SelectedImageIndex = FileIconProvider.FolderIconIndex
         };
         node.Nodes.Add(new TreeNode("Loading..."));
         return node;
@@ -497,11 +506,12 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private static TreeNode CreateFileNode(string filePath)
     {
+        int iconIdx = FileIconProvider.GetIconIndex(filePath);
         return new TreeNode(Path.GetFileName(filePath))
         {
             Tag = filePath,
-            ImageIndex = -1,
-            SelectedImageIndex = -1
+            ImageIndex = iconIdx,
+            SelectedImageIndex = iconIdx
         };
     }
 
