@@ -30,8 +30,9 @@ public static class FileIconProvider
         _extensionMap[".less"] = (Color.FromArgb(0x1D, 0x36, 0x5F), "LE");
         _extensionMap[".json"] = (Color.FromArgb(0x5B, 0x5B, 0x5B), "{}");
         _extensionMap[".xml"] = (Color.FromArgb(0x00, 0x6E, 0x8A), "XM");
-        _extensionMap[".yaml"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "YM");
-        _extensionMap[".yml"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "YM");
+        _extensionMap[".yaml"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "YML");
+        _extensionMap[".yml"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "YML");
+        _extensionMap[".clang-format"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "YML");
         _extensionMap[".md"] = (Color.FromArgb(0x08, 0x3E, 0x76), "MD");
         _extensionMap[".sql"] = (Color.FromArgb(0xE3, 0x8D, 0x00), "SQ");
         _extensionMap[".sh"] = (Color.FromArgb(0x4E, 0xAA, 0x25), "$");
@@ -77,8 +78,9 @@ public static class FileIconProvider
         _extensionMap["README"] = (Color.FromArgb(0x08, 0x3E, 0x76), "READ");
         _extensionMap["README.md"] = (Color.FromArgb(0x08, 0x3E, 0x76), "READ");
         _extensionMap["README.txt"] = (Color.FromArgb(0x08, 0x3E, 0x76), "READ");
-        _extensionMap["LICENSE"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "KEY");
-        _extensionMap["LICENSE.txt"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "KEY");
+        _extensionMap["LICENSE"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "SPF");
+        _extensionMap["LICENSE.txt"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "SPF");
+        _extensionMap["CONTRIBUTING.md"] = (Color.FromArgb(0x6B, 0x5B, 0x3E), "SPF");
         _extensionMap[".editorconfig"] = (Color.FromArgb(0x8C, 0x8C, 0x8C), "DOT");
         _extensionMap[".gitignore"] = (Color.FromArgb(0xE4, 0x4D, 0x26), "DOT");
         _extensionMap[".gitattributes"] = (Color.Gray, "DOT");
@@ -141,7 +143,8 @@ public static class FileIconProvider
             case "{}":    DrawBraces(g, c); break;
             case "MK":    DrawBigChar(g, c, 'M'); break;
             case "READ":  DrawInfo(g, c); break;
-            case "KEY":   DrawKey(g, c); break;
+            case "SPF":   DrawSpf(g, c); break;
+            case "YML":   DrawYaml(g, c); break;
             case "TMP":   DrawClock(g, c); break;
             default:      DrawLabel(g, c, label); break;
         }
@@ -267,15 +270,48 @@ public static class FileIconProvider
         g.DrawLine(pen, 8, 7, 8, 12);
     }
 
-    private static void DrawKey(Graphics g, Color color)
+    private static void DrawSpf(Graphics g, Color color)
     {
-        // Simple key outline: circle head + line with teeth
-        using var pen = new Pen(color, 1.2f);
-        g.DrawEllipse(pen, 1, 2, 6, 6);
-        g.DrawLine(pen, 7, 5, 14, 5);
-        g.DrawLine(pen, 14, 5, 14, 8);
-        g.DrawLine(pen, 11, 5, 11, 8);
-        g.DrawLine(pen, 8, 5, 8, 8);
+        Span<ushort> rows = stackalloc ushort[]
+        {
+            0x0000, 0x01F0, 0x0198, 0x071C,
+            0x03F8, 0x03FE, 0x07CE, 0x03FC,
+            0x01F8, 0x01F0, 0x01F0, 0x03F8,
+            0x0F3C, 0x3E0E, 0x0C1C, 0x0000,
+        };
+
+        using var brush = new SolidBrush(Color.FromArgb(140, color));
+        for (int y = 0; y < 16; y++)
+        {
+            ushort mask = rows[y];
+            for (int x = 0; x < 16; x++)
+            {
+                if ((mask & (1 << x)) != 0)
+                    g.FillRectangle(brush, x, y, 1, 1);
+            }
+        }
+    }
+
+    private static void DrawYaml(Graphics g, Color color)
+    {
+        Span<ushort> rows = stackalloc ushort[]
+        {
+            0x0000, 0x0E00, 0x0F00, 0x0780,
+            0x0380, 0x01C0, 0x00C0, 0x0060,
+            0x0000, 0x0030, 0x0078, 0x0030,
+            0x0000, 0x0000, 0x0000, 0x0000,
+        };
+
+        using var brush = new SolidBrush(Color.FromArgb(140, color));
+        for (int y = 0; y < 16; y++)
+        {
+            ushort mask = rows[y];
+            for (int x = 0; x < 16; x++)
+            {
+                if ((mask & (1 << x)) != 0)
+                    g.FillRectangle(brush, x, y, 1, 1);
+            }
+        }
     }
 
     private static void DrawClock(Graphics g, Color color)
