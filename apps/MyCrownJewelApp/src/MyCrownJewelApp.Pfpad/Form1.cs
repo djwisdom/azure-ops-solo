@@ -53,20 +53,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Windows 10 1809+, Windows 11
 
-        [DllImport("gdi32.dll")]
-        private static extern int SetBkColor(IntPtr hdc, int color);
-
-        [DllImport("gdi32.dll")]
-        private static extern int SetTextColor(IntPtr hdc, int color);
-
-        [DllImport("gdi32.dll")]
-        private static extern IntPtr GetStockObject(int fnObject);
-
-        private const int NULL_BRUSH = 5;
-
         private void ApplyScrollbarTheme()
         {
-            // Scrollbar colors are handled in WndProc to match editor background
+            bool dark = isDarkTheme;
+            NativeThemed.ApplyDarkScrollbarTheme(this.Handle, dark);
+            NativeThemed.ApplyThemeToChildScrollbars(this, dark);
         }
 
         private void ApplyTitleBarTheme()
@@ -91,7 +82,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private CurrentLineHighlightMode currentLineHighlightMode = CurrentLineHighlightMode.Off;
         internal int tabSize = 4;
         private bool insertSpaces = true;
-        internal Theme _currentTheme = Theme.Dark;
+        private Theme _currentTheme = Theme.Dark;
         internal bool isDarkTheme => !_currentTheme.IsLight;
         public bool IsDarkTheme => !_currentTheme.IsLight;
         internal float zoomFactor = 1.0f;
@@ -447,8 +438,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     internal Form1(bool skipInitialDocument)
     {
         InitializeComponent();
-        tabControl.Appearance = TabAppearance.FlatButtons;
-        tabControl.Padding = new Point(0, 0);
+
         try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
         this.KeyDown += Form1_KeyDown;
@@ -6024,7 +6014,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
             if (e.Index < 0 || e.Index >= documents.Count) return;
 
-            e.DrawBackground();
+            if (tabControl == null || tabControl.TabPages.Count == 0) return;
+            if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
+            if (e.Index < 0 || e.Index >= documents.Count) return;
 
             var theme = _currentTheme;
             var tabRect = e.Bounds;
@@ -6032,7 +6024,13 @@ private void NewWindow_Click(object? sender, EventArgs e)
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
 
-            Color backColor = theme.MenuBackground;
+            Color backColor;
+            if (isSelected)
+                backColor = theme.EditorBackground;
+            else if (isHovered)
+                backColor = theme.ButtonHoverBackground;
+            else
+                backColor = theme.MenuBackground;
 
             using (var brush = new SolidBrush(backColor))
             {
@@ -6058,9 +6056,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 tabRect.X + textOffset, tabRect.Y + 3,
                 tabRect.Right - 22 - tabRect.X - textOffset, tabRect.Height - 4);
 
-            var textFont = isSelected ? new Font(tabControl.Font, FontStyle.Bold) : tabControl.Font;
-            TextRenderer.DrawText(e.Graphics, text, textFont, textRect,
-                theme.Text,
+            TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
+                isSelected ? theme.Text : theme.Muted,
                 TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
                 TextFormatFlags.EndEllipsis);
 
