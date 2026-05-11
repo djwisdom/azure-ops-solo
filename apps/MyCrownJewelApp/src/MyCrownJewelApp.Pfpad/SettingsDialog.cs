@@ -2251,13 +2251,16 @@ internal sealed class ThemeAwareListView : ListView
 
     private void ThemeAwareListView_DrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
     {
+        if (e?.Graphics == null || e.Header == null) return;
+
         using var brush = new SolidBrush(_theme.PanelBackground);
         using var textBrush = new SolidBrush(_theme.Text);
         using var borderPen = new Pen(_theme.Border);
 
         e.Graphics.FillRectangle(brush, e.Bounds);
         e.Graphics.DrawRectangle(borderPen, e.Bounds);
-        e.Graphics.DrawString(e.Header.Text, Font, textBrush, e.Bounds, new StringFormat
+        var safeFont = Font ?? SystemFonts.DefaultFont;
+        e.Graphics.DrawString(e.Header.Text, safeFont, textBrush, e.Bounds, new StringFormat
         {
             Alignment = StringAlignment.Center,
             LineAlignment = StringAlignment.Center
@@ -2281,6 +2284,8 @@ internal sealed class ThemeAwareListView : ListView
 
     private void ThemeAwareListView_DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
     {
+        if (e?.Graphics == null || e.Item == null || e.SubItem == null) return;
+
         var textColor = e.Item.Selected ? Color.White : _theme.Text;
         using var textBrush = new SolidBrush(textColor);
 
@@ -2291,8 +2296,9 @@ internal sealed class ThemeAwareListView : ListView
             Trimming = StringTrimming.EllipsisCharacter
         };
 
+        var safeFont = Font ?? SystemFonts.DefaultFont;
         var textRect = new Rectangle(e.Bounds.X + 2, e.Bounds.Y, e.Bounds.Width - 4, e.Bounds.Height);
-        e.Graphics.DrawString(e.SubItem.Text, Font, textBrush, textRect, textFormat);
+        e.Graphics.DrawString(e.SubItem.Text, safeFont, textBrush, textRect, textFormat);
     }
 
     public void UpdateTheme(Theme theme)
