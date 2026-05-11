@@ -286,12 +286,6 @@ public class GutterPanel : Panel
             DrawQuickAction(g, lineIndex + 1, currentX, lineY);
             currentX += QuickActionWidth;
 
-            if (ShowLineNumbers)
-            {
-                DrawLineNumber(g, lineIndex + 1, currentX, lineY);
-                currentX += LineNumberMarginWidth;
-            }
-
             if (ShowBookmarks)
             {
                 DrawBookmark(g, lineIndex, currentX, lineY);
@@ -319,6 +313,13 @@ public class GutterPanel : Panel
             if (ShowCodeFolds)
             {
                 DrawFoldMarker(g, lineIndex, currentX, lineY);
+            }
+
+            // Draw line numbers last, on top
+            if (ShowLineNumbers)
+            {
+                int lineNumberX = QuickActionWidth;
+                DrawLineNumber(g, lineIndex + 1, lineNumberX, lineY);
             }
         }
     }
