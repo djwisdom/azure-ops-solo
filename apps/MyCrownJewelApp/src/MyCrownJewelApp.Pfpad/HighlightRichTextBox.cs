@@ -546,17 +546,18 @@ public class HighlightRichTextBox : RichTextBox
             if (caretPos > 0) bracketIndex = result.FindBraceAt(caretPos - 1);
             if (bracketIndex == null)
             {
-                // Find innermost enclosing bracket pair
-                int maxDepth = -1;
+                // Find innermost enclosing bracket pair (smallest span)
+                int minSpan = int.MaxValue;
                 BracketInfo? bestOpen = null;
                 BracketInfo? bestClose = null;
                 foreach (var (openIdx, closeIdx) in result.Pairs)
                 {
                     var open = result.Brackets[openIdx];
                     var close = result.Brackets[closeIdx];
-                    if (caretPos > open.Position && caretPos < close.Position && open.Depth > maxDepth)
+                    int span = close.Position - open.Position;
+                    if (caretPos > open.Position && caretPos < close.Position && span < minSpan)
                     {
-                        maxDepth = open.Depth;
+                        minSpan = span;
                         bestOpen = open;
                         bestClose = close;
                     }
