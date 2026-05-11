@@ -1209,7 +1209,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             _tabScrollDebounce.Tick += (s, e) =>
             {
                 _tabScrollDebounce.Stop();
-                if (_pendingTabScrollIndex >= 0 && _pendingTabScrollIndex < tabControl.TabCount)
+                if (tabControl != null && _pendingTabScrollIndex >= 0 && _pendingTabScrollIndex < tabControl.TabCount)
                 {
                     tabControl.SelectedIndex = _pendingTabScrollIndex;
                     _pendingTabScrollIndex = -1;

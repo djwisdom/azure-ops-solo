@@ -182,35 +182,34 @@ public static class FileIconProvider
 
     private static void DrawLines(Graphics g, Color color)
     {
-        // Horizontal-bar document glyph: 2px bars at 100%, 50%, 100%, 75%
-        // widths, each separated by 2px gaps, from the top of a 16x16 icon.
-        // Uses a semi-transparent brush so it works on both dark and light backgrounds.
-        using var brush = new SolidBrush(Color.FromArgb(140, color));
-        int y = 0;
-        (int width, int x)[] bars =
+        Span<ushort> rows = stackalloc ushort[]
         {
-            (16, 0),        // 100%
-            (8,  4),        // 50%, centered: (16-8)/2 = 4
-            (16, 0),        // 100%
-            (12, 2),        // 75%, centered: (16-12)/2 = 2
+            0xFF80, 0xFF80, 0x0000, 0x0780,
+            0x0780, 0x0000, 0xFF80, 0xFF80,
+            0x0000, 0x1F80, 0x1F80, 0x0000,
+            0x0000, 0x0000, 0x0000, 0x0000,
         };
-        for (int i = 0; i < bars.Length; i++)
+
+        using var brush = new SolidBrush(Color.FromArgb(140, color));
+        for (int y = 0; y < 16; y++)
         {
-            g.FillRectangle(brush, bars[i].x, y, bars[i].width, 2);
-            y += 4; // 2px bar + 2px gap
+            ushort mask = rows[y];
+            for (int x = 0; x < 16; x++)
+            {
+                if ((mask & (1 << x)) != 0)
+                    g.FillRectangle(brush, x, y, 1, 1);
+            }
         }
     }
 
     private static void DrawDownArrow(Graphics g, Color color)
     {
-        // 16x16 pixel-art down arrow glyph.
-        // Each row is a 16-bit bitmask (LSB = column 0, MSB = column 15).
         Span<ushort> rows = stackalloc ushort[]
         {
-            0x2004, 0x300C, 0x381C, 0x3C3C,
-            0x3E7C, 0x1FFC, 0x1FFC, 0x1FFC,
-            0x7FFF, 0x3FFE, 0x1FFC, 0x0FF8,
-            0x07F0, 0x03E0, 0x01C0, 0x0080,
+            0x0000, 0x0410, 0x0630, 0x0550,
+            0x0490, 0x0410, 0x0410, 0x1C1C,
+            0x0808, 0x0410, 0x0220, 0x0140,
+            0x0080, 0x0000, 0x0000, 0x0000,
         };
 
         using var brush = new SolidBrush(color);
@@ -237,12 +236,24 @@ public static class FileIconProvider
 
     private static void DrawBraces(Graphics g, Color color)
     {
-        using var f = new Font("Segoe UI", 7, FontStyle.Bold);
-        using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-        using var p = new GraphicsPath();
-        p.AddString("{}", f.FontFamily, (int)FontStyle.Bold, 8, new Point(8, 8), sf);
-        using var pen = new Pen(color, 1.2f);
-        g.DrawPath(pen, p);
+        Span<ushort> rows = stackalloc ushort[]
+        {
+            0x0000, 0x0618, 0x0E1C, 0x0C0C,
+            0x0C0C, 0x0C0C, 0x0C0C, 0x3807,
+            0x0C0C, 0x0C0C, 0x0C0C, 0x0C0C,
+            0x0738, 0x0330, 0x0000, 0x0000,
+        };
+
+        using var brush = new SolidBrush(color);
+        for (int y = 0; y < 16; y++)
+        {
+            ushort mask = rows[y];
+            for (int x = 0; x < 16; x++)
+            {
+                if ((mask & (1 << x)) != 0)
+                    g.FillRectangle(brush, x, y, 1, 1);
+            }
+        }
     }
 
     private static void DrawInfo(Graphics g, Color color)

@@ -9,9 +9,11 @@ namespace MyCrownJewelApp.Pfpad;
 public sealed class MarkdownPreviewPanel : Panel
 {
     private readonly WebBrowser _browser;
-    private readonly ToolStripLabel _headerLabel;
     private readonly Button _closeButton;
+    private readonly Panel _headerPanel;
+    private readonly Label _headerText;
     private string _currentSource = "";
+    private Theme _currentTheme;
 
     public event Action? CloseRequested;
 
@@ -19,13 +21,6 @@ public sealed class MarkdownPreviewPanel : Panel
     {
         BackColor = Color.FromArgb(30, 30, 30);
         MinimumSize = new Size(100, 60);
-
-        _headerLabel = new ToolStripLabel("Markdown Preview")
-        {
-            Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-            Margin = new Padding(4, 0, 0, 0),
-            ForeColor = Color.FromArgb(180, 180, 180)
-        };
 
         _closeButton = new Button
         {
@@ -55,26 +50,25 @@ public sealed class MarkdownPreviewPanel : Panel
         Controls.Add(_browser);
 
         // Header bar
-        var headerPanel = new Panel
-        {
-            Height = 26,
-            Dock = DockStyle.Top,
-            BackColor = Color.FromArgb(45, 45, 45),
-        };
-        var headerFont = new Font("Segoe UI", 9, FontStyle.Bold);
-        var headerText = new Label
+        _headerText = new Label
         {
             Text = "  Markdown Preview",
-            Font = headerFont,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
             ForeColor = Color.FromArgb(180, 180, 180),
             Dock = DockStyle.Left,
             AutoSize = false,
             Width = 150,
             TextAlign = ContentAlignment.MiddleLeft,
         };
-        headerPanel.Controls.Add(headerText);
-        headerPanel.Controls.Add(_closeButton);
-        Controls.Add(headerPanel);
+        _headerPanel = new Panel
+        {
+            Height = 26,
+            Dock = DockStyle.Top,
+            BackColor = Color.FromArgb(45, 45, 45),
+        };
+        _headerPanel.Controls.Add(_headerText);
+        _headerPanel.Controls.Add(_closeButton);
+        Controls.Add(_headerPanel);
 
         Dock = DockStyle.Fill;
     }
@@ -84,12 +78,13 @@ public sealed class MarkdownPreviewPanel : Panel
         string html;
         if (string.IsNullOrEmpty(markdown))
         {
-            html = "<html><body style='color:#888;font-family:sans-serif;padding:20px'><p>No content</p></body></html>";
+            string mutedHex = ColorToHex(_currentTheme.Muted);
+            html = $"<html><body style='color:{mutedHex};font-family:sans-serif;padding:20px;background:{ColorToHex(_currentTheme.EditorBackground)}'><p>No content</p></body></html>";
         }
         else
         {
             _currentSource = markdown;
-            html = ConvertToHtml(markdown);
+            html = ConvertToHtml(markdown, _currentTheme);
         }
 
         try
@@ -112,28 +107,22 @@ public sealed class MarkdownPreviewPanel : Panel
 
     public void SetTheme(Theme theme)
     {
-        BackColor = theme.MenuBackground;
+        _currentTheme = theme;
+        BackColor = theme.PanelBackground;
         _closeButton.ForeColor = theme.Text;
+        _headerPanel.BackColor = theme.MenuBackground;
+        _headerText.ForeColor = theme.Text;
+
+        if (!string.IsNullOrEmpty(_currentSource))
+            RenderMarkdown(_currentSource, null);
     }
 
-    private static string ConvertToHtml(string md)
+    private string ConvertToHtml(string md, Theme theme)
     {
         var html = new StringBuilder();
         html.Append("<!DOCTYPE html><html><head><meta charset='utf-8'>");
         html.Append("<style>");
-        html.Append("body{background:#1e1e1e;color:#d4d4d4;font-family:'Segoe UI',sans-serif;padding:20px;line-height:1.6}");
-        html.Append("h1,h2,h3,h4{color:#569cd6;border-bottom:1px solid #333;padding-bottom:4px}");
-        html.Append("h1{font-size:1.8em}h2{font-size:1.4em}h3{font-size:1.2em}");
-        html.Append("code{background:#2d2d2d;color:#ce9178;padding:1px 4px;border-radius:3px}");
-        html.Append("pre{background:#1a1a1a;padding:12px;border-radius:4px;overflow-x:auto}");
-        html.Append("pre code{background:transparent;padding:0;color:#d4d4d4}");
-        html.Append("a{color:#569cd6}");
-        html.Append("blockquote{border-left:3px solid #569cd6;margin:10px 0;padding:4px 12px;color:#888}");
-        html.Append("table{border-collapse:collapse;width:100%;margin:8px 0}");
-        html.Append("th,td{border:1px solid #333;padding:6px 10px;text-align:left}");
-        html.Append("th{background:#2d2d2d}");
-        html.Append("hr{border:none;border-top:1px solid #333}");
-        html.Append("ul,ol{padding-left:24px}");
+        html.Append(BuildThemeCss(theme));
         html.Append("</style></head><body>");
 
         var lines = md.Replace("\r\n", "\n").Split('\n');
@@ -324,4 +313,36 @@ public sealed class MarkdownPreviewPanel : Panel
 
     private static string Escape(string text) =>
         System.Web.HttpUtility.HtmlEncode(text);
+
+    private static string BuildThemeCss(Theme theme)
+    {
+        string bg = ColorToHex(theme.EditorBackground);
+        string text = ColorToHex(theme.Text);
+        string panel = ColorToHex(theme.PanelBackground);
+        string border = ColorToHex(theme.Border);
+        string accent = ColorToHex(theme.Accent);
+        string muted = ColorToHex(theme.Muted);
+        string codeText = ColorToHex(theme.CommentColor);
+        string preBg = ColorToHex(DimColor(theme.EditorBackground, 0.85f));
+        string headingBorder = ColorToHex(DimColor(theme.Border, 0.5f));
+
+        return $"body{{background:{bg};color:{text};font-family:'Segoe UI',sans-serif;padding:20px;line-height:1.6}}" +
+               $"h1,h2,h3,h4{{color:{accent};border-bottom:1px solid {headingBorder};padding-bottom:4px}}" +
+               $"h1{{font-size:1.8em}}h2{{font-size:1.4em}}h3{{font-size:1.2em}}" +
+               $"code{{background:{panel};color:{codeText};padding:1px 4px;border-radius:3px}}" +
+               $"pre{{background:{preBg};padding:12px;border-radius:4px;overflow-x:auto}}" +
+               $"pre code{{background:transparent;padding:0;color:{text}}}" +
+               $"a{{color:{accent}}}" +
+               $"blockquote{{border-left:3px solid {accent};margin:10px 0;padding:4px 12px;color:{muted}}}" +
+               $"table{{border-collapse:collapse;width:100%;margin:8px 0}}" +
+               $"th,td{{border:1px solid {border};padding:6px 10px;text-align:left}}" +
+               $"th{{background:{panel}}}" +
+               $"hr{{border:none;border-top:1px solid {border}}}" +
+               $"ul,ol{{padding-left:24px}}";
+    }
+
+    private static string ColorToHex(Color c) => $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+    private static Color DimColor(Color c, float factor) =>
+        Color.FromArgb((int)(c.R * factor), (int)(c.G * factor), (int)(c.B * factor));
 }
