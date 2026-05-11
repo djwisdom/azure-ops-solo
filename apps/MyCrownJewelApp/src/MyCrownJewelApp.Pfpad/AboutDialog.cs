@@ -222,7 +222,7 @@ public sealed class AboutDialog : Form
         };
         okBtn.Click += (s, e) => Close();
         AcceptButton = okBtn;
-        okBtn.Location = new Point(content.Width - okBtn.Width - margin, y);
+        okBtn.Location = new Point((content.Width - okBtn.Width) / 2, y);
         content.Controls.Add(okBtn);
         y = okBtn.Bottom;
 
