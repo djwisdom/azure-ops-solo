@@ -18,7 +18,7 @@ public record KeyBinding(
 internal sealed class SettingsDialog : Form
 {
     private readonly Form1 _mainForm;
-    private readonly Theme _theme;
+    private Theme _theme;
 
     // UI Components
     private TextBox _searchBox = null!;
@@ -1823,11 +1823,76 @@ internal sealed class SettingsDialog : Form
                 break;
             case "workbench.appearance.theme":
                 UpdateThemePreview();
+                UpdateDialogTheme(); // Update the entire dialog theme
                 break;
             case "editor.formatting.tabSize":
                 UpdateTabPreview();
                 break;
         }
+    }
+
+    private void UpdateDialogTheme()
+    {
+        // Get the new theme
+        string themeName = GetSettingValue<string>("workbench.appearance.theme", "Dark");
+        var newTheme = ThemeManager.Themes.TryGetValue(themeName, out var t) ? t : Theme.Dark;
+
+        // Update dialog theme
+        _theme = newTheme;
+        BackColor = _theme.Background;
+        ForeColor = _theme.Text;
+
+        // Update all controls that are theme-aware
+        if (_searchBox != null)
+        {
+            _searchBox.BackColor = _theme.EditorBackground;
+            _searchBox.ForeColor = _theme.Text;
+        }
+
+        if (_customSplitter != null)
+        {
+            _customSplitter.BackColor = _theme.Background;
+        }
+
+        if (_treePanel != null)
+        {
+            _treePanel.BackColor = _theme.PanelBackground;
+        }
+
+        if (_settingsTree != null)
+        {
+            _settingsTree.BackColor = _theme.PanelBackground;
+            _settingsTree.ForeColor = _theme.Text;
+        }
+
+        if (_contentPanel is ThemeAwareScrollablePanel scrollablePanel)
+        {
+            scrollablePanel.UpdateTheme(_theme);
+        }
+
+        if (_shortcutsListView is ThemeAwareListView shortcutsList)
+        {
+            shortcutsList.UpdateTheme(_theme);
+        }
+
+        if (_workspacePathText != null)
+        {
+            _workspacePathText.BackColor = _theme.EditorBackground;
+            _workspacePathText.ForeColor = _theme.Text;
+        }
+
+        if (_workspaceSettingsList is ThemeAwareListView workspaceList)
+        {
+            workspaceList.UpdateTheme(_theme);
+        }
+
+        // Refresh the current category display with new theme
+        if (_settingsTree?.SelectedNode?.Tag is string category)
+        {
+            ShowCategory(category);
+        }
+
+        Invalidate(); // Force repaint
     }
 
     private void UpdateFontPreview()
