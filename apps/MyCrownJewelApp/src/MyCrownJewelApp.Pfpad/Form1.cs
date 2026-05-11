@@ -6056,8 +6056,17 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 TextFormatFlags.EndEllipsis);
 
             // Draw borders
-            if (isSelected)
+            if (!isSelected)
             {
+                // Hide borders for inactive tabs by drawing over with background color
+                using (var pen = new Pen(backColor, 1))
+                {
+                    e.Graphics.DrawRectangle(pen, tabRect.X, tabRect.Y, tabRect.Width - 1, tabRect.Height - 1);
+                }
+            }
+            else
+            {
+                // Draw top border for active tab
                 using (var pen = new Pen(theme.Text, 1))
                 {
                     e.Graphics.DrawLine(pen, tabRect.Left, tabRect.Top, tabRect.Right - 1, tabRect.Top);
