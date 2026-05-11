@@ -122,9 +122,8 @@ internal sealed class SettingsDialog : Form
         _treePanel.Controls.Add(_settingsTree);
 
         // Content panel on right
-        _contentPanel = new Panel
+        _contentPanel = new ThemeAwareScrollablePanel(_theme)
         {
-            AutoScroll = true,
             BackColor = _theme.Background,
             Padding = new Padding(16),
             BorderStyle = BorderStyle.FixedSingle
@@ -865,16 +864,13 @@ internal sealed class SettingsDialog : Form
         y += 35;
 
         // ListView for shortcuts
-        _shortcutsListView = new ListView
+        _shortcutsListView = new ThemeAwareListView(_theme)
         {
             Location = new Point(0, y),
             Size = new Size(parent.Width - 32, 300),
             View = View.Details,
             FullRowSelect = true,
-            GridLines = true,
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            GridLines = true
         };
 
         _shortcutsListView.Columns.Add("Command", 200);
@@ -1169,16 +1165,13 @@ internal sealed class SettingsDialog : Form
         parent.Controls.Add(settingsLabel);
         y += 25;
 
-        _workspaceSettingsList = new ListView
+        _workspaceSettingsList = new ThemeAwareListView(_theme)
         {
             Location = new Point(0, y),
             Size = new Size(parent.Width - 32, 200),
             View = View.Details,
             FullRowSelect = true,
-            GridLines = true,
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            GridLines = true
         };
 
         _workspaceSettingsList.Columns.Add("Setting", 200);
@@ -1409,16 +1402,13 @@ internal sealed class SettingsDialog : Form
         parent.Controls.Add(extensionsLabel);
         y += 25;
 
-        var extensionsList = new ListView
+        var extensionsList = new ThemeAwareListView(_theme)
         {
             Location = new Point(0, y),
             Size = new Size(parent.Width - 32, 200),
             View = View.Details,
             FullRowSelect = true,
-            GridLines = true,
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            GridLines = true
         };
 
         extensionsList.Columns.Add("Extension", 150);
@@ -1886,6 +1876,164 @@ internal sealed class SettingsDialog : Form
 }
 
 /// <summary>
+/// Custom scrollable panel with theme-aware scrollbars.
+/// </summary>
+internal sealed class ThemeAwareScrollablePanel : Panel
+{
+    private Theme _theme;
+    private VScrollBar? _vScrollBar;
+    private HScrollBar? _hScrollBar;
+
+    public ThemeAwareScrollablePanel(Theme theme)
+    {
+        _theme = theme;
+        AutoScroll = true;
+        DoubleBuffered = true;
+
+        InitializeScrollbars();
+    }
+
+    private void InitializeScrollbars()
+    {
+        // Create custom themed scrollbars
+        _vScrollBar = new VScrollBar
+        {
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            Minimum = 0,
+            Maximum = 100,
+            SmallChange = 1,
+            LargeChange = 10
+        };
+
+        _hScrollBar = new HScrollBar
+        {
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            Minimum = 0,
+            Maximum = 100,
+            SmallChange = 1,
+            LargeChange = 10
+        };
+
+        _vScrollBar.ValueChanged += VScrollBar_ValueChanged;
+        _hScrollBar.ValueChanged += HScrollBar_ValueChanged;
+
+        Controls.Add(_vScrollBar);
+        Controls.Add(_hScrollBar);
+
+        UpdateScrollbarVisibility();
+    }
+
+    public void UpdateTheme(Theme theme)
+    {
+        _theme = theme;
+        BackColor = _theme.Background;
+
+        if (_vScrollBar != null)
+        {
+            _vScrollBar.BackColor = _theme.PanelBackground;
+            _vScrollBar.ForeColor = _theme.Text;
+        }
+
+        if (_hScrollBar != null)
+        {
+            _hScrollBar.BackColor = _theme.PanelBackground;
+            _hScrollBar.ForeColor = _theme.Text;
+        }
+
+        Invalidate();
+    }
+
+    private void UpdateScrollbarVisibility()
+    {
+        if (_vScrollBar == null || _hScrollBar == null) return;
+
+        bool needsVScroll = VerticalScroll.Visible;
+        bool needsHScroll = HorizontalScroll.Visible;
+
+        _vScrollBar.Visible = needsVScroll;
+        _hScrollBar.Visible = needsHScroll;
+
+        if (needsVScroll)
+        {
+            _vScrollBar.Location = new Point(Width - _vScrollBar.Width, 0);
+            _vScrollBar.Height = Height - (needsHScroll ? _hScrollBar.Height : 0);
+            _vScrollBar.Maximum = VerticalScroll.Maximum;
+            _vScrollBar.Value = VerticalScroll.Value;
+            _vScrollBar.LargeChange = VerticalScroll.LargeChange;
+        }
+
+        if (needsHScroll)
+        {
+            _hScrollBar.Location = new Point(0, Height - _hScrollBar.Height);
+            _hScrollBar.Width = Width - (needsVScroll ? _vScrollBar.Width : 0);
+            _hScrollBar.Maximum = HorizontalScroll.Maximum;
+            _hScrollBar.Value = HorizontalScroll.Value;
+            _hScrollBar.LargeChange = HorizontalScroll.LargeChange;
+        }
+    }
+
+    protected override void OnResize(EventArgs eventargs)
+    {
+        base.OnResize(eventargs);
+        UpdateScrollbarVisibility();
+    }
+
+    protected override void OnScroll(ScrollEventArgs se)
+    {
+        base.OnScroll(se);
+        UpdateScrollbarVisibility();
+
+        // Sync our custom scrollbars with the built-in ones
+        if (_vScrollBar != null && se.ScrollOrientation == ScrollOrientation.VerticalScroll)
+        {
+            _vScrollBar.Value = VerticalScroll.Value;
+        }
+        if (_hScrollBar != null && se.ScrollOrientation == ScrollOrientation.HorizontalScroll)
+        {
+            _hScrollBar.Value = HorizontalScroll.Value;
+        }
+    }
+
+    private void VScrollBar_ValueChanged(object? sender, EventArgs e)
+    {
+        if (_vScrollBar != null)
+        {
+            VerticalScroll.Value = _vScrollBar.Value;
+            Invalidate();
+        }
+    }
+
+    private void HScrollBar_ValueChanged(object? sender, EventArgs e)
+    {
+        if (_hScrollBar != null)
+        {
+            HorizontalScroll.Value = _hScrollBar.Value;
+            Invalidate();
+        }
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+
+        // Handle scrollbar messages to keep our custom scrollbars in sync
+        const int WM_VSCROLL = 0x0115;
+        const int WM_HSCROLL = 0x0114;
+
+        if (m.Msg == WM_VSCROLL && _vScrollBar != null)
+        {
+            _vScrollBar.Value = VerticalScroll.Value;
+        }
+        else if (m.Msg == WM_HSCROLL && _hScrollBar != null)
+        {
+            _hScrollBar.Value = HorizontalScroll.Value;
+        }
+    }
+}
+
+/// <summary>
 /// Custom splitter control that avoids SplitContainer layout issues.
 /// </summary>
 internal sealed class CustomSplitter : Control
@@ -2011,6 +2159,82 @@ internal sealed class CustomSplitter : Control
         // Draw splitter
         using var brush = new SolidBrush(_theme.Border);
         e.Graphics.FillRectangle(brush, _splitterPosition, 0, _splitterWidth, Height);
+    }
+}
+
+/// <summary>
+/// Theme-aware ListView with custom scrollbars.
+/// </summary>
+internal sealed class ThemeAwareListView : ListView
+{
+    private readonly Theme _theme;
+
+    public ThemeAwareListView(Theme theme)
+    {
+        _theme = theme;
+        BackColor = _theme.EditorBackground;
+        ForeColor = _theme.Text;
+        BorderStyle = BorderStyle.FixedSingle;
+        DoubleBuffered = true;
+
+        // Enable owner drawing for custom scrollbar theming
+        OwnerDraw = true;
+        DrawColumnHeader += ThemeAwareListView_DrawColumnHeader;
+        DrawItem += ThemeAwareListView_DrawItem;
+        DrawSubItem += ThemeAwareListView_DrawSubItem;
+    }
+
+    private void ThemeAwareListView_DrawColumnHeader(object? sender, DrawListViewColumnHeaderEventArgs e)
+    {
+        using var brush = new SolidBrush(_theme.PanelBackground);
+        using var textBrush = new SolidBrush(_theme.Text);
+        using var borderPen = new Pen(_theme.Border);
+
+        e.Graphics.FillRectangle(brush, e.Bounds);
+        e.Graphics.DrawRectangle(borderPen, e.Bounds);
+        e.Graphics.DrawString(e.Header.Text, Font, textBrush, e.Bounds, new StringFormat
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center
+        });
+    }
+
+    private void ThemeAwareListView_DrawItem(object? sender, DrawListViewItemEventArgs e)
+    {
+        var brush = e.Item.Selected ?
+            new SolidBrush(_theme.Accent) :
+            new SolidBrush(_theme.EditorBackground);
+
+        e.Graphics.FillRectangle(brush, e.Bounds);
+
+        if (e.Item.Selected)
+        {
+            using var borderPen = new Pen(_theme.Border);
+            e.Graphics.DrawRectangle(borderPen, e.Bounds);
+        }
+    }
+
+    private void ThemeAwareListView_DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
+    {
+        var textColor = e.Item.Selected ? Color.White : _theme.Text;
+        using var textBrush = new SolidBrush(textColor);
+
+        var textFormat = new StringFormat
+        {
+            Alignment = e.ColumnIndex == 0 ? StringAlignment.Near : StringAlignment.Center,
+            LineAlignment = StringAlignment.Center,
+            Trimming = StringTrimming.EllipsisCharacter
+        };
+
+        var textRect = new Rectangle(e.Bounds.X + 2, e.Bounds.Y, e.Bounds.Width - 4, e.Bounds.Height);
+        e.Graphics.DrawString(e.SubItem.Text, Font, textBrush, textRect, textFormat);
+    }
+
+    public void UpdateTheme(Theme theme)
+    {
+        BackColor = theme.EditorBackground;
+        ForeColor = theme.Text;
+        Invalidate();
     }
 }
 
