@@ -438,6 +438,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     internal Form1(bool skipInitialDocument)
     {
         InitializeComponent();
+        tabControl.Appearance = TabAppearance.FlatButtons;
         try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
         this.KeyDown += Form1_KeyDown;
@@ -6012,6 +6013,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (tabControl == null || tabControl.TabPages.Count == 0) return;
             if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
             if (e.Index < 0 || e.Index >= documents.Count) return;
+
+            e.DrawBackground();
 
             var theme = _currentTheme;
             var tabRect = e.Bounds;
