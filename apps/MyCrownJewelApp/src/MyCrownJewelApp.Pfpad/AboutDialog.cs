@@ -218,11 +218,13 @@ public sealed class AboutDialog : Form
             ForeColor = theme.Text,
             Size = new Size(90, 30),
             Cursor = Cursors.Hand,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
+            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground },
+            Anchor = AnchorStyles.Top
         };
         okBtn.Click += (s, e) => Close();
         AcceptButton = okBtn;
-        okBtn.Location = new Point((content.Width - okBtn.Width) / 2, y);
+        int finalContentWidth = 620 - 2 * margin; // matches totalWidth minus left/right margins
+        okBtn.Location = new Point((finalContentWidth - okBtn.Width) / 2, y);
         content.Controls.Add(okBtn);
         y = okBtn.Bottom;
 
