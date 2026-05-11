@@ -35,6 +35,7 @@ public class GutterPanel : Panel
     private int _lastFirstLine = -1;
     private int _lastVisibleCount = -1;
     private bool _gutterDataDirty = true;
+    private bool _breakpointsDirty = false;
 
     public event Action<int>? BreakpointClicked;
 
@@ -59,6 +60,32 @@ public class GutterPanel : Panel
         _lineDiffs = diffs ?? new Dictionary<int, byte>();
         _gutterDataDirty = true;
         Invalidate();
+    }
+
+    public void SetBreakpointsDirty()
+    {
+        _breakpointsDirty = true;
+    }
+
+    public void InvalidateBreakpointArea()
+    {
+        int bpX = QuickActionWidth;
+        if (ShowLineNumbers) bpX += LineNumberMarginWidth;
+        if (ShowBookmarks) bpX += BookmarkMarginWidth;
+        Invalidate(new Rectangle(bpX, 0, BreakpointMarginWidth, Height));
+    }
+
+    private void ShowDebugMenu(Point location, int lineIndex)
+    {
+        if (_debugMenu == null)
+        {
+            _debugMenu = new ContextMenuStrip();
+            _debugMenu.Items.Add("🔴 Toggle Breakpoint Here", null, (s, e) => BreakpointClicked?.Invoke(lineIndex));
+            _debugMenu.Items.Add("✅ Enable All Breakpoints", null, (s, e) => mainForm?.DebugBreakpointManager?.EnableAll());
+            _debugMenu.Items.Add("❌ Disable All Breakpoints", null, (s, e) => mainForm?.DebugBreakpointManager?.DisableAll());
+            _debugMenu.Items.Add("🗑️ Clear All Breakpoints", null, (s, e) => mainForm?.DebugBreakpointManager?.ClearAll());
+        }
+        _debugMenu.Show(this, location);
     }
 
     [Category("Appearance")]
@@ -94,17 +121,30 @@ public class GutterPanel : Panel
         MouseLeave += GutterPanel_MouseLeave;
     }
 
+    private ContextMenuStrip? _debugMenu;
+
     private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
     {
         if (mainForm?.textEditor == null) return;
         var editor = mainForm.textEditor;
-        int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
-        int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-        int lineIndex = firstVis + Math.Max(0, e.Y - TopOffset) / lineHeight;
+        // Get the exact line at the clicked Y position
+        Point pt = new Point(0, e.Y);
+        int charIndex = editor.GetCharIndexFromPosition(pt);
+        int line = editor.GetLineFromCharIndex(charIndex);
+        int lineIndex = line;
 
-        // Breakpoint click (left of line numbers)
-        int bpEnd = QuickActionWidth + BookmarkMarginWidth;
-        if (e.X >= QuickActionWidth && e.X < bpEnd)
+        if (e.Button == MouseButtons.Right)
+        {
+            ShowDebugMenu(e.Location, lineIndex);
+            return;
+        }
+
+        // Breakpoint click (right of line numbers)
+        int bpX = QuickActionWidth;
+        if (ShowLineNumbers) bpX += LineNumberMarginWidth;
+        if (ShowBookmarks) bpX += BookmarkMarginWidth;
+        int bpEnd = bpX + BreakpointMarginWidth;
+        if (e.X >= bpX && e.X < bpEnd)
         {
             BreakpointClicked?.Invoke(lineIndex);
             return;
@@ -165,7 +205,8 @@ public class GutterPanel : Panel
             var editor = mainForm.textEditor;
             int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
             int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-            int lineIndex = firstVis + Math.Max(0, e.Y - TopOffset) / lineHeight;
+        int yOffset = Math.Max(0, e.Y - TopOffset);
+        int lineIndex = firstVis + (yOffset + lineHeight / 2) / lineHeight;
             if (_quickActions.Any(a => a.line == lineIndex + 1))
                 newHoverLine = lineIndex + 1;
         }
@@ -238,6 +279,12 @@ public class GutterPanel : Panel
 
     public int DesiredWidth => GetTotalMarginWidth();
 
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        if (!_breakpointsDirty)
+            base.OnPaintBackground(e);
+    }
+
     protected override void OnPaint(PaintEventArgs e)
     {
         GetVisibleLineRange(out int firstLine, out int visibleCount);
@@ -251,6 +298,7 @@ public class GutterPanel : Panel
 
         base.OnPaint(e);
         DrawGutter(e.Graphics);
+        _breakpointsDirty = false;
     }
 
     private void DrawGutter(Graphics g)
@@ -286,8 +334,13 @@ public class GutterPanel : Panel
             DrawQuickAction(g, lineIndex + 1, currentX, lineY);
             currentX += QuickActionWidth;
 
-            // Reserve space for line numbers even if drawn last
-            if (ShowLineNumbers) currentX += LineNumberMarginWidth;
+            // Draw line numbers first
+            if (ShowLineNumbers)
+            {
+                int lineNumberX = QuickActionWidth;
+                DrawLineNumber(g, lineIndex + 1, lineNumberX, lineY);
+                currentX += LineNumberMarginWidth;
+            }
 
             if (ShowBookmarks)
             {
@@ -316,13 +369,6 @@ public class GutterPanel : Panel
             if (ShowCodeFolds)
             {
                 DrawFoldMarker(g, lineIndex, currentX, lineY);
-            }
-
-            // Draw line numbers last, on top
-            if (ShowLineNumbers)
-            {
-                int lineNumberX = QuickActionWidth;
-                DrawLineNumber(g, lineIndex + 1, lineNumberX, lineY);
             }
         }
     }

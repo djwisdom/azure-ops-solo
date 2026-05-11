@@ -1176,15 +1176,21 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                _notificationFeed.StartPolling();
 
                // Initialize debugger integration
-               _breakpointManager.BreakpointsChanged += () =>
-               {
-                   if (gutterPanel != null) gutterPanel.Invalidate();
-               };
+                _breakpointManager.BreakpointsChanged += () =>
+                {
+                    if (gutterPanel != null)
+                    {
+                        gutterPanel.SetBreakpointsDirty();
+                        gutterPanel.InvalidateBreakpointArea();
+                    }
+                };
                 gutterPanel!.BreakpointClicked += (line) =>
-               {
-                   if (currentFilePath != null)
-                       _breakpointManager.ToggleBreakpoint(currentFilePath, line + 1);
-               };
+                {
+                    if (currentFilePath != null)
+                        _breakpointManager.ToggleBreakpoint(currentFilePath, line + 1);
+                };
+
+                // Debug toast method
                _debugSession.StateChanged += OnDebugStateChanged;
                _debugSession.ThreadStopped += OnDebugThreadStopped;
                _debugSession.ThreadContinued += (tid) =>
@@ -4822,7 +4828,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
 
             UpdateNotificationBadge();
-            ShowToastForNewItems();
+            // ShowToastForNewItems(); // Disabled for less visual intensity
         }
 
         public void ShowNotification(string title, string summary)
@@ -4852,7 +4858,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 Published = DateTime.UtcNow,
                 IsRead = false
             };
-            ShowToast(item);
+            // ShowToast(item); // Disabled for less visual intensity
         }
 
         private void ShowToast(FeedItem item, int stackIndex = -1)
@@ -4905,7 +4911,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
             foreach (var item in unread)
             {
                 if (_toastedIds.Add(item.Id))
-                    ShowToast(item);
+                {
+                    // ShowToast(item); // Disabled for less visual intensity
+                }
             }
             _delayedNotifications.Clear();
         }
@@ -4941,7 +4949,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
             foreach (var item in unread)
             {
                 if (_toastedIds.Add(item.Id))
-                    ShowToast(item);
+                {
+                    // ShowToast(item); // Disabled for less visual intensity
+                }
             }
         }
 
