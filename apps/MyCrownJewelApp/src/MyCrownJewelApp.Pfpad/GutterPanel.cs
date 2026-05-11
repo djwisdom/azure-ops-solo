@@ -286,6 +286,9 @@ public class GutterPanel : Panel
             DrawQuickAction(g, lineIndex + 1, currentX, lineY);
             currentX += QuickActionWidth;
 
+            // Reserve space for line numbers even if drawn last
+            if (ShowLineNumbers) currentX += LineNumberMarginWidth;
+
             if (ShowBookmarks)
             {
                 DrawBookmark(g, lineIndex, currentX, lineY);
