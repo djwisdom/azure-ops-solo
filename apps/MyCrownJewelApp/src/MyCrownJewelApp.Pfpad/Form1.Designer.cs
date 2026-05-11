@@ -8,6 +8,7 @@ partial class Form1
     private ToolStripMenuItem fileMenu;
     private ToolStripMenuItem newTabMenuItem;
     private ToolStripMenuItem newWindowMenuItem;
+    private ToolStripMenuItem newProjectMenuItem;
     private ToolStripMenuItem openMenuItem;
     private ToolStripMenuItem recentMenuItem;
     private ToolStripMenuItem recentWorkspacesMenuItem;
@@ -140,8 +141,9 @@ partial class Form1
     internal BreadcrumbPanel breadcrumbPanel;
     private MinimapControl minimapControl;
     private StatusStrip statusStrip;
-    internal ToolStripStatusLabel lineColLabel;
-    internal ToolStripStatusLabel lockKeysLabel;
+     internal ToolStripStatusLabel lineColLabel;
+     internal ToolStripStatusLabel charCountLabel;
+     internal ToolStripStatusLabel lockKeysLabel;
     private ToolStripDropDownButton tabSizeDropDown;
     private ToolStripComboBox _buildConfigCombo;
     internal ToolStripStatusLabel linePositionLabel;
@@ -182,6 +184,7 @@ partial class Form1
         fileMenu = new ToolStripMenuItem("&File");
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click, Keys.Control | Keys.T);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
+        newProjectMenuItem = new ToolStripMenuItem("New &Project...", null, NewProject_Click, Keys.Control | Keys.Shift | Keys.P);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
         recentMenuItem = new ToolStripMenuItem("Recent Files");
         recentWorkspacesMenuItem = new ToolStripMenuItem("Recent Workspaces");
@@ -198,6 +201,7 @@ partial class Form1
         // Build File menu
         fileMenu.DropDownItems.Add(newTabMenuItem);
         fileMenu.DropDownItems.Add(newWindowMenuItem);
+        fileMenu.DropDownItems.Add(newProjectMenuItem);
         fileMenu.DropDownItems.Add(openMenuItem);
         fileMenu.DropDownItems.Add(recentMenuItem);
         fileMenu.DropDownItems.Add(recentWorkspacesMenuItem);
@@ -677,6 +681,7 @@ partial class Form1
         statusStrip.SizingGrip = false;
         statusStrip.Padding = new Padding(6, 2, 6, 2);
         lineColLabel = new ToolStripStatusLabel("Ln 1, Col 1");
+        charCountLabel = new ToolStripStatusLabel("0 chars");
         vimModeLabel = new ToolStripStatusLabel("");
         vimModeLabel.Font = new Font("Segoe UI", 9, FontStyle.Bold);
         vimModeLabel.Visible = false;
@@ -762,6 +767,7 @@ partial class Form1
 
         statusStrip.Items.Add(vimModeLabel);
         statusStrip.Items.Add(lineColLabel);
+        statusStrip.Items.Add(charCountLabel);
         statusStrip.Items.Add(lockKeysLabel);
         statusStrip.Items.Add(tabSizeDropDown);
         statusStrip.Items.Add(_buildConfigCombo);
@@ -789,6 +795,7 @@ partial class Form1
 
         const int itemPadding = 10;
         lineColLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
+        charCountLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         lockKeysLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         tabSizeDropDown.Padding = new Padding(itemPadding, 1, itemPadding, 1);
         linePositionLabel.Padding = new Padding(itemPadding, 1, itemPadding, 1);

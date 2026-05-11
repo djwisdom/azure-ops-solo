@@ -499,24 +499,30 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             // Process command line arguments (files)
             string[] args = Environment.GetCommandLineArgs();
             _cliArgsProvided = false;
+            bool newWindow = false;
             if (args.Length > 1)
             {
                 bool hasFileArgs = false;
                 for (int i = 1; i < args.Length; i++)
                 {
-                    string path = args[i];
-                    if (Directory.Exists(path))
+                    string arg = args[i];
+                    if (arg == "--new-window")
                     {
-                        _workspaceRoot = path;
+                        newWindow = true;
+                        continue;
+                    }
+                    if (Directory.Exists(arg))
+                    {
+                        _workspaceRoot = arg;
                         _workspaceRootFromCli = true;
                     }
-                    else if (File.Exists(path))
+                    else if (File.Exists(arg))
                     {
-                        OpenFileInNewTab(path);
+                        OpenFileInNewTab(arg);
                         hasFileArgs = true;
                     }
                 }
-                _cliArgsProvided = hasFileArgs || !string.IsNullOrEmpty(_workspaceRoot);
+                _cliArgsProvided = hasFileArgs || !string.IsNullOrEmpty(_workspaceRoot) || newWindow;
             }
 
             // If no documents were opened, create a new untitled document
@@ -3469,10 +3475,14 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
         #region File Menu Handlers
 
         private void NewTab_Click(object? sender, EventArgs e) => NewFile();
-        private void NewWindow_Click(object? sender, EventArgs e)
+private void NewWindow_Click(object? sender, EventArgs e)
         {
-            // Launch new instance
-            System.Diagnostics.Process.Start(Application.ExecutablePath);
+            System.Diagnostics.Process.Start(Application.ExecutablePath, "--new-window");
+        }
+        private void NewProject_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new NewProjectDialog(this);
+            dlg.ShowDialog(this);
         }
         private void Open_Click(object? sender, EventArgs e) => OpenFile();
 
@@ -6581,6 +6591,8 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             }
 
             // Character count
+            int charCount = textEditor.Text?.Length ?? 0;
+            charCountLabel.Text = $"{charCount} chars";
 
             // Tab size
             tabSizeDropDown.Text = $"Tab: {tabSize}";
