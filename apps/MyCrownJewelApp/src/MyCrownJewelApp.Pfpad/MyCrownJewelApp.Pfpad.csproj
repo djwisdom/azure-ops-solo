@@ -8,8 +8,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
-    <ApplicationVersion>1.0.26.0</ApplicationVersion>
-    <Version>1.0.26.0</Version>
+    <ApplicationVersion>1.0.27.0</ApplicationVersion>
+    <Version>1.0.27.0</Version>
+    <AssemblyVersion>1.0.27.0</AssemblyVersion>
+    <FileVersion>1.0.27.0</FileVersion>
     <Company>Personal Flip Pad</Company>
     <Description>A full-featured code editor with syntax highlighting, minimap, vim mode, git integration, and code folding.</Description>
     <Copyright>Copyright (c) 2026</Copyright>
