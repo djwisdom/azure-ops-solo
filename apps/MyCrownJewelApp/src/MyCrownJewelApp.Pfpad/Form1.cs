@@ -439,6 +439,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     {
         InitializeComponent();
         tabControl.Appearance = TabAppearance.FlatButtons;
+        tabControl.Padding = new Point(0, 0);
         try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
         this.KeyDown += Form1_KeyDown;
@@ -6022,13 +6023,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             bool isSelected = (e.Index == tabControl.SelectedIndex);
             bool isHovered = (e.Index == hoveredTabIndex);
 
-            Color backColor;
-            if (isSelected)
-                backColor = theme.EditorBackground;
-            else if (isHovered)
-                backColor = theme.ButtonHoverBackground;
-            else
-                backColor = theme.MenuBackground;
+            Color backColor = theme.MenuBackground;
 
             using (var brush = new SolidBrush(backColor))
             {
@@ -6054,8 +6049,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 tabRect.X + textOffset, tabRect.Y + 3,
                 tabRect.Right - 22 - tabRect.X - textOffset, tabRect.Height - 4);
 
-            TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
-                isSelected ? theme.Text : theme.Muted,
+            var textFont = isSelected ? new Font(tabControl.Font, FontStyle.Bold) : tabControl.Font;
+            TextRenderer.DrawText(e.Graphics, text, textFont, textRect,
+                theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
                 TextFormatFlags.EndEllipsis);
 
