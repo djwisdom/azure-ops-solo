@@ -6693,23 +6693,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
             fileTypeLabel.Text = fileType;
 
-            // Set file type icon
-            try
-            {
-                if (!string.IsNullOrEmpty(currentFilePath))
-                {
-                    int iconIdx = FileIconProvider.GetIconIndex(currentFilePath);
-                    if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
-                        fileTypeLabel.Image = FileIconProvider.ImageList.Images[iconIdx];
-                    else
-                        fileTypeLabel.Image = null;
-                }
-                else
-                {
-                    fileTypeLabel.Image = null;
-                }
-            }
-            catch { fileTypeLabel.Image = null; }
+            // File type icon removed - text only
 }
 
         private void UpdateTabControlTheme()
