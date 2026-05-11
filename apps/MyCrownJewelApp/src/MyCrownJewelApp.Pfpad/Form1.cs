@@ -723,7 +723,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             _breadcrumbDebounce = new System.Windows.Forms.Timer { Interval = BreadcrumbDebounceMs };
             _breadcrumbDebounce.Tick += (s, e) => { _breadcrumbDebounce.Stop(); UpdateBreadcrumbs(); };
             textEditor.SelectionChanged += (s, e) => DebounceBreadcrumbs();
-            textEditor.VScroll += (s, e) => UpdateBreadcrumbsSync();
+            textEditor.VScroll += (s, e) => { UpdateBreadcrumbsSync(); gutterPanel?.RefreshGutter(); };
             UpdateBreadcrumbs();
 
             // Initialize rainbow brackets from loaded settings
