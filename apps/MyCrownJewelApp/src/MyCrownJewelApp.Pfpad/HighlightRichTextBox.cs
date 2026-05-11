@@ -79,7 +79,13 @@ public class HighlightRichTextBox : RichTextBox
         _bracketDebounceTimer.Tick += (s, e) =>
         {
             _bracketDebounceTimer.Stop();
-            ParseAndApplyBrackets();
+            if (TextLength > 100000)
+            {
+                _renderedResult = null;
+                return;
+            }
+            _renderedResult = RainbowBracketEngine.Parse(Text, 0);
+            Invalidate();
         };
     }
 
@@ -547,20 +553,37 @@ public class HighlightRichTextBox : RichTextBox
             if (bracketIndex == null)
             {
                 // Find innermost enclosing bracket pair (smallest span)
+                var brackets = result.Brackets;
+                var sortedPairs = result.Pairs; // sorted by open position
+                // Binary search for the last open <= caretPos
+                int low = 0, high = sortedPairs.Count;
+                while (low < high)
+                {
+                    int mid = (low + high) / 2;
+                    var (openIdx, _) = sortedPairs[mid];
+                    if (brackets[openIdx].Position <= caretPos) low = mid + 1;
+                    else high = mid;
+                }
+                int candidateStart = low - 1;
                 int minSpan = int.MaxValue;
                 BracketInfo? bestOpen = null;
                 BracketInfo? bestClose = null;
-                foreach (var (openIdx, closeIdx) in result.Pairs)
+                for (int i = candidateStart; i >= 0; i--)
                 {
-                    var open = result.Brackets[openIdx];
-                    var close = result.Brackets[closeIdx];
-                    int span = close.Position - open.Position;
-                    if (caretPos > open.Position && caretPos < close.Position && span < minSpan)
+                    var (openIdx, closeIdx) = sortedPairs[i];
+                    var open = brackets[openIdx];
+                    var close = brackets[closeIdx];
+                    if (caretPos > open.Position && caretPos < close.Position)
                     {
-                        minSpan = span;
-                        bestOpen = open;
-                        bestClose = close;
+                        int span = close.Position - open.Position;
+                        if (span < minSpan)
+                        {
+                            minSpan = span;
+                            bestOpen = open;
+                            bestClose = close;
+                        }
                     }
+                    else if (open.Position < caretPos) break; // since sorted, earlier opens are smaller
                 }
                 if (bestOpen != null && bestClose != null)
                 {

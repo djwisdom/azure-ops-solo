@@ -153,7 +153,7 @@ public sealed class RainbowBracketEngine
             }
         }
 
-        return new RainbowBracketResult(version, brackets.AsReadOnly(), pairs.AsReadOnly());
+        return new RainbowBracketResult(version, brackets.AsReadOnly(), pairs.OrderBy(p => brackets[p.Item1].Position).ToList().AsReadOnly());
     }
 
     public static readonly Color[] DefaultPalette =
