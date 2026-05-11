@@ -564,8 +564,8 @@ public class HighlightRichTextBox : RichTextBox
                 }
                 if (bestOpen != null && bestClose != null)
                 {
-                    DrawBraceRect(g, bestOpen.Position, lineH, Color.FromArgb(220, 255, 255, 255));
-                    DrawBraceRect(g, bestClose.Position, lineH, Color.FromArgb(220, 255, 255, 255));
+                    DrawBraceRect(g, bestOpen.Position, lineH, Color.Red);
+                    DrawBraceRect(g, bestClose.Position, lineH, Color.Red);
                 }
                 return;
             }
