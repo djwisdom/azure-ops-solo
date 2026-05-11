@@ -1961,20 +1961,16 @@ internal sealed class ThemeAwareScrollablePanel : Panel
     private void InitializeScrollbars()
     {
         // Create custom themed scrollbars
-        _vScrollBar = new VScrollBar
+        _vScrollBar = new ThemeAwareVScrollBar(_theme)
         {
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
             Minimum = 0,
             Maximum = 100,
             SmallChange = 1,
             LargeChange = 10
         };
 
-        _hScrollBar = new HScrollBar
+        _hScrollBar = new ThemeAwareHScrollBar(_theme)
         {
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
             Minimum = 0,
             Maximum = 100,
             SmallChange = 1,
@@ -1995,16 +1991,14 @@ internal sealed class ThemeAwareScrollablePanel : Panel
         _theme = theme;
         BackColor = _theme.Background;
 
-        if (_vScrollBar != null)
+        if (_vScrollBar is ThemeAwareVScrollBar vScroll)
         {
-            _vScrollBar.BackColor = _theme.PanelBackground;
-            _vScrollBar.ForeColor = _theme.Text;
+            vScroll.UpdateTheme(_theme);
         }
 
-        if (_hScrollBar != null)
+        if (_hScrollBar is ThemeAwareHScrollBar hScroll)
         {
-            _hScrollBar.BackColor = _theme.PanelBackground;
-            _hScrollBar.ForeColor = _theme.Text;
+            hScroll.UpdateTheme(_theme);
         }
 
         Invalidate();
@@ -2024,18 +2018,26 @@ internal sealed class ThemeAwareScrollablePanel : Panel
         {
             _vScrollBar.Location = new Point(Width - _vScrollBar.Width, 0);
             _vScrollBar.Height = Height - (needsHScroll ? _hScrollBar.Height : 0);
-            _vScrollBar.Maximum = VerticalScroll.Maximum;
-            _vScrollBar.Value = VerticalScroll.Value;
-            _vScrollBar.LargeChange = VerticalScroll.LargeChange;
+            if (_vScrollBar is ThemeAwareVScrollBar vScroll)
+            {
+                vScroll.Minimum = VerticalScroll.Minimum;
+                vScroll.Maximum = VerticalScroll.Maximum;
+                vScroll.Value = VerticalScroll.Value;
+                vScroll.LargeChange = VerticalScroll.LargeChange;
+            }
         }
 
         if (needsHScroll)
         {
             _hScrollBar.Location = new Point(0, Height - _hScrollBar.Height);
             _hScrollBar.Width = Width - (needsVScroll ? _vScrollBar.Width : 0);
-            _hScrollBar.Maximum = HorizontalScroll.Maximum;
-            _hScrollBar.Value = HorizontalScroll.Value;
-            _hScrollBar.LargeChange = HorizontalScroll.LargeChange;
+            if (_hScrollBar is ThemeAwareHScrollBar hScroll)
+            {
+                hScroll.Minimum = HorizontalScroll.Minimum;
+                hScroll.Maximum = HorizontalScroll.Maximum;
+                hScroll.Value = HorizontalScroll.Value;
+                hScroll.LargeChange = HorizontalScroll.LargeChange;
+            }
         }
     }
 
@@ -2063,18 +2065,18 @@ internal sealed class ThemeAwareScrollablePanel : Panel
 
     private void VScrollBar_ValueChanged(object? sender, EventArgs e)
     {
-        if (_vScrollBar != null)
+        if (_vScrollBar is ThemeAwareVScrollBar vScroll)
         {
-            VerticalScroll.Value = _vScrollBar.Value;
+            VerticalScroll.Value = vScroll.Value;
             Invalidate();
         }
     }
 
     private void HScrollBar_ValueChanged(object? sender, EventArgs e)
     {
-        if (_hScrollBar != null)
+        if (_hScrollBar is ThemeAwareHScrollBar hScroll)
         {
-            HorizontalScroll.Value = _hScrollBar.Value;
+            HorizontalScroll.Value = hScroll.Value;
             Invalidate();
         }
     }
@@ -2087,13 +2089,215 @@ internal sealed class ThemeAwareScrollablePanel : Panel
         const int WM_VSCROLL = 0x0115;
         const int WM_HSCROLL = 0x0114;
 
-        if (m.Msg == WM_VSCROLL && _vScrollBar != null)
+        if (m.Msg == WM_VSCROLL && _vScrollBar is ThemeAwareVScrollBar vScroll)
         {
-            _vScrollBar.Value = VerticalScroll.Value;
+            vScroll.Value = VerticalScroll.Value;
         }
-        else if (m.Msg == WM_HSCROLL && _hScrollBar != null)
+        else if (m.Msg == WM_HSCROLL && _hScrollBar is ThemeAwareHScrollBar hScroll)
         {
-            _hScrollBar.Value = HorizontalScroll.Value;
+            hScroll.Value = HorizontalScroll.Value;
+        }
+    }
+}
+
+/// <summary>
+/// Custom scrollbar control with theme-aware rendering.
+/// </summary>
+internal sealed class ThemeAwareVScrollBar : VScrollBar
+{
+    private Theme _theme;
+
+    public ThemeAwareVScrollBar(Theme theme)
+    {
+        _theme = theme;
+        // Enable custom drawing
+        SetStyle(ControlStyles.UserPaint, true);
+        SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.AllPaintingInWmPaint, true);
+    }
+
+    public void UpdateTheme(Theme theme)
+    {
+        _theme = theme;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        // We'll do custom painting
+        DrawScrollbar(e.Graphics);
+    }
+
+    private void DrawScrollbar(Graphics g)
+    {
+        // Get scroll info
+        int trackWidth = Width - 4;
+        int thumbWidth = Math.Max(16, trackWidth - 8);
+        int thumbHeight = Math.Max(20, (int)(Height * (LargeChange / (float)(Maximum - Minimum + LargeChange))));
+        int thumbPos = (int)((Value - Minimum) / (float)(Maximum - Minimum + LargeChange) * (Height - thumbHeight));
+        if (thumbPos > Height - thumbHeight) thumbPos = Height - thumbHeight;
+
+        // Draw track (background)
+        using var trackBrush = new SolidBrush(_theme.PanelBackground);
+        using var trackPen = new Pen(_theme.Border);
+        g.FillRectangle(trackBrush, 2, 0, trackWidth, Height);
+        g.DrawRectangle(trackPen, 2, 0, trackWidth, Height);
+
+        // Draw thumb
+        Rectangle thumbRect = new Rectangle(2, thumbPos, thumbWidth, thumbHeight);
+        using var thumbBrush = new SolidBrush(_theme.Border);
+        using var thumbPen = new Pen(_theme.Accent);
+        g.FillRectangle(thumbBrush, thumbRect);
+        g.DrawRectangle(thumbPen, thumbRect);
+
+        // Draw arrows (decrement/decrement)
+        int arrowSize = 16;
+        // Up arrow
+        Rectangle upArrowRect = new Rectangle(2, 0, trackWidth, arrowSize);
+        DrawArrow(g, upArrowRect, true);
+        // Down arrow
+        Rectangle downArrowRect = new Rectangle(2, Height - arrowSize, trackWidth, arrowSize);
+        DrawArrow(g, downArrowRect, false);
+    }
+
+    private void DrawArrow(Graphics g, Rectangle rect, bool isUp)
+    {
+        using var brush = new SolidBrush(_theme.Text);
+        using var pen = new Pen(_theme.Text);
+        int cx = rect.X + rect.Width / 2;
+        int cy = rect.Y + rect.Height / 2;
+        int size = 4;
+
+        Point[] points;
+        if (isUp)
+        {
+            points = new[]
+            {
+                new Point(cx - size, cy + 1),
+                new Point(cx + size, cy + 1),
+                new Point(cx, cy - size)
+            };
+        }
+        else
+        {
+            points = new[]
+            {
+                new Point(cx - size, cy - 1),
+                new Point(cx + size, cy - 1),
+                new Point(cx, cy + size)
+            };
+        }
+        g.FillPolygon(brush, points);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        // Let base handle the scrolling logic but we handle painting
+        base.WndProc(ref m);
+        // Request repaint after scroll operations
+        if (m.Msg == 0x0115 || m.Msg == 0x0114) // WM_VSCROLL, WM_HSCROLL
+        {
+            Invalidate();
+        }
+    }
+}
+
+/// <summary>
+/// Custom horizontal scrollbar control with theme-aware rendering.
+/// </summary>
+internal sealed class ThemeAwareHScrollBar : HScrollBar
+{
+    private Theme _theme;
+
+    public ThemeAwareHScrollBar(Theme theme)
+    {
+        _theme = theme;
+        // Enable custom drawing
+        SetStyle(ControlStyles.UserPaint, true);
+        SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.AllPaintingInWmPaint, true);
+    }
+
+    public void UpdateTheme(Theme theme)
+    {
+        _theme = theme;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        DrawScrollbar(e.Graphics);
+    }
+
+    private void DrawScrollbar(Graphics g)
+    {
+        // Get scroll info
+        int trackHeight = Height - 4;
+        int thumbHeight = Math.Max(16, trackHeight - 8);
+        int thumbWidth = Math.Max(20, (int)(Width * (LargeChange / (float)(Maximum - Minimum + LargeChange))));
+        int thumbPos = (int)((Value - Minimum) / (float)(Maximum - Minimum + LargeChange) * (Width - thumbWidth));
+        if (thumbPos > Width - thumbWidth) thumbPos = Width - thumbWidth;
+
+        // Draw track (background)
+        using var trackBrush = new SolidBrush(_theme.PanelBackground);
+        using var trackPen = new Pen(_theme.Border);
+        g.FillRectangle(trackBrush, 0, 2, Width, trackHeight);
+        g.DrawRectangle(trackPen, 0, 2, Width, trackHeight);
+
+        // Draw thumb
+        Rectangle thumbRect = new Rectangle(thumbPos, 2, thumbWidth, trackHeight);
+        using var thumbBrush = new SolidBrush(_theme.Border);
+        using var thumbPen = new Pen(_theme.Accent);
+        g.FillRectangle(thumbBrush, thumbRect);
+        g.DrawRectangle(thumbPen, thumbRect);
+
+        // Draw arrows
+        int arrowSize = 16;
+        // Left arrow
+        Rectangle leftArrowRect = new Rectangle(0, 2, arrowSize, trackHeight);
+        DrawArrow(g, leftArrowRect, true);
+        // Right arrow
+        Rectangle rightArrowRect = new Rectangle(Width - arrowSize, 2, arrowSize, trackHeight);
+        DrawArrow(g, rightArrowRect, false);
+    }
+
+    private void DrawArrow(Graphics g, Rectangle rect, bool isLeft)
+    {
+        using var brush = new SolidBrush(_theme.Text);
+        int cx = rect.X + rect.Width / 2;
+        int cy = rect.Y + rect.Height / 2;
+        int size = 4;
+
+        Point[] points;
+        if (isLeft)
+        {
+            points = new[]
+            {
+                new Point(cx + 1, cy - size),
+                new Point(cx + 1, cy + size),
+                new Point(cx - size, cy)
+            };
+        }
+        else
+        {
+            points = new[]
+            {
+                new Point(cx - 1, cy - size),
+                new Point(cx - 1, cy + size),
+                new Point(cx + size, cy)
+            };
+        }
+        g.FillPolygon(brush, points);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg == 0x0115 || m.Msg == 0x0114) // WM_VSCROLL, WM_HSCROLL
+        {
+            Invalidate();
         }
     }
 }
