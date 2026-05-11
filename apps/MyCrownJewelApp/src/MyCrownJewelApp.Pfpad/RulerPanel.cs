@@ -43,8 +43,10 @@ public sealed class RulerPanel : Control
         using var bottomPen = new Pen(Color.FromArgb(60, theme.Muted));
         g.DrawLine(bottomPen, 0, Height - 1, Width, Height - 1);
 
-        using var tickPen = new Pen(Color.FromArgb(100, theme.Muted));
-        using var labelBrush = new SolidBrush(Color.FromArgb(140, theme.Muted));
+        using var minorPen = new Pen(Color.FromArgb(80, theme.Muted));
+        using var midPen = new Pen(Color.FromArgb(110, theme.Muted));
+        using var majorPen = new Pen(Color.FromArgb(140, theme.Muted));
+        using var labelBrush = new SolidBrush(Color.FromArgb(150, theme.Muted));
         using var font = new Font("Consolas", 7);
 
         if (_editor == null || !_editor.IsHandleCreated || _editor.TextLength == 0)
@@ -55,20 +57,33 @@ public sealed class RulerPanel : Control
         int charWidth = 7;
 
         int firstCol = scrollOffset / charWidth;
-        firstCol = (firstCol / 10) * 10;
 
-        for (int col = firstCol; col <= firstCol + Width / charWidth + 10; col += 10)
+        for (int col = firstCol; col <= firstCol + Width / charWidth + 10; col++)
         {
             int x = col * charWidth - scrollOffset;
             if (x < 0 || x > Width) continue;
 
-            bool isMajor = col % 50 == 0;
-            int tickHeight = isMajor ? 8 : 4;
-            g.DrawLine(tickPen, x, Height - tickHeight, x, Height - 1);
+            int tickHeight;
+            Pen pen;
 
-            if (isMajor)
+            if (col % 10 == 0)
             {
+                tickHeight = 8;
+                pen = majorPen;
+                g.DrawLine(pen, x, Height - tickHeight, x, Height - 1);
                 g.DrawString(col.ToString(), font, labelBrush, x + 2, 2);
+            }
+            else if (col % 5 == 0)
+            {
+                tickHeight = 5;
+                pen = midPen;
+                g.DrawLine(pen, x, Height - tickHeight, x, Height - 1);
+            }
+            else
+            {
+                tickHeight = 3;
+                pen = minorPen;
+                g.DrawLine(pen, x, Height - tickHeight, x, Height - 1);
             }
         }
     }

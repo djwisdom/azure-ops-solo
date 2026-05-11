@@ -165,6 +165,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private bool autoIndentEnabled = true;
         private bool smartTabsEnabled = true;
         private bool elasticTabsEnabled = true;
+        private string _activeConfiguration = "Debug";
 
         // Document management (tabs)
         public class Document
@@ -200,6 +201,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private int? _draggedTabIndex = null;
         private Point? _dragStartPoint = null;
         private bool _isDragging = false;
+        private DragZone _pendingDragZone = DragZone.None;
 
         // Split view state
         private RichTextBox? _splitEditor = null;
@@ -324,7 +326,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             bool HoverLineHighlightEnabled = false,
             List<string>? RecentWorkspaces = null,
             string WindowBounds = "",
-            string WindowState = ""
+            string WindowState = "",
+            string ActiveConfiguration = "Debug"
         );
 
         private string SettingsFilePath =>
@@ -367,6 +370,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         // Workspace scan state
         private Color _originalStatusBarColor;
         private CancellationTokenSource? _symbolIndexCts;
+        private ToolStripStatusLabel _workspaceProjectLabel = null!;
+        private string? _detectedProjectPath;
+        private string? _detectedSolutionPath;
 
         // Debugger integration
         private readonly DebugSession _debugSession = new();
@@ -1130,6 +1136,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
               if (!string.IsNullOrEmpty(_workspaceRoot))
                   _workspacePanel?.SetRoot(_workspaceRoot);
+              UpdateWorkspaceProjectLabel();
+              _workspaceProjectLabel.Click += WorkspaceProjectLabel_Click;
+              // Set initial build config combo selection
+              if (_buildConfigCombo.Items.Contains(_activeConfiguration))
+                  _buildConfigCombo.SelectedItem = _activeConfiguration;
               workspaceMenuItem.Checked = _workspaceVisible;
               symbolsMenuItem.Checked = _symbolPanelVisible;
               problemsMenuItem.Checked = _problemsPanelVisible;
@@ -1826,6 +1837,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         }
                         _savedWindowBounds = settings.WindowBounds;
                         _savedWindowState = settings.WindowState;
+                        _activeConfiguration = settings.ActiveConfiguration ?? "Debug";
                     }
                 }
             }
@@ -1911,8 +1923,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                          BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
                            AnalyzersEnabled: _analyzersEnabled,
                            AutoSaveEnabled: _autoSaveEnabled,
-                           WindowBounds: $"{Left},{Top},{Width},{Height}",
-                           WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal"
+WindowBounds: $"{Left},{Top},{Width},{Height}",
+                            WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
+                            ActiveConfiguration: _activeConfiguration
                  );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -3794,6 +3807,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _workspaceRoot = dlg.SelectedPath;
                 _workspacePanel?.SetRoot(_workspaceRoot);
                 AddToRecentWorkspaces(_workspaceRoot);
+                UpdateWorkspaceProjectLabel();
                     // Symbol index rebuild on background thread — cancellation prevents stale overwrites
                 Task.Run(() =>
                 {
@@ -3824,6 +3838,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             _workspaceRoot = path;
             _workspacePanel?.SetRoot(_workspaceRoot);
             AddToRecentWorkspaces(_workspaceRoot);
+            UpdateWorkspaceProjectLabel();
             Task.Run(() =>
             {
                 if (!token.IsCancellationRequested)
@@ -3928,6 +3943,67 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
             catch { }
             return null;
+        }
+
+        private void UpdateWorkspaceProjectLabel()
+        {
+            _detectedProjectPath = null;
+            _detectedSolutionPath = null;
+
+            if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
+            {
+                _workspaceProjectLabel.Text = "";
+                _workspaceProjectLabel.ToolTipText = "";
+                _workspaceProjectLabel.Visible = false;
+                return;
+            }
+
+            try
+            {
+                var sln = Directory.EnumerateFiles(_workspaceRoot, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault();
+                if (sln != null)
+                {
+                    _detectedSolutionPath = sln;
+                    _workspaceProjectLabel.Text = Path.GetFileNameWithoutExtension(sln);
+                    _workspaceProjectLabel.ToolTipText = sln;
+                    _workspaceProjectLabel.Visible = true;
+                    return;
+                }
+
+                var csproj = Directory.EnumerateFiles(_workspaceRoot, "*.csproj", SearchOption.AllDirectories).FirstOrDefault();
+                if (csproj != null)
+                {
+                    _detectedProjectPath = csproj;
+                    _workspaceProjectLabel.Text = Path.GetFileNameWithoutExtension(csproj);
+                    _workspaceProjectLabel.ToolTipText = csproj;
+                    _workspaceProjectLabel.Visible = true;
+                    return;
+                }
+
+                _workspaceProjectLabel.Text = Path.GetFileName(_workspaceRoot);
+                _workspaceProjectLabel.ToolTipText = _workspaceRoot;
+                _workspaceProjectLabel.Visible = true;
+            }
+            catch
+            {
+                _workspaceProjectLabel.Text = Path.GetFileName(_workspaceRoot);
+                _workspaceProjectLabel.ToolTipText = _workspaceRoot;
+                _workspaceProjectLabel.Visible = true;
+            }
+        }
+
+        private void WorkspaceProjectLabel_Click(object? sender, EventArgs e)
+        {
+            string? target = _detectedSolutionPath ?? _detectedProjectPath;
+            if (target != null)
+            {
+                string dir = Path.GetDirectoryName(target)!;
+                try { Process.Start("explorer.exe", dir); } catch { }
+            }
+            else if (!string.IsNullOrEmpty(_workspaceRoot))
+            {
+                try { Process.Start("explorer.exe", _workspaceRoot); } catch { }
+            }
         }
 
         private void OnWorkspaceScanProgressChanged(string message)
@@ -4929,6 +5005,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void TabSize10_Click(object? sender, EventArgs e) => SetTabSize(10);
         private void TabSize12_Click(object? sender, EventArgs e) => SetTabSize(12);
 
+        private void BuildConfigCombo_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_buildConfigCombo.SelectedItem is string config && !string.IsNullOrEmpty(config))
+            {
+                _activeConfiguration = config;
+                SaveSettings();
+            }
+        }
+
         private void UpdateThemeDropDown()
         {
             if (themeDropDown != null)
@@ -5327,9 +5412,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     if (rect.Contains(e.Location))
                     {
                         // Check close button (×) — always visible, same position as draw
-                        int btnSize = 14;
-                        int btnX = rect.Right - 17;
-                        int btnY = rect.Top + 5;
+                        int btnSize = 16;
+                        int btnX = rect.Right - 22;
+                        int btnY = rect.Top + 3;
                         var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
                         if (btnRect.Contains(e.Location))
                         {
@@ -5340,6 +5425,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         _draggedTabIndex = i;
                         _dragStartPoint = tabControl.PointToScreen(e.Location);
                         _isDragging = false;
+                        _pendingDragZone = DragZone.None;
                         break;
                     }
                 }
@@ -5350,9 +5436,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             if (e.Button == MouseButtons.Left)
             {
+                // Execute pending split-on-zone if drag ended in an edge zone
+                if (_isDragging && _draggedTabIndex.HasValue && _pendingDragZone != DragZone.None && _pendingDragZone != DragZone.Outside)
+                {
+                    SplitTabToPane(_draggedTabIndex.Value, _pendingDragZone);
+                }
                 // End drag; if not detached, cancel
                 _draggedTabIndex = null;
                 _isDragging = false;
+                _pendingDragZone = DragZone.None;
             }
         }
 
@@ -5502,48 +5594,120 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 var doc = documents[tabIndex];
 
-                // Create a new Form1 instance for the detached document (skip default untitled doc)
-                var detachedForm = new Form1(skipInitialDocument: true);
-                detachedForm.tabControl.TabPages.Clear();
-                detachedForm.activeDocIndex = -1;
-
-                // Add the dragged document to the new form
-                detachedForm.documents.Add(doc);
-                var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-                detachedForm.tabControl.TabPages.Add(tabPage);
-                detachedForm.tabControl.SelectedIndex = 0;
-                detachedForm.activeDocIndex = 0;
-                detachedForm.LoadDocument(doc);
-                detachedForm.UpdateWindowTitle();
-                detachedForm.UpdateTabTitle(0);
-                detachedForm.UpdateTabSizeDropdown();
-
-                // Position near the drag release point
-                detachedForm.StartPosition = FormStartPosition.Manual;
-                detachedForm.Location = new Point(dragScreenPos.X - 100, dragScreenPos.Y - 50);
-
-                // Remove the document from the original window
-                if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
+                // Check if cursor is over another open Pfpad window — merge tab there instead
+                var targetForm = FindForm1AtPoint(dragScreenPos);
+                if (targetForm != null)
                 {
-                    documents.RemoveAt(tabIndex);
-                    tabControl.TabPages.RemoveAt(tabIndex);
+                    // Transfer document to the target window
+                    targetForm.ReceiveDroppedTab(doc);
+
+                    // Remove the document from the original window
+                    if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
+                    {
+                        documents.RemoveAt(tabIndex);
+                        tabControl.TabPages.RemoveAt(tabIndex);
+                    }
+
+                    // Adjust active index in original window
+                    if (activeDocIndex >= documents.Count)
+                        activeDocIndex = documents.Count - 1;
+                    if (activeDocIndex >= 0)
+                        SwitchToTab(activeDocIndex);
+                    else if (documents.Count == 0)
+                        NewFile(isInitial: true);
+
+                    // Bring target window to front
+                    targetForm.Activate();
+                }
+                else
+                {
+                    // Create a new Form1 instance for the detached document (skip default untitled doc)
+                    var detachedForm = new Form1(skipInitialDocument: true);
+                    detachedForm.tabControl.TabPages.Clear();
+                    detachedForm.activeDocIndex = -1;
+
+                    // Add the dragged document to the new form
+                    detachedForm.documents.Add(doc);
+                    var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+                    detachedForm.tabControl.TabPages.Add(tabPage);
+                    detachedForm.tabControl.SelectedIndex = 0;
+                    detachedForm.activeDocIndex = 0;
+                    detachedForm.LoadDocument(doc);
+                    detachedForm.UpdateWindowTitle();
+                    detachedForm.UpdateTabTitle(0);
+                    detachedForm.UpdateTabSizeDropdown();
+
+                    // Position near the drag release point
+                    detachedForm.StartPosition = FormStartPosition.Manual;
+                    detachedForm.Location = new Point(dragScreenPos.X - 100, dragScreenPos.Y - 50);
+                    // Prevent RestoreWindowBounds (called from Shown) from overriding manual position
+                    detachedForm._savedWindowBounds = "";
+                    detachedForm._savedWindowState = "";
+
+                    // Remove the document from the original window
+                    if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
+                    {
+                        documents.RemoveAt(tabIndex);
+                        tabControl.TabPages.RemoveAt(tabIndex);
+                    }
+
+                    // Adjust active index in original window
+                    if (activeDocIndex >= documents.Count)
+                        activeDocIndex = documents.Count - 1;
+                    if (activeDocIndex >= 0)
+                        SwitchToTab(activeDocIndex);
+                    else if (documents.Count == 0)
+                        NewFile(isInitial: true);
+
+                    // Show the detached window
+                    detachedForm.Show();
                 }
 
-                // Adjust active index in original window
-                if (activeDocIndex >= documents.Count)
-                    activeDocIndex = documents.Count - 1;
-                if (activeDocIndex >= 0)
-                    SwitchToTab(activeDocIndex);
-                else if (documents.Count == 0)
-                    NewFile(isInitial: true);
-
-                // Show the detached window
-                detachedForm.Show();
+                // Reset drag state
+                _draggedTabIndex = null;
+                _isDragging = false;
+                _dragStartPoint = null;
+                _pendingDragZone = DragZone.None;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"DetachTabToNewWindow error: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Finds an open (non-minimized) Form1 at the given screen position, excluding this instance.
+        /// </summary>
+        private Form1? FindForm1AtPoint(Point screenPos)
+        {
+            foreach (Form form in Application.OpenForms)
+            {
+                if (form is Form1 target && target != this && target.Visible && target.WindowState != FormWindowState.Minimized)
+                {
+                    if (target.Bounds.Contains(screenPos))
+                        return target;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Receives a dropped tab document from another Pfpad window into this instance.
+        /// </summary>
+        private void ReceiveDroppedTab(Document doc)
+        {
+            documents.Add(doc);
+            var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+            tabControl.TabPages.Add(tabPage);
+
+            // Make the dropped tab active
+            int newIndex = documents.Count - 1;
+            tabControl.SelectedIndex = newIndex;
+            activeDocIndex = newIndex;
+            LoadDocument(doc);
+            UpdateWindowTitle();
+            UpdateTabTitle(newIndex);
+            UpdateTabSizeDropdown();
         }
 
         private enum DragZone { None, Left, Right, Top, Bottom, Outside }
@@ -5687,6 +5851,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 _draggedTabIndex = null;
                 _isDragging = false;
                 _dragStartPoint = null;
+                _pendingDragZone = DragZone.None;
             }
             catch (Exception ex)
             {
@@ -5778,9 +5943,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 {
                     overAnyTab = true;
                     newHoverIndex = i;
-                    int buttonSize = 14;
-                    int btnX = rect.Right - 17;
-                    int btnY = rect.Top + 5;
+                    int buttonSize = 16;
+                    int btnX = rect.Right - 22;
+                    int btnY = rect.Top + 3;
                     newCloseBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
                     break;
             }
@@ -5821,11 +5986,13 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 var zone = GetDragZone(screenPos);
                 if (zone == DragZone.Outside)
                 {
+                    _pendingDragZone = DragZone.None;
                     DetachTabToNewWindow(_draggedTabIndex.Value, screenPos);
                 }
-                else if (zone != DragZone.None)
+                else
                 {
-                    SplitTabToPane(_draggedTabIndex.Value, zone);
+                    // Defer edge-zone split to MouseUp so user can drag past the edge to detach
+                    _pendingDragZone = zone;
                 }
             }
         }
@@ -7512,6 +7679,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     {
                         _workspacePanel.SetRoot(_workspaceRoot);
                         AddToRecentWorkspaces(_workspaceRoot);
+                        UpdateWorkspaceProjectLabel();
                                 });
                 }
             }

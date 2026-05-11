@@ -143,6 +143,7 @@ partial class Form1
     internal ToolStripStatusLabel lineColLabel;
     internal ToolStripStatusLabel lockKeysLabel;
     private ToolStripDropDownButton tabSizeDropDown;
+    private ToolStripComboBox _buildConfigCombo;
     internal ToolStripStatusLabel linePositionLabel;
     internal ToolStripStatusLabel zoomLabel;
     private ToolStripStatusLabel lineEndingsLabel;
@@ -691,6 +692,14 @@ partial class Form1
         tabSizeDropDown.DropDownItems.Add("8", null, TabSize8_Click);
         tabSizeDropDown.DropDownItems.Add("10", null, TabSize10_Click);
         tabSizeDropDown.DropDownItems.Add("12", null, TabSize12_Click);
+        // Build configuration selector
+        _buildConfigCombo = new ToolStripComboBox();
+        _buildConfigCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+        _buildConfigCombo.Items.Add("Debug");
+        _buildConfigCombo.Items.Add("Release");
+        _buildConfigCombo.Width = 80;
+        _buildConfigCombo.Padding = new Padding(4, 1, 4, 1);
+        _buildConfigCombo.SelectedIndexChanged += BuildConfigCombo_SelectedIndexChanged;
         // Git status labels (inserted after tab section)
         gitBranchLabel = new ToolStripStatusLabel("");
         gitBranchLabel.AutoSize = true;
@@ -755,9 +764,18 @@ partial class Form1
         statusStrip.Items.Add(lineColLabel);
         statusStrip.Items.Add(lockKeysLabel);
         statusStrip.Items.Add(tabSizeDropDown);
+        statusStrip.Items.Add(_buildConfigCombo);
         statusStrip.Items.Add(gitBranchLabel);
         statusStrip.Items.Add(gitDirtyLabel);
         statusStrip.Items.Add(gitSyncLabel);
+        // Workspace project indicator
+        _workspaceProjectLabel = new ToolStripStatusLabel("");
+        _workspaceProjectLabel.AutoSize = true;
+        _workspaceProjectLabel.Padding = new Padding(4, 1, 4, 1);
+        _workspaceProjectLabel.BorderSides = ToolStripStatusLabelBorderSides.Left;
+        _workspaceProjectLabel.IsLink = true;
+        _workspaceProjectLabel.LinkBehavior = LinkBehavior.HoverUnderline;
+        statusStrip.Items.Add(_workspaceProjectLabel);
         statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true, Padding = new Padding(0, 1, 0, 1) });
         statusStrip.Items.Add(linePositionLabel);
         statusStrip.Items.Add(zoomLabel);

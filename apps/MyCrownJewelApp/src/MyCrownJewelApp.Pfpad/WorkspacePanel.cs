@@ -38,6 +38,10 @@ internal sealed class WorkspacePanel : UserControl
 #pragma warning disable CS0649
     private bool _showAllFiles;
 #pragma warning restore CS0649
+    private bool _projectFilterEnabled;
+    private HashSet<string> _projectFiles = new(StringComparer.OrdinalIgnoreCase);
+    private string? _detectedProjectFile;
+    private readonly ToolStripButton _projectFilterButton;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private CancellationTokenSource? _scanCts;
     private FileSystemWatcher? _fileWatcher;
@@ -169,6 +173,25 @@ internal sealed class WorkspacePanel : UserControl
             }
         };
 
+        _projectFilterButton = new ToolStripButton
+        {
+            Text = "\uD83D\uDCC4",
+            Font = new Font("Segoe UI", 9),
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+            AutoSize = false,
+            Width = 22,
+            Height = 22,
+            ToolTipText = "Show Project Files Only — no .sln/.csproj detected",
+            Enabled = false
+        };
+        _projectFilterButton.Click += (s, e) =>
+        {
+            _projectFilterEnabled = !_projectFilterEnabled;
+            UpdateProjectFilterVisual();
+            if (!string.IsNullOrEmpty(_rootPath))
+                RefreshTree();
+        };
+
         _closeButton = new ToolStripButton
         {
             Text = "\u00D7",
@@ -193,6 +216,7 @@ internal sealed class WorkspacePanel : UserControl
         _headerStrip.Items.Add(_rootLabel);
         _headerStrip.Items.Add(_refreshButton);
         _headerStrip.Items.Add(_collapseButton);
+        _headerStrip.Items.Add(_projectFilterButton);
         _headerStrip.Items.Add(new ToolStripSeparator { Alignment = ToolStripItemAlignment.Right });
         _headerStrip.Items.Add(_closeButton);
 
@@ -239,6 +263,7 @@ internal sealed class WorkspacePanel : UserControl
         _closeButton.ForeColor = theme.Text;
         _refreshButton.ForeColor = theme.Text;
         _collapseButton.ForeColor = theme.Text;
+        _projectFilterButton.ForeColor = theme.Text;
 
         _fileContextMenu.BackColor = theme.MenuBackground;
         _fileContextMenu.ForeColor = theme.Text;
@@ -268,6 +293,8 @@ internal sealed class WorkspacePanel : UserControl
             var rootNode = CreateDirectoryNode(path);
             _tree.Nodes.Add(rootNode);
             _tree.SelectedNode = rootNode;
+            // Detect project files for filtering
+            DetectProjectFiles();
             if (IsHandleCreated)
                 BeginInvoke(() => PopulateDirectoryAsync(rootNode, path));
             else
@@ -389,7 +416,7 @@ internal sealed class WorkspacePanel : UserControl
             foreach (var f in Directory.EnumerateFiles(dirPath))
             {
                 string ext = Path.GetExtension(f);
-                if (_showAllFiles || _textExtensions.Contains(ext))
+                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f))
                     actualFiles.Add(f);
             }
 
@@ -544,7 +571,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             foreach (var f in Directory.EnumerateFiles(dirPath))
             {
                 string ext = Path.GetExtension(f);
-                if (_showAllFiles || _textExtensions.Contains(ext))
+                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f))
                     files.Add(f);
             }
 
@@ -651,7 +678,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             {
                 if (token.IsCancellationRequested) return;
                 string ext = Path.GetExtension(f);
-                if (_showAllFiles || _textExtensions.Contains(ext))
+                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f))
                     files.Add(f);
             }
 
@@ -706,6 +733,146 @@ private TreeNode CreateDirectoryNode(string dirPath)
             || name.Equals("obj", StringComparison.OrdinalIgnoreCase)
             || name.Equals(".vs", StringComparison.OrdinalIgnoreCase)
             || name.Equals("packages", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void UpdateProjectFilterVisual()
+    {
+        _projectFilterButton.Checked = _projectFilterEnabled;
+        _projectFilterButton.ToolTipText = _projectFilterEnabled
+            ? "Show Project Files Only — ON"
+            : "Show Project Files Only — OFF";
+    }
+
+    public void DetectProjectFiles()
+    {
+        _projectFiles.Clear();
+        _detectedProjectFile = null;
+
+        if (string.IsNullOrEmpty(_rootPath) || !Directory.Exists(_rootPath))
+        {
+            _projectFilterButton.Enabled = false;
+            _projectFilterButton.ToolTipText = "Show Project Files Only — no .sln/.csproj detected";
+            _projectFilterEnabled = false;
+            return;
+        }
+
+        try
+        {
+            string? sln = Directory.EnumerateFiles(_rootPath, "*.sln", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            if (sln != null)
+            {
+                _detectedProjectFile = sln;
+                // Parse .sln for project files
+                foreach (string line in File.ReadLines(sln))
+                {
+                    var m = System.Text.RegularExpressions.Regex.Match(line,
+                        @"^Project\(.*\)\s*=\s*""[^""]*""\s*,\s*""([^""]+)""",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (m.Success)
+                    {
+                        string projPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sln)!, m.Groups[1].Value));
+                        if (File.Exists(projPath))
+                            ParseProjectForCompileItems(projPath);
+                    }
+                }
+                // If no projects parsed from .sln, fallback: scan all .csproj
+                if (_projectFiles.Count == 0)
+                {
+                    foreach (var proj in Directory.EnumerateFiles(_rootPath, "*.csproj", SearchOption.AllDirectories))
+                        ParseProjectForCompileItems(proj);
+                }
+            }
+            else
+            {
+                string? csproj = Directory.EnumerateFiles(_rootPath, "*.csproj", SearchOption.AllDirectories).FirstOrDefault();
+                if (csproj != null)
+                {
+                    _detectedProjectFile = csproj;
+                    ParseProjectForCompileItems(csproj);
+                }
+            }
+
+            if (_projectFiles.Count > 0)
+            {
+                _projectFilterButton.Enabled = true;
+                _projectFilterButton.ToolTipText = "Show Project Files Only";
+                UpdateProjectFilterVisual();
+            }
+            else
+            {
+                _projectFilterButton.Enabled = false;
+                _projectFilterButton.ToolTipText = "Show Project Files Only — no .sln/.csproj detected";
+                _projectFilterEnabled = false;
+            }
+        }
+        catch
+        {
+            _projectFilterButton.Enabled = false;
+            _projectFilterButton.ToolTipText = "Show Project Files Only — error scanning";
+            _projectFilterEnabled = false;
+        }
+    }
+
+    private void ParseProjectForCompileItems(string csprojPath)
+    {
+        try
+        {
+            string content = File.ReadAllText(csprojPath);
+            string projDir = Path.GetDirectoryName(csprojPath)!;
+
+            // Check if this is an SDK-style project (no explicit Compile items)
+            bool isSdkStyle = content.Contains("Sdk=\"Microsoft.NET.Sdk")
+                || content.Contains("<Project Sdk=");
+
+            if (isSdkStyle)
+            {
+                // SDK-style: gather all .cs files relative to project directory
+                foreach (var f in Directory.EnumerateFiles(projDir, "*.cs", SearchOption.AllDirectories))
+                {
+                    // Skip bin/obj
+                    string rel = Path.GetRelativePath(projDir, f);
+                    if (rel.StartsWith("bin") || rel.StartsWith("obj") || rel.StartsWith(".vs"))
+                        continue;
+                    _projectFiles.Add(f);
+                }
+            }
+            else
+            {
+                // Non-SDK / Framework-style: parse explicit Compile items
+                var doc = new System.Xml.XmlDocument();
+                doc.LoadXml(content);
+                var ns = new System.Xml.XmlNamespaceManager(doc.NameTable);
+                ns.AddNamespace("ns", "http://schemas.microsoft.com/developer/msbuild/2003");
+
+                var compileNodes = doc.SelectNodes("//ns:Compile", ns);
+                if (compileNodes != null)
+                {
+                    foreach (System.Xml.XmlNode compile in compileNodes)
+                    {
+                        string? include = compile?.Attributes?["Include"]?.Value;
+                        if (string.IsNullOrEmpty(include)) continue;
+
+                        // Skip wildcards
+                        if (include.Contains('*') || include.Contains('?')) continue;
+
+                        string fullPath = Path.GetFullPath(Path.Combine(projDir, include));
+                        if (File.Exists(fullPath))
+                            _projectFiles.Add(fullPath);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore individual project parse errors
+        }
+    }
+
+    private bool ShouldIncludeFile(string filePath)
+    {
+        if (!_projectFilterEnabled || _projectFiles.Count == 0)
+            return true;
+        return _projectFiles.Contains(filePath);
     }
 
     private void Tree_NodeMouseDoubleClick(object? sender, TreeNodeMouseClickEventArgs e)

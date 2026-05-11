@@ -326,7 +326,17 @@ public sealed class MarkdownPreviewPanel : Panel
         string preBg = ColorToHex(DimColor(theme.EditorBackground, 0.85f));
         string headingBorder = ColorToHex(DimColor(theme.Border, 0.5f));
 
-        return $"body{{background:{bg};color:{text};font-family:'Segoe UI',sans-serif;padding:20px;line-height:1.6}}" +
+        // Theme-aware scrollbars — dark theme brightens, light theme dims
+        float scrollFactor = theme.IsLight ? 0.55f : 1.4f;
+        string scrollThumb = ColorToHex(DimColor(theme.Border, scrollFactor));
+        string scrollTrack = ColorToHex(theme.IsLight
+            ? DimColor(theme.EditorBackground, 0.9f)
+            : DimColor(theme.EditorBackground, 1.15f));
+        string scrollArrow = ColorToHex(theme.Muted);
+
+        return $"body{{background:{bg};color:{text};font-family:'Segoe UI',sans-serif;padding:20px;line-height:1.6;" +
+               $"scrollbar-face-color:{scrollThumb};scrollbar-track-color:{scrollTrack};scrollbar-arrow-color:{scrollArrow};" +
+               $"scrollbar-shadow-color:{scrollThumb};scrollbar-highlight-color:{scrollTrack};scrollbar-3dlight-color:{scrollTrack};scrollbar-darkshadow-color:{scrollThumb}}}" +
                $"h1,h2,h3,h4{{color:{accent};border-bottom:1px solid {headingBorder};padding-bottom:4px}}" +
                $"h1{{font-size:1.8em}}h2{{font-size:1.4em}}h3{{font-size:1.2em}}" +
                $"code{{background:{panel};color:{codeText};padding:1px 4px;border-radius:3px}}" +
