@@ -7,7 +7,7 @@
 #define MyAppName "Personal Flip Pad"
 #define MyAppShortName "Pfpad"
 #define MyAppExeName "MyCrownJewelApp.Pfpad.exe"
-#define MyAppVersion "1.0.24.0"
+#define MyAppVersion "1.0.26.0"
 #define MyAppPublisher "Personal Flip Pad"
 #define MyAppURL "https://github.com/casse/azure-ops-solo"
 #define MyAppAssocName "Source Code File"
@@ -55,7 +55,6 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 ; Main application (self-contained single-file executable + PDBs)
 Source: "app\MyCrownJewelApp.Pfpad.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\MyCrownJewelApp.Pfpad.pdb"; DestDir: "{app}"; Flags: ignoreversion
-Source: "app\MyCrownJewelApp.Core.pdb"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Debugger support: netcoredbg (Debug Adapter Protocol server for .NET debugging)
 Source: "netcoredbg\netcoredbg.exe"; DestDir: "{app}\netcoredbg"; Flags: ignoreversion
