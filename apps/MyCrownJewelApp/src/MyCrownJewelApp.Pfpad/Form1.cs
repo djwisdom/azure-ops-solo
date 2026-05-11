@@ -6056,6 +6056,15 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
                 TextFormatFlags.EndEllipsis);
 
+            // Draw borders
+            if (isSelected)
+            {
+                using (var pen = new Pen(theme.Text, 1))
+                {
+                    e.Graphics.DrawLine(pen, tabRect.Left, tabRect.Top, tabRect.Right - 1, tabRect.Top);
+                }
+            }
+
             // Close button (×)
             var closeRect = new Rectangle(tabRect.Right - 22, tabRect.Y + 3, 16, 16);
             using (var xFont = new Font("Segoe UI", 11, FontStyle.Bold))
