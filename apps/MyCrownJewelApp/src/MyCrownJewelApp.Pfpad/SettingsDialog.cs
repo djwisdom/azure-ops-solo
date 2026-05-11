@@ -29,6 +29,14 @@ internal sealed class SettingsDialog : Form
     private Button _okButton = null!;
     private Button _cancelButton = null!;
 
+    // Custom title bar
+    private Panel _titleBarPanel = null!;
+    private Label _titleLabel = null!;
+    private Button _minimizeButton = null!;
+    private Button _maximizeButton = null!;
+    private Button _closeButton = null!;
+    private bool _isDragging = false;
+
     // Preview Components
     private TextBox _fontPreviewText = null!;
     private Panel _themePreviewPanel = null!;
@@ -70,9 +78,11 @@ internal sealed class SettingsDialog : Form
         MinimumSize = new Size(650, 500); // Increased minimum width to accommodate split container
         StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
         BackColor = _theme.Background;
         ForeColor = _theme.Text;
         Font = new Font("Segoe UI", 9);
+        AutoScroll = false; // Prevent Windows from adding form-level scrollbars
 
         InitializeForm();
         LoadCurrentValues();
@@ -82,10 +92,15 @@ internal sealed class SettingsDialog : Form
 
     private void InitializeForm()
     {
-        // Search box at top
+        // Create custom title bar
+        CreateTitleBar();
+
+        // Search box below title bar
+        int yOffset = 45; // Title bar height + spacing
+
         _searchBox = new TextBox
         {
-            Location = new Point(12, 12),
+            Location = new Point(12, yOffset),
             Size = new Size(200, 25),
             PlaceholderText = "Search settings...",
             BackColor = _theme.EditorBackground,
@@ -96,7 +111,11 @@ internal sealed class SettingsDialog : Form
         Controls.Add(_searchBox);
 
         // Custom splitter for reliable layout control
+        yOffset += 40;
         _customSplitter = new CustomSplitter(_theme);
+        _customSplitter.Location = new Point(0, yOffset);
+        _customSplitter.Size = new Size(Width, Height - yOffset);
+        _customSplitter.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _customSplitter.SplitterMoved += (s, e) => UpdateLayout();
         Controls.Add(_customSplitter);
 
@@ -398,12 +417,6 @@ internal sealed class SettingsDialog : Form
                         }
                     }
 
-                    // Refresh the current category display
-                    if (_settingsTree.SelectedNode?.Tag is string category)
-                    {
-                        ShowCategory(category);
-                    }
-
                     MessageBox.Show("Settings imported successfully!", "Import Complete",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
@@ -413,6 +426,132 @@ internal sealed class SettingsDialog : Form
                 MessageBox.Show($"Failed to import settings: {ex.Message}", "Import Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+    }
+
+    private void CreateTitleBar()
+    {
+        // Title bar panel
+        _titleBarPanel = new Panel
+        {
+            Location = new Point(0, 0),
+            Size = new Size(Width, 35),
+            Dock = DockStyle.Top,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text
+        };
+        _titleBarPanel.Paint += TitleBarPanel_Paint;
+        _titleBarPanel.MouseDown += TitleBarPanel_MouseDown;
+        _titleBarPanel.MouseMove += TitleBarPanel_MouseMove;
+        _titleBarPanel.MouseUp += TitleBarPanel_MouseUp;
+        Controls.Add(_titleBarPanel);
+
+        // Title label
+        _titleLabel = new Label
+        {
+            Text = "Settings",
+            Location = new Point(10, 8),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold)
+        };
+        _titleBarPanel.Controls.Add(_titleLabel);
+
+        // Minimize button
+        _minimizeButton = CreateTitleBarButton("─", (s, e) => WindowState = FormWindowState.Minimized);
+        _minimizeButton.Location = new Point(Width - 120, 0);
+
+        // Maximize button
+        _maximizeButton = CreateTitleBarButton("□", (s, e) => ToggleMaximize());
+        _maximizeButton.Location = new Point(Width - 80, 0);
+
+        // Close button
+        _closeButton = CreateTitleBarButton("✕", (s, e) => Close());
+        _closeButton.Location = new Point(Width - 40, 0);
+
+        // Add buttons to title bar
+        _titleBarPanel.Controls.Add(_minimizeButton);
+        _titleBarPanel.Controls.Add(_maximizeButton);
+        _titleBarPanel.Controls.Add(_closeButton);
+    }
+
+    private Button CreateTitleBarButton(string text, EventHandler onClick)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Size = new Size(40, 35),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Transparent,
+            ForeColor = _theme.Text,
+            FlatAppearance = { BorderSize = 0 },
+            TabStop = false,
+            Font = new Font("Segoe UI", 10)
+        };
+        button.Click += onClick;
+        button.MouseEnter += (s, e) => button.BackColor = _theme.Accent;
+        button.MouseLeave += (s, e) => button.BackColor = Color.Transparent;
+        return button;
+    }
+
+    private void TitleBarPanel_Paint(object? sender, PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        // Draw title bar background
+        using var bgBrush = new SolidBrush(_theme.PanelBackground);
+        g.FillRectangle(bgBrush, _titleBarPanel.ClientRectangle);
+
+        // Draw bottom border
+        using var borderPen = new Pen(_theme.Border);
+        g.DrawLine(borderPen, 0, _titleBarPanel.Height - 1, _titleBarPanel.Width, _titleBarPanel.Height - 1);
+    }
+
+    private Point _dragStartPoint;
+
+    private void TitleBarPanel_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _isDragging = true;
+            _dragStartPoint = e.Location;
+        }
+    }
+
+    private void TitleBarPanel_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (_isDragging)
+        {
+            Point offset = new Point(e.X - _dragStartPoint.X, e.Y - _dragStartPoint.Y);
+            Location = new Point(Left + offset.X, Top + offset.Y);
+        }
+    }
+
+    private void TitleBarPanel_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _isDragging = false;
+        }
+    }
+
+    private void ToggleMaximize()
+    {
+        WindowState = WindowState == FormWindowState.Normal ? FormWindowState.Maximized : FormWindowState.Normal;
+    }
+
+    private void UpdateTitleBarTheme()
+    {
+        if (_titleBarPanel != null)
+        {
+            _titleBarPanel.BackColor = _theme.PanelBackground;
+            _titleLabel.ForeColor = _theme.Text;
+            if (_minimizeButton != null) _minimizeButton.ForeColor = _theme.Text;
+            if (_maximizeButton != null) _maximizeButton.ForeColor = _theme.Text;
+            if (_closeButton != null) _closeButton.ForeColor = _theme.Text;
+            _titleBarPanel.Invalidate();
         }
     }
 
@@ -1848,6 +1987,8 @@ internal sealed class SettingsDialog : Form
             _searchBox.BackColor = _theme.EditorBackground;
             _searchBox.ForeColor = _theme.Text;
         }
+
+        UpdateTitleBarTheme();
 
         if (_customSplitter != null)
         {
