@@ -91,7 +91,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private CurrentLineHighlightMode currentLineHighlightMode = CurrentLineHighlightMode.Off;
         internal int tabSize = 4;
         private bool insertSpaces = true;
-        private Theme _currentTheme = Theme.Dark;
+        internal Theme _currentTheme = Theme.Dark;
         internal bool isDarkTheme => !_currentTheme.IsLight;
         public bool IsDarkTheme => !_currentTheme.IsLight;
         internal float zoomFactor = 1.0f;
@@ -1293,16 +1293,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         protected override void WndProc(ref Message m)
         {
-            const int WM_CTLCOLORSCROLLBAR = 0x0137;
-            if (m.Msg == WM_CTLCOLORSCROLLBAR)
-            {
-                IntPtr hdc = m.WParam;
-                var theme = _currentTheme;
-                SetBkColor(hdc, ColorTranslator.ToWin32(theme.EditorBackground));
-                SetTextColor(hdc, ColorTranslator.ToWin32(Color.FromArgb(120, theme.Text))); // semi-transparent thumb
-                m.Result = (IntPtr)GetStockObject(NULL_BRUSH);
-                return;
-            }
             if (m.Msg == WM_DROPFILES)
             {
                 HandleWmDropFiles(m.WParam);

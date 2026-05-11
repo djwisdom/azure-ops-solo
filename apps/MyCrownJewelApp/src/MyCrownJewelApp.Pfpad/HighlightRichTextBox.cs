@@ -5,7 +5,22 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using WinFormsTimer = System.Windows.Forms.Timer;
 
-namespace MyCrownJewelApp.Pfpad;
+namespace MyCrownJewelApp.Pfpad
+{
+    // P/Invoke for scrollbar color customization
+    internal static class ScrollbarColorHelper
+    {
+        [DllImport("gdi32.dll")]
+        public static extern int SetBkColor(IntPtr hdc, int color);
+
+        [DllImport("gdi32.dll")]
+        public static extern int SetTextColor(IntPtr hdc, int color);
+
+        [DllImport("gdi32.dll")]
+        public static extern IntPtr GetStockObject(int fnObject);
+
+        public const int NULL_BRUSH = 5;
+    }
 
 public class HighlightRichTextBox : RichTextBox
 {
@@ -871,6 +886,7 @@ public class HighlightRichTextBox : RichTextBox
         const int WM_KEYUP = 0x0101;
         const int WM_LBUTTONUP = 0x0202;
         const int WM_MOUSEWHEEL = 0x020A;
+        const int WM_CTLCOLORSCROLLBAR = 0x0137;
         const int WM_SETFOCUS = 0x0007;
         const int WM_KILLFOCUS = 0x0008;
 
@@ -977,6 +993,20 @@ public class HighlightRichTextBox : RichTextBox
                 _scrollDebounceTimer?.Start();
                 base.WndProc(ref m);
                 return;
+            case WM_CTLCOLORSCROLLBAR:
+                {
+                    IntPtr hdc = m.WParam;
+                    var mainForm = FindForm() as Form1;
+                    if (mainForm != null)
+                    {
+                        var theme = mainForm._currentTheme;
+                        ScrollbarColorHelper.SetBkColor(hdc, ColorTranslator.ToWin32(theme.EditorBackground));
+                        ScrollbarColorHelper.SetTextColor(hdc, ColorTranslator.ToWin32(Color.FromArgb(120, theme.Text))); // semi-transparent thumb
+                        m.Result = (IntPtr)ScrollbarColorHelper.GetStockObject(ScrollbarColorHelper.NULL_BRUSH);
+                        return;
+                    }
+                }
+                break;
             case WM_SIZE:
             case WM_KEYUP:
             case WM_LBUTTONUP:
@@ -1012,5 +1042,6 @@ public class HighlightRichTextBox : RichTextBox
         public byte bAnimation;
         public byte bRevAuthor;
         public byte bUnderlineColor;
+    }
     }
 }
