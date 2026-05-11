@@ -53,11 +53,20 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Windows 10 1809+, Windows 11
 
+        [DllImport("gdi32.dll")]
+        private static extern int SetBkColor(IntPtr hdc, int color);
+
+        [DllImport("gdi32.dll")]
+        private static extern int SetTextColor(IntPtr hdc, int color);
+
+        [DllImport("gdi32.dll")]
+        private static extern IntPtr GetStockObject(int fnObject);
+
+        private const int NULL_BRUSH = 5;
+
         private void ApplyScrollbarTheme()
         {
-            bool dark = isDarkTheme;
-            NativeThemed.ApplyDarkScrollbarTheme(this.Handle, dark);
-            NativeThemed.ApplyThemeToChildScrollbars(this, dark);
+            // Scrollbar colors are handled in WndProc to match editor background
         }
 
         private void ApplyTitleBarTheme()
@@ -1284,6 +1293,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         protected override void WndProc(ref Message m)
         {
+            const int WM_CTLCOLORSCROLLBAR = 0x0137;
+            if (m.Msg == WM_CTLCOLORSCROLLBAR)
+            {
+                IntPtr hdc = m.WParam;
+                var theme = _currentTheme;
+                SetBkColor(hdc, ColorTranslator.ToWin32(theme.EditorBackground));
+                SetTextColor(hdc, ColorTranslator.ToWin32(Color.FromArgb(120, theme.Text))); // semi-transparent thumb
+                m.Result = (IntPtr)GetStockObject(NULL_BRUSH);
+                return;
+            }
             if (m.Msg == WM_DROPFILES)
             {
                 HandleWmDropFiles(m.WParam);
