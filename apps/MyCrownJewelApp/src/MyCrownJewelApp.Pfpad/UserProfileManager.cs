@@ -352,20 +352,28 @@ public sealed class UserProfileManager : IDisposable
             {
                 profile = JsonSerializer.Deserialize<UserProfile>(json);
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[ProfileManager] Failed to deserialize as new format, trying legacy: {ex.Message}");
                 // Try legacy format
-                var legacy = JsonSerializer.Deserialize<LegacyUserProfile>(json);
-                if (legacy != null)
+                try
                 {
-                    // Migrate to new format
-                    profile = MigrateLegacyProfile(legacy);
-                    if (profile != null)
+                    var legacy = JsonSerializer.Deserialize<LegacyUserProfile>(json);
+                    if (legacy != null)
                     {
-                        // Save migrated profile back to disk
-                        SaveProfile(profile);
-                        System.Diagnostics.Debug.WriteLine($"[ProfileManager] Migrated legacy profile '{name}' to new format");
+                        // Migrate to new format
+                        profile = MigrateLegacyProfile(legacy);
+                        if (profile != null)
+                        {
+                            // Save migrated profile back to disk
+                            SaveProfile(profile);
+                            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Migrated legacy profile '{name}' to new format");
+                        }
                     }
+                }
+                catch (Exception legacyEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ProfileManager] Failed to deserialize legacy format: {legacyEx.Message}");
                 }
             }
 

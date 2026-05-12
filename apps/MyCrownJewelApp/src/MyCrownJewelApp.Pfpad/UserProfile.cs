@@ -64,19 +64,26 @@ public record WorkspaceInfo
     {
         get
         {
-            if (string.IsNullOrEmpty(ProjectType)) return "";
-            return ProjectType switch
+            try
             {
-                "dotnet" => "🔷 .NET",
-                "node" => "🟢 Node.js",
-                "python" => "🐍 Python",
-                "java" => "☕ Java",
-                "go" => "🐹 Go",
-                "rust" => "🦀 Rust",
-                "cpp" => "⚙️ C++",
-                "web" => "🌐 Web",
-                _ => $"📁 {ProjectType}"
-            };
+                if (string.IsNullOrEmpty(ProjectType)) return "";
+                return ProjectType switch
+                {
+                    "dotnet" => "🔷 .NET",
+                    "node" => "🟢 Node.js",
+                    "python" => "🐍 Python",
+                    "java" => "☕ Java",
+                    "go" => "🐹 Go",
+                    "rust" => "🦀 Rust",
+                    "cpp" => "⚙️ C++",
+                    "web" => "🌐 Web",
+                    _ => $"📁 {ProjectType}"
+                };
+            }
+            catch
+            {
+                return "";
+            }
         }
     }
 }

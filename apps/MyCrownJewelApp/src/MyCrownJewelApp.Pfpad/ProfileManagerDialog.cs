@@ -33,7 +33,6 @@ internal sealed class ProfileManagerDialog : Form
 
     // Right panel: details
     private Panel _rightPanel = null!;
-private Panel _contentPanel = null!;
     private TextBox _nameBox = null!;
     private TextBox _descriptionBox = null!;
     private PictureBox _colorPreviewBox = null!;
@@ -82,13 +81,17 @@ private Panel _contentPanel = null!;
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine("[ProfileManager] Starting initialization...");
+
             _manager = manager ?? throw new ArgumentNullException(nameof(manager));
             _mainForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
             _theme = ThemeManager.Instance?.CurrentTheme ?? throw new InvalidOperationException("ThemeManager or CurrentTheme is not available.");
 
-        Text = "Manage Profiles";
-        ClientSize = new Size(720, 560);
-        StartPosition = FormStartPosition.CenterParent;
+            System.Diagnostics.Debug.WriteLine("[ProfileManager] Basic setup complete, initializing form properties...");
+
+            Text = "Manage Profiles";
+            ClientSize = new Size(720, 560);
+            StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -98,16 +101,33 @@ private Panel _contentPanel = null!;
             Font = new Font("Segoe UI", 9);
             AutoScroll = false;
 
-            InitializeComponents();
+            System.Diagnostics.Debug.WriteLine("[ProfileManager] Form properties set, calling InitializeComponents...");
+            try
+            {
+                InitializeComponents();
+                System.Diagnostics.Debug.WriteLine("[ProfileManager] InitializeComponents succeeded");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProfileManager] InitializeComponents failed: {ex.Message}\n{ex.StackTrace}");
+                throw;
+            }
+
+            System.Diagnostics.Debug.WriteLine("[ProfileManager] InitializeComponents complete, calling LoadProfileList...");
             LoadProfileList();
+
+            System.Diagnostics.Debug.WriteLine("[ProfileManager] LoadProfileList complete, calling RegisterEvents...");
             RegisterEvents();
 
             // Subscribe to profile change events
             _manager.ProfileChanged += OnProfileChanged;
             _manager.ProfileDeleted += OnProfileDeleted;
+
+            System.Diagnostics.Debug.WriteLine("[ProfileManager] Initialization complete!");
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Initialization failed: {ex.Message}\n{ex.StackTrace}");
             MessageBox.Show($"Failed to initialize Profile Manager: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             throw;
         }
@@ -314,75 +334,24 @@ private Panel _contentPanel = null!;
         };
         int wx = 10, wy = 22;
 
-        // Primary Workspace Display Panel
-        var workspaceDisplayPanel = new Panel
+        // Simple workspace controls (temporary)
+        var workspaceLbl = new Label { Text = "Root Folder:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
+        _workspaceSection.ContentPanel.Controls.Add(workspaceLbl);
+        _workspaceBox = new TextBox { Location = new Point(wx + 85, wy - 3), Width = 220, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+        _workspaceSection.ContentPanel.Controls.Add(_workspaceBox);
+        _browseButton = new Button
         {
-            Location = new Point(wx, wy),
-            Size = new Size(340, 60),
+            Text = "...",
+            Location = new Point(wx + 315, wy - 3),
+            Width = 30,
+            Height = 23,
+            FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-
-        // Workspace name and icon
-        var workspaceNameLabel = new Label
-        {
-            Text = "No workspace selected",
-            Location = new Point(50, 8),
-            AutoSize = true,
             ForeColor = _theme.Text,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
-            BackColor = Color.Transparent
+            FlatAppearance = { BorderColor = _theme.Border }
         };
-        workspaceDisplayPanel.Controls.Add(workspaceNameLabel);
-
-        // Workspace path
-        var workspacePathLabel = new Label
-        {
-            Text = "",
-            Location = new Point(50, 25),
-            Size = new Size(280, 16),
-            ForeColor = _theme.Muted,
-            BackColor = Color.Transparent
-        };
-        workspaceDisplayPanel.Controls.Add(workspacePathLabel);
-
-        // Project type badge
-        var projectTypeLabel = new Label
-        {
-            Text = "",
-            Location = new Point(50, 42),
-            AutoSize = true,
-            ForeColor = _theme.Accent,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 7)
-        };
-        workspaceDisplayPanel.Controls.Add(projectTypeLabel);
-
-        // Trust status indicator
-        var trustLabel = new Label
-        {
-            Text = "",
-            Location = new Point(250, 42),
-            AutoSize = true,
-            ForeColor = Color.Green,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 7)
-        };
-        workspaceDisplayPanel.Controls.Add(trustLabel);
-
-        // Workspace icon placeholder (circle)
-        var workspaceIconBox = new PictureBox
-        {
-            Location = new Point(10, 10),
-            Size = new Size(32, 32),
-            BackColor = _theme.Accent,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        workspaceDisplayPanel.Controls.Add(workspaceIconBox);
-
-        _workspaceSection.ContentPanel.Controls.Add(workspaceDisplayPanel);
-
-        wy += 75;
+        _workspaceSection.ContentPanel.Controls.Add(_browseButton);
+        wy += 30;
 
         // Workspace controls panel
         var workspaceControlsPanel = new Panel
@@ -432,67 +401,19 @@ private Panel _contentPanel = null!;
 
         wy += 35;
 
-        // Recent workspaces section
+        // Recent workspaces (simple version)
         var recentLbl = new Label { Text = "Recent Workspaces:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
         _workspaceSection.ContentPanel.Controls.Add(recentLbl);
-
-        wy += 18;
-        _recentWorkspacesList = new ListBox
-        {
-            Location = new Point(wx, wy),
-            Size = new Size(280, 60),
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle,
-            DrawMode = DrawMode.OwnerDrawFixed,
-            ItemHeight = 20
-        };
-        _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem;
+        _recentWorkspacesList = new ListBox { Location = new Point(wx, wy + 18), Width = 340, Height = 40, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
         _workspaceSection.ContentPanel.Controls.Add(_recentWorkspacesList);
-
-        // Recent workspace buttons
-        var wsBtnPanel = new Panel { Location = new Point(wx + 290, wy), Size = new Size(80, 60) };
-
-        _addWorkspaceButton = new Button
-        {
-            Text = "+",
-            Location = new Point(0, 0),
-            Size = new Size(36, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
+        var wsBtnPanel = new Panel { Location = new Point(wx + 280, wy + 20), Size = new Size(60, 18) };
+        _addWorkspaceButton = new Button { Text = "+", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
+        _removeWorkspaceButton = new Button { Text = "-", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, Location = new Point(22, 0), BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
         wsBtnPanel.Controls.Add(_addWorkspaceButton);
-
-        _removeWorkspaceButton = new Button
-        {
-            Text = "-",
-            Location = new Point(40, 0),
-            Size = new Size(36, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
         wsBtnPanel.Controls.Add(_removeWorkspaceButton);
-
-        var clearWorkspacesButton = new Button
-        {
-            Text = "Clear",
-            Location = new Point(0, 32),
-            Size = new Size(76, 24),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        clearWorkspacesButton.Click += (s, e) => ClearRecentWorkspaces();
-        wsBtnPanel.Controls.Add(clearWorkspacesButton);
-
         _workspaceSection.ContentPanel.Controls.Add(wsBtnPanel);
 
-        _contentPanel.Controls.Add(_workspaceSection);
+        _rightPanel.Controls.Add(_workspaceSection);
         y += _workspaceSection.Height + 6;
 
         // Commands collapsible section
@@ -642,54 +563,70 @@ private Panel _contentPanel = null!;
 
     private void UpdateWorkspaceDisplay(WorkspaceInfo? workspace)
     {
-        // Find the workspace display panel and update its controls
-        if (_workspaceSection?.ContentPanel?.Controls == null) return;
-        foreach (Control ctrl in _workspaceSection.ContentPanel.Controls)
+        try
         {
-            if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle)
+            // Find the workspace display panel and update its controls
+            if (_workspaceSection?.ContentPanel?.Controls == null) return;
+
+            foreach (Control ctrl in _workspaceSection.ContentPanel.Controls)
             {
-                // This is the workspace display panel
-                foreach (Control child in panel.Controls)
+                if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle)
                 {
-                    if (child is Label label)
+                    // This is the workspace display panel
+                    foreach (Control child in panel.Controls)
                     {
-                        if (label.Location.X == 50 && label.Location.Y == 8) // workspace name
+                        if (child is Label label)
                         {
-                            label.Text = workspace?.DisplayName ?? "No workspace selected";
+                            if (label.Location.X == 50 && label.Location.Y == 8) // workspace name
+                            {
+                                label.Text = workspace?.DisplayName ?? "No workspace selected";
+                            }
+                            else if (label.Location.X == 50 && label.Location.Y == 25) // workspace path
+                            {
+                                label.Text = workspace?.Path ?? "";
+                            }
+                            else if (label.Location.X == 50 && label.Location.Y == 42) // project type
+                            {
+                                try
+                                {
+                                    label.Text = workspace?.ProjectTypeDisplay ?? "";
+                                }
+                                catch
+                                {
+                                    label.Text = "";
+                                }
+                            }
+                            else if (label.Location.X == 250 && label.Location.Y == 42) // trust status
+                            {
+                                label.Text = workspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
+                                label.ForeColor = workspace?.IsTrusted == true ? Color.Green : Color.Orange;
+                            }
                         }
-                        else if (label.Location.X == 50 && label.Location.Y == 25) // workspace path
+                        else if (child is PictureBox pictureBox && pictureBox.Location.X == 10)
                         {
-                            label.Text = workspace?.Path ?? "";
-                        }
-                        else if (label.Location.X == 50 && label.Location.Y == 42) // project type
-                        {
-                            label.Text = workspace?.ProjectTypeDisplay ?? "";
-                        }
-                        else if (label.Location.X == 250 && label.Location.Y == 42) // trust status
-                        {
-                            label.Text = workspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
-                            label.ForeColor = workspace?.IsTrusted == true ? Color.Green : Color.Orange;
+                            // Update workspace icon color based on project type
+                            pictureBox.BackColor = workspace?.ProjectType switch
+                            {
+                                "dotnet" => Color.FromArgb(0, 120, 212), // Blue
+                                "node" => Color.FromArgb(67, 133, 61),   // Green
+                                "python" => Color.FromArgb(52, 101, 164), // Blue
+                                "java" => Color.FromArgb(237, 145, 33),   // Orange
+                                "go" => Color.FromArgb(0, 173, 216),     // Cyan
+                                "rust" => Color.FromArgb(0, 0, 0),       // Black
+                                "cpp" => Color.FromArgb(68, 68, 68),     // Gray
+                                "web" => Color.FromArgb(241, 101, 41),   // Orange
+                                _ => _theme.Accent
+                            };
                         }
                     }
-                    else if (child is PictureBox pictureBox && pictureBox.Location.X == 10)
-                    {
-                        // Update workspace icon color based on project type
-                        pictureBox.BackColor = workspace?.ProjectType switch
-                        {
-                            "dotnet" => Color.FromArgb(0, 120, 212), // Blue
-                            "node" => Color.FromArgb(67, 133, 61),   // Green
-                            "python" => Color.FromArgb(52, 101, 164), // Blue
-                            "java" => Color.FromArgb(237, 145, 33),   // Orange
-                            "go" => Color.FromArgb(0, 173, 216),     // Cyan
-                            "rust" => Color.FromArgb(0, 0, 0),       // Black
-                            "cpp" => Color.FromArgb(68, 68, 68),     // Gray
-                            "web" => Color.FromArgb(241, 101, 41),   // Orange
-                            _ => _theme.Accent
-                        };
-                    }
+                    break;
                 }
-                break;
             }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error updating workspace display: {ex.Message}");
+            // Don't crash the dialog for display issues
         }
     }
 
@@ -913,8 +850,11 @@ private Panel _contentPanel = null!;
         _colorLabel.Text = profile.ColorHex ?? "#0078D4";
         try { _colorPreviewBox.BackColor = ColorTranslator.FromHtml(_colorLabel.Text); } catch { _colorPreviewBox.BackColor = _theme.Accent; }
 
-        // Update workspace display panel
-        UpdateWorkspaceDisplay(profile.PrimaryWorkspace);
+        // Update workspace display panel - simplified for now
+        if (_workspaceBox != null)
+        {
+            _workspaceBox.Text = profile.PrimaryWorkspace?.Path ?? "";
+        }
 
         // Recent workspaces
         _recentWorkspacesList.Items.Clear();
@@ -1401,7 +1341,7 @@ private void LayoutRightPanel()
             y = ctrl.Bottom + 6;
         }
     }
-    _contentPanel.AutoScrollMinSize = new Size(0, y);
+    _rightPanel.AutoScrollMinSize = new Size(0, y);
 }
 
     /// <summary>
@@ -1411,11 +1351,11 @@ private void LayoutRightPanel()
     {
         try
         {
-            if (!Directory.Exists(path)) return null;
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return null;
 
             // Check for specific project files
             string[] files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly);
-            var fileNames = files.Select(f => Path.GetFileName(f).ToLowerInvariant()).ToArray();
+            var fileNames = files.Select(f => Path.GetFileName(f)?.ToLowerInvariant() ?? "").ToArray();
 
             if (fileNames.Contains("package.json")) return "node";
             if (fileNames.Contains("requirements.txt") || fileNames.Contains("setup.py") || fileNames.Contains("pyproject.toml")) return "python";
@@ -1428,15 +1368,16 @@ private void LayoutRightPanel()
 
             // Check for common directories
             string[] dirs = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly);
-            var dirNames = dirs.Select(d => Path.GetFileName(d).ToLowerInvariant()).ToArray();
+            var dirNames = dirs.Select(d => Path.GetFileName(d)?.ToLowerInvariant() ?? "").ToArray();
 
             if (dirNames.Contains("node_modules")) return "node";
             if (dirNames.Contains("venv") || dirNames.Contains("__pycache__")) return "python";
 
             return null; // Unknown
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[DetectProjectType] Error detecting project type for {path}: {ex.Message}");
             return null;
         }
     }
