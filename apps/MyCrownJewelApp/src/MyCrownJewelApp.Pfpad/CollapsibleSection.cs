@@ -143,6 +143,7 @@ internal sealed class CollapsibleSection : Panel
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
+        if (_contentPanel == null) return;
         _contentPanel.Width = Width;
         AdjustContentHeight();
     }
