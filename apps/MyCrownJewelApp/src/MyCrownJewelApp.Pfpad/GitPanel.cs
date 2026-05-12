@@ -9,7 +9,733 @@ using LibGit2Sharp;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class GitPanel : UserControl
+internal sealed class GitOperationsPanel : Panel
+{
+    private readonly GitService _git;
+    private readonly Label _branchLabel;
+    private readonly Label _remoteLabel;
+    private readonly Button _fetchBtn;
+    private readonly Button _pullBtn;
+    private readonly Button _pushBtn;
+    private readonly Button _newBranchBtn;
+    private readonly Button _stashBtn;
+    private readonly Button _tagBtn;
+
+    public GitOperationsPanel(GitService git)
+    {
+        _git = git;
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        Padding = new Padding(8, 4, 8, 4);
+
+        _branchLabel = new Label
+        {
+            Text = "🌿 main",
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            AutoSize = true,
+            Location = new Point(0, 4)
+        };
+
+        _remoteLabel = new Label
+        {
+            Text = "🔄 origin/main (up to date)",
+            Font = new Font("Segoe UI", 8),
+            AutoSize = true,
+            Location = new Point(0, 24)
+        };
+
+        _fetchBtn = new Button
+        {
+            Text = "🔄 Fetch",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(70, 26),
+            Location = new Point(0, 44),
+            Cursor = Cursors.Hand
+        };
+        _fetchBtn.Click += (s, e) =>
+        {
+            _git.Fetch();
+            UpdateStatus();
+        };
+
+        _pullBtn = new Button
+        {
+            Text = "⬇️ Pull",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(70, 26),
+            Location = new Point(76, 44),
+            Cursor = Cursors.Hand
+        };
+        _pullBtn.Click += async (s, e) =>
+        {
+            var (ok, msg) = _git.Pull();
+            if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            UpdateStatus();
+        };
+
+        _pushBtn = new Button
+        {
+            Text = "⬆️ Push",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(70, 26),
+            Location = new Point(152, 44),
+            Cursor = Cursors.Hand
+        };
+        _pushBtn.Click += async (s, e) =>
+        {
+            var (ok, msg) = _git.Push();
+            if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            UpdateStatus();
+        };
+
+        _newBranchBtn = new Button
+        {
+            Text = "🌿 New Branch",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(90, 26),
+            Location = new Point(0, 76),
+            Cursor = Cursors.Hand
+        };
+        _newBranchBtn.Click += NewBranch_Click;
+
+        _stashBtn = new Button
+        {
+            Text = "📦 Stash",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(70, 26),
+            Location = new Point(96, 76),
+            Cursor = Cursors.Hand
+        };
+        _stashBtn.Click += Stash_Click;
+
+        _tagBtn = new Button
+        {
+            Text = "🏷️ Tag",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(70, 26),
+            Location = new Point(172, 76),
+            Cursor = Cursors.Hand
+        };
+        _tagBtn.Click += Tag_Click;
+
+        Controls.AddRange(new Control[] {
+            _branchLabel, _remoteLabel,
+            _fetchBtn, _pullBtn, _pushBtn,
+            _newBranchBtn, _stashBtn, _tagBtn
+        });
+
+        UpdateStatus();
+    }
+
+    public void UpdateStatus()
+    {
+        if (_git.IsActive)
+        {
+            _branchLabel.Text = $"🌿 {_git.CurrentBranch ?? "detached"}";
+
+            try
+            {
+                var (behind, ahead) = _git.GetRemoteStatus();
+                string remoteStatus = "origin/main";
+                if (behind > 0 && ahead > 0)
+                    remoteStatus += $" ({behind}↓ {ahead}↑)";
+                else if (behind > 0)
+                    remoteStatus += $" ({behind}↓)";
+                else if (ahead > 0)
+                    remoteStatus += $" ({ahead}↑)";
+                else
+                    remoteStatus += " (up to date)";
+
+                _remoteLabel.Text = $"🔄 {remoteStatus}";
+            }
+            catch
+            {
+                _remoteLabel.Text = "🔄 origin/main";
+            }
+        }
+        else
+        {
+            _branchLabel.Text = "🌿 (no repo)";
+            _remoteLabel.Text = "🔄 (no remote)";
+        }
+    }
+
+    private void NewBranch_Click(object? sender, EventArgs e)
+    {
+        using var dialog = new Form
+        {
+            Text = "Create New Branch",
+            Size = new Size(300, 150),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+
+        var label = new Label { Text = "Branch name:", Location = new Point(12, 20), AutoSize = true };
+        var textBox = new TextBox { Location = new Point(12, 40), Size = new Size(260, 23) };
+        var okBtn = new Button { Text = "Create", Location = new Point(120, 70), Size = new Size(75, 23), DialogResult = DialogResult.OK };
+        var cancelBtn = new Button { Text = "Cancel", Location = new Point(201, 70), Size = new Size(75, 23), DialogResult = DialogResult.Cancel };
+
+        dialog.Controls.AddRange(new Control[] { label, textBox, okBtn, cancelBtn });
+        dialog.AcceptButton = okBtn;
+        dialog.CancelButton = cancelBtn;
+
+        if (dialog.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(textBox.Text))
+        {
+            if (_git.CreateBranch(textBox.Text.Trim()))
+            {
+                _git.SwitchBranch(textBox.Text.Trim());
+                UpdateStatus();
+            }
+        }
+    }
+
+    private void Stash_Click(object? sender, EventArgs e)
+    {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Create Stash", null, (s, args) =>
+        {
+            using var dialog = new Form
+            {
+                Text = "Create Stash",
+                Size = new Size(300, 150),
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.FixedDialog
+            };
+
+            var label = new Label { Text = "Stash message:", Location = new Point(12, 20), AutoSize = true };
+            var textBox = new TextBox { Location = new Point(12, 40), Size = new Size(260, 23), Text = "WIP" };
+            var okBtn = new Button { Text = "Stash", Location = new Point(120, 70), Size = new Size(75, 23), DialogResult = DialogResult.OK };
+            var cancelBtn = new Button { Text = "Cancel", Location = new Point(201, 70), Size = new Size(75, 23), DialogResult = DialogResult.Cancel };
+
+            dialog.Controls.AddRange(new Control[] { label, textBox, okBtn, cancelBtn });
+            dialog.AcceptButton = okBtn;
+            dialog.CancelButton = cancelBtn;
+
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                var (success, message) = _git.Stash(textBox.Text.Trim());
+                if (!success)
+                    ThemedMessageBox.Show(message, "Stash Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                UpdateStatus();
+            }
+        });
+
+        menu.Items.Add("Apply Stash", null, (s, args) =>
+        {
+            var (success, message) = _git.StashPop();
+            if (!success)
+                ThemedMessageBox.Show(message, "Apply Stash Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            UpdateStatus();
+        });
+
+        menu.Items.Add("Drop Stash", null, (s, args) =>
+        {
+            if (MessageBox.Show("Drop the most recent stash?", "Drop Stash", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                // Note: No DropStash method in existing API, would need to implement
+                ThemedMessageBox.Show("Drop stash not implemented yet.", "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        });
+
+        menu.Show(_stashBtn, new Point(0, _stashBtn.Height));
+    }
+
+    private void Tag_Click(object? sender, EventArgs e)
+    {
+        using var dialog = new Form
+        {
+            Text = "Create Tag",
+            Size = new Size(300, 180),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+
+        var nameLabel = new Label { Text = "Tag name:", Location = new Point(12, 20), AutoSize = true };
+        var nameTextBox = new TextBox { Location = new Point(12, 40), Size = new Size(260, 23) };
+
+        var messageLabel = new Label { Text = "Message:", Location = new Point(12, 70), AutoSize = true };
+        var messageTextBox = new TextBox { Location = new Point(12, 90), Size = new Size(260, 23) };
+
+        var okBtn = new Button { Text = "Create", Location = new Point(120, 125), Size = new Size(75, 23), DialogResult = DialogResult.OK };
+        var cancelBtn = new Button { Text = "Cancel", Location = new Point(201, 125), Size = new Size(75, 23), DialogResult = DialogResult.Cancel };
+
+        dialog.Controls.AddRange(new Control[] { nameLabel, nameTextBox, messageLabel, messageTextBox, okBtn, cancelBtn });
+        dialog.AcceptButton = okBtn;
+        dialog.CancelButton = cancelBtn;
+
+        if (dialog.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(nameTextBox.Text))
+        {
+            if (_git.CreateTag(nameTextBox.Text.Trim(), messageTextBox.Text.Trim()))
+            {
+                MessageBox.Show("Tag created successfully!", "Tag Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+    }
+
+    public void SetTheme(Theme theme)
+    {
+        BackColor = theme.MenuBackground;
+
+        _branchLabel.ForeColor = theme.Text;
+        _remoteLabel.ForeColor = theme.Muted;
+
+        foreach (var btn in new[] { _fetchBtn, _pullBtn, _pushBtn, _newBranchBtn, _stashBtn, _tagBtn })
+        {
+            btn.BackColor = theme.Background;
+            btn.ForeColor = theme.Text;
+            btn.FlatAppearance.BorderColor = theme.Border;
+            btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        }
+    }
+    }
+
+    internal sealed class GitConflictResolverPanel : Panel
+    {
+        private readonly GitService _git;
+        private readonly Label _headerLabel;
+        private readonly FlowLayoutPanel _conflictsPanel;
+        private readonly Button _resolveAllBtn;
+
+        public GitConflictResolverPanel(GitService git)
+        {
+            _git = git;
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            Padding = new Padding(8, 4, 8, 4);
+            BorderStyle = BorderStyle.FixedSingle;
+
+            _headerLabel = new Label
+            {
+                Text = "⚠️ Merge Conflicts",
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(0, 4),
+                ForeColor = Color.FromArgb(220, 80, 80)
+            };
+
+            _conflictsPanel = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.TopDown,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Location = new Point(0, 24),
+                Margin = new Padding(0),
+                Padding = new Padding(0)
+            };
+
+            _resolveAllBtn = new Button
+            {
+                Text = "Resolve All Conflicts",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9),
+                Size = new Size(140, 28),
+                Location = new Point(0, 0),
+                Cursor = Cursors.Hand
+            };
+            _resolveAllBtn.Click += ResolveAll_Click;
+
+            Controls.AddRange(new Control[] { _headerLabel, _conflictsPanel, _resolveAllBtn });
+
+            UpdateConflicts();
+        }
+
+        public void UpdateConflicts()
+        {
+            _conflictsPanel.Controls.Clear();
+
+            if (!_git.IsActive)
+            {
+                _headerLabel.Text = "⚠️ Merge Conflicts (no repo)";
+                _resolveAllBtn.Enabled = false;
+                return;
+            }
+
+            var conflicts = _git.GetConflicts();
+            if (conflicts.Count == 0)
+            {
+                _headerLabel.Text = "✅ No merge conflicts";
+                _resolveAllBtn.Enabled = false;
+                return;
+            }
+
+            _headerLabel.Text = $"⚠️ Merge Conflicts ({conflicts.Count})";
+            _resolveAllBtn.Enabled = true;
+
+            foreach (var conflict in conflicts)
+            {
+                var conflictPanel = CreateConflictPanel(conflict.Path);
+                _conflictsPanel.Controls.Add(conflictPanel);
+            }
+        }
+
+        private Panel CreateConflictPanel(string filePath)
+        {
+            var panel = new Panel
+            {
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Margin = new Padding(0, 0, 0, 8),
+                Padding = new Padding(8, 6, 8, 6),
+                BorderStyle = BorderStyle.FixedSingle
+            };
+
+            var fileNameLabel = new Label
+            {
+                Text = $"📄 {Path.GetFileName(filePath)}",
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(0, 0)
+            };
+
+            var buttonsPanel = new FlowLayoutPanel
+            {
+                FlowDirection = FlowDirection.LeftToRight,
+                AutoSize = true,
+                Location = new Point(0, 20)
+            };
+
+            var acceptCurrentBtn = new Button
+            {
+                Text = "Accept Current",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8),
+                Size = new Size(100, 24),
+                Cursor = Cursors.Hand
+            };
+            acceptCurrentBtn.Click += (s, e) =>
+            {
+                if (_git.ResolveConflictOurs(filePath))
+                {
+                    UpdateConflicts();
+                }
+            };
+
+            var acceptIncomingBtn = new Button
+            {
+                Text = "Accept Incoming",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8),
+                Size = new Size(100, 24),
+                Cursor = Cursors.Hand
+            };
+            acceptIncomingBtn.Click += (s, e) =>
+            {
+                if (_git.ResolveConflictTheirs(filePath))
+                {
+                    UpdateConflicts();
+                }
+            };
+
+            var compareBtn = new Button
+            {
+                Text = "Compare",
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 8),
+                Size = new Size(70, 24),
+                Cursor = Cursors.Hand
+            };
+            compareBtn.Click += (s, e) =>
+            {
+                // Open both versions in split view - simplified for now
+                using var dialog = new Form
+                {
+                    Text = $"Compare: {Path.GetFileName(filePath)}",
+                    Size = new Size(800, 600),
+                    StartPosition = FormStartPosition.CenterParent
+                };
+
+                var splitContainer = new SplitContainer
+                {
+                    Dock = DockStyle.Fill,
+                    Orientation = Orientation.Vertical
+                };
+
+                var currentBox = new TextBox
+                {
+                    Multiline = true,
+                    ReadOnly = true,
+                    Dock = DockStyle.Fill,
+                    Font = new Font("Consolas", 9),
+                    ScrollBars = ScrollBars.Vertical
+                };
+
+                var incomingBox = new TextBox
+                {
+                    Multiline = true,
+                    ReadOnly = true,
+                    Dock = DockStyle.Fill,
+                    Font = new Font("Consolas", 9),
+                    ScrollBars = ScrollBars.Vertical
+                };
+
+                try
+                {
+                    // Get current version
+                    string repoPath = _git.RepoPath ?? "";
+                    var currentContent = File.ReadAllText(Path.Combine(repoPath, filePath));
+                    currentBox.Text = currentContent;
+
+                    // Get incoming version (from conflicts)
+                    var incomingContent = "";
+                    if (_git.GetRepo() != null)
+                    {
+                        var conflict = _git.GetRepo().Index.Conflicts
+                            .FirstOrDefault(c => 
+                                (c.Ours?.Path == filePath || 
+                                 c.Theirs?.Path == filePath || 
+                                 c.Ancestor?.Path == filePath));
+                        if (conflict != null && conflict.Theirs != null)
+                        {
+                            incomingContent = _git.GetRepo().Lookup<Blob>(conflict.Theirs.Id).GetContentText();
+                        }
+                    }
+                    incomingBox.Text = incomingContent;
+                }
+            catch
+            {
+                // Ignore errors when updating analytics
+            }
+
+                splitContainer.Panel1.Controls.Add(currentBox);
+                splitContainer.Panel2.Controls.Add(incomingBox);
+
+                dialog.Controls.Add(splitContainer);
+                dialog.ShowDialog();
+            };
+
+            buttonsPanel.Controls.AddRange(new Control[] { acceptCurrentBtn, acceptIncomingBtn, compareBtn });
+
+            panel.Controls.AddRange(new Control[] { fileNameLabel, buttonsPanel });
+            return panel;
+        }
+
+        private void ResolveAll_Click(object? sender, EventArgs e)
+        {
+            // For simplicity, resolve all as "accept current"
+            // In a real implementation, you might want to ask the user
+            var conflicts = _git.GetConflicts();
+            foreach (var conflict in conflicts)
+            {
+                _git.ResolveConflictOurs(conflict.Path);
+            }
+            UpdateConflicts();
+        }
+
+        public void SetTheme(Theme theme)
+        {
+            BackColor = theme.MenuBackground;
+
+            _headerLabel.ForeColor = theme.Accent;
+            _resolveAllBtn.BackColor = theme.Background;
+            _resolveAllBtn.ForeColor = theme.Text;
+            _resolveAllBtn.FlatAppearance.BorderColor = theme.Border;
+            _resolveAllBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+
+            // Update individual conflict panels
+            foreach (Control control in _conflictsPanel.Controls)
+            {
+                if (control is Panel panel)
+                {
+                    panel.BackColor = theme.Background;
+                    foreach (Control child in panel.Controls)
+                    {
+                        if (child is Button btn)
+                        {
+                            btn.BackColor = theme.Background;
+                            btn.ForeColor = theme.Text;
+                            btn.FlatAppearance.BorderColor = theme.Border;
+                            btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+                        }
+                        else if (child is Label lbl)
+                        {
+                            lbl.ForeColor = theme.Text;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    internal sealed class GitHistoryAnalyticsPanel : Panel
+    {
+        private readonly GitService _git;
+        private readonly Label _titleLabel;
+        private readonly Label _commitFrequencyLabel;
+        private readonly Label _topContributorsLabel;
+        private readonly Label _mostChangedFilesLabel;
+        private readonly Label _recentTagsLabel;
+
+        public GitHistoryAnalyticsPanel(GitService git)
+        {
+            _git = git;
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            Padding = new Padding(8, 4, 8, 4);
+            BorderStyle = BorderStyle.FixedSingle;
+
+            _titleLabel = new Label
+            {
+                Text = "📊 Git History & Analytics",
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                AutoSize = true,
+                Location = new Point(0, 4)
+            };
+
+            _commitFrequencyLabel = new Label
+            {
+                Text = "📈 Commit Frequency: Calculating...",
+                Font = new Font("Segoe UI", 8),
+                AutoSize = true,
+                Location = new Point(0, 24)
+            };
+
+            _topContributorsLabel = new Label
+            {
+                Text = "👥 Top Contributors: Calculating...",
+                Font = new Font("Segoe UI", 8),
+                AutoSize = true,
+                Location = new Point(0, 44)
+            };
+
+            _mostChangedFilesLabel = new Label
+            {
+                Text = "📁 Most Changed Files: Calculating...",
+                Font = new Font("Segoe UI", 8),
+                AutoSize = true,
+                Location = new Point(0, 64)
+            };
+
+            _recentTagsLabel = new Label
+            {
+                Text = "🏷️ Recent Tags: Calculating...",
+                Font = new Font("Segoe UI", 8),
+                AutoSize = true,
+                Location = new Point(0, 84)
+            };
+
+            Controls.AddRange(new Control[] {
+                _titleLabel,
+                _commitFrequencyLabel,
+                _topContributorsLabel,
+                _mostChangedFilesLabel,
+                _recentTagsLabel
+            });
+
+            UpdateAnalytics();
+        }
+
+        public void UpdateAnalytics()
+        {
+            if (!_git.IsActive)
+            {
+                _titleLabel.Text = "📊 Git History & Analytics (no repo)";
+                _commitFrequencyLabel.Text = "📈 Commit Frequency: N/A";
+                _topContributorsLabel.Text = "👥 Top Contributors: N/A";
+                _mostChangedFilesLabel.Text = "📁 Most Changed Files: N/A";
+                _recentTagsLabel.Text = "🏷️ Recent Tags: N/A";
+                return;
+            }
+
+            try
+            {
+                // Update commit frequency (last 7 days)
+                var commits = _git.GetLog(100); // Get last 100 commits for analysis
+                var commitFrequency = CalculateCommitFrequency(commits);
+                _commitFrequencyLabel.Text = $"📈 Commit Frequency: {commitFrequency}/day";
+
+                // Update top contributors
+                var topContributors = GetTopContributors(commits);
+                _topContributorsLabel.Text = $"👥 Top Contributors: {topContributors}";
+
+                // Update most changed files
+                var mostChangedFiles = GetMostChangedFiles(commits);
+                _mostChangedFilesLabel.Text = $"📁 Most Changed Files: {mostChangedFiles}";
+
+                // Update recent tags
+                var recentTags = _git.GetTags().Take(5).ToList();
+                var tagsText = recentTags.Any() 
+                    ? string.Join(", ", recentTags.Select(t => 
+                    {
+                        try { return t.FriendlyName; } 
+                        catch { return t.ToString(); }
+                    })) 
+                    : "None";
+                _recentTagsLabel.Text = $"🏷️ Recent Tags: {tagsText}";
+            }
+            catch (Exception ex)
+            {
+                _commitFrequencyLabel.Text = "📈 Commit Frequency: Error";
+                _topContributorsLabel.Text = "👥 Top Contributors: Error";
+                _mostChangedFilesLabel.Text = "📁 Most Changed Files: Error";
+                _recentTagsLabel.Text = "🏷️ Recent Tags: Error";
+            }
+        }
+
+        private string CalculateCommitFrequency(List<CommitEntry> commits)
+        {
+            if (commits.Count < 2) return "0";
+
+            // Group commits by date and calculate average per day
+            var commitDates = commits
+                .Select(c => DateTime.Parse(c.Date))
+                .OrderBy(d => d)
+                .ToList();
+
+            if (commitDates.Count < 2) return "0";
+
+            var firstDate = commitDates.First();
+            var lastDate = commitDates.Last();
+            var totalDays = Math.Max(1, (lastDate - firstDate).TotalDays);
+            var frequency = commits.Count / totalDays;
+
+            return frequency.ToString("F1");
+        }
+
+        private string GetTopContributors(List<CommitEntry> commits)
+        {
+            var contributorCounts = commits
+                .GroupBy(c => c.Author)
+                .Select(g => new { Author = g.Key, Count = g.Count() })
+                .OrderByDescending(g => g.Count)
+                .Take(3)
+                .ToList();
+
+            if (!contributorCounts.Any()) return "None";
+
+            return string.Join(", ", contributorCounts
+                .Select(c => $"{c.Author} ({c.Count})"));
+        }
+
+        private string GetMostChangedFiles(List<CommitEntry> commits)
+        {
+            // This would require more detailed analysis from git diff
+            // For now, we'll show a placeholder
+            return "Analysis pending...";
+        }
+
+        public void SetTheme(Theme theme)
+        {
+            BackColor = theme.MenuBackground;
+
+            _titleLabel.ForeColor = theme.Text;
+            _commitFrequencyLabel.ForeColor = theme.Text;
+            _topContributorsLabel.ForeColor = theme.Text;
+            _mostChangedFilesLabel.ForeColor = theme.Text;
+            _recentTagsLabel.ForeColor = theme.Text;
+        }
+    }
+
+    internal sealed class GitPanel : UserControl
 {
     private readonly GitService _git;
     private readonly Panel _modernHeader;
@@ -30,6 +756,9 @@ internal sealed class GitPanel : UserControl
     private readonly Button _templatesBtn;
     private readonly Button _stageAllBtn;
     private readonly Button _unstageAllBtn;
+    private readonly GitOperationsPanel _operationsPanel;
+    private readonly GitConflictResolverPanel _conflictResolverPanel;
+    private readonly GitHistoryAnalyticsPanel _historyAnalyticsPanel;
     private readonly Button _fetchBtn;
     private readonly Button _pullBtn;
     private readonly Button _pushBtn;
@@ -113,6 +842,21 @@ internal sealed class GitPanel : UserControl
         _moreActionsButton.Click += MoreActionsButton_Click;
 
         _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _syncButton, _moreActionsButton });
+
+        // Git Operations Panel
+        _operationsPanel = new GitOperationsPanel(_git);
+        _operationsPanel.Location = new Point(4, _topPanel.Bottom + 8);
+        _operationsPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+        // Conflict Resolver Panel
+        _conflictResolverPanel = new GitConflictResolverPanel(_git);
+        _conflictResolverPanel.Location = new Point(4, _operationsPanel.Bottom + 8);
+        _conflictResolverPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+
+        // History and Analytics Panel
+        _historyAnalyticsPanel = new GitHistoryAnalyticsPanel(_git);
+        _historyAnalyticsPanel.Location = new Point(4, _conflictResolverPanel.Bottom + 8);
+        _historyAnalyticsPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         // Context menu for status list
         _statusContextMenu = new ContextMenuStrip();
@@ -392,6 +1136,9 @@ internal sealed class GitPanel : UserControl
         Controls.Add(_noRepoLabel);
         Controls.Add(_bodySplit);
         Controls.Add(_modernHeader);
+        Controls.Add(_operationsPanel);
+        Controls.Add(_conflictResolverPanel);
+        Controls.Add(_historyAnalyticsPanel);
 
         _git.OnRepoChanged += OnRepoChanged;
         _git.OnError += (msg) => BeginInvoke(() => ThemedMessageBox.Show(msg, "Git", MessageBoxButtons.OK, MessageBoxIcon.Warning));
@@ -697,6 +1444,11 @@ internal sealed class GitPanel : UserControl
             _commitList.Items.Clear();
             foreach (var c in log) _commitList.Items.Add(c);
 
+            // Update panels
+            _operationsPanel.UpdateStatus();
+            _conflictResolverPanel.UpdateConflicts();
+            _historyAnalyticsPanel.UpdateAnalytics();
+
             // Re-select previously selected file if it still exists
             if (_selectedDiffIndex >= 0)
             {
@@ -780,6 +1532,27 @@ internal sealed class GitPanel : UserControl
         _branchLabel.Location = new Point(_repoNameLabel.Right + 8, 6);
         _syncButton.Location = new Point(headerWidth - _moreActionsButton.Width - _syncButton.Width - 8, 4);
         _moreActionsButton.Location = new Point(headerWidth - _moreActionsButton.Width, 4);
+
+        // Layout operations panel
+        if (_operationsPanel != null)
+        {
+            _operationsPanel.Location = new Point(4, _topPanel.Bottom + 8);
+        }
+        
+        // Layout conflict resolver panel
+        if (_conflictResolverPanel != null)
+        {
+            int topPosition = (_operationsPanel != null) ? _operationsPanel.Bottom : _topPanel.Bottom;
+            _conflictResolverPanel.Location = new Point(4, topPosition + 8);
+        }
+        
+        // Layout history and analytics panel
+        if (_historyAnalyticsPanel != null)
+        {
+            int topPosition = (_conflictResolverPanel != null) ? _conflictResolverPanel.Bottom : 
+                            ((_operationsPanel != null) ? _operationsPanel.Bottom : _topPanel.Bottom);
+            _historyAnalyticsPanel.Location = new Point(4, topPosition + 8);
+        }
     }
 
     private void StatusList_SelectedIndexChanged(object? sender, EventArgs e)
@@ -948,6 +1721,9 @@ internal sealed class GitPanel : UserControl
         _templatesBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
 
         _diffPanel.SetTheme(theme);
+        _operationsPanel.SetTheme(theme);
+        _conflictResolverPanel.SetTheme(theme);
+        _historyAnalyticsPanel.SetTheme(theme);
 
         ApplyScrollbarTheme(_statusList.Handle);
         ApplyScrollbarTheme(_commitList.Handle);

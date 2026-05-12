@@ -20,6 +20,8 @@ public sealed class GitService : IDisposable
     public string? CurrentBranch => _repo?.Head?.FriendlyName;
     public bool IsDetached => _repo?.Head?.IsCurrentRepositoryHead == false;
 
+    public Repository? GetRepo() => _repo;
+
     public bool TryOpenRepo(string? filePath)
     {
         if (_repo is not null && _repoPath is not null && filePath is not null &&
@@ -219,6 +221,50 @@ public sealed class GitService : IDisposable
             OnError?.Invoke($"Failed to amend commit: {ex.Message}");
             return false;
         }
+    }
+
+    public bool CreateBranch(string name)
+    {
+        if (_repo is null || string.IsNullOrWhiteSpace(name)) return false;
+        try
+        {
+            var branch = _repo.CreateBranch(name);
+            return branch != null;
+        }
+        catch (Exception ex)
+        {
+            OnError?.Invoke($"Failed to create branch '{name}': {ex.Message}");
+            return false;
+        }
+    }
+
+    public bool CreateTag(string name, string message = "")
+    {
+        if (_repo is null || string.IsNullOrWhiteSpace(name)) return false;
+        try
+        {
+            var signature = GetSignature();
+            var tag = _repo.Tags.Add(name, _repo.Head.Tip, signature, message);
+            return tag != null;
+        }
+        catch (Exception ex)
+        {
+            OnError?.Invoke($"Failed to create tag '{name}': {ex.Message}");
+            return false;
+        }
+    }
+
+    public List<Tag> GetTags()
+    {
+        if (_repo is null) return new List<Tag>();
+        // Take first 5 tags and format them for display
+        var tags = _repo.Tags.Take(5).ToList();
+        var tagNames = tags.Select(t => 
+        {
+            try { return t.FriendlyName; } 
+            catch { return t.ToString(); }
+        }).ToList();
+        return tags;
     }
 
     public List<CommitEntry> GetLog(int count = 50)
