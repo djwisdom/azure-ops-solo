@@ -40,6 +40,7 @@ internal sealed class ProfileManagerDialog : Form
     private Label _colorLabel = null!;
     private TextBox _workspaceBox = null!;
     private Button _browseButton = null!;
+    private ComboBox _projectTypeCombo = null!;
     private ListBox _recentWorkspacesList = null!;
     private Button _addWorkspaceButton = null!;
     private Button _removeWorkspaceButton = null!;
@@ -135,6 +136,10 @@ internal sealed class ProfileManagerDialog : Form
 
     private void InitializeComponents()
     {
+        // Ensure theme is available
+        if (_theme.Background == Color.Empty)
+            throw new InvalidOperationException("Theme is not properly initialized");
+
         // === LEFT PANEL ===
         _leftPanel = new Panel
         {
@@ -179,7 +184,7 @@ internal sealed class ProfileManagerDialog : Form
             BorderStyle = BorderStyle.None
         };
         _profileList.DrawItem += ProfileList_DrawItem;
-        _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem;
+        // _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem; // Temporarily disabled
 
         // New button with dropdown
         _newButton = new Button
@@ -334,27 +339,136 @@ internal sealed class ProfileManagerDialog : Form
         };
         int wx = 10, wy = 22;
 
-        // Simple workspace controls (temporary)
-        var workspaceLbl = new Label { Text = "Root Folder:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _workspaceSection.ContentPanel.Controls.Add(workspaceLbl);
-        _workspaceBox = new TextBox { Location = new Point(wx + 85, wy - 3), Width = 220, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
-        _workspaceSection.ContentPanel.Controls.Add(_workspaceBox);
+        // Rich workspace display panel
+        var workspaceDisplayPanel = new Panel
+        {
+            Location = new Point(wx, wy),
+            Size = new Size(340, 70),
+            BackColor = _theme.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        // Workspace icon (colored circle based on project type)
+        var workspaceIconBox = new PictureBox
+        {
+            Location = new Point(15, 15),
+            Size = new Size(40, 40),
+            BackColor = _theme.Accent,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        workspaceDisplayPanel.Controls.Add(workspaceIconBox);
+
+        // Workspace name
+        var workspaceNameLabel = new Label
+        {
+            Text = "No workspace selected",
+            Location = new Point(70, 10),
+            Size = new Size(250, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        workspaceDisplayPanel.Controls.Add(workspaceNameLabel);
+
+        // Workspace path
+        var workspacePathLabel = new Label
+        {
+            Text = "",
+            Location = new Point(70, 30),
+            Size = new Size(250, 16),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 8),
+            BackColor = Color.Transparent
+        };
+        workspaceDisplayPanel.Controls.Add(workspacePathLabel);
+
+        // Project type and trust status in bottom row
+        var projectTypeLabel = new Label
+        {
+            Text = "",
+            Location = new Point(70, 48),
+            AutoSize = true,
+            ForeColor = _theme.Accent,
+            Font = new Font("Segoe UI", 7),
+            BackColor = Color.Transparent
+        };
+        workspaceDisplayPanel.Controls.Add(projectTypeLabel);
+
+        var trustStatusLabel = new Label
+        {
+            Text = "",
+            Location = new Point(220, 48),
+            AutoSize = true,
+            ForeColor = Color.Green,
+            Font = new Font("Segoe UI", 7),
+            BackColor = Color.Transparent
+        };
+        workspaceDisplayPanel.Controls.Add(trustStatusLabel);
+
+        _workspaceSection.ContentPanel.Controls.Add(workspaceDisplayPanel);
+
+        wy += 85;
+
+        // Workspace controls panel (for editing)
+        var workspaceControlsPanel = new Panel
+        {
+            Location = new Point(wx, wy),
+            Size = new Size(340, 35),
+            BackColor = Color.Transparent
+        };
+
+        var pathLabel = new Label
+        {
+            Text = "Path:",
+            Location = new Point(0, 8),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            BackColor = Color.Transparent
+        };
+        workspaceControlsPanel.Controls.Add(pathLabel);
+
+        _workspaceBox = new TextBox
+        {
+            Location = new Point(35, 5),
+            Size = new Size(240, 23),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            PlaceholderText = "Select workspace folder..."
+        };
+        workspaceControlsPanel.Controls.Add(_workspaceBox);
+
         _browseButton = new Button
         {
             Text = "...",
-            Location = new Point(wx + 315, wy - 3),
-            Width = 30,
-            Height = 23,
+            Location = new Point(285, 2),
+            Size = new Size(35, 26),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        _workspaceSection.ContentPanel.Controls.Add(_browseButton);
-        wy += 30;
+        workspaceControlsPanel.Controls.Add(_browseButton);
 
-        // Workspace controls panel
-        var workspaceControlsPanel = new Panel
+        var setWorkspaceButton = new Button
+        {
+            Text = "Set",
+            Location = new Point(325, 2),
+            Size = new Size(45, 26),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.Accent,
+            ForeColor = Color.White,
+            FlatAppearance = { BorderColor = _theme.Accent }
+        };
+        setWorkspaceButton.Click += (s, e) => SetWorkspaceFromTextBox();
+        workspaceControlsPanel.Controls.Add(setWorkspaceButton);
+
+        _workspaceSection.ContentPanel.Controls.Add(workspaceControlsPanel);
+
+        wy += 40;
+
+        // Workspace input controls panel
+        var workspaceInputPanel = new Panel
         {
             Location = new Point(wx, wy),
             Size = new Size(340, 30),
@@ -370,7 +484,7 @@ internal sealed class ProfileManagerDialog : Form
             BorderStyle = BorderStyle.FixedSingle,
             PlaceholderText = "Workspace path..."
         };
-        workspaceControlsPanel.Controls.Add(_workspaceBox);
+        workspaceInputPanel.Controls.Add(_workspaceBox);
 
         _browseButton = new Button
         {
@@ -382,9 +496,9 @@ internal sealed class ProfileManagerDialog : Form
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        workspaceControlsPanel.Controls.Add(_browseButton);
+        workspaceInputPanel.Controls.Add(_browseButton);
 
-        var setWorkspaceButton = new Button
+        var setWorkspaceInputButton = new Button
         {
             Text = "Set",
             Location = new Point(290, 0),
@@ -394,12 +508,41 @@ internal sealed class ProfileManagerDialog : Form
             ForeColor = Color.White,
             FlatAppearance = { BorderColor = _theme.Accent }
         };
-        setWorkspaceButton.Click += (s, e) => SetWorkspaceFromTextBox();
-        workspaceControlsPanel.Controls.Add(setWorkspaceButton);
+        setWorkspaceInputButton.Click += (s, e) => SetWorkspaceFromTextBox();
+        workspaceInputPanel.Controls.Add(setWorkspaceInputButton);
 
-        _workspaceSection.ContentPanel.Controls.Add(workspaceControlsPanel);
+        _workspaceSection.ContentPanel.Controls.Add(workspaceInputPanel);
 
         wy += 35;
+
+        // Project type selector
+        var projectTypeSelectorLabel = new Label
+        {
+            Text = "Project Type:",
+            Location = new Point(wx, wy),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            BackColor = Color.Transparent
+        };
+        _workspaceSection.ContentPanel.Controls.Add(projectTypeSelectorLabel);
+
+        wy += 18;
+
+        _projectTypeCombo = new ComboBox
+        {
+            Location = new Point(wx, wy),
+            Width = 200,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            FlatStyle = FlatStyle.Flat,
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        _projectTypeCombo.Items.AddRange(new[] { "Auto-detect", "dotnet", "node", "python", "java", "go", "rust", "cpp", "web", "react", "angular", "vue" });
+        _projectTypeCombo.SelectedIndex = 0; // Auto-detect
+        _projectTypeCombo.SelectedIndexChanged += ProjectTypeCombo_SelectedIndexChanged;
+        _workspaceSection.ContentPanel.Controls.Add(_projectTypeCombo);
+
+        wy += 30;
 
         // Recent workspaces (simple version)
         var recentLbl = new Label { Text = "Recent Workspaces:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
@@ -520,9 +663,9 @@ internal sealed class ProfileManagerDialog : Form
             Location = new Point(0, 0),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.Accent,
+            BackColor = Color.FromArgb(34, 139, 34), // Forest Green for good contrast
             ForeColor = Color.White,
-            FlatAppearance = { BorderColor = _theme.Accent }
+            FlatAppearance = { BorderColor = Color.FromArgb(34, 139, 34) }
         };
         _exportButton = new Button
         {
@@ -550,9 +693,9 @@ internal sealed class ProfileManagerDialog : Form
             Location = new Point(270, 0),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
+            BackColor = Color.FromArgb(169, 169, 169), // Dark Gray for neutral appearance
+            ForeColor = Color.Black,
+            FlatAppearance = { BorderColor = Color.FromArgb(169, 169, 169) }
         };
         _actionPanel.Controls.AddRange(new Control[] { _saveButton, _exportButton, _importButton, _closeButton });
         _rightPanel.Controls.Add(_actionPanel);
@@ -570,22 +713,27 @@ internal sealed class ProfileManagerDialog : Form
 
             foreach (Control ctrl in _workspaceSection.ContentPanel.Controls)
             {
-                if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle)
+                if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle && panel.Size.Height == 70)
                 {
                     // This is the workspace display panel
                     foreach (Control child in panel.Controls)
                     {
                         if (child is Label label)
                         {
-                            if (label.Location.X == 50 && label.Location.Y == 8) // workspace name
+                            if (label.Location.X == 70 && label.Location.Y == 10) // workspace name
                             {
                                 label.Text = workspace?.DisplayName ?? "No workspace selected";
                             }
-                            else if (label.Location.X == 50 && label.Location.Y == 25) // workspace path
+                            else if (label.Location.X == 70 && label.Location.Y == 30) // workspace path
                             {
-                                label.Text = workspace?.Path ?? "";
+                                string path = workspace?.Path ?? "";
+                                if (path.Length > 40)
+                                {
+                                    path = "..." + path.Substring(path.Length - 37);
+                                }
+                                label.Text = path;
                             }
-                            else if (label.Location.X == 50 && label.Location.Y == 42) // project type
+                            else if (label.Location.X == 70 && label.Location.Y == 48) // project type
                             {
                                 try
                                 {
@@ -596,30 +744,46 @@ internal sealed class ProfileManagerDialog : Form
                                     label.Text = "";
                                 }
                             }
-                            else if (label.Location.X == 250 && label.Location.Y == 42) // trust status
+                            else if (label.Location.X == 220 && label.Location.Y == 48) // trust status
                             {
                                 label.Text = workspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
                                 label.ForeColor = workspace?.IsTrusted == true ? Color.Green : Color.Orange;
                             }
                         }
-                        else if (child is PictureBox pictureBox && pictureBox.Location.X == 10)
+                        else if (child is PictureBox pictureBox && pictureBox.Location.X == 15)
                         {
                             // Update workspace icon color based on project type
                             pictureBox.BackColor = workspace?.ProjectType switch
                             {
-                                "dotnet" => Color.FromArgb(0, 120, 212), // Blue
-                                "node" => Color.FromArgb(67, 133, 61),   // Green
-                                "python" => Color.FromArgb(52, 101, 164), // Blue
-                                "java" => Color.FromArgb(237, 145, 33),   // Orange
-                                "go" => Color.FromArgb(0, 173, 216),     // Cyan
-                                "rust" => Color.FromArgb(0, 0, 0),       // Black
-                                "cpp" => Color.FromArgb(68, 68, 68),     // Gray
-                                "web" => Color.FromArgb(241, 101, 41),   // Orange
+                                "dotnet" => Color.FromArgb(0, 120, 212),   // VS Code blue
+                                "node" => Color.FromArgb(67, 133, 61),     // Node green
+                                "python" => Color.FromArgb(52, 101, 164),  // Python blue
+                                "java" => Color.FromArgb(237, 145, 33),    // Java orange
+                                "go" => Color.FromArgb(0, 173, 216),       // Go cyan
+                                "rust" => Color.FromArgb(0, 0, 0),         // Rust black
+                                "cpp" => Color.FromArgb(68, 68, 68),       // C++ gray
+                                "web" => Color.FromArgb(241, 101, 41),     // Web orange
+                                "react" => Color.FromArgb(8, 126, 139),    // React teal
+                                "angular" => Color.FromArgb(221, 0, 49),   // Angular red
+                                "vue" => Color.FromArgb(65, 184, 131),     // Vue green
                                 _ => _theme.Accent
                             };
                         }
                     }
                     break;
+                }
+            }
+
+            // Update project type combo
+            if (_projectTypeCombo != null)
+            {
+                if (workspace?.ProjectType != null && _projectTypeCombo.Items.Contains(workspace.ProjectType))
+                {
+                    _projectTypeCombo.SelectedItem = workspace.ProjectType;
+                }
+                else
+                {
+                    _projectTypeCombo.SelectedIndex = 0; // Auto-detect
                 }
             }
         }
@@ -739,7 +903,7 @@ internal sealed class ProfileManagerDialog : Form
 
     private void RecentWorkspacesList_DrawItem(object? sender, DrawItemEventArgs e)
     {
-        if (e.Index < 0 || _recentWorkspacesList.Items[e.Index] is not string displayText) return;
+        if (e.Index < 0 || _recentWorkspacesList.Items[e.Index] is not string displayText || _theme.Background == Color.Empty) return;
 
         var g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -850,7 +1014,10 @@ internal sealed class ProfileManagerDialog : Form
         _colorLabel.Text = profile.ColorHex ?? "#0078D4";
         try { _colorPreviewBox.BackColor = ColorTranslator.FromHtml(_colorLabel.Text); } catch { _colorPreviewBox.BackColor = _theme.Accent; }
 
-        // Update workspace display panel - simplified for now
+        // Update rich workspace display
+        UpdateWorkspaceDisplay(profile.PrimaryWorkspace);
+
+        // Update workspace path textbox
         if (_workspaceBox != null)
         {
             _workspaceBox.Text = profile.PrimaryWorkspace?.Path ?? "";
@@ -1093,22 +1260,25 @@ internal sealed class ProfileManagerDialog : Form
             }
         }
 
-        // Update the current profile's primary workspace
-        if (_currentProfile != null)
-        {
-            var workspaceInfo = new WorkspaceInfo
+            // Update the current profile's primary workspace
+            if (_currentProfile != null)
             {
-                Name = Path.GetFileName(path) ?? "Workspace",
-                Path = path,
-                LastOpened = DateTime.UtcNow,
-                IsTrusted = true,
-                ProjectType = DetectProjectType(path)
-            };
+                var workspaceInfo = new WorkspaceInfo
+                {
+                    Name = Path.GetFileName(path) ?? "Workspace",
+                    Path = path,
+                    LastOpened = _currentProfile?.PrimaryWorkspace?.LastOpened ?? DateTime.UtcNow,
+                    IsTrusted = _currentProfile?.PrimaryWorkspace?.IsTrusted ?? true,
+                    ProjectType = DetectProjectType(path)
+                };
 
-            // Update the profile (this will trigger a save when the Save button is clicked)
-            _currentProfile = _currentProfile with { PrimaryWorkspace = workspaceInfo };
-            UpdateWorkspaceDisplay(workspaceInfo);
-        }
+                // Update the profile (this will trigger a save when the Save button is clicked)
+                _currentProfile = _currentProfile! with { PrimaryWorkspace = workspaceInfo };
+
+                // Update the UI immediately
+                UpdateWorkspaceDisplay(workspaceInfo);
+                _workspaceBox.Text = path;
+            }
     }
 
     private void ClearRecentWorkspaces()
@@ -1126,12 +1296,67 @@ internal sealed class ProfileManagerDialog : Form
 
     private void ChooseColor()
     {
-        using var dlg = new ColorPickerDialog(_colorPreviewBox.BackColor);
-        if (dlg.ShowDialog() == DialogResult.OK)
+        // Expanded color palette - cycles through 16 vibrant, professional colors
+        Color[] vibrantColors = new[]
         {
-            _colorPreviewBox.BackColor = dlg.SelectedColor;
-            _colorLabel.Text = $"#{dlg.SelectedColor.R:X2}{dlg.SelectedColor.G:X2}{dlg.SelectedColor.B:X2}";
+            // Warm colors
+            Color.FromArgb(220, 38, 38),    // Crimson Red
+            Color.FromArgb(255, 59, 48),    // Bright Red
+            Color.FromArgb(255, 149, 0),    // Orange
+            Color.FromArgb(255, 179, 64),   // Light Orange
+            Color.FromArgb(255, 204, 0),    // Golden Yellow
+            Color.FromArgb(255, 214, 10),   // Bright Yellow
+
+            // Cool colors
+            Color.FromArgb(52, 199, 89),    // Apple Green
+            Color.FromArgb(48, 209, 88),    // Mint Green
+            Color.FromArgb(0, 184, 148),    // Teal
+            Color.FromArgb(0, 122, 255),    // Ocean Blue
+            Color.FromArgb(0, 64, 221),     // Royal Blue
+            Color.FromArgb(88, 86, 214),    // Indigo
+            Color.FromArgb(175, 82, 222),   // Purple
+            Color.FromArgb(191, 90, 242),   // Lavender
+            Color.FromArgb(255, 45, 85),    // Hot Pink
+            Color.FromArgb(255, 100, 130),  // Coral Pink
+
+            // Repeat first color for smooth cycling
+            Color.FromArgb(220, 38, 38),    // Crimson Red (repeat)
+        };
+
+        // Get current color index
+        Color currentColor = _colorPreviewBox.BackColor;
+        int currentIndex = -1;
+
+        for (int i = 0; i < vibrantColors.Length - 1; i++) // -1 to avoid the repeat
+        {
+            if (ColorsAreSimilar(currentColor, vibrantColors[i]))
+            {
+                currentIndex = i;
+                break;
+            }
         }
+
+        // Move to next color
+        int nextIndex = (currentIndex + 1) % (vibrantColors.Length - 1);
+        Color newColor = vibrantColors[nextIndex];
+
+        // Apply the color
+        _colorPreviewBox.BackColor = newColor;
+        _colorLabel.Text = $"#{newColor.R:X2}{newColor.G:X2}{newColor.B:X2}";
+
+        // Force UI update
+        _colorPreviewBox.Invalidate();
+        _colorLabel.Invalidate();
+
+        // Show simple feedback
+        _colorButton.Text = $"Change... ({nextIndex + 1}/{vibrantColors.Length - 1})";
+    }
+
+    private static bool ColorsAreSimilar(Color c1, Color c2, int tolerance = 10)
+    {
+        return Math.Abs(c1.R - c2.R) <= tolerance &&
+               Math.Abs(c1.G - c2.G) <= tolerance &&
+               Math.Abs(c1.B - c2.B) <= tolerance;
     }
 
     private void SaveCurrentProfile()
@@ -1387,5 +1612,29 @@ private void LayoutRightPanel()
         _manager.ProfileChanged -= OnProfileChanged;
         _manager.ProfileDeleted -= OnProfileDeleted;
         base.OnFormClosed(e);
+    }
+
+    private void ProjectTypeCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_currentProfile != null && _projectTypeCombo?.SelectedItem is string type)
+        {
+            if (type == "Auto-detect" && _currentProfile.PrimaryWorkspace != null)
+            {
+                // Re-detect from path
+                var detected = DetectProjectType(_currentProfile.PrimaryWorkspace.Path);
+                _currentProfile = _currentProfile with
+                {
+                    PrimaryWorkspace = _currentProfile.PrimaryWorkspace with { ProjectType = detected }
+                };
+            }
+            else if (type != "Auto-detect")
+            {
+                _currentProfile = _currentProfile with
+                {
+                    PrimaryWorkspace = _currentProfile.PrimaryWorkspace! with { ProjectType = type }
+                };
+            }
+            UpdateWorkspaceDisplay(_currentProfile.PrimaryWorkspace);
+        }
     }
 }

@@ -33,6 +33,8 @@ internal sealed class ColorPickerDialog : Form
 
     public ColorPickerDialog(Color currentColor)
     {
+        System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] Constructor called with color: {currentColor}");
+
         _originalColor = currentColor;
         SelectedColor = currentColor;
         Text = "Choose Profile Color";
@@ -45,7 +47,10 @@ internal sealed class ColorPickerDialog : Form
         ForeColor = ThemeManager.Instance.CurrentTheme.Text;
         Font = new Font("Segoe UI", 9);
 
+        System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] Initializing form...");
         InitializeForm();
+
+        System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] Constructor completed. SelectedColor: {SelectedColor}");
     }
 
     private void InitializeForm()
@@ -94,7 +99,11 @@ internal sealed class ColorPickerDialog : Form
             BackColor = ThemeManager.Instance.CurrentTheme.Accent,
             ForeColor = Color.White
         };
-        ok.Click += (s, e) => { DialogResult = DialogResult.OK; Close(); };
+        ok.Click += (s, e) => {
+            System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] OK clicked, returning SelectedColor: {SelectedColor}");
+            DialogResult = DialogResult.OK;
+            Close();
+        };
         var cancel = new Button
         {
             Text = "Cancel",
@@ -132,6 +141,7 @@ internal sealed class ColorPickerDialog : Form
     private void SelectColor(Color color)
     {
         SelectedColor = color;
+        System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] Selected preset color: {color}");
         UpdateSelectedIndicator();
     }
 
@@ -150,16 +160,29 @@ internal sealed class ColorPickerDialog : Form
 
     private void ChooseCustomColor()
     {
-        using var dlg = new ColorDialog
+        System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] ChooseCustomColor called. Current SelectedColor: {SelectedColor}");
+
+        // Simple color cycling for now - cycles through preset colors
+        var customColors = new[]
         {
-            Color = SelectedColor,
-            FullOpen = true,
-            AnyColor = true
+            Color.Red,
+            Color.Green,
+            Color.Blue,
+            Color.Yellow,
+            Color.Purple,
+            Color.Orange,
+            Color.Pink,
+            Color.Cyan
         };
-        if (dlg.ShowDialog() == DialogResult.OK)
-        {
-            SelectedColor = dlg.Color;
-            // Custom color is not in the flow, but OK captures it
-        }
+
+        // Find current color index or start from 0
+        int currentIndex = Array.IndexOf(customColors, SelectedColor);
+        if (currentIndex == -1) currentIndex = 0;
+
+        // Move to next color
+        int nextIndex = (currentIndex + 1) % customColors.Length;
+        SelectedColor = customColors[nextIndex];
+
+        System.Diagnostics.Debug.WriteLine($"[ColorPickerDialog] Cycled to new color: {SelectedColor} (index {nextIndex})");
     }
 }
