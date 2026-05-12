@@ -556,8 +556,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             {
                 var p = _profileManager.ActiveProfile;
                 if (p != null) _currentProfile = p;
-                if (!string.IsNullOrEmpty(_currentProfile.WorkspaceRoot) && string.IsNullOrEmpty(_workspaceRoot) && !_workspaceRootFromCli)
-                    _workspaceRoot = _currentProfile.WorkspaceRoot;
+                if (_currentProfile.PrimaryWorkspace != null && string.IsNullOrEmpty(_workspaceRoot) && !_workspaceRootFromCli)
+                    _workspaceRoot = _currentProfile.PrimaryWorkspace.Path;
             }
             catch { }
             
@@ -2063,9 +2063,9 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             _profileManager.ActiveProfileName = profile.Name;
 
             // Switch workspace root if profile specifies one
-            if (!string.IsNullOrEmpty(profile.WorkspaceRoot) && Directory.Exists(profile.WorkspaceRoot))
+            if (profile.PrimaryWorkspace != null && !string.IsNullOrEmpty(profile.PrimaryWorkspace.Path) && Directory.Exists(profile.PrimaryWorkspace.Path))
             {
-                OpenWorkspaceFolder(profile.WorkspaceRoot);
+                OpenWorkspaceFolder(profile.PrimaryWorkspace.Path);
             }
 
             // Apply per-profile settings overrides on top of global settings

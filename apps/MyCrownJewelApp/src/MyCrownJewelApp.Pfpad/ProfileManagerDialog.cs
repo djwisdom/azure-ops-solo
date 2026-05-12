@@ -159,6 +159,7 @@ private Panel _contentPanel = null!;
             BorderStyle = BorderStyle.None
         };
         _profileList.DrawItem += ProfileList_DrawItem;
+        _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem;
 
         // New button with dropdown
         _newButton = new Button
@@ -312,34 +313,186 @@ private Panel _contentPanel = null!;
             Width = 380
         };
         int wx = 10, wy = 22;
-        var workspaceLbl = new Label { Text = "Root Folder:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _workspaceBox = new TextBox { Location = new Point(wx + 85, wy - 3), Width = 220, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
-        _workspaceSection.ContentPanel.Controls.Add(workspaceLbl);
-        _workspaceSection.ContentPanel.Controls.Add(_workspaceBox);
+
+        // Primary Workspace Display Panel
+        var workspaceDisplayPanel = new Panel
+        {
+            Location = new Point(wx, wy),
+            Size = new Size(340, 60),
+            BackColor = _theme.PanelBackground,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        // Workspace name and icon
+        var workspaceNameLabel = new Label
+        {
+            Text = "No workspace selected",
+            Location = new Point(50, 8),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        workspaceDisplayPanel.Controls.Add(workspaceNameLabel);
+
+        // Workspace path
+        var workspacePathLabel = new Label
+        {
+            Text = "",
+            Location = new Point(50, 25),
+            Size = new Size(280, 16),
+            ForeColor = _theme.Muted,
+            BackColor = Color.Transparent
+        };
+        workspaceDisplayPanel.Controls.Add(workspacePathLabel);
+
+        // Project type badge
+        var projectTypeLabel = new Label
+        {
+            Text = "",
+            Location = new Point(50, 42),
+            AutoSize = true,
+            ForeColor = _theme.Accent,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 7)
+        };
+        workspaceDisplayPanel.Controls.Add(projectTypeLabel);
+
+        // Trust status indicator
+        var trustLabel = new Label
+        {
+            Text = "",
+            Location = new Point(250, 42),
+            AutoSize = true,
+            ForeColor = Color.Green,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 7)
+        };
+        workspaceDisplayPanel.Controls.Add(trustLabel);
+
+        // Workspace icon placeholder (circle)
+        var workspaceIconBox = new PictureBox
+        {
+            Location = new Point(10, 10),
+            Size = new Size(32, 32),
+            BackColor = _theme.Accent,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        workspaceDisplayPanel.Controls.Add(workspaceIconBox);
+
+        _workspaceSection.ContentPanel.Controls.Add(workspaceDisplayPanel);
+
+        wy += 75;
+
+        // Workspace controls panel
+        var workspaceControlsPanel = new Panel
+        {
+            Location = new Point(wx, wy),
+            Size = new Size(340, 30),
+            BackColor = Color.Transparent
+        };
+
+        _workspaceBox = new TextBox
+        {
+            Location = new Point(0, 3),
+            Size = new Size(240, 23),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            PlaceholderText = "Workspace path..."
+        };
+        workspaceControlsPanel.Controls.Add(_workspaceBox);
+
         _browseButton = new Button
         {
             Text = "...",
-            Location = new Point(wx + 315, wy - 3),
-            Width = 30,
-            Height = 23,
+            Location = new Point(250, 0),
+            Size = new Size(30, 26),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        _workspaceSection.ContentPanel.Controls.Add(_browseButton);
-        wy += 30;
+        workspaceControlsPanel.Controls.Add(_browseButton);
+
+        var setWorkspaceButton = new Button
+        {
+            Text = "Set",
+            Location = new Point(290, 0),
+            Size = new Size(50, 26),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.Accent,
+            ForeColor = Color.White,
+            FlatAppearance = { BorderColor = _theme.Accent }
+        };
+        setWorkspaceButton.Click += (s, e) => SetWorkspaceFromTextBox();
+        workspaceControlsPanel.Controls.Add(setWorkspaceButton);
+
+        _workspaceSection.ContentPanel.Controls.Add(workspaceControlsPanel);
+
+        wy += 35;
+
+        // Recent workspaces section
         var recentLbl = new Label { Text = "Recent Workspaces:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
         _workspaceSection.ContentPanel.Controls.Add(recentLbl);
-        _recentWorkspacesList = new ListBox { Location = new Point(wx, wy + 18), Width = 340, Height = 40, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+
+        wy += 18;
+        _recentWorkspacesList = new ListBox
+        {
+            Location = new Point(wx, wy),
+            Size = new Size(280, 60),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 20
+        };
+        _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem;
         _workspaceSection.ContentPanel.Controls.Add(_recentWorkspacesList);
-        var wsBtnPanel = new Panel { Location = new Point(wx + 280, wy + 20), Size = new Size(60, 18) };
-        _addWorkspaceButton = new Button { Text = "+", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
-        _removeWorkspaceButton = new Button { Text = "-", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, Location = new Point(22, 0), BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
+
+        // Recent workspace buttons
+        var wsBtnPanel = new Panel { Location = new Point(wx + 290, wy), Size = new Size(80, 60) };
+
+        _addWorkspaceButton = new Button
+        {
+            Text = "+",
+            Location = new Point(0, 0),
+            Size = new Size(36, 26),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            FlatAppearance = { BorderColor = _theme.Border }
+        };
         wsBtnPanel.Controls.Add(_addWorkspaceButton);
+
+        _removeWorkspaceButton = new Button
+        {
+            Text = "-",
+            Location = new Point(40, 0),
+            Size = new Size(36, 26),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            FlatAppearance = { BorderColor = _theme.Border }
+        };
         wsBtnPanel.Controls.Add(_removeWorkspaceButton);
+
+        var clearWorkspacesButton = new Button
+        {
+            Text = "Clear",
+            Location = new Point(0, 32),
+            Size = new Size(76, 24),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            FlatAppearance = { BorderColor = _theme.Border }
+        };
+        clearWorkspacesButton.Click += (s, e) => ClearRecentWorkspaces();
+        wsBtnPanel.Controls.Add(clearWorkspacesButton);
+
         _workspaceSection.ContentPanel.Controls.Add(wsBtnPanel);
-        _rightPanel.Controls.Add(_workspaceSection);
+
+        _contentPanel.Controls.Add(_workspaceSection);
         y += _workspaceSection.Height + 6;
 
         // Commands collapsible section
@@ -487,6 +640,59 @@ private Panel _contentPanel = null!;
         Controls.AddRange(new Control[] { _leftPanel, _rightPanel });
     }
 
+    private void UpdateWorkspaceDisplay(WorkspaceInfo? workspace)
+    {
+        // Find the workspace display panel and update its controls
+        if (_workspaceSection?.ContentPanel?.Controls == null) return;
+        foreach (Control ctrl in _workspaceSection.ContentPanel.Controls)
+        {
+            if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle)
+            {
+                // This is the workspace display panel
+                foreach (Control child in panel.Controls)
+                {
+                    if (child is Label label)
+                    {
+                        if (label.Location.X == 50 && label.Location.Y == 8) // workspace name
+                        {
+                            label.Text = workspace?.DisplayName ?? "No workspace selected";
+                        }
+                        else if (label.Location.X == 50 && label.Location.Y == 25) // workspace path
+                        {
+                            label.Text = workspace?.Path ?? "";
+                        }
+                        else if (label.Location.X == 50 && label.Location.Y == 42) // project type
+                        {
+                            label.Text = workspace?.ProjectTypeDisplay ?? "";
+                        }
+                        else if (label.Location.X == 250 && label.Location.Y == 42) // trust status
+                        {
+                            label.Text = workspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
+                            label.ForeColor = workspace?.IsTrusted == true ? Color.Green : Color.Orange;
+                        }
+                    }
+                    else if (child is PictureBox pictureBox && pictureBox.Location.X == 10)
+                    {
+                        // Update workspace icon color based on project type
+                        pictureBox.BackColor = workspace?.ProjectType switch
+                        {
+                            "dotnet" => Color.FromArgb(0, 120, 212), // Blue
+                            "node" => Color.FromArgb(67, 133, 61),   // Green
+                            "python" => Color.FromArgb(52, 101, 164), // Blue
+                            "java" => Color.FromArgb(237, 145, 33),   // Orange
+                            "go" => Color.FromArgb(0, 173, 216),     // Cyan
+                            "rust" => Color.FromArgb(0, 0, 0),       // Black
+                            "cpp" => Color.FromArgb(68, 68, 68),     // Gray
+                            "web" => Color.FromArgb(241, 101, 41),   // Orange
+                            _ => _theme.Accent
+                        };
+                    }
+                }
+                break;
+            }
+        }
+    }
+
     private void RegisterEvents()
     {
         _searchBox.TextChanged += (s, e) => FilterProfiles(_searchBox.Text);
@@ -499,6 +705,7 @@ private Panel _contentPanel = null!;
         _renameButton.Click += (s, e) => RenameCurrentProfile();
         _deleteButton.Click += (s, e) => DeleteCurrentProfile();
         _browseButton.Click += (s, e) => BrowseWorkspace();
+        // Note: SetWorkspaceButton is handled in InitializeComponents where it's created
         _addWorkspaceButton.Click += (s, e) => AddCurrentWorkspace();
         _removeWorkspaceButton.Click += (s, e) => RemoveSelectedWorkspace();
         _colorButton.Click += (s, e) => ChooseColor();
@@ -593,6 +800,72 @@ private Panel _contentPanel = null!;
         g.DrawString(name, Font, textBrush, textRect, fmt);
     }
 
+    private void RecentWorkspacesList_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0 || _recentWorkspacesList.Items[e.Index] is not string displayText) return;
+
+        var g = e.Graphics;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var rect = e.Bounds;
+
+        // Background
+        if ((e.State & DrawItemState.Selected) == DrawItemState.Selected)
+        {
+            using var selBrush = new SolidBrush(Color.FromArgb(60, 60, 60));
+            g.FillRectangle(selBrush, rect);
+        }
+        else
+        {
+            using var backBrush = new SolidBrush(_theme.EditorBackground);
+            g.FillRectangle(backBrush, rect);
+        }
+
+        // Parse workspace info from display text
+        // Format: "Name (Path)"
+        if (displayText.Contains(" (") && displayText.EndsWith(")"))
+        {
+            int start = displayText.LastIndexOf(" (");
+            string name = displayText.Substring(0, start);
+            string path = displayText.Substring(start + 2, displayText.Length - start - 3);
+
+            // Draw project type icon
+            string? projectType = DetectProjectType(path);
+            string iconText = projectType switch
+            {
+                "dotnet" => "🔷",
+                "node" => "🟢",
+                "python" => "🐍",
+                "java" => "☕",
+                "go" => "🐹",
+                "rust" => "🦀",
+                "cpp" => "⚙️",
+                "web" => "🌐",
+                _ => "📁"
+            };
+
+            int iconSize = 16;
+            using var iconFont = new Font("Segoe UI", 10);
+            using var iconBrush = new SolidBrush(_theme.Text);
+            var iconRect = new Rectangle(rect.X + 4, rect.Y + (rect.Height - iconSize) / 2, iconSize, iconSize);
+            g.DrawString(iconText, iconFont, iconBrush, iconRect);
+
+            // Draw workspace name
+            int textX = iconRect.Right + 6;
+            int textWidth = rect.Width - textX - 10;
+            using var textBrush = new SolidBrush(_theme.Text);
+            using var fmt = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
+            var textRect = new Rectangle(textX, rect.Y, textWidth, rect.Height);
+            g.DrawString(name, Font, textBrush, textRect, fmt);
+        }
+        else
+        {
+            // Fallback for plain text
+            using var textBrush = new SolidBrush(_theme.Text);
+            using var fmt = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
+            g.DrawString(displayText, Font, textBrush, rect, fmt);
+        }
+    }
+
     private void ProfileList_SelectedIndexChanged(object? sender, EventArgs e)
     {
         if (_profileList.SelectedItem is not string name) return;
@@ -606,7 +879,7 @@ private Panel _contentPanel = null!;
     {
         _nameBox.Text = profile.Name;
         _descriptionBox.Text = profile.Description ?? "";
-        _workspaceBox.Text = profile.WorkspaceRoot ?? "";
+        _workspaceBox.Text = profile.PrimaryWorkspace?.Path ?? "";
         _buildBox.Text = profile.BuildCommand;
         _runBox.Text = profile.RunCommand;
         _testBox.Text = profile.TestCommand;
@@ -634,16 +907,24 @@ private Panel _contentPanel = null!;
 
         _overrideWordWrapCheck.Checked = profile.OverrideWordWrap.HasValue;
         _overrideWordWrapVal.Checked = profile.OverrideWordWrap ?? false;
-        _overrideWordWrapVal.Enabled = _overrideWordWrapCheck.Checked;
+        _overrideWordWrapVal.Enabled = profile.OverrideWordWrap.HasValue;
 
         // Color
         _colorLabel.Text = profile.ColorHex ?? "#0078D4";
         try { _colorPreviewBox.BackColor = ColorTranslator.FromHtml(_colorLabel.Text); } catch { _colorPreviewBox.BackColor = _theme.Accent; }
 
+        // Update workspace display panel
+        UpdateWorkspaceDisplay(profile.PrimaryWorkspace);
+
         // Recent workspaces
         _recentWorkspacesList.Items.Clear();
-        if (profile.Workspaces != null)
-            _recentWorkspacesList.Items.AddRange(profile.Workspaces.ToArray());
+        if (profile.RecentWorkspaces != null)
+        {
+            foreach (var workspace in profile.RecentWorkspaces)
+            {
+                _recentWorkspacesList.Items.Add($"{workspace.DisplayName} ({workspace.Path})");
+            }
+        }
 
         // Default on startup
         _defaultOnStartupCheck.Checked = _manager.ActiveProfileName == profile.Name;
@@ -672,7 +953,7 @@ private Panel _contentPanel = null!;
         var profile = new UserProfile
         {
             Name = name,
-            WorkspaceRoot = null,
+            PrimaryWorkspace = null,
             BuildCommand = "dotnet build",
             RunCommand = "dotnet run",
             TestCommand = "dotnet test",
@@ -693,10 +974,24 @@ private Panel _contentPanel = null!;
         string name = baseName; int count = 1;
         while (_manager.ProfileNames.Any(n => n == name)) name = $"{baseName} ({count++})";
 
+        // Create primary workspace from current workspace
+        WorkspaceInfo? primaryWorkspace = null;
+        if (!string.IsNullOrEmpty(_mainForm.WorkspaceRoot))
+        {
+            primaryWorkspace = new WorkspaceInfo
+            {
+                Name = Path.GetFileName(_mainForm.WorkspaceRoot) ?? "Workspace",
+                Path = _mainForm.WorkspaceRoot,
+                LastOpened = DateTime.UtcNow,
+                IsTrusted = true,
+                ProjectType = DetectProjectType(_mainForm.WorkspaceRoot)
+            };
+        }
+
         var profile = new UserProfile
         {
             Name = name,
-            WorkspaceRoot = _mainForm.WorkspaceRoot,
+            PrimaryWorkspace = primaryWorkspace,
             BuildCommand = "dotnet build",
             RunCommand = "dotnet run",
             TestCommand = "dotnet test",
@@ -726,10 +1021,24 @@ private Panel _contentPanel = null!;
         string name = baseName; int count = 1;
         while (_manager.ProfileNames.Any(n => n == name)) name = $"{baseName} ({count++})";
 
+        // Create primary workspace from current workspace
+        WorkspaceInfo? primaryWorkspace = null;
+        if (!string.IsNullOrEmpty(wsRoot))
+        {
+            primaryWorkspace = new WorkspaceInfo
+            {
+                Name = Path.GetFileName(wsRoot) ?? "Workspace",
+                Path = wsRoot,
+                LastOpened = DateTime.UtcNow,
+                IsTrusted = true,
+                ProjectType = DetectProjectType(wsRoot)
+            };
+        }
+
         var profile = new UserProfile
         {
             Name = name,
-            WorkspaceRoot = wsRoot,
+            PrimaryWorkspace = primaryWorkspace,
             BuildCommand = "dotnet build",
             RunCommand = "dotnet run",
             TestCommand = "dotnet test",
@@ -813,6 +1122,68 @@ private Panel _contentPanel = null!;
             _recentWorkspacesList.Items.Remove(_recentWorkspacesList.SelectedItem);
     }
 
+    private void SetWorkspaceFromTextBox()
+    {
+        string path = _workspaceBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            MessageBox.Show("Please enter a workspace path.", "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (!Directory.Exists(path))
+        {
+            var result = MessageBox.Show($"Directory '{path}' does not exist. Create it?", "Create Directory",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    Directory.CreateDirectory(path);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to create directory: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+            }
+            else
+            {
+                return;
+            }
+        }
+
+        // Update the current profile's primary workspace
+        if (_currentProfile != null)
+        {
+            var workspaceInfo = new WorkspaceInfo
+            {
+                Name = Path.GetFileName(path) ?? "Workspace",
+                Path = path,
+                LastOpened = DateTime.UtcNow,
+                IsTrusted = true,
+                ProjectType = DetectProjectType(path)
+            };
+
+            // Update the profile (this will trigger a save when the Save button is clicked)
+            _currentProfile = _currentProfile with { PrimaryWorkspace = workspaceInfo };
+            UpdateWorkspaceDisplay(workspaceInfo);
+        }
+    }
+
+    private void ClearRecentWorkspaces()
+    {
+        if (_recentWorkspacesList.Items.Count == 0)
+            return;
+
+        var result = MessageBox.Show("Clear all recent workspaces?", "Confirm Clear",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (result == DialogResult.Yes)
+        {
+            _recentWorkspacesList.Items.Clear();
+        }
+    }
+
     private void ChooseColor()
     {
         using var dlg = new ColorPickerDialog(_colorPreviewBox.BackColor);
@@ -841,25 +1212,58 @@ private Panel _contentPanel = null!;
             return;
         }
 
-        // Build workspaces list
-        var workspaces = new List<string>();
+        // Build primary workspace
+        WorkspaceInfo? primaryWorkspace = null;
+        string workspacePath = _workspaceBox.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(workspacePath))
+        {
+            primaryWorkspace = new WorkspaceInfo
+            {
+                Name = Path.GetFileName(workspacePath) ?? "Workspace",
+                Path = workspacePath,
+                LastOpened = _currentProfile?.PrimaryWorkspace?.LastOpened ?? DateTime.UtcNow,
+                IsTrusted = _currentProfile?.PrimaryWorkspace?.IsTrusted ?? true,
+                ProjectType = DetectProjectType(workspacePath)
+            };
+        }
+
+        // Build recent workspaces list
+        var recentWorkspaces = new List<WorkspaceInfo>();
         foreach (var item in _recentWorkspacesList.Items)
-            workspaces.Add(item.ToString() ?? "");
+        {
+            string itemText = item.ToString() ?? "";
+            // For now, parse the display text to extract path
+            // TODO: Improve this to store WorkspaceInfo objects properly
+            if (itemText.Contains(" (") && itemText.EndsWith(")"))
+            {
+                int start = itemText.LastIndexOf(" (");
+                string path = itemText.Substring(start + 2, itemText.Length - start - 3);
+                string name = itemText.Substring(0, start);
+                recentWorkspaces.Add(new WorkspaceInfo
+                {
+                    Name = name,
+                    Path = path,
+                    LastOpened = DateTime.UtcNow,
+                    IsTrusted = true,
+                    ProjectType = DetectProjectType(path)
+                });
+            }
+        }
 
         var profile = new UserProfile
         {
             Name = newName,
             Description = _descriptionBox.Text.Trim(),
-            WorkspaceRoot = string.IsNullOrWhiteSpace(_workspaceBox.Text) ? null : _workspaceBox.Text.Trim(),
-            Workspaces = workspaces,
+            PrimaryWorkspace = primaryWorkspace,
+            RecentWorkspaces = recentWorkspaces,
             BuildCommand = string.IsNullOrWhiteSpace(_buildBox.Text) ? "dotnet build" : _buildBox.Text.Trim(),
             RunCommand = string.IsNullOrWhiteSpace(_runBox.Text) ? "dotnet run" : _runBox.Text.Trim(),
             TestCommand = string.IsNullOrWhiteSpace(_testBox.Text) ? "dotnet test" : _testBox.Text.Trim(),
-            IconId = _currentProfile.IconId,
+            IconId = _currentProfile!.IconId,
             ColorHex = _colorLabel.Text,
-            CreatedAt = _currentProfile.CreatedAt,
-            LastUsed = _currentProfile.LastUsed,
-            UsageCount = _currentProfile.UsageCount,
+            CreatedAt = _currentProfile!.CreatedAt,
+            LastUsed = _currentProfile!.LastUsed,
+            UsageCount = _currentProfile!.UsageCount,
             OverrideTabSize = _overrideTabSizeCheck.Checked ? (int)_overrideTabSizeVal.Value : null,
             OverrideInsertSpaces = _overrideInsertSpacesCheck.Checked ? _overrideInsertSpacesVal.Checked : null,
             OverrideFontSize = _overrideFontSizeCheck.Checked ? (float)_overrideFontSizeVal.Value : null,
@@ -999,6 +1403,43 @@ private void LayoutRightPanel()
     }
     _contentPanel.AutoScrollMinSize = new Size(0, y);
 }
+
+    /// <summary>
+    /// Auto-detects project type from workspace contents.
+    /// </summary>
+    private static string? DetectProjectType(string path)
+    {
+        try
+        {
+            if (!Directory.Exists(path)) return null;
+
+            // Check for specific project files
+            string[] files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly);
+            var fileNames = files.Select(f => Path.GetFileName(f).ToLowerInvariant()).ToArray();
+
+            if (fileNames.Contains("package.json")) return "node";
+            if (fileNames.Contains("requirements.txt") || fileNames.Contains("setup.py") || fileNames.Contains("pyproject.toml")) return "python";
+            if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
+            if (fileNames.Contains("go.mod")) return "go";
+            if (fileNames.Contains("cargo.toml")) return "rust";
+            if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".h"))) return "cpp";
+            if (fileNames.Contains(".csproj") || fileNames.Contains(".sln") || fileNames.Contains("project.json")) return "dotnet";
+            if (fileNames.Contains("index.html") || fileNames.Contains("index.htm")) return "web";
+
+            // Check for common directories
+            string[] dirs = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly);
+            var dirNames = dirs.Select(d => Path.GetFileName(d).ToLowerInvariant()).ToArray();
+
+            if (dirNames.Contains("node_modules")) return "node";
+            if (dirNames.Contains("venv") || dirNames.Contains("__pycache__")) return "python";
+
+            return null; // Unknown
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {

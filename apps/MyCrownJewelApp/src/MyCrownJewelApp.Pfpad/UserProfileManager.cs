@@ -8,6 +8,46 @@ using System.Windows.Forms;
 namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
+/// Legacy UserProfile format for migration from old data model.
+/// </summary>
+internal record LegacyUserProfile
+{
+    public required string Name { get; init; }
+    public string? Description { get; init; }
+    public string? WorkspaceRoot { get; init; }
+    public List<string> Workspaces { get; init; } = new();
+    public string BuildCommand { get; init; } = "dotnet build";
+    public string RunCommand { get; init; } = "dotnet run";
+    public string TestCommand { get; init; } = "dotnet test";
+    public int IconId { get; init; } = 0;
+    public string? ColorHex { get; init; }
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public DateTime LastUsed { get; init; } = DateTime.UtcNow;
+    public int UsageCount { get; init; }
+    public int? OverrideTabSize { get; init; }
+    public bool? OverrideInsertSpaces { get; init; }
+    public float? OverrideFontSize { get; init; }
+    public string? OverrideFontName { get; init; }
+    public string? OverrideThemeName { get; init; }
+    public bool? OverrideWordWrap { get; init; }
+    public bool? OverrideGutterVisible { get; init; }
+    public bool? OverrideStatusBarVisible { get; init; }
+    public bool? OverrideShowGuide { get; init; }
+    public int? OverrideGuideColumn { get; init; }
+    public bool? OverrideMinimapVisible { get; init; }
+    public bool? OverrideRainbowBrackets { get; init; }
+    public bool? OverrideBreadcrumbs { get; init; }
+    public bool? OverrideHoverLineHighlight { get; init; }
+    public bool? OverrideAutoSave { get; init; }
+    public bool? OverrideAnalyzersEnabled { get; init; }
+    public string? OverrideTerminalShell { get; init; }
+    public int? OverrideTerminalHeight { get; init; }
+    public bool? OverrideVimMode { get; init; }
+    public bool? OverrideStickyScroll { get; init; }
+    public bool? OverrideSyntaxHighlighting { get; init; }
+}
+
+/// <summary>
 /// Manages user profiles including persistence, loading, saving, and activation tracking.
 /// </summary>
 public sealed class UserProfileManager : IDisposable
@@ -88,7 +128,7 @@ public sealed class UserProfileManager : IDisposable
     public static UserProfile DefaultProfile { get; } = new()
     {
         Name = "Default",
-        WorkspaceRoot = null,
+        PrimaryWorkspace = null,
         BuildCommand = "dotnet build",
         RunCommand = "dotnet run",
         TestCommand = "dotnet test",
@@ -157,6 +197,130 @@ public sealed class UserProfileManager : IDisposable
 
     #endregion
 
+    #region Migration
+
+    /// <summary>
+    /// Migrates a legacy profile format to the new WorkspaceInfo-based structure.
+    /// </summary>
+    private static UserProfile? MigrateLegacyProfile(LegacyUserProfile legacy)
+    {
+        try
+        {
+            // Create primary workspace from WorkspaceRoot
+            WorkspaceInfo? primaryWorkspace = null;
+            if (!string.IsNullOrEmpty(legacy.WorkspaceRoot))
+            {
+                primaryWorkspace = new WorkspaceInfo
+                {
+                    Name = System.IO.Path.GetFileName(legacy.WorkspaceRoot) ?? "Workspace",
+                    Path = legacy.WorkspaceRoot,
+                    LastOpened = legacy.LastUsed,
+                    IsTrusted = true,
+                    ProjectType = DetectProjectType(legacy.WorkspaceRoot)
+                };
+            }
+
+            // Convert Workspaces list to WorkspaceInfo list
+            var recentWorkspaces = new List<WorkspaceInfo>();
+            foreach (string workspacePath in legacy.Workspaces ?? new List<string>())
+            {
+                if (!string.IsNullOrEmpty(workspacePath) && Directory.Exists(workspacePath))
+                {
+                    recentWorkspaces.Add(new WorkspaceInfo
+                    {
+                        Name = System.IO.Path.GetFileName(workspacePath) ?? "Workspace",
+                        Path = workspacePath,
+                        LastOpened = DateTime.UtcNow,
+                        IsTrusted = true,
+                        ProjectType = DetectProjectType(workspacePath)
+                    });
+                }
+            }
+
+            // Create migrated profile
+            return new UserProfile
+            {
+                Name = legacy.Name,
+                Description = legacy.Description,
+                PrimaryWorkspace = primaryWorkspace,
+                RecentWorkspaces = recentWorkspaces,
+                BuildCommand = legacy.BuildCommand ?? "dotnet build",
+                RunCommand = legacy.RunCommand ?? "dotnet run",
+                TestCommand = legacy.TestCommand ?? "dotnet test",
+                IconId = legacy.IconId,
+                ColorHex = legacy.ColorHex,
+                CreatedAt = legacy.CreatedAt,
+                LastUsed = legacy.LastUsed,
+                UsageCount = legacy.UsageCount,
+                OverrideTabSize = legacy.OverrideTabSize,
+                OverrideInsertSpaces = legacy.OverrideInsertSpaces,
+                OverrideFontSize = legacy.OverrideFontSize,
+                OverrideFontName = legacy.OverrideFontName,
+                OverrideThemeName = legacy.OverrideThemeName,
+                OverrideWordWrap = legacy.OverrideWordWrap,
+                OverrideGutterVisible = legacy.OverrideGutterVisible,
+                OverrideStatusBarVisible = legacy.OverrideStatusBarVisible,
+                OverrideShowGuide = legacy.OverrideShowGuide,
+                OverrideGuideColumn = legacy.OverrideGuideColumn,
+                OverrideMinimapVisible = legacy.OverrideMinimapVisible,
+                OverrideRainbowBrackets = legacy.OverrideRainbowBrackets,
+                OverrideBreadcrumbs = legacy.OverrideBreadcrumbs,
+                OverrideHoverLineHighlight = legacy.OverrideHoverLineHighlight,
+                OverrideAutoSave = legacy.OverrideAutoSave,
+                OverrideAnalyzersEnabled = legacy.OverrideAnalyzersEnabled,
+                OverrideTerminalShell = legacy.OverrideTerminalShell,
+                OverrideTerminalHeight = legacy.OverrideTerminalHeight,
+                OverrideVimMode = legacy.OverrideVimMode,
+                OverrideStickyScroll = legacy.OverrideStickyScroll,
+                OverrideSyntaxHighlighting = legacy.OverrideSyntaxHighlighting
+            };
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error migrating legacy profile '{legacy.Name}': {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Auto-detects project type from workspace contents.
+    /// </summary>
+    private static string? DetectProjectType(string path)
+    {
+        try
+        {
+            if (!Directory.Exists(path)) return null;
+
+            // Check for specific project files
+            string[] files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly);
+            var fileNames = files.Select(f => Path.GetFileName(f).ToLowerInvariant()).ToArray();
+
+            if (fileNames.Contains("package.json")) return "node";
+            if (fileNames.Contains("requirements.txt") || fileNames.Contains("setup.py") || fileNames.Contains("pyproject.toml")) return "python";
+            if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
+            if (fileNames.Contains("go.mod")) return "go";
+            if (fileNames.Contains("cargo.toml")) return "rust";
+            if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".h"))) return "cpp";
+            if (fileNames.Contains(".csproj") || fileNames.Contains(".sln") || fileNames.Contains("project.json")) return "dotnet";
+            if (fileNames.Contains("index.html") || fileNames.Contains("index.htm")) return "web";
+
+            // Check for common directories
+            string[] dirs = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly);
+            var dirNames = dirs.Select(d => Path.GetFileName(d).ToLowerInvariant()).ToArray();
+
+            if (dirNames.Contains("node_modules")) return "node";
+            if (dirNames.Contains("venv") || dirNames.Contains("__pycache__")) return "python";
+
+            return null; // Unknown
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    #endregion
+
     #region Load / Save / Delete
 
     /// <summary>
@@ -181,7 +345,29 @@ public sealed class UserProfileManager : IDisposable
             if (!File.Exists(path)) return null;
 
             string json = File.ReadAllText(path);
-            var profile = JsonSerializer.Deserialize<UserProfile>(json);
+
+            // Try to deserialize as new format first
+            UserProfile? profile = null;
+            try
+            {
+                profile = JsonSerializer.Deserialize<UserProfile>(json);
+            }
+            catch (JsonException)
+            {
+                // Try legacy format
+                var legacy = JsonSerializer.Deserialize<LegacyUserProfile>(json);
+                if (legacy != null)
+                {
+                    // Migrate to new format
+                    profile = MigrateLegacyProfile(legacy);
+                    if (profile != null)
+                    {
+                        // Save migrated profile back to disk
+                        SaveProfile(profile);
+                        System.Diagnostics.Debug.WriteLine($"[ProfileManager] Migrated legacy profile '{name}' to new format");
+                    }
+                }
+            }
 
             if (profile != null)
             {

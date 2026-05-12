@@ -3,6 +3,85 @@ namespace MyCrownJewelApp.Pfpad;
 using System.Text.Json.Serialization;
 
 /// <summary>
+/// Represents workspace metadata and configuration.
+/// Supports rich workspace information similar to VS Code workspaces.
+/// </summary>
+public record WorkspaceInfo
+{
+    /// <summary>
+    /// Display name for the workspace (auto-detected from folder name if not set).
+    /// </summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>
+    /// User-friendly description of this workspace.
+    /// </summary>
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// Absolute path to the workspace root folder.
+    /// </summary>
+    public string Path { get; init; } = "";
+
+    /// <summary>
+    /// When this workspace was last opened.
+    /// </summary>
+    public DateTime LastOpened { get; init; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Path to workspace icon (optional, falls back to project type icon).
+    /// </summary>
+    public string? IconPath { get; init; }
+
+    /// <summary>
+    /// Whether this workspace is trusted (affects security restrictions).
+    /// </summary>
+    public bool IsTrusted { get; init; } = true;
+
+    /// <summary>
+    /// Auto-detected project type (dotnet, node, python, etc.).
+    /// </summary>
+    public string? ProjectType { get; init; }
+
+    /// <summary>
+    /// Returns the display name, falling back to folder name.
+    /// </summary>
+    [JsonIgnore]
+    public string DisplayName => !string.IsNullOrEmpty(Name) ? Name :
+        !string.IsNullOrEmpty(Path) ? System.IO.Path.GetFileName(Path) ?? "Unknown" : "Unnamed Workspace";
+
+    /// <summary>
+    /// Returns a friendly "last opened" string.
+    /// </summary>
+    [JsonIgnore]
+    public string LastOpenedDisplay => LastOpened.ToLocalTime().ToString("g");
+
+    /// <summary>
+    /// Returns project type display name with icon.
+    /// </summary>
+    [JsonIgnore]
+    public string ProjectTypeDisplay
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(ProjectType)) return "";
+            return ProjectType switch
+            {
+                "dotnet" => "🔷 .NET",
+                "node" => "🟢 Node.js",
+                "python" => "🐍 Python",
+                "java" => "☕ Java",
+                "go" => "🐹 Go",
+                "rust" => "🦀 Rust",
+                "cpp" => "⚙️ C++",
+                "web" => "🌐 Web",
+                _ => $"📁 {ProjectType}"
+            };
+        }
+    }
+}
+
+/// <summary>
 /// Represents a user profile that encapsulates workspace, commands, and settings overrides.
 /// Profiles allow users to quickly switch between different development environments.
 /// </summary>
@@ -19,15 +98,14 @@ public record UserProfile
     public string? Description { get; init; }
 
     /// <summary>
-    /// Primary workspace root associated with this profile (optional).
-    /// Use <see cref="Workspaces"/> for multiple recent workspaces.
+    /// Primary workspace associated with this profile (optional).
     /// </summary>
-    public string? WorkspaceRoot { get; init; }
+    public WorkspaceInfo? PrimaryWorkspace { get; init; }
 
     /// <summary>
     /// List of recently used workspaces for this profile (max 10).
     /// </summary>
-    public List<string> Workspaces { get; init; } = new();
+    public List<WorkspaceInfo> RecentWorkspaces { get; init; } = new();
 
     /// <summary>
     /// Build command template (e.g., "dotnet build").
