@@ -67,40 +67,49 @@ internal sealed class ProfileManagerDialog : Form
     private Button _importButton = null!;
     private Button _closeButton = null!;
 
+    private GroupBox? _appearanceGroup;
     private CollapsibleSection? _workspaceSection = null;
     private CollapsibleSection? _commandsSection = null;
     private CollapsibleSection? _overridesSection = null;
 
     private Button _showAllButton = null!;
+    private Panel? _actionPanel;
 
     private UserProfile? _currentProfile;
 
     public ProfileManagerDialog(UserProfileManager manager, Form1 mainForm)
     {
-        _manager = manager;
-        _mainForm = mainForm;
-        _theme = ThemeManager.Instance.CurrentTheme;
+        try
+        {
+            _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+            _mainForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
+            _theme = ThemeManager.Instance?.CurrentTheme ?? throw new InvalidOperationException("ThemeManager or CurrentTheme is not available.");
 
         Text = "Manage Profiles";
-        Size = new Size(720, 560);
-        MinimumSize = new Size(640, 480);
+        ClientSize = new Size(720, 560);
         StartPosition = FormStartPosition.CenterParent;
-        ShowInTaskbar = false;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        BackColor = _theme.Background;
-        ForeColor = _theme.Text;
-        Font = new Font("Segoe UI", 9);
-        AutoScroll = false;
+            ShowInTaskbar = false;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            BackColor = _theme.Background;
+            ForeColor = _theme.Text;
+            Font = new Font("Segoe UI", 9);
+            AutoScroll = false;
 
-        InitializeComponents();
-        LoadProfileList();
-        RegisterEvents();
+            InitializeComponents();
+            LoadProfileList();
+            RegisterEvents();
 
-        // Subscribe to profile change events
-        _manager.ProfileChanged += OnProfileChanged;
-        _manager.ProfileDeleted += OnProfileDeleted;
+            // Subscribe to profile change events
+            _manager.ProfileChanged += OnProfileChanged;
+            _manager.ProfileDeleted += OnProfileDeleted;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to initialize Profile Manager: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            throw;
+        }
     }
 
     private void InitializeComponents()
@@ -109,11 +118,21 @@ internal sealed class ProfileManagerDialog : Form
         _leftPanel = new Panel
         {
             Location = new Point(12, 12),
-            Size = new Size(210, Height - 60),
+            Size = new Size(210, this.ClientSize.Height - 24),
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
             BackColor = _theme.PanelBackground,
             BorderStyle = BorderStyle.FixedSingle
         };
+
+        // Compute layout metrics
+        const int buttonHeight = 26;
+        const int buttonRows = 2;
+        const int buttonGap = 4;
+        const int bottomMargin = 12;
+        int buttonAreaHeight = buttonRows * buttonHeight + (buttonRows - 1) * buttonGap; // 56
+        int topRowY = _leftPanel.Height - buttonAreaHeight - bottomMargin;
+        int bottomRowY = topRowY + buttonHeight + buttonGap;
+        int listHeight = topRowY - 36 - 8;
 
         // Search box
         _searchBox = new TextBox
@@ -130,7 +149,7 @@ internal sealed class ProfileManagerDialog : Form
         _profileList = new ListBox
         {
             Location = new Point(8, 36),
-            Size = new Size(194, Height - 110),
+            Size = new Size(194, listHeight),
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 24,
             IntegralHeight = false,
@@ -144,8 +163,8 @@ internal sealed class ProfileManagerDialog : Form
         _newButton = new Button
         {
             Text = "New",
-            Location = new Point(8, Height - 110 + 40),
-            Size = new Size(60, 26),
+            Location = new Point(8, topRowY),
+            Size = new Size(60, buttonHeight),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
@@ -161,8 +180,8 @@ internal sealed class ProfileManagerDialog : Form
         _duplicateButton = new Button
         {
             Text = "Duplicate",
-            Location = new Point(74, Height - 110 + 40),
-            Size = new Size(60, 26),
+            Location = new Point(74, topRowY),
+            Size = new Size(60, buttonHeight),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
@@ -172,8 +191,8 @@ internal sealed class ProfileManagerDialog : Form
         _renameButton = new Button
         {
             Text = "Rename",
-            Location = new Point(140, Height - 110 + 40),
-            Size = new Size(60, 26),
+            Location = new Point(140, topRowY),
+            Size = new Size(60, buttonHeight),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
@@ -183,8 +202,8 @@ internal sealed class ProfileManagerDialog : Form
         _deleteButton = new Button
         {
             Text = "Delete",
-            Location = new Point(8, Height - 110 + 72),
-            Size = new Size(60, 26),
+            Location = new Point(8, bottomRowY),
+            Size = new Size(60, buttonHeight),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
@@ -198,7 +217,7 @@ internal sealed class ProfileManagerDialog : Form
         _rightPanel = new Panel
         {
             Location = new Point(230, 12),
-            Size = new Size(478, Height - 60),
+            Size = new Size(478, this.ClientSize.Height - 24),
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             BackColor = _theme.Background,
             AutoScroll = true
@@ -233,7 +252,7 @@ internal sealed class ProfileManagerDialog : Form
         y += 60;
 
         // Appearance group
-        var appearanceGroup = new GroupBox
+        _appearanceGroup = new GroupBox
         {
             Text = "Appearance",
             Location = new Point(0, y),
@@ -243,7 +262,7 @@ internal sealed class ProfileManagerDialog : Form
             Font = new Font("Segoe UI", 9, FontStyle.Bold)
         };
         int ax = 10, ay = 22;
-        appearanceGroup.Controls.Add(new Label { Text = "Color:", Location = new Point(ax, ay), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent });
+        _appearanceGroup.Controls.Add(new Label { Text = "Color:", Location = new Point(ax, ay), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent });
         _colorPreviewBox = new PictureBox
         {
             Location = new Point(ax + 45, ay),
@@ -262,8 +281,8 @@ internal sealed class ProfileManagerDialog : Form
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        appearanceGroup.Controls.AddRange(new Control[] { _colorPreviewBox, _colorLabel, _colorButton });
-        _rightPanel.Controls.Add(appearanceGroup);
+        _appearanceGroup.Controls.AddRange(new Control[] { _colorPreviewBox, _colorLabel, _colorButton });
+        _rightPanel.Controls.Add(_appearanceGroup);
         y += 70;
 
         // Show All Settings toggle button
@@ -412,11 +431,18 @@ internal sealed class ProfileManagerDialog : Form
         _rightPanel.Controls.Add(_usageLabel);
         y += 26;
 
-        // Action buttons
+        // Action buttons panel (horizontal layout)
+        _actionPanel = new Panel
+        {
+            Location = new Point(0, y),
+            Height = 28,
+            Width = 380,
+            BackColor = _theme.Background
+        };
         _saveButton = new Button
         {
             Text = "Save",
-            Location = new Point(0, y),
+            Location = new Point(0, 0),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.Accent,
@@ -426,7 +452,7 @@ internal sealed class ProfileManagerDialog : Form
         _exportButton = new Button
         {
             Text = "Export...",
-            Location = new Point(90, y),
+            Location = new Point(90, 0),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
@@ -436,7 +462,7 @@ internal sealed class ProfileManagerDialog : Form
         _importButton = new Button
         {
             Text = "Import...",
-            Location = new Point(180, y),
+            Location = new Point(180, 0),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
@@ -446,14 +472,16 @@ internal sealed class ProfileManagerDialog : Form
         _closeButton = new Button
         {
             Text = "Close",
-            Location = new Point(270, y),
+            Location = new Point(270, 0),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        _rightPanel.Controls.AddRange(new Control[] { _saveButton, _exportButton, _importButton, _closeButton });
+        _actionPanel.Controls.AddRange(new Control[] { _saveButton, _exportButton, _importButton, _closeButton });
+        _rightPanel.Controls.Add(_actionPanel);
+        y += _actionPanel.Height + 6;
 
         Controls.AddRange(new Control[] { _leftPanel, _rightPanel });
     }
@@ -953,11 +981,20 @@ internal sealed class ProfileManagerDialog : Form
 
     private void LayoutRightPanel()
     {
-        int y = 0;
-        foreach (Control ctrl in _rightPanel.Controls)
+        // Controls that should move when sections expand/collapse.
+        // Static detail fields (title, name, description, appearance) stay at their designed positions.
+        Control[] repositionable = new Control[] { _showAllButton, _workspaceSection!, _commandsSection!, _overridesSection!, _defaultOnStartupCheck, _lastUsedLabel, _usageLabel, _actionPanel! };
+
+        // Start after the appearance group
+        int y = _appearanceGroup!.Bottom + 6;
+
+        foreach (Control ctrl in repositionable)
         {
-            ctrl.Location = new Point(ctrl.Location.X, y);
-            y = ctrl.Bottom + 6;
+            if (ctrl != null)
+            {
+                ctrl.Location = new Point(ctrl.Location.X, y);
+                y = ctrl.Bottom + 6;
+            }
         }
         _rightPanel.AutoScrollMinSize = new Size(0, y);
     }
