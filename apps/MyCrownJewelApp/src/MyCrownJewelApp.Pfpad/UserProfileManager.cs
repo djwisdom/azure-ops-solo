@@ -128,7 +128,7 @@ public sealed class UserProfileManager : IDisposable
     public static UserProfile DefaultProfile { get; } = new()
     {
         Name = "Default",
-        PrimaryWorkspace = null,
+        Workspaces = new List<WorkspaceInfo>(),
         BuildCommand = "dotnet build",
         RunCommand = "dotnet run",
         TestCommand = "dotnet test",
@@ -242,7 +242,7 @@ public sealed class UserProfileManager : IDisposable
             {
                 Name = legacy.Name,
                 Description = legacy.Description,
-                PrimaryWorkspace = primaryWorkspace,
+                Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
                 RecentWorkspaces = recentWorkspaces,
                 BuildCommand = legacy.BuildCommand ?? "dotnet build",
                 RunCommand = legacy.RunCommand ?? "dotnet run",
@@ -379,6 +379,15 @@ public sealed class UserProfileManager : IDisposable
 
             if (profile != null)
             {
+                // Migrate single workspace to multi-workspace format if needed
+                if (profile.Workspaces.Count == 0 && profile.PrimaryWorkspace != null)
+                {
+                    profile = profile with { Workspaces = new List<WorkspaceInfo> { profile.PrimaryWorkspace } };
+                    // Save the migrated profile
+                    SaveProfile(profile);
+                    System.Diagnostics.Debug.WriteLine($"[ProfileManager] Migrated profile '{name}' to multi-workspace format");
+                }
+
                 // Cache it
                 lock (_lock) { _cache[name] = profile; }
                 return profile;

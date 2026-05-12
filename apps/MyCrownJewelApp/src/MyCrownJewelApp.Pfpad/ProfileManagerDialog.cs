@@ -40,6 +40,7 @@ internal sealed class ProfileManagerDialog : Form
     private Label _colorLabel = null!;
     private TextBox _workspaceBox = null!;
     private Button _browseButton = null!;
+    private Button _loadWorkspaceFileButton = null!;
     private ComboBox _projectTypeCombo = null!;
     private ListBox _recentWorkspacesList = null!;
     private Button _addWorkspaceButton = null!;
@@ -489,7 +490,7 @@ internal sealed class ProfileManagerDialog : Form
         _browseButton = new Button
         {
             Text = "...",
-            Location = new Point(250, 0),
+            Location = new Point(240, 0),
             Size = new Size(30, 26),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
@@ -498,11 +499,24 @@ internal sealed class ProfileManagerDialog : Form
         };
         workspaceInputPanel.Controls.Add(_browseButton);
 
+        _loadWorkspaceFileButton = new Button
+        {
+            Text = "📁",
+            Location = new Point(275, 0),
+            Size = new Size(30, 26),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            FlatAppearance = { BorderColor = _theme.Border }
+        };
+        _loadWorkspaceFileButton.Click += LoadWorkspaceFileButton_Click;
+        workspaceInputPanel.Controls.Add(_loadWorkspaceFileButton);
+
         var setWorkspaceInputButton = new Button
         {
             Text = "Set",
-            Location = new Point(290, 0),
-            Size = new Size(50, 26),
+            Location = new Point(310, 0),
+            Size = new Size(40, 26),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.Accent,
             ForeColor = Color.White,
@@ -704,56 +718,116 @@ internal sealed class ProfileManagerDialog : Form
         Controls.AddRange(new Control[] { _leftPanel, _rightPanel });
     }
 
-    private void UpdateWorkspaceDisplay(WorkspaceInfo? workspace)
+    private void UpdateWorkspaceDisplays()
     {
         try
         {
-            // Find the workspace display panel and update its controls
-            if (_workspaceSection?.ContentPanel?.Controls == null) return;
+            if (_currentProfile == null || _workspaceSection?.ContentPanel?.Controls == null) return;
 
+            var workspaces = _currentProfile.Workspaces;
+
+            // Find and update the workspace display panel
             foreach (Control ctrl in _workspaceSection.ContentPanel.Controls)
             {
                 if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle && panel.Size.Height == 70)
                 {
-                    // This is the workspace display panel
+                    // This is the workspace display panel - update for primary workspace
+                    var primaryWorkspace = workspaces.Count > 0 ? workspaces[0] : null;
+
                     foreach (Control child in panel.Controls)
                     {
                         if (child is Label label)
                         {
                             if (label.Location.X == 70 && label.Location.Y == 10) // workspace name
                             {
-                                label.Text = workspace?.DisplayName ?? "No workspace selected";
+                                if (workspaces.Count == 0)
+                                {
+                                    label.Text = "No workspaces";
+                                }
+                                else if (workspaces.Count == 1)
+                                {
+                                    label.Text = primaryWorkspace?.DisplayName ?? "Unnamed Workspace";
+                                }
+                                else
+                                {
+                                    label.Text = $"Multi-root ({workspaces.Count} folders)";
+                                }
                             }
                             else if (label.Location.X == 70 && label.Location.Y == 30) // workspace path
                             {
-                                string path = workspace?.Path ?? "";
-                                if (path.Length > 40)
+                                if (workspaces.Count == 1)
                                 {
-                                    path = "..." + path.Substring(path.Length - 37);
+                                    string path = primaryWorkspace?.Path ?? "";
+                                    if (path.Length > 40)
+                                    {
+                                        path = "..." + path.Substring(path.Length - 37);
+                                    }
+                                    label.Text = path;
                                 }
-                                label.Text = path;
+                                else if (workspaces.Count > 1)
+                                {
+                                    label.Text = $"{workspaces.Count} workspace folders";
+                                }
+                                else
+                                {
+                                    label.Text = "";
+                                }
                             }
-                            else if (label.Location.X == 70 && label.Location.Y == 48) // project type
+                            else if (label.Location.X == 70 && label.Location.Y == 48) // project type or workspace list
                             {
-                                try
+                                if (workspaces.Count == 1)
                                 {
-                                    label.Text = workspace?.ProjectTypeDisplay ?? "";
+                                    try
+                                    {
+                                        label.Text = primaryWorkspace?.ProjectTypeDisplay ?? "";
+                                    }
+                                    catch
+                                    {
+                                        label.Text = "";
+                                    }
                                 }
-                                catch
+                                else if (workspaces.Count > 1)
+                                {
+                                    // Show first few workspace names
+                                    var names = workspaces.Take(3).Select(w => w.DisplayName).ToList();
+                                    if (workspaces.Count > 3)
+                                        names.Add("...");
+                                    label.Text = string.Join(", ", names);
+                                }
+                                else
                                 {
                                     label.Text = "";
                                 }
                             }
                             else if (label.Location.X == 220 && label.Location.Y == 48) // trust status
                             {
-                                label.Text = workspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
-                                label.ForeColor = workspace?.IsTrusted == true ? Color.Green : Color.Orange;
+                                if (workspaces.Count == 1)
+                                {
+                                    label.Text = primaryWorkspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
+                                    label.ForeColor = primaryWorkspace?.IsTrusted == true ? Color.Green : Color.Orange;
+                                }
+                                else if (workspaces.Count > 1)
+                                {
+                                    var trustedCount = workspaces.Count(w => w.IsTrusted);
+                                    if (trustedCount == workspaces.Count)
+                                        label.Text = "All ✓ Trusted";
+                                    else if (trustedCount == 0)
+                                        label.Text = "⚠️ Not Trusted";
+                                    else
+                                        label.Text = $"{trustedCount}/{workspaces.Count} ✓ Trusted";
+                                    label.ForeColor = trustedCount == workspaces.Count ? Color.Green : Color.Orange;
+                                }
+                                else
+                                {
+                                    label.Text = "";
+                                }
                             }
                         }
                         else if (child is PictureBox pictureBox && pictureBox.Location.X == 15)
                         {
                             // Update workspace icon color based on project type
-                            pictureBox.BackColor = workspace?.ProjectType switch
+                            var projectType = primaryWorkspace?.ProjectType;
+                            pictureBox.BackColor = projectType switch
                             {
                                 "dotnet" => Color.FromArgb(0, 120, 212),   // VS Code blue
                                 "node" => Color.FromArgb(67, 133, 61),     // Node green
@@ -774,12 +848,14 @@ internal sealed class ProfileManagerDialog : Form
                 }
             }
 
-            // Update project type combo
+            // Update project type combo - disable for multi-workspace or set to primary
             if (_projectTypeCombo != null)
             {
-                if (workspace?.ProjectType != null && _projectTypeCombo.Items.Contains(workspace.ProjectType))
+                _projectTypeCombo.Enabled = workspaces.Count <= 1;
+
+                if (workspaces.Count == 1 && workspaces[0].ProjectType != null && _projectTypeCombo.Items.Contains(workspaces[0].ProjectType))
                 {
-                    _projectTypeCombo.SelectedItem = workspace.ProjectType;
+                    _projectTypeCombo.SelectedItem = workspaces[0].ProjectType;
                 }
                 else
                 {
@@ -789,7 +865,7 @@ internal sealed class ProfileManagerDialog : Form
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error updating workspace display: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error updating workspace displays: {ex.Message}");
             // Don't crash the dialog for display issues
         }
     }
@@ -1014,8 +1090,8 @@ internal sealed class ProfileManagerDialog : Form
         _colorLabel.Text = profile.ColorHex ?? "#0078D4";
         try { _colorPreviewBox.BackColor = ColorTranslator.FromHtml(_colorLabel.Text); } catch { _colorPreviewBox.BackColor = _theme.Accent; }
 
-        // Update rich workspace display
-        UpdateWorkspaceDisplay(profile.PrimaryWorkspace);
+        // Update rich workspace displays
+        UpdateWorkspaceDisplays();
 
         // Update workspace path textbox
         if (_workspaceBox != null)
@@ -1060,7 +1136,7 @@ internal sealed class ProfileManagerDialog : Form
         var profile = new UserProfile
         {
             Name = name,
-            PrimaryWorkspace = null,
+            Workspaces = new List<WorkspaceInfo>(),
             BuildCommand = "dotnet build",
             RunCommand = "dotnet run",
             TestCommand = "dotnet test",
@@ -1098,7 +1174,7 @@ internal sealed class ProfileManagerDialog : Form
         var profile = new UserProfile
         {
             Name = name,
-            PrimaryWorkspace = primaryWorkspace,
+            Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
             BuildCommand = "dotnet build",
             RunCommand = "dotnet run",
             TestCommand = "dotnet test",
@@ -1145,7 +1221,7 @@ internal sealed class ProfileManagerDialog : Form
         var profile = new UserProfile
         {
             Name = name,
-            PrimaryWorkspace = primaryWorkspace,
+            Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
             BuildCommand = "dotnet build",
             RunCommand = "dotnet run",
             TestCommand = "dotnet test",
@@ -1260,23 +1336,23 @@ internal sealed class ProfileManagerDialog : Form
             }
         }
 
-            // Update the current profile's primary workspace
+            // Update the current profile's workspaces
             if (_currentProfile != null)
             {
                 var workspaceInfo = new WorkspaceInfo
                 {
                     Name = Path.GetFileName(path) ?? "Workspace",
                     Path = path,
-                    LastOpened = _currentProfile?.PrimaryWorkspace?.LastOpened ?? DateTime.UtcNow,
-                    IsTrusted = _currentProfile?.PrimaryWorkspace?.IsTrusted ?? true,
+                    LastOpened = _currentProfile.Workspaces.Count > 0 ? _currentProfile.Workspaces[0].LastOpened : DateTime.UtcNow,
+                    IsTrusted = _currentProfile.Workspaces.Count > 0 ? _currentProfile.Workspaces[0].IsTrusted : true,
                     ProjectType = DetectProjectType(path)
                 };
 
-                // Update the profile (this will trigger a save when the Save button is clicked)
-                _currentProfile = _currentProfile! with { PrimaryWorkspace = workspaceInfo };
+                // Replace workspaces with this single workspace (for now - will be enhanced for multi-root)
+                _currentProfile = _currentProfile with { Workspaces = new List<WorkspaceInfo> { workspaceInfo } };
 
                 // Update the UI immediately
-                UpdateWorkspaceDisplay(workspaceInfo);
+                UpdateWorkspaceDisplays();
                 _workspaceBox.Text = path;
             }
     }
@@ -1419,7 +1495,7 @@ internal sealed class ProfileManagerDialog : Form
         {
             Name = newName,
             Description = _descriptionBox.Text.Trim(),
-            PrimaryWorkspace = primaryWorkspace,
+            Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
             RecentWorkspaces = recentWorkspaces,
             BuildCommand = string.IsNullOrWhiteSpace(_buildBox.Text) ? "dotnet build" : _buildBox.Text.Trim(),
             RunCommand = string.IsNullOrWhiteSpace(_runBox.Text) ? "dotnet run" : _runBox.Text.Trim(),
@@ -1618,23 +1694,65 @@ private void LayoutRightPanel()
     {
         if (_currentProfile != null && _projectTypeCombo?.SelectedItem is string type)
         {
-            if (type == "Auto-detect" && _currentProfile.PrimaryWorkspace != null)
+            if (_currentProfile.Workspaces.Count > 0)
             {
-                // Re-detect from path
-                var detected = DetectProjectType(_currentProfile.PrimaryWorkspace.Path);
-                _currentProfile = _currentProfile with
+                var primaryWorkspace = _currentProfile.Workspaces[0];
+                string newProjectType;
+
+                if (type == "Auto-detect")
                 {
-                    PrimaryWorkspace = _currentProfile.PrimaryWorkspace with { ProjectType = detected }
+                    // Re-detect from path
+                    newProjectType = DetectProjectType(primaryWorkspace.Path) ?? primaryWorkspace.ProjectType ?? "";
+                }
+                else
+                {
+                    newProjectType = type;
+                }
+
+                // Update the primary workspace in the list
+                var updatedWorkspaces = new List<WorkspaceInfo>(_currentProfile.Workspaces)
+                {
+                    [0] = primaryWorkspace with { ProjectType = newProjectType }
                 };
+
+                _currentProfile = _currentProfile with { Workspaces = updatedWorkspaces };
             }
-            else if (type != "Auto-detect")
+            UpdateWorkspaceDisplays();
+        }
+    }
+
+    private void LoadWorkspaceFileButton_Click(object? sender, EventArgs e)
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "Load VS Code Workspace File",
+            Filter = "VS Code Workspace Files (*.code-workspace)|*.code-workspace|All Files (*.*)|*.*",
+            DefaultExt = ".code-workspace"
+        };
+
+        if (dlg.ShowDialog() == DialogResult.OK && _currentProfile != null)
+        {
+            try
             {
-                _currentProfile = _currentProfile with
+                var workspaces = UserProfile.LoadFromCodeWorkspace(dlg.FileName);
+                if (workspaces.Count > 0)
                 {
-                    PrimaryWorkspace = _currentProfile.PrimaryWorkspace! with { ProjectType = type }
-                };
+                    _currentProfile = _currentProfile with { Workspaces = workspaces };
+                    UpdateWorkspaceDisplays();
+
+                    // Clear the input box since we're loading from file
+                    _workspaceBox.Text = "";
+                    MessageBox.Show($"Loaded {workspaces.Count} workspace folders from {Path.GetFileName(dlg.FileName)}", "Workspace Loaded", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show("No valid workspace folders found in the file.", "No Workspaces", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
-            UpdateWorkspaceDisplay(_currentProfile.PrimaryWorkspace);
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading workspace file: {ex.Message}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

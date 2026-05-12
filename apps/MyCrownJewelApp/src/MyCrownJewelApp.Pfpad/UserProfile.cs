@@ -106,8 +106,15 @@ public record UserProfile
 
     /// <summary>
     /// Primary workspace associated with this profile (optional).
+    /// For backward compatibility - returns the first workspace in Workspaces if available.
     /// </summary>
-    public WorkspaceInfo? PrimaryWorkspace { get; init; }
+    [JsonIgnore]
+    public WorkspaceInfo? PrimaryWorkspace => Workspaces.Count > 0 ? Workspaces[0] : null;
+
+    /// <summary>
+    /// Active workspaces in this profile (supports multi-root workspaces).
+    /// </summary>
+    public List<WorkspaceInfo> Workspaces { get; init; } = new();
 
     /// <summary>
     /// List of recently used workspaces for this profile (max 10).
@@ -147,6 +154,89 @@ public record UserProfile
     /// <summary>
     /// Last time this profile was activated (UTC).
     /// </summary>
+
+    /// <summary>
+    /// Loads workspaces from a VS Code .code-workspace file.
+    /// </summary>
+    public static List<WorkspaceInfo> LoadFromCodeWorkspace(string filePath)
+    {
+        try
+        {
+            if (!File.Exists(filePath))
+                throw new FileNotFoundException("Workspace file not found", filePath);
+
+            var json = File.ReadAllText(filePath);
+            var workspaceData = System.Text.Json.JsonSerializer.Deserialize<CodeWorkspaceData>(json);
+
+            if (workspaceData?.Folders == null)
+                return new List<WorkspaceInfo>();
+
+            var workspaces = new List<WorkspaceInfo>();
+            var baseDir = Path.GetDirectoryName(filePath) ?? "";
+
+            foreach (var folder in workspaceData.Folders)
+            {
+                var fullPath = Path.GetFullPath(Path.Combine(baseDir, folder.Path));
+                if (Directory.Exists(fullPath))
+                {
+                    workspaces.Add(new WorkspaceInfo
+                    {
+                        Name = folder.Name ?? Path.GetFileName(fullPath) ?? "Workspace",
+                        Path = fullPath,
+                        ProjectType = DetectProjectType(fullPath),
+                        IsTrusted = true,
+                        LastOpened = DateTime.UtcNow
+                    });
+                }
+            }
+
+            return workspaces;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error loading .code-workspace file {filePath}: {ex.Message}");
+            return new List<WorkspaceInfo>();
+        }
+    }
+
+    /// <summary>
+    /// Saves workspaces to a VS Code .code-workspace file.
+    /// </summary>
+    public void SaveToCodeWorkspace(string filePath)
+    {
+        try
+        {
+            var baseDir = Path.GetDirectoryName(filePath) ?? "";
+            var folders = new List<CodeWorkspaceFolder>();
+
+            foreach (var workspace in Workspaces)
+            {
+                var relativePath = Path.GetRelativePath(baseDir, workspace.Path);
+                folders.Add(new CodeWorkspaceFolder
+                {
+                    Name = workspace.Name,
+                    Path = relativePath
+                });
+            }
+
+            var workspaceData = new CodeWorkspaceData
+            {
+                Folders = folders.ToArray(),
+                Settings = new Dictionary<string, object>()
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(workspaceData, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            File.WriteAllText(filePath, json);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Error saving .code-workspace file {filePath}: {ex.Message}");
+        }
+    }
     public DateTime LastUsed { get; init; } = DateTime.UtcNow;
 
     /// <summary>
@@ -287,4 +377,60 @@ public record UserProfile
         }
         catch { return false; }
     }
+
+    /// <summary>
+    /// Detects the project type based on files and directories in the given path.
+    /// </summary>
+    public static string? DetectProjectType(string path)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return null;
+
+            // Check for specific project files
+            string[] files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly);
+            var fileNames = files.Select(f => Path.GetFileName(f)?.ToLowerInvariant() ?? "").ToArray();
+
+            if (fileNames.Contains("package.json")) return "node";
+            if (fileNames.Contains("requirements.txt") || fileNames.Contains("setup.py") || fileNames.Contains("pyproject.toml")) return "python";
+            if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
+            if (fileNames.Contains("go.mod")) return "go";
+            if (fileNames.Contains("cargo.toml")) return "rust";
+            if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".h"))) return "cpp";
+            if (fileNames.Contains(".csproj") || fileNames.Contains(".sln") || fileNames.Contains("project.json")) return "dotnet";
+            if (fileNames.Contains("index.html") || fileNames.Contains("index.htm")) return "web";
+
+            // Check for common directories
+            string[] dirs = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly);
+            var dirNames = dirs.Select(d => Path.GetFileName(d)?.ToLowerInvariant() ?? "").ToArray();
+
+            if (dirNames.Contains("node_modules")) return "node";
+            if (dirNames.Contains("venv") || dirNames.Contains("__pycache__")) return "python";
+
+            return null; // Unknown
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DetectProjectType] Error detecting project type for {path}: {ex.Message}");
+            return null;
+        }
+    }
+}
+
+/// <summary>
+/// Data structure for VS Code .code-workspace files.
+/// </summary>
+internal class CodeWorkspaceData
+{
+    public CodeWorkspaceFolder[]? Folders { get; set; }
+    public Dictionary<string, object>? Settings { get; set; }
+}
+
+/// <summary>
+/// Folder entry in a .code-workspace file.
+/// </summary>
+internal class CodeWorkspaceFolder
+{
+    public string? Name { get; set; }
+    public string Path { get; set; } = "";
 }
