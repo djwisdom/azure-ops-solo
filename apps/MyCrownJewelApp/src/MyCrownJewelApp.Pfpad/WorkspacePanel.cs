@@ -113,14 +113,13 @@ internal sealed class WorkspacePanel : UserControl
             LabelEdit = false,
             Indent = 24, // Slightly more indentation for better hierarchy
             ItemHeight = 26, // Taller items for better touch targets
-            DrawMode = TreeViewDrawMode.OwnerDrawAll, // Custom drawing for modern look
+            DrawMode = TreeViewDrawMode.Normal, // Use default drawing for now
             ImageList = FileIconProvider.ImageList
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
         _tree.MouseDown += Tree_MouseDown;
         _tree.KeyDown += Tree_KeyDown;
-        _tree.DrawNode += Tree_DrawNode; // Custom drawing for modern appearance
         _tree.DragEnter += (s, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
         _tree.DragDrop += Tree_DragDrop;
         _tree.AllowDrop = true;
@@ -135,7 +134,6 @@ internal sealed class WorkspacePanel : UserControl
         {
             Dock = DockStyle.Top,
             Height = 60,
-            BackColor = ThemeManager.Instance.CurrentTheme.MenuBackground,
             Padding = new Padding(6, 4, 6, 4)
         };
 
@@ -212,8 +210,6 @@ internal sealed class WorkspacePanel : UserControl
             Font = new Font("Segoe UI", 9),
             Location = new Point(0, 30),
             Size = new Size(160, 24),
-            BackColor = ThemeManager.Instance.CurrentTheme.EditorBackground,
-            ForeColor = ThemeManager.Instance.CurrentTheme.Text,
             BorderStyle = BorderStyle.FixedSingle,
             PlaceholderText = "Search files..."
         };
@@ -227,7 +223,6 @@ internal sealed class WorkspacePanel : UserControl
             FlatStyle = FlatStyle.Flat,
             Size = new Size(28, 24),
             Location = new Point(164, 30),
-            BackColor = ThemeManager.Instance.CurrentTheme.PanelBackground,
             FlatAppearance = { BorderSize = 1 },
             Cursor = Cursors.Hand
         };
@@ -300,8 +295,6 @@ internal sealed class WorkspacePanel : UserControl
 
         Controls.Add(_modernHeader);
         Controls.Add(_tree);
-
-        SetTheme(ThemeManager.Instance.CurrentTheme);
 
         // Debounced refresh timer (used by both polling fallback and FileSystemWatcher)
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 500 };
@@ -964,60 +957,61 @@ private TreeNode CreateDirectoryNode(string dirPath)
         }
     }
 
-    private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
-    {
-        var theme = ThemeManager.Instance.CurrentTheme;
-        var node = e.Node;
-        var bounds = e.Bounds;
-
-        // Background
-        Color backColor;
-        if ((e.State & TreeNodeStates.Selected) != 0)
-        {
-            backColor = theme.ButtonHoverBackground;
-        }
-        else if (node.BackColor != Color.Transparent) // Search highlight
-        {
-            backColor = node.BackColor;
-        }
-        else
-        {
-            backColor = theme.MenuBackground;
-        }
-
-        using (var brush = new SolidBrush(backColor))
-        {
-            e.Graphics.FillRectangle(brush, bounds);
-        }
-
-        // Icon
-        if (node.ImageIndex >= 0 && FileIconProvider.ImageList != null)
-        {
-            var iconBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 2, bounds.Y + 1, 20, 20);
-            e.Graphics.DrawImage(FileIconProvider.ImageList.Images[node.ImageIndex], iconBounds);
-        }
-
-        // Text
-        Color textColor;
-        if (node.BackColor != Color.Transparent) // Search highlight
-        {
-            textColor = node.ForeColor;
-        }
-        else if ((e.State & TreeNodeStates.Selected) != 0)
-        {
-            textColor = theme.Text;
-        }
-        else
-        {
-            textColor = theme.Text;
-        }
-
-        var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 26, bounds.Y + 2,
-                                       bounds.Width - (node.Level * _tree.Indent) - 26, bounds.Height - 4);
-
-        TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textBounds, textColor,
-                             TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
-    }
+    // Temporarily disabled custom drawing to fix startup issues
+    // private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
+    // {
+    //     var theme = ThemeManager.Instance.CurrentTheme;
+    //     var node = e.Node;
+    //     var bounds = e.Bounds;
+    //
+    //     // Background
+    //     Color backColor;
+    //     if ((e.State & TreeNodeStates.Selected) != 0)
+    //     {
+    //         backColor = theme.ButtonHoverBackground;
+    //     }
+    //     else if (node.BackColor != Color.Transparent) // Search highlight
+    //     {
+    //         backColor = node.BackColor;
+    //     }
+    //     else
+    //     {
+    //         backColor = theme.MenuBackground;
+    //     }
+    //
+    //     using (var brush = new SolidBrush(backColor))
+    //     {
+    //         e.Graphics.FillRectangle(brush, bounds);
+    //     }
+    //
+    //     // Icon
+    //     if (node.ImageIndex >= 0 && FileIconProvider.ImageList != null)
+    //     {
+    //         var iconBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 2, bounds.Y + 1, 20, 20);
+    //         e.Graphics.DrawImage(FileIconProvider.ImageList.Images[node.ImageIndex], iconBounds);
+    //     }
+    //
+    //     // Text
+    //     Color textColor;
+    //     if (node.BackColor != Color.Transparent) // Search highlight
+    //     {
+    //         textColor = node.ForeColor;
+    //     }
+    //     else if ((e.State & TreeNodeStates.Selected) != 0)
+    //     {
+    //         textColor = theme.Text;
+    //     }
+    //     else
+    //     {
+    //         textColor = theme.Text;
+    //     }
+    //
+    //     var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 26, bounds.Y + 2,
+    //                                    bounds.Width - (node.Level * _tree.Indent) - 26, bounds.Height - 4);
+    //
+    //     TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textBounds, textColor,
+    //                          TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
+    // }
 
     private void Tree_MouseDown(object? sender, MouseEventArgs e)
     {
