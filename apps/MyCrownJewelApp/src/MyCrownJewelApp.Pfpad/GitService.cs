@@ -707,6 +707,22 @@ public sealed class GitService : IDisposable
         catch { return -1; }
     }
 
+    public (int Behind, int Ahead) GetRemoteStatus(string remoteName = "origin")
+    {
+        if (_repo is null) return (-1, -1);
+        try
+        {
+            var branch = _repo.Head;
+            var remoteBranch = _repo.Branches[$"{remoteName}/{branch.FriendlyName}"];
+            if (remoteBranch is null) return (-1, -1);
+
+            var divergence = _repo.ObjectDatabase.CalculateHistoryDivergence(
+                branch.Tip, remoteBranch.Tip);
+            return (divergence?.BehindBy ?? -1, divergence?.AheadBy ?? -1);
+        }
+        catch { return (-1, -1); }
+    }
+
     public bool SwitchBranch(string name)
     {
         if (_repo is null) return false;

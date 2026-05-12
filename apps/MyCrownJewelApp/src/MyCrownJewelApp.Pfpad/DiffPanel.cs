@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
@@ -12,12 +13,12 @@ internal sealed class DiffPanel : UserControl
     private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
-    private readonly ToolStrip _headerStrip;
-    private readonly ToolStripLabel _headerLabel;
+    private readonly Panel _modernHeader;
+    private readonly Label _headerLabel;
+    private readonly Button _inlineStageBtn;
+    private readonly Button _inlineUnstageBtn;
+    private readonly Button _inlineDiscardBtn;
     private readonly RichTextBox _diffBox;
-    private readonly Button _stageBtn;
-    private readonly Button _unstageBtn;
-    private readonly Button _discardBtn;
 
     private string _currentPath = string.Empty;
     private bool _currentIsStaged;
@@ -34,50 +35,60 @@ internal sealed class DiffPanel : UserControl
         AutoScaleMode = AutoScaleMode.Font;
         MinimumSize = new Size(100, 60);
 
-        _headerLabel = new ToolStripLabel("Diff")
+        // Modern VS Code-style header
+        _modernHeader = new Panel
         {
-            Font = new Font("Segoe UI", 8.25f, FontStyle.Bold),
-            Margin = new Padding(4, 0, 0, 0)
+            Dock = DockStyle.Top,
+            Height = 32,
+            Padding = new Padding(8, 4, 8, 4)
         };
 
-        _stageBtn = new Button
+        _headerLabel = new Label
         {
-            Text = "Stage",
+            Text = "Diff",
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            AutoSize = true,
+            Location = new Point(0, 6)
+        };
+
+        _inlineStageBtn = new Button
+        {
+            Text = "➕ Stage",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
-            Size = new Size(56, 22),
-            Margin = new Padding(0, 1, 2, 1),
+            Size = new Size(60, 24),
+            Location = new Point(0, 4),
             Cursor = Cursors.Hand,
             TabStop = false,
             Visible = false
         };
-        _stageBtn.Click += (s, e) => { if (!string.IsNullOrEmpty(_currentPath)) StageRequested?.Invoke(_currentPath); };
+        _inlineStageBtn.Click += (s, e) => { if (!string.IsNullOrEmpty(_currentPath)) StageRequested?.Invoke(_currentPath); };
 
-        _unstageBtn = new Button
+        _inlineUnstageBtn = new Button
         {
-            Text = "Unstage",
+            Text = "➖ Unstage",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
-            Size = new Size(62, 22),
-            Margin = new Padding(0, 1, 2, 1),
+            Size = new Size(70, 24),
+            Location = new Point(0, 4),
             Cursor = Cursors.Hand,
             TabStop = false,
             Visible = false
         };
-        _unstageBtn.Click += (s, e) => { if (!string.IsNullOrEmpty(_currentPath)) UnstageRequested?.Invoke(_currentPath); };
+        _inlineUnstageBtn.Click += (s, e) => { if (!string.IsNullOrEmpty(_currentPath)) UnstageRequested?.Invoke(_currentPath); };
 
-        _discardBtn = new Button
+        _inlineDiscardBtn = new Button
         {
-            Text = "Discard",
+            Text = "🗑️ Discard",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
-            Size = new Size(62, 22),
-            Margin = new Padding(0, 1, 0, 1),
+            Size = new Size(70, 24),
+            Location = new Point(0, 4),
             Cursor = Cursors.Hand,
             TabStop = false,
             Visible = false
         };
-        _discardBtn.Click += (s, e) =>
+        _inlineDiscardBtn.Click += (s, e) =>
         {
             if (!string.IsNullOrEmpty(_currentPath))
             {
@@ -89,33 +100,7 @@ internal sealed class DiffPanel : UserControl
             }
         };
 
-        var headerRightPanel = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Right,
-            FlowDirection = FlowDirection.LeftToRight,
-            Width = 190,
-            Padding = new Padding(0, 0, 2, 0),
-            WrapContents = false
-        };
-        headerRightPanel.Controls.Add(_stageBtn);
-        headerRightPanel.Controls.Add(_unstageBtn);
-        headerRightPanel.Controls.Add(_discardBtn);
-
-        _headerStrip = new ToolStrip
-        {
-            Dock = DockStyle.Top,
-            GripStyle = ToolStripGripStyle.Hidden,
-            Padding = new Padding(2, 1, 0, 1),
-            AutoSize = false,
-            Height = 28
-        };
-        _headerStrip.Items.Add(_headerLabel);
-
-        var host = new ToolStripControlHost(headerRightPanel)
-        {
-            Alignment = ToolStripItemAlignment.Right
-        };
-        _headerStrip.Items.Add(host);
+        _modernHeader.Controls.AddRange(new Control[] { _headerLabel, _inlineStageBtn, _inlineUnstageBtn, _inlineDiscardBtn });
 
         _diffBox = new RichTextBox
         {
@@ -131,7 +116,7 @@ internal sealed class DiffPanel : UserControl
         _diffBox.VScroll += (s, e) => ApplyScrollbarTheme(_diffBox.Handle);
 
         Controls.Add(_diffBox);
-        Controls.Add(_headerStrip);
+        Controls.Add(_modernHeader);
 
         SetTheme(ThemeManager.Instance.CurrentTheme);
     }
@@ -141,11 +126,14 @@ internal sealed class DiffPanel : UserControl
         _currentPath = path;
         _currentIsStaged = isStaged;
 
-        _headerLabel.Text = $"Diff — {path}";
+        _headerLabel.Text = $"Diff — {Path.GetFileName(path)}";
 
-        _stageBtn.Visible = !isStaged;
-        _unstageBtn.Visible = isStaged;
-        _discardBtn.Visible = !isStaged;
+        _inlineStageBtn.Visible = !isStaged;
+        _inlineUnstageBtn.Visible = isStaged;
+        _inlineDiscardBtn.Visible = !isStaged;
+
+        // Layout buttons in header
+        LayoutHeaderButtons();
 
         if (string.IsNullOrEmpty(diffContent))
         {
@@ -171,9 +159,37 @@ internal sealed class DiffPanel : UserControl
         _currentPath = string.Empty;
         _headerLabel.Text = "Diff";
         _diffBox.Text = string.Empty;
-        _stageBtn.Visible = false;
-        _unstageBtn.Visible = false;
-        _discardBtn.Visible = false;
+        _inlineStageBtn.Visible = false;
+        _inlineUnstageBtn.Visible = false;
+        _inlineDiscardBtn.Visible = false;
+    }
+
+    private void LayoutHeaderButtons()
+    {
+        int headerWidth = _modernHeader.ClientSize.Width - 16;
+        int currentX = headerWidth;
+        const int buttonSpacing = 4;
+
+        // Right-align buttons from right to left
+        if (_inlineDiscardBtn.Visible)
+        {
+            currentX -= _inlineDiscardBtn.Width;
+            _inlineDiscardBtn.Location = new Point(currentX, 4);
+            currentX -= buttonSpacing;
+        }
+
+        if (_inlineUnstageBtn.Visible)
+        {
+            currentX -= _inlineUnstageBtn.Width;
+            _inlineUnstageBtn.Location = new Point(currentX, 4);
+            currentX -= buttonSpacing;
+        }
+
+        if (_inlineStageBtn.Visible)
+        {
+            currentX -= _inlineStageBtn.Width;
+            _inlineStageBtn.Location = new Point(currentX, 4);
+        }
     }
 
     private void ApplyDiffColoring()
@@ -240,30 +256,26 @@ internal sealed class DiffPanel : UserControl
     public void SetTheme(Theme theme)
     {
         BackColor = theme.MenuBackground;
-        _headerStrip.BackColor = theme.TerminalHeaderBackground;
-        _headerStrip.ForeColor = theme.Text;
+        _modernHeader.BackColor = theme.TerminalHeaderBackground;
         _headerLabel.ForeColor = theme.Text;
 
         _diffBox.BackColor = theme.EditorBackground;
         _diffBox.ForeColor = theme.Text;
 
-        _stageBtn.BackColor = theme.Background;
-        _stageBtn.ForeColor = theme.Text;
-        _stageBtn.FlatAppearance.BorderColor = theme.Accent;
-        _stageBtn.FlatAppearance.BorderSize = 1;
-        _stageBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        _inlineStageBtn.BackColor = theme.Background;
+        _inlineStageBtn.ForeColor = theme.Accent;
+        _inlineStageBtn.FlatAppearance.BorderColor = theme.Border;
+        _inlineStageBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
 
-        _unstageBtn.BackColor = theme.Background;
-        _unstageBtn.ForeColor = theme.Text;
-        _unstageBtn.FlatAppearance.BorderColor = theme.Muted;
-        _unstageBtn.FlatAppearance.BorderSize = 1;
-        _unstageBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        _inlineUnstageBtn.BackColor = theme.Background;
+        _inlineUnstageBtn.ForeColor = theme.Text;
+        _inlineUnstageBtn.FlatAppearance.BorderColor = theme.Border;
+        _inlineUnstageBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
 
-        _discardBtn.BackColor = theme.Background;
-        _discardBtn.ForeColor = Color.FromArgb(220, 80, 80);
-        _discardBtn.FlatAppearance.BorderColor = Color.FromArgb(180, 60, 60);
-        _discardBtn.FlatAppearance.BorderSize = 1;
-        _discardBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 30, 30);
+        _inlineDiscardBtn.BackColor = theme.Background;
+        _inlineDiscardBtn.ForeColor = Color.FromArgb(220, 80, 80);
+        _inlineDiscardBtn.FlatAppearance.BorderColor = Color.FromArgb(180, 60, 60);
+        _inlineDiscardBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 30, 30);
 
         ApplyScrollbarTheme(_diffBox.Handle);
     }
