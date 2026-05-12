@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace MyCrownJewelApp.Pfpad;
 
 internal sealed class WorkspacePanel : UserControl
 {
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
+    private const string FavoritesFile = "workspace_favorites.json";
 
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
@@ -46,10 +48,15 @@ internal sealed class WorkspacePanel : UserControl
     private HashSet<string> _projectFiles = new(StringComparer.OrdinalIgnoreCase);
     private string? _detectedProjectFile;
     private readonly Button _projectFilterButton;
+    private readonly Button _showAllFilesButton;
     private readonly System.Windows.Forms.Timer _refreshTimer;
     private CancellationTokenSource? _scanCts;
     private FileSystemWatcher? _fileWatcher;
     private string _searchFilter = "";
+    private TreeNode? _hoveredNode;
+    private readonly HashSet<TreeNode> _multiSelectedNodes = new();
+    private readonly HashSet<string> _favorites = new(StringComparer.OrdinalIgnoreCase);
+    private TreeNode? _favoritesRoot;
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
@@ -77,6 +84,8 @@ internal sealed class WorkspacePanel : UserControl
             CancelScan();
             _refreshTimer?.Dispose();
             _fileWatcher?.Dispose();
+            ThemeManager.Instance.ThemeChanged -= SetTheme;
+            SaveFavorites();
         }
         base.Dispose(disposing);
     }
@@ -97,6 +106,8 @@ internal sealed class WorkspacePanel : UserControl
     {
         _textExtensions = new HashSet<string>(DefaultTextExtensions, StringComparer.OrdinalIgnoreCase);
 
+        LoadFavorites();
+
         AutoScaleMode = AutoScaleMode.Font;
         MinimumSize = new Size(100, 60);
 
@@ -107,18 +118,21 @@ internal sealed class WorkspacePanel : UserControl
             ShowLines = false, // VS Code style - no lines
             ShowPlusMinus = true,
             ShowRootLines = false,
-            HotTracking = true, // Highlight on hover
-            FullRowSelect = true,
-            HideSelection = false,
+            HotTracking = false, // Custom hover handling
+            FullRowSelect = false, // Custom full-row selection drawing
+            HideSelection = true, // Handle selection drawing ourselves
             LabelEdit = false,
             Indent = 24, // Slightly more indentation for better hierarchy
             ItemHeight = 26, // Taller items for better touch targets
-            DrawMode = TreeViewDrawMode.Normal, // Use default drawing for now
+            DrawMode = TreeViewDrawMode.OwnerDrawAll, // Custom drawing for full-width hover
             ImageList = FileIconProvider.ImageList
         };
         _tree.BeforeExpand += Tree_BeforeExpand;
         _tree.NodeMouseDoubleClick += Tree_NodeMouseDoubleClick;
         _tree.MouseDown += Tree_MouseDown;
+        _tree.MouseMove += Tree_MouseMove;
+        _tree.MouseLeave += Tree_MouseLeave;
+        _tree.DrawNode += Tree_DrawNode;
         _tree.KeyDown += Tree_KeyDown;
         _tree.DragEnter += (s, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
         _tree.DragDrop += Tree_DragDrop;
@@ -247,10 +261,10 @@ internal sealed class WorkspacePanel : UserControl
             _searchBox, _searchButton, _clearSearchButton
         });
 
-        // Set up theme
-        SetTheme(ThemeManager.Instance.CurrentTheme);
+        // Theme will be set by Form1 after initialization
+        ThemeManager.Instance.ThemeChanged += SetTheme;
 
-        // Project filter button (hidden for now, will be enhanced later)
+        // Project filter button
         _projectFilterButton = new Button
         {
             Text = "📋",
@@ -261,9 +275,7 @@ internal sealed class WorkspacePanel : UserControl
             BackColor = Color.Transparent,
             FlatAppearance = { BorderSize = 0 },
             Cursor = Cursors.Hand,
-
-            Enabled = false,
-            Visible = false // Hide for Phase 1, will enhance later
+            Visible = false // Hide for now
         };
         _projectFilterButton.Click += (s, e) =>
         {
@@ -272,7 +284,28 @@ internal sealed class WorkspacePanel : UserControl
             if (!string.IsNullOrEmpty(_rootPath))
                 RefreshTree();
         };
-        _modernHeader.Controls.Add(_projectFilterButton);
+
+        // Show all files button
+        _showAllFilesButton = new Button
+        {
+            Text = "📄",
+            Font = new Font("Segoe UI", 9),
+            FlatStyle = FlatStyle.Flat,
+            Size = new Size(28, 24),
+            Location = new Point(176, 2),
+            BackColor = Color.Transparent,
+            FlatAppearance = { BorderSize = 0 },
+            Cursor = Cursors.Hand
+        };
+        _showAllFilesButton.Click += (s, e) =>
+        {
+            _showAllFiles = !_showAllFiles;
+            UpdateShowAllFilesVisual();
+            if (!string.IsNullOrEmpty(_rootPath))
+                RefreshTree();
+        };
+
+        _modernHeader.Controls.AddRange(new Control[] { _projectFilterButton, _showAllFilesButton });
 
         _fileContextMenu = new ContextMenuStrip();
         var openItem = new ToolStripMenuItem("Open", null, (s, e) => OpenSelectedNode());
@@ -289,6 +322,8 @@ internal sealed class WorkspacePanel : UserControl
             new ToolStripMenuItem("New Folder...", null, (s, e) => CreateNewFolder()),
             new ToolStripSeparator(),
             copyPathItem, copyRelativePathItem, new ToolStripSeparator(),
+            new ToolStripMenuItem("Add to Favorites", null, (s, e) => AddToFavorites()),
+            new ToolStripSeparator(),
             new ToolStripMenuItem("Rename...", null, (s, e) => RenameSelected()),
             new ToolStripMenuItem("Delete", null, (s, e) => DeleteSelected())
         });
@@ -340,6 +375,9 @@ internal sealed class WorkspacePanel : UserControl
         _projectFilterButton.BackColor = Color.Transparent;
         _projectFilterButton.ForeColor = theme.Text;
 
+        _showAllFilesButton.BackColor = Color.Transparent;
+        _showAllFilesButton.ForeColor = theme.Text;
+
         _fileContextMenu.BackColor = theme.MenuBackground;
         _fileContextMenu.ForeColor = theme.Text;
         _fileContextMenu.Renderer = new ThemeAwareMenuRenderer(theme);
@@ -366,9 +404,11 @@ internal sealed class WorkspacePanel : UserControl
         {
             var rootNode = CreateDirectoryNode(path);
             _tree.Nodes.Add(rootNode);
+            RefreshFavorites();
             _tree.SelectedNode = rootNode;
             // Detect project files for filtering
             DetectProjectFiles();
+            UpdateShowAllFilesVisual();
             if (IsHandleCreated)
                 BeginInvoke(() => PopulateDirectoryAsync(rootNode, path));
             else
@@ -815,6 +855,11 @@ private TreeNode CreateDirectoryNode(string dirPath)
         _projectFilterButton.Text = _projectFilterEnabled ? "📋✓" : "📋";
     }
 
+    private void UpdateShowAllFilesVisual()
+    {
+        _showAllFilesButton.Text = _showAllFiles ? "📄✓" : "📄";
+    }
+
     public void DetectProjectFiles()
     {
         _projectFiles.Clear();
@@ -950,75 +995,159 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void Tree_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Enter && _tree.SelectedNode != null)
+        if (_multiSelectedNodes.Count == 0) return;
+
+        if (e.KeyCode == Keys.Enter)
         {
-            OpenNode(_tree.SelectedNode);
+            foreach (var node in _multiSelectedNodes.ToList())
+            {
+                OpenNode(node);
+            }
+            e.Handled = true;
+        }
+        else if (e.KeyCode == Keys.F2 && _multiSelectedNodes.Count == 1)
+        {
+            RenameSelected();
+            e.Handled = true;
+        }
+        else if (e.KeyCode == Keys.Delete)
+        {
+            DeleteSelectedItems();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.A)
+        {
+            SelectAll();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.N)
+        {
+            CreateNewFile();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && (Control.ModifierKeys & Keys.Shift) == Keys.Shift && e.KeyCode == Keys.N)
+        {
+            CreateNewFolder();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.C && _multiSelectedNodes.Count == 1)
+        {
+            CopyPath();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && (Control.ModifierKeys & Keys.Shift) == Keys.Shift && e.KeyCode == Keys.C && _multiSelectedNodes.Count == 1)
+        {
+            CopyRelativePath();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.Enter && _multiSelectedNodes.Count == 1)
+        {
+            OpenToSide();
             e.Handled = true;
         }
     }
 
-    // Temporarily disabled custom drawing to fix startup issues
-    // private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
-    // {
-    //     var theme = ThemeManager.Instance.CurrentTheme;
-    //     var node = e.Node;
-    //     var bounds = e.Bounds;
-    //
-    //     // Background
-    //     Color backColor;
-    //     if ((e.State & TreeNodeStates.Selected) != 0)
-    //     {
-    //         backColor = theme.ButtonHoverBackground;
-    //     }
-    //     else if (node.BackColor != Color.Transparent) // Search highlight
-    //     {
-    //         backColor = node.BackColor;
-    //     }
-    //     else
-    //     {
-    //         backColor = theme.MenuBackground;
-    //     }
-    //
-    //     using (var brush = new SolidBrush(backColor))
-    //     {
-    //         e.Graphics.FillRectangle(brush, bounds);
-    //     }
-    //
-    //     // Icon
-    //     if (node.ImageIndex >= 0 && FileIconProvider.ImageList != null)
-    //     {
-    //         var iconBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 2, bounds.Y + 1, 20, 20);
-    //         e.Graphics.DrawImage(FileIconProvider.ImageList.Images[node.ImageIndex], iconBounds);
-    //     }
-    //
-    //     // Text
-    //     Color textColor;
-    //     if (node.BackColor != Color.Transparent) // Search highlight
-    //     {
-    //         textColor = node.ForeColor;
-    //     }
-    //     else if ((e.State & TreeNodeStates.Selected) != 0)
-    //     {
-    //         textColor = theme.Text;
-    //     }
-    //     else
-    //     {
-    //         textColor = theme.Text;
-    //     }
-    //
-    //     var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 26, bounds.Y + 2,
-    //                                    bounds.Width - (node.Level * _tree.Indent) - 26, bounds.Height - 4);
-    //
-    //     TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textBounds, textColor,
-    //                          TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
-    // }
+    private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
+    {
+        var theme = ThemeManager.Instance.CurrentTheme;
+        var node = e.Node;
+        var bounds = e.Bounds;
+
+        // Background
+        Color backColor;
+#pragma warning disable CS8602 // node is not null in DrawNode
+        if (node != null && _multiSelectedNodes.Contains(node))
+        {
+            backColor = theme.ButtonHoverBackground;
+        }
+        else if (node.BackColor != Color.Transparent) // Search highlight
+        {
+            backColor = node.BackColor;
+        }
+        else if (node == _hoveredNode) // Full-width hover highlight
+        {
+            backColor = Color.FromArgb(120, theme.ButtonHoverBackground);
+        }
+        else
+        {
+            backColor = theme.MenuBackground;
+        }
+#pragma warning restore CS8602
+
+        // For selected or hovered, draw full width
+        Rectangle drawBounds = bounds;
+        if (_multiSelectedNodes.Contains(node) || node == _hoveredNode)
+        {
+            drawBounds = new Rectangle(0, bounds.Y, _tree.ClientSize.Width, bounds.Height);
+        }
+
+        using (var brush = new SolidBrush(backColor))
+        {
+            e.Graphics.FillRectangle(brush, drawBounds);
+        }
+
+        // Icon
+        if (node.ImageIndex >= 0 && FileIconProvider.ImageList != null)
+        {
+            var iconBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 2, bounds.Y + 1, 16, 16);
+            e.Graphics.DrawImage(FileIconProvider.ImageList.Images[node.ImageIndex], iconBounds);
+        }
+
+        // Text
+        Color textColor;
+        if (node.BackColor != Color.Transparent) // Search highlight
+        {
+            textColor = node.ForeColor;
+        }
+        else
+        {
+            textColor = theme.Text;
+        }
+
+        var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 22, bounds.Y + 2,
+                                       bounds.Width - (node.Level * _tree.Indent) - 22, bounds.Height - 4);
+
+        TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textBounds, textColor,
+                             TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
+    }
 
     private void Tree_MouseDown(object? sender, MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Right)
+        var hit = _tree.HitTest(e.Location);
+        if (hit.Node == null) return;
+
+        if (e.Button == MouseButtons.Left)
         {
-            var hit = _tree.HitTest(e.Location);
-            _tree.SelectedNode = hit.Node;
+            if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
+            {
+                // Toggle multi-selection
+                if (_multiSelectedNodes.Contains(hit.Node))
+                {
+                    _multiSelectedNodes.Remove(hit.Node);
+                }
+                else
+                {
+                    _multiSelectedNodes.Add(hit.Node);
+                }
+                _tree.SelectedNode = hit.Node; // Keep for keyboard navigation
+            }
+            else
+            {
+                // Single selection
+                _multiSelectedNodes.Clear();
+                _multiSelectedNodes.Add(hit.Node);
+                _tree.SelectedNode = hit.Node;
+            }
+        }
+        else if (e.Button == MouseButtons.Right)
+        {
+            // If right-click on non-selected, make it the selection
+            if (!_multiSelectedNodes.Contains(hit.Node))
+            {
+                _multiSelectedNodes.Clear();
+                _multiSelectedNodes.Add(hit.Node);
+                _tree.SelectedNode = hit.Node;
+            }
             _fileContextMenu.Show(_tree, e.Location);
         }
     }
@@ -1330,5 +1459,197 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 }
             }
         }
+    }
+
+    private void DeleteSelectedItems()
+    {
+        if (_multiSelectedNodes.Count == 0) return;
+
+        var items = _multiSelectedNodes.Select(n => n.Tag as string).Where(p => p != null).ToList();
+        if (items.Count == 0) return;
+
+        string itemType = items.Count == 1 ? (Directory.Exists(items[0]) ? "folder" : "file") : "items";
+        string message = items.Count == 1
+            ? $"Are you sure you want to delete the {itemType} '{Path.GetFileName(items[0])}'?"
+            : $"Are you sure you want to delete {items.Count} selected items?";
+
+        var result = MessageBox.Show(message, "Delete Items", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+        if (result == DialogResult.Yes)
+        {
+            try
+            {
+                foreach (var path in items)
+                {
+                    if (Directory.Exists(path))
+                        Directory.Delete(path, true);
+                    else if (File.Exists(path))
+                        File.Delete(path);
+                }
+                RefreshTree();
+                _multiSelectedNodes.Clear();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to delete items: {ex.Message}", "Delete Failed",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+
+    private void SelectAll()
+    {
+        _multiSelectedNodes.Clear();
+        CollectAllNodes(_tree.Nodes);
+    }
+
+    private void CollectAllNodes(TreeNodeCollection nodes)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            _multiSelectedNodes.Add(node);
+            CollectAllNodes(node.Nodes);
+        }
+    }
+
+    private void AddToFavorites()
+    {
+        if (_tree.SelectedNode?.Tag is string path)
+        {
+            if (_favorites.Add(path))
+            {
+                RefreshFavorites();
+                SaveFavorites();
+            }
+        }
+    }
+
+    private void RefreshFavorites()
+    {
+        if (_favorites.Count == 0)
+        {
+            if (_favoritesRoot != null)
+            {
+                _favoritesRoot.Remove();
+                _favoritesRoot = null;
+            }
+            return;
+        }
+
+        if (_favoritesRoot == null)
+        {
+            _favoritesRoot = new TreeNode("⭐ Favorites")
+            {
+                ImageIndex = FileIconProvider.FolderIconIndex,
+                SelectedImageIndex = FileIconProvider.FolderIconIndex
+            };
+            _tree.Nodes.Insert(0, _favoritesRoot);
+        }
+
+        _favoritesRoot.Nodes.Clear();
+        foreach (var fav in _favorites.OrderBy(f => Path.GetFileName(f)))
+        {
+            var node = CreateFavoriteNode(fav);
+            _favoritesRoot.Nodes.Add(node);
+        }
+        _favoritesRoot.Expand();
+    }
+
+    private TreeNode CreateFavoriteNode(string path)
+    {
+        string name = Path.GetFileName(path);
+        int iconIdx = FileIconProvider.GetIconIndex(path);
+        var node = new TreeNode(name)
+        {
+            Tag = path,
+            ImageIndex = iconIdx,
+            SelectedImageIndex = iconIdx
+        };
+        return node;
+    }
+
+    private TreeNode? GetNodeAtY(int y)
+    {
+        foreach (TreeNode node in _tree.Nodes)
+        {
+            var found = GetNodeAtYRecursive(node, y);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private TreeNode? GetNodeAtYRecursive(TreeNode node, int y)
+    {
+        var bounds = node.Bounds;
+        if (y >= bounds.Y && y < bounds.Y + bounds.Height)
+        {
+            return node;
+        }
+        foreach (TreeNode child in node.Nodes)
+        {
+            var found = GetNodeAtYRecursive(child, y);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private void Tree_MouseMove(object? sender, MouseEventArgs e)
+    {
+        var hit = _tree.HitTest(e.Location);
+        if (hit.Node != _hoveredNode)
+        {
+            var oldHovered = _hoveredNode;
+            _hoveredNode = hit.Node;
+            // Invalidate the affected areas
+            if (oldHovered != null)
+            {
+                var bounds = oldHovered.Bounds;
+                _tree.Invalidate(new Rectangle(0, bounds.Y, _tree.ClientSize.Width, bounds.Height));
+            }
+            if (_hoveredNode != null)
+            {
+                var bounds = _hoveredNode.Bounds;
+                _tree.Invalidate(new Rectangle(0, bounds.Y, _tree.ClientSize.Width, bounds.Height));
+            }
+        }
+    }
+
+    private void Tree_MouseLeave(object? sender, EventArgs e)
+    {
+        if (_hoveredNode != null)
+        {
+            var bounds = _hoveredNode.Bounds;
+            _tree.Invalidate(new Rectangle(0, bounds.Y, _tree.ClientSize.Width, bounds.Height));
+            _hoveredNode = null;
+        }
+    }
+
+    private void LoadFavorites()
+    {
+        try
+        {
+            string filePath = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath)!, FavoritesFile);
+            if (File.Exists(filePath))
+            {
+                string json = File.ReadAllText(filePath);
+                var favorites = JsonSerializer.Deserialize<HashSet<string>>(json);
+                if (favorites != null)
+                {
+                    _favorites.UnionWith(favorites);
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void SaveFavorites()
+    {
+        try
+        {
+            string filePath = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath)!, FavoritesFile);
+            string json = JsonSerializer.Serialize(_favorites);
+            File.WriteAllText(filePath, json);
+        }
+        catch { }
     }
 }
