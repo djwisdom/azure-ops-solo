@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using LibGit2Sharp;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -11,6 +12,8 @@ internal sealed class WorkspacePanel : UserControl
 
     [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+
+    private readonly GitService _git;
 
     private const int TVS_LINESATROOT = 0x1000;
     private const int GWL_STYLE = -16;
@@ -85,6 +88,7 @@ internal sealed class WorkspacePanel : UserControl
             _refreshTimer?.Dispose();
             _fileWatcher?.Dispose();
             ThemeManager.Instance.ThemeChanged -= SetTheme;
+            if (_git != null) _git.OnRepoChanged -= RefreshGitStatusIndicators;
             SaveFavorites();
         }
         base.Dispose(disposing);
@@ -102,11 +106,15 @@ internal sealed class WorkspacePanel : UserControl
         ".targets", ".resx", ".svg", ".tsv"
     };
 
-    public WorkspacePanel()
+    public WorkspacePanel(GitService git)
     {
+        _git = git;
         _textExtensions = new HashSet<string>(DefaultTextExtensions, StringComparer.OrdinalIgnoreCase);
 
         LoadFavorites();
+
+        // Listen for git repo changes to update status indicators
+        _git.OnRepoChanged += RefreshGitStatusIndicators;
 
         AutoScaleMode = AutoScaleMode.Font;
         MinimumSize = new Size(100, 60);
@@ -409,6 +417,7 @@ internal sealed class WorkspacePanel : UserControl
             // Detect project files for filtering
             DetectProjectFiles();
             UpdateShowAllFilesVisual();
+            RefreshGitStatusIndicators();
             if (IsHandleCreated)
                 BeginInvoke(() => PopulateDirectoryAsync(rootNode, path));
             else
@@ -645,10 +654,12 @@ private TreeNode CreateDirectoryNode(string dirPath)
         }
     }
 
-    private static TreeNode CreateFileNode(string filePath)
+    private TreeNode CreateFileNode(string filePath)
     {
         int iconIdx = FileIconProvider.GetIconIndex(filePath);
-        return new TreeNode(Path.GetFileName(filePath))
+        string fileName = Path.GetFileName(filePath);
+        string gitStatus = GetGitStatusIndicator(filePath);
+        return new TreeNode(fileName + gitStatus)
         {
             Tag = filePath,
             ImageIndex = iconIdx,
@@ -1621,6 +1632,82 @@ private TreeNode CreateDirectoryNode(string dirPath)
             var bounds = _hoveredNode.Bounds;
             _tree.Invalidate(new Rectangle(0, bounds.Y, _tree.ClientSize.Width, bounds.Height));
             _hoveredNode = null;
+        }
+    }
+
+    private string GetGitStatusIndicator(string filePath)
+    {
+        if (_git?.IsActive != true) return "";
+
+        try
+        {
+            var (staged, unstaged, untracked) = _git.GetStatus();
+
+            // Check staged files first
+            var stagedEntry = staged.FirstOrDefault(s => s.Path == filePath);
+            if (stagedEntry != null)
+            {
+                if (stagedEntry.State.HasFlag(FileStatus.NewInIndex)) return " [+]";
+                if (stagedEntry.State.HasFlag(FileStatus.ModifiedInIndex)) return " [M]";
+                if (stagedEntry.State.HasFlag(FileStatus.DeletedFromIndex)) return " [-]";
+                if (stagedEntry.State.HasFlag(FileStatus.RenamedInIndex)) return " [R]";
+            }
+
+            // Check unstaged files
+            var unstagedEntry = unstaged.FirstOrDefault(s => s.Path == filePath);
+            if (unstagedEntry != null)
+            {
+                if (unstagedEntry.State.HasFlag(FileStatus.NewInWorkdir)) return " [+]";
+                if (unstagedEntry.State.HasFlag(FileStatus.ModifiedInWorkdir)) return " [M]";
+                if (unstagedEntry.State.HasFlag(FileStatus.DeletedFromWorkdir)) return " [-]";
+                if (unstagedEntry.State.HasFlag(FileStatus.RenamedInWorkdir)) return " [R]";
+            }
+
+            // Check untracked files
+            var untrackedEntry = untracked.FirstOrDefault(s => s.Path == filePath);
+            if (untrackedEntry != null)
+            {
+                return " [?]";
+            }
+        }
+        catch
+        {
+            // Ignore git errors
+        }
+
+        return "";
+    }
+
+    private void RefreshGitStatusIndicators()
+    {
+        if (!IsHandleCreated) return;
+
+        BeginInvoke(() =>
+        {
+            try
+            {
+                UpdateGitStatusInNodes(_tree.Nodes);
+            }
+            catch
+            {
+                // Ignore errors when updating git status
+            }
+        });
+    }
+
+    private void UpdateGitStatusInNodes(TreeNodeCollection nodes)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            if (node.Tag is string filePath && File.Exists(filePath))
+            {
+                string fileName = Path.GetFileName(filePath);
+                string gitStatus = GetGitStatusIndicator(filePath);
+                node.Text = fileName + gitStatus;
+            }
+
+            // Recursively update child nodes
+            UpdateGitStatusInNodes(node.Nodes);
         }
     }
 

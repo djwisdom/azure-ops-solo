@@ -25,13 +25,18 @@ internal sealed class GitPanel : UserControl
     private readonly ListBox _commitList;
     private readonly TextBox _commitMessage;
     private readonly Button _commitBtn;
+    private readonly Button _amendBtn;
+    private readonly Button _commitPushBtn;
+    private readonly Button _templatesBtn;
     private readonly Button _stageAllBtn;
+    private readonly Button _unstageAllBtn;
     private readonly Button _fetchBtn;
     private readonly Button _pullBtn;
     private readonly Button _pushBtn;
     private readonly Label _statusHeader;
     private readonly Label _commitHeader;
     private readonly Label _noRepoLabel;
+    private readonly ContextMenuStrip _statusContextMenu;
 
     private List<StatusEntry> _staged = new();
     private List<StatusEntry> _unstaged = new();
@@ -109,6 +114,51 @@ internal sealed class GitPanel : UserControl
 
         _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _syncButton, _moreActionsButton });
 
+        // Context menu for status list
+        _statusContextMenu = new ContextMenuStrip();
+        var stageItem = new ToolStripMenuItem("Stage", null, (s, e) => ToggleStageForSelected());
+        var unstageItem = new ToolStripMenuItem("Unstage", null, (s, e) => ToggleStageForSelected());
+        var discardItem = new ToolStripMenuItem("Discard Changes", null, (s, e) =>
+        {
+            if (_statusList?.SelectedIndices?.Count > 0)
+            {
+                var result = ThemedMessageBox.Show(
+                    $"Discard changes for {_statusList.SelectedIndices.Count} selected file(s)?\nThis cannot be undone.",
+                    "Discard Changes", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (result == DialogResult.Yes)
+                {
+                    foreach (int index in _statusList.SelectedIndices)
+                    {
+                        var path = GetStatusPathAtIndex(index);
+                        if (path != null)
+                        {
+                            _git.DiscardFile(path);
+                        }
+                    }
+                    RefreshStatus();
+                }
+            }
+        });
+        var diffItem = new ToolStripMenuItem("View Diff", null, (s, e) =>
+        {
+            if (_statusList?.SelectedIndices?.Count > 0)
+            {
+                int lastIndex = _statusList.SelectedIndices[_statusList.SelectedIndices.Count - 1];
+                _selectedDiffIndex = lastIndex;
+                ShowDiffForIndex(_selectedDiffIndex);
+            }
+        });
+
+        _statusContextMenu.Items.AddRange(new ToolStripItem[] {
+            stageItem, unstageItem, new ToolStripSeparator(), diffItem, discardItem
+        });
+
+        // Initially hide all items, will be shown based on selection
+        stageItem.Visible = false;
+        unstageItem.Visible = false;
+        diffItem.Visible = false;
+        discardItem.Visible = false;
+
         _noRepoLabel = new Label
         {
             Text = "Not in a Git repository.\nOpen a file inside a repo\nto see git status.",
@@ -148,6 +198,18 @@ internal sealed class GitPanel : UserControl
         };
         _stageAllBtn.Click += (s, e) => { _git.StageAll(); RefreshStatus(); };
 
+        _unstageAllBtn = new Button
+        {
+            Text = "Unstage All",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(80, 22),
+            Location = new Point(200, y - 1),
+            Cursor = Cursors.Hand,
+            TabStop = false
+        };
+        _unstageAllBtn.Click += (s, e) => { _git.UnstageAll(); RefreshStatus(); };
+
         y += 24;
         _statusList = new ListBox
         {
@@ -156,13 +218,15 @@ internal sealed class GitPanel : UserControl
             IntegralHeight = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             ItemHeight = 22,
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            SelectionMode = SelectionMode.MultiExtended // Enable multi-selection
         };
         _statusList.DrawItem += StatusList_DrawItem;
         _statusList.MouseClick += StatusList_MouseClick;
         _statusList.MouseDoubleClick += StatusList_DoubleClick;
         _statusList.SelectedIndexChanged += StatusList_SelectedIndexChanged;
         _statusList.MeasureItem += (s, e) => e.ItemHeight = 24;
+        _statusList.KeyDown += StatusList_KeyDown;
 
         y += 4;
         _commitBtn = new Button
@@ -170,23 +234,67 @@ internal sealed class GitPanel : UserControl
             Text = "Commit",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
-            Size = new Size(80, 26),
+            Size = new Size(70, 26),
             Location = new Point(4, y),
             Cursor = Cursors.Hand,
             Enabled = false
         };
         _commitBtn.Click += Commit_Click;
 
+        _amendBtn = new Button
+        {
+            Text = "Amend",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(60, 26),
+            Location = new Point(80, y),
+            Cursor = Cursors.Hand,
+            Enabled = false
+        };
+        _amendBtn.Click += Amend_Click;
+
+        _commitPushBtn = new Button
+        {
+            Text = "Commit & Push",
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8),
+            Size = new Size(100, 26),
+            Location = new Point(146, y),
+            Cursor = Cursors.Hand,
+            Enabled = false
+        };
+        _commitPushBtn.Click += CommitPush_Click;
+
         _commitMessage = new TextBox
         {
             Font = new Font("Segoe UI", 9),
             BorderStyle = BorderStyle.FixedSingle,
             Location = new Point(90, y),
-            Size = new Size(180, 26),
+            Size = new Size(160, 26),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
             Text = ""
         };
-        _commitMessage.TextChanged += (s, e) => _commitBtn.Enabled = _commitMessage.Text.Trim().Length > 0;
+
+        _templatesBtn = new Button
+        {
+            Text = "📝",
+            Font = new Font("Segoe UI", 8),
+            FlatStyle = FlatStyle.Flat,
+            Size = new Size(24, 24),
+            Location = new Point(256, y + 1),
+            Cursor = Cursors.Hand
+        };
+        _templatesBtn.Click += TemplatesButton_Click;
+        _commitMessage.TextChanged += (s, e) =>
+        {
+            var hasMessage = _commitMessage.Text.Trim().Length > 0;
+            var hasStaged = _staged.Count > 0;
+            var hasLastCommit = _git.GetLog(1).Any();
+
+            _commitBtn.Enabled = hasMessage && hasStaged;
+            _amendBtn.Enabled = hasMessage && hasLastCommit;
+            _commitPushBtn.Enabled = hasMessage && hasStaged;
+        };
 
         y += 32;
         _commitHeader = new Label
@@ -258,7 +366,7 @@ internal sealed class GitPanel : UserControl
         };
 
         _topPanel.Controls.AddRange(new Control[] {
-            _statusHeader, _stageAllBtn, _statusList, _commitMessage, _commitBtn,
+            _statusHeader, _stageAllBtn, _unstageAllBtn, _statusList, _commitMessage, _templatesBtn, _commitBtn, _amendBtn, _commitPushBtn,
             _commitHeader, _commitList, _fetchBtn, _pullBtn, _pushBtn
         });
 
@@ -290,6 +398,97 @@ internal sealed class GitPanel : UserControl
 
         SetTheme(theme);
         RefreshStatus();
+    }
+
+    private void ToggleStageForSelected()
+    {
+        var selectedPaths = new List<string>();
+        foreach (int index in _statusList.SelectedIndices)
+        {
+            var path = GetStatusPathAtIndex(index);
+            if (path != null)
+            {
+                selectedPaths.Add(path);
+            }
+        }
+
+        if (selectedPaths.Count == 0) return;
+
+        // Check if we're in staged or unstaged section to determine action
+        bool hasStaged = false;
+        bool hasUnstaged = false;
+        foreach (var path in selectedPaths)
+        {
+            if (_staged.Any(s => s.Path == path))
+                hasStaged = true;
+            if (_unstaged.Any(s => s.Path == path) || _untracked.Any(s => s.Path == path))
+                hasUnstaged = true;
+        }
+
+        if (hasStaged && !hasUnstaged)
+        {
+            // All selected are staged, so unstage them
+            foreach (var path in selectedPaths)
+            {
+                _git.Unstage(path);
+            }
+        }
+        else
+        {
+            // Stage all selected
+            foreach (var path in selectedPaths)
+            {
+                _git.Stage(path);
+            }
+        }
+
+        RefreshStatus();
+    }
+
+    private void SelectAllFiles()
+    {
+        _statusList.ClearSelected();
+        for (int i = 0; i < _statusList.Items.Count; i++)
+        {
+            var text = _statusList.Items[i].ToString() ?? "";
+            if (!text.StartsWith("📝") && text != "(no changes)")
+            {
+                _statusList.SetSelected(i, true);
+            }
+        }
+    }
+
+    private void UpdateContextMenuForSelection()
+    {
+        var menu = _statusContextMenu;
+        if (menu.Items.Count < 5) return; // Safety check
+
+        var stageItem = (ToolStripMenuItem)menu.Items[0];
+        var unstageItem = (ToolStripMenuItem)menu.Items[1];
+        var diffItem = (ToolStripMenuItem)menu.Items[3];
+        var discardItem = (ToolStripMenuItem)menu.Items[4];
+
+        bool hasStaged = false;
+        bool hasUnstaged = false;
+        bool hasFiles = false;
+
+        foreach (int index in _statusList.SelectedIndices)
+        {
+            var path = GetStatusPathAtIndex(index);
+            if (path != null)
+            {
+                hasFiles = true;
+                if (_staged.Any(s => s.Path == path))
+                    hasStaged = true;
+                if (_unstaged.Any(s => s.Path == path) || _untracked.Any(s => s.Path == path))
+                    hasUnstaged = true;
+            }
+        }
+
+        stageItem.Visible = hasFiles && hasUnstaged;
+        unstageItem.Visible = hasFiles && hasStaged;
+        diffItem.Visible = hasFiles;
+        discardItem.Visible = hasFiles && hasUnstaged;
     }
 
     private void BranchLabel_Click(object? sender, EventArgs e)
@@ -351,6 +550,39 @@ internal sealed class GitPanel : UserControl
 
         menu.Items.AddRange(new ToolStripItem[] { refreshItem, new ToolStripSeparator(), closeItem });
         menu.Show(_moreActionsButton, new Point(0, _moreActionsButton.Height));
+    }
+
+    private void TemplatesButton_Click(object? sender, EventArgs e)
+    {
+        // Show commit message templates
+        var menu = new ContextMenuStrip();
+
+        var templates = new[]
+        {
+            ("✨ feat: ", "New feature"),
+            ("🐛 fix: ", "Bug fix"),
+            ("📚 docs: ", "Documentation"),
+            ("♻️ refactor: ", "Code refactoring"),
+            ("🎨 style: ", "Code style changes"),
+            ("✅ test: ", "Testing"),
+            ("🔧 chore: ", "Maintenance"),
+            ("⚡ perf: ", "Performance improvement"),
+            ("🔒 security: ", "Security fix"),
+            ("🚀 ci: ", "CI/CD changes")
+        };
+
+        foreach (var (prefix, description) in templates)
+        {
+            var item = new ToolStripMenuItem($"{prefix} {description.ToLower()}", null, (s, args) =>
+            {
+                _commitMessage.Text = prefix;
+                _commitMessage.Focus();
+                _commitMessage.SelectionStart = _commitMessage.Text.Length;
+            });
+            menu.Items.Add(item);
+        }
+
+        menu.Show(_templatesBtn, new Point(0, _templatesBtn.Height));
     }
 
     private string GetStatusIcon(FileStatus state)
@@ -453,7 +685,13 @@ internal sealed class GitPanel : UserControl
                 _syncButton.Text = "⬇️ ? ↑ ?";
             }
 
-            _commitBtn.Enabled = _commitMessage.Text.Trim().Length > 0 && staged.Count > 0;
+            var hasMessage = _commitMessage.Text.Trim().Length > 0;
+            var hasStaged = staged.Count > 0;
+            var hasLastCommit = _git.GetLog(1).Any();
+
+            _commitBtn.Enabled = hasMessage && hasStaged;
+            _amendBtn.Enabled = hasMessage && hasLastCommit;
+            _commitPushBtn.Enabled = hasMessage && hasStaged;
 
             var log = _git.GetLog(30);
             _commitList.Items.Clear();
@@ -532,7 +770,7 @@ internal sealed class GitPanel : UserControl
         if (w < 100) w = 100;
 
         _statusList.Size = new Size(w, Math.Min(_statusList.Items.Count * 24 + 4, 300));
-        _commitMessage.Size = new Size(w - 94, 24);
+        _commitMessage.Size = new Size(w - 200, 24); // Adjust for templates button and extra buttons
         _commitList.Location = new Point(4, _commitList.Location.Y);
         _commitList.Size = new Size(w, Math.Max(60, _topPanel.ClientSize.Height - _commitList.Top - 4));
 
@@ -546,17 +784,48 @@ internal sealed class GitPanel : UserControl
 
     private void StatusList_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        if (_statusList.SelectedIndex < 0) return;
-        var text = _statusList.Items[_statusList.SelectedIndex].ToString() ?? "";
-        if (text.StartsWith("📝") || text == "(no changes)")
+        if (_statusList.SelectedIndices.Count > 0)
         {
-            _diffPanel.ClearDiff();
-            _bodySplit.Panel2Collapsed = true;
-            _selectedDiffIndex = -1;
-            return;
+            // For multi-selection, show diff of the last selected item
+            int lastIndex = _statusList.SelectedIndices[_statusList.SelectedIndices.Count - 1];
+            var text = _statusList.Items[lastIndex].ToString() ?? "";
+            if (text.StartsWith("📝") || text == "(no changes)")
+            {
+                _diffPanel.ClearDiff();
+                _bodySplit.Panel2Collapsed = true;
+                _selectedDiffIndex = -1;
+                return;
+            }
+            _selectedDiffIndex = lastIndex;
+            ShowDiffForIndex(_selectedDiffIndex);
         }
-        _selectedDiffIndex = _statusList.SelectedIndex;
-        ShowDiffForIndex(_selectedDiffIndex);
+    }
+
+    private void StatusList_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (_statusList.SelectedIndices.Count == 0) return;
+
+        if (e.KeyCode == Keys.Space)
+        {
+            // Toggle stage/unstage for selected files
+            ToggleStageForSelected();
+            e.Handled = true;
+        }
+        else if (e.Control && e.KeyCode == Keys.A)
+        {
+            // Select all files (not headers)
+            SelectAllFiles();
+            e.Handled = true;
+        }
+        else if (e.Control && e.KeyCode == Keys.Enter)
+        {
+            // Commit
+            if (_commitBtn.Enabled)
+            {
+                Commit_Click(null, EventArgs.Empty);
+            }
+            e.Handled = true;
+        }
     }
 
     private void StatusList_MouseClick(object? sender, MouseEventArgs e)
@@ -564,13 +833,41 @@ internal sealed class GitPanel : UserControl
         int idx = _statusList.IndexFromPoint(e.Location);
         if (idx < 0 || idx >= _statusList.Items.Count) return;
         var text = _statusList.Items[idx].ToString() ?? "";
-        if (text.StartsWith("📝") || text == "(no changes)") return;
 
-        var entry = FindStatusEntry(text);
-        if (entry is null) return;
+        if (e.Button == MouseButtons.Right)
+        {
+            // Show context menu
+            if (!text.StartsWith("📝") && text != "(no changes)")
+            {
+                // If right-clicking on non-selected item, select it
+                if (!_statusList.GetSelected(idx))
+                {
+                    if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
+                    {
+                        _statusList.SetSelected(idx, true);
+                    }
+                    else
+                    {
+                        _statusList.ClearSelected();
+                        _statusList.SetSelected(idx, true);
+                    }
+                }
 
-        // Single click toggles stage/unstage ONLY for header sections
-        // (selected index change already triggers diff view)
+                // Update menu items based on selection
+                UpdateContextMenuForSelection();
+                _statusContextMenu.Show(_statusList, e.Location);
+            }
+        }
+        else if (e.Button == MouseButtons.Left)
+        {
+            if (text.StartsWith("📝") || text == "(no changes)") return;
+
+            var entry = FindStatusEntry(text);
+            if (entry is null) return;
+
+            // Single click toggles stage/unstage ONLY for header sections
+            // (selected index change already triggers diff view)
+        }
     }
 
     private void StatusList_DoubleClick(object? sender, MouseEventArgs e)
@@ -615,9 +912,21 @@ internal sealed class GitPanel : UserControl
         _commitBtn.BackColor = theme.Accent;
         _commitBtn.ForeColor = Color.White;
         _commitBtn.FlatAppearance.BorderSize = 0;
+        _amendBtn.BackColor = theme.Background;
+        _amendBtn.ForeColor = theme.Text;
+        _amendBtn.FlatAppearance.BorderColor = theme.Border;
+        _commitPushBtn.BackColor = theme.Background;
+        _commitPushBtn.ForeColor = theme.Text;
+        _commitPushBtn.FlatAppearance.BorderColor = theme.Border;
+        _templatesBtn.BackColor = theme.Background;
+        _templatesBtn.ForeColor = theme.Text;
+        _templatesBtn.FlatAppearance.BorderColor = theme.Border;
         _stageAllBtn.BackColor = theme.Background;
         _stageAllBtn.ForeColor = theme.Text;
         _stageAllBtn.FlatAppearance.BorderColor = theme.Muted;
+        _unstageAllBtn.BackColor = theme.Background;
+        _unstageAllBtn.ForeColor = theme.Text;
+        _unstageAllBtn.FlatAppearance.BorderColor = theme.Muted;
         _fetchBtn.BackColor = theme.Background;
         _fetchBtn.ForeColor = theme.Text;
         _fetchBtn.FlatAppearance.BorderColor = theme.Muted;
@@ -630,10 +939,13 @@ internal sealed class GitPanel : UserControl
         _noRepoLabel.ForeColor = theme.Muted;
         _noRepoLabel.BackColor = theme.MenuBackground;
 
-        foreach (var c in new[] { _stageAllBtn, _fetchBtn, _pullBtn })
+        foreach (var c in new[] { _stageAllBtn, _unstageAllBtn, _fetchBtn, _pullBtn })
             c.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
         _commitBtn.FlatAppearance.MouseOverBackColor = ControlPaint.Light(theme.Accent);
         _pushBtn.FlatAppearance.MouseOverBackColor = ControlPaint.Light(theme.Accent);
+        _amendBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        _commitPushBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        _templatesBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
 
         _diffPanel.SetTheme(theme);
 
@@ -736,6 +1048,55 @@ internal sealed class GitPanel : UserControl
             _diffPanel.ClearDiff();
             _bodySplit.Panel2Collapsed = true;
             _selectedDiffIndex = -1;
+            RefreshStatus();
+        }
+    }
+
+    private void Amend_Click(object? sender, EventArgs e)
+    {
+        var lastCommit = _git.GetLog(1).FirstOrDefault();
+        if (lastCommit == null)
+        {
+            ThemedMessageBox.Show("No commits to amend.", "Amend", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Pre-fill with last commit message
+        _commitMessage.Text = lastCommit.Message;
+
+        if (string.IsNullOrWhiteSpace(_commitMessage.Text))
+        { ThemedMessageBox.Show("Enter a commit message.", "Amend", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
+        if (_git.AmendCommit(_commitMessage.Text.Trim()))
+        {
+            _commitMessage.Text = "";
+            _diffPanel.ClearDiff();
+            _bodySplit.Panel2Collapsed = true;
+            _selectedDiffIndex = -1;
+            RefreshStatus();
+        }
+    }
+
+    private void CommitPush_Click(object? sender, EventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_commitMessage.Text))
+        { ThemedMessageBox.Show("Enter a commit message.", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+        if (_staged.Count == 0)
+        { ThemedMessageBox.Show("No staged changes to commit.\nClick a file to stage it, or use 'Stage All'.", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+
+        if (_git.Commit(_commitMessage.Text.Trim()))
+        {
+            _commitMessage.Text = "";
+            _diffPanel.ClearDiff();
+            _bodySplit.Panel2Collapsed = true;
+            _selectedDiffIndex = -1;
+
+            // Try to push after commit
+            var (ok, msg) = _git.Push();
+            if (!ok)
+            {
+                ThemedMessageBox.Show($"Commit successful, but push failed: {msg}", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             RefreshStatus();
         }
     }

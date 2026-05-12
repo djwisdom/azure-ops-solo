@@ -177,25 +177,46 @@ public sealed class GitService : IDisposable
         catch (Exception ex) { OnError?.Invoke($"Could not stage all: {ex.Message}"); return false; }
     }
 
+    private Signature GetSignature(string? authorName = null, string? authorEmail = null)
+    {
+        return authorName is not null
+            ? new Signature(authorName, authorEmail ?? "user@local", DateTimeOffset.Now)
+            : new Signature("Personal Flip Pad", "git@pfpad.local", DateTimeOffset.Now);
+    }
+
     public bool Commit(string message, string? authorName = null, string? authorEmail = null)
     {
         if (_repo is null) return false;
         try
         {
-            if (string.IsNullOrWhiteSpace(message))
-            { OnError?.Invoke("Commit message cannot be empty."); return false; }
-
-            var author = authorName is not null
-                ? new Signature(authorName, authorEmail ?? "user@local", DateTimeOffset.Now)
-                : new Signature("Personal Flip Pad", "git@pfpad.local", DateTimeOffset.Now);
-
+            var author = GetSignature(authorName, authorEmail);
             _repo.Commit(message, author, author);
-            OnRepoChanged?.Invoke();
             return true;
         }
         catch (Exception ex)
         {
-            OnError?.Invoke($"Commit failed: {ex.Message}");
+            OnError?.Invoke($"Failed to commit: {ex.Message}");
+            return false;
+        }
+    }
+
+    public bool AmendCommit(string message, string? authorName = null, string? authorEmail = null)
+    {
+        if (_repo is null) return false;
+        try
+        {
+            var author = GetSignature(authorName, authorEmail);
+            var lastCommit = _repo.Head.Tip;
+
+            // Amend the last commit with new message
+            _repo.Reset(ResetMode.Soft, lastCommit.Parents.FirstOrDefault());
+            _repo.Commit(message, author, author, new CommitOptions { AmendPreviousCommit = true });
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            OnError?.Invoke($"Failed to amend commit: {ex.Message}");
             return false;
         }
     }

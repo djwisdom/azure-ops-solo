@@ -993,7 +993,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               // Wrap editor/terminal in workspace split container (workspace sidebar | editor+terminal)
               if (_workspaceSplitContainer == null)
               {
-                  _workspacePanel = new WorkspacePanel();
+                  _workspacePanel = new WorkspacePanel(_gitService);
                   _workspacePanel.FileOpenRequested += (path) =>
                   {
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
@@ -7317,14 +7317,34 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void UpdateGitStatusBar()
         {
-            if (gitBranchLabel is null) return;
+            if (gitBranchLabel is null || gitDirtyLabel is null || gitSyncLabel is null) return;
             if (_gitService.IsActive)
             {
                 gitBranchLabel.Text = _gitService.CurrentBranch ?? "";
                 var (staged, unstaged, untracked) = _gitService.GetStatus();
                 int changes = staged.Count + unstaged.Count + untracked.Count;
                 gitDirtyLabel.Text = changes > 0 ? " ●" : "";
-                gitSyncLabel.Visible = true;
+
+                // Show behind/ahead counts
+                try
+                {
+                    var (behind, ahead) = _gitService.GetRemoteStatus();
+                    if (behind > 0 || ahead > 0)
+                    {
+                        gitSyncLabel.Text = $"⬇️{behind} ⬆️{ahead}";
+                        gitSyncLabel.Visible = true;
+                    }
+                    else
+                    {
+                        gitSyncLabel.Text = "🔄";
+                        gitSyncLabel.Visible = true;
+                    }
+                }
+                catch
+                {
+                    gitSyncLabel.Text = "🔄";
+                    gitSyncLabel.Visible = true;
+                }
             }
             else
             {
