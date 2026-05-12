@@ -33,6 +33,7 @@ internal sealed class ProfileManagerDialog : Form
 
     // Right panel: details
     private Panel _rightPanel = null!;
+private Panel _contentPanel = null!;
     private TextBox _nameBox = null!;
     private TextBox _descriptionBox = null!;
     private PictureBox _colorPreviewBox = null!;
@@ -979,25 +980,25 @@ internal sealed class ProfileManagerDialog : Form
         _showAllButton.Text = allExpanded ? "▲ Hide Advanced Settings" : "▼ Show All Settings";
     }
 
-    private void LayoutRightPanel()
+private void LayoutRightPanel()
+{
+    // Controls that should move when sections expand/collapse.
+    // Static detail fields (title, name, description, appearance) stay at their designed positions.
+    Control[] repositionable = new Control[] { _showAllButton, _workspaceSection!, _commandsSection!, _overridesSection!, _defaultOnStartupCheck, _lastUsedLabel, _usageLabel };
+
+    // Start after the appearance group
+    int y = _appearanceGroup!.Bottom + 6;
+
+    foreach (Control ctrl in repositionable)
     {
-        // Controls that should move when sections expand/collapse.
-        // Static detail fields (title, name, description, appearance) stay at their designed positions.
-        Control[] repositionable = new Control[] { _showAllButton, _workspaceSection!, _commandsSection!, _overridesSection!, _defaultOnStartupCheck, _lastUsedLabel, _usageLabel, _actionPanel! };
-
-        // Start after the appearance group
-        int y = _appearanceGroup!.Bottom + 6;
-
-        foreach (Control ctrl in repositionable)
+        if (ctrl != null)
         {
-            if (ctrl != null)
-            {
-                ctrl.Location = new Point(ctrl.Location.X, y);
-                y = ctrl.Bottom + 6;
-            }
+            ctrl.Location = new Point(ctrl.Location.X, y);
+            y = ctrl.Bottom + 6;
         }
-        _rightPanel.AutoScrollMinSize = new Size(0, y);
     }
+    _contentPanel.AutoScrollMinSize = new Size(0, y);
+}
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
