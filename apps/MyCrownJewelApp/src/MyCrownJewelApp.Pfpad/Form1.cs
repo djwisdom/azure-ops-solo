@@ -439,6 +439,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     {
         InitializeComponent();
 
+        // Initialize status bar visibility (Vim mode starts disabled)
+        UpdateStatusBarVisibility();
+
         try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
         this.KeyDown += Form1_KeyDown;
@@ -2219,9 +2222,10 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
                     // (this is handled by the engine disabling)
                 }
             }
-            
+
             // Update status bar to show Vim mode indicator
             UpdateStatusBar();
+            UpdateStatusBarVisibility();
             gutterPanel?.Invalidate();
         }
 
@@ -6694,7 +6698,18 @@ private void NewWindow_Click(object? sender, EventArgs e)
             fileTypeLabel.Text = fileType;
 
             // File type icon removed - text only
-}
+        }
+
+        private void UpdateStatusBarVisibility()
+        {
+            bool hide = vimModeEnabled;
+            _buildConfigCombo.Visible = !hide;
+            roslynDropDown.Visible = !hide;
+            roslynToggleLabel.Visible = !hide;
+            themeDropDown.Visible = !hide;
+            _workspaceProjectLabel.Visible = !hide;
+            statusStrip.Items[10].Visible = !hide; // spring spacer
+        }
 
         private void UpdateTabControlTheme()
         {

@@ -487,16 +487,17 @@ internal sealed class GitOperationsPanel : Panel
 
                     // Get incoming version (from conflicts)
                     var incomingContent = "";
-                    if (_git.GetRepo() != null)
+                    var repo = _git.GetRepo();
+                    if (repo != null)
                     {
-                        var conflict = _git.GetRepo().Index.Conflicts
-                            .FirstOrDefault(c => 
-                                (c.Ours?.Path == filePath || 
-                                 c.Theirs?.Path == filePath || 
+                        var conflict = repo.Index.Conflicts
+                            .FirstOrDefault(c =>
+                                (c.Ours?.Path == filePath ||
+                                 c.Theirs?.Path == filePath ||
                                  c.Ancestor?.Path == filePath));
                         if (conflict != null && conflict.Theirs != null)
                         {
-                            incomingContent = _git.GetRepo().Lookup<Blob>(conflict.Theirs.Id).GetContentText();
+                            incomingContent = repo.Lookup<Blob>(conflict.Theirs.Id).GetContentText();
                         }
                     }
                     incomingBox.Text = incomingContent;
@@ -672,7 +673,7 @@ internal sealed class GitOperationsPanel : Panel
                     : "None";
                 _recentTagsLabel.Text = $"🏷️ Recent Tags: {tagsText}";
             }
-            catch (Exception ex)
+            catch
             {
                 _commitFrequencyLabel.Text = "📈 Commit Frequency: Error";
                 _topContributorsLabel.Text = "👥 Top Contributors: Error";
@@ -845,17 +846,14 @@ internal sealed class GitOperationsPanel : Panel
 
         // Git Operations Panel
         _operationsPanel = new GitOperationsPanel(_git);
-        _operationsPanel.Location = new Point(4, _topPanel.Bottom + 8);
         _operationsPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         // Conflict Resolver Panel
         _conflictResolverPanel = new GitConflictResolverPanel(_git);
-        _conflictResolverPanel.Location = new Point(4, _operationsPanel.Bottom + 8);
         _conflictResolverPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         // History and Analytics Panel
         _historyAnalyticsPanel = new GitHistoryAnalyticsPanel(_git);
-        _historyAnalyticsPanel.Location = new Point(4, _conflictResolverPanel.Bottom + 8);
         _historyAnalyticsPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
 
         // Context menu for status list
@@ -1113,6 +1111,11 @@ internal sealed class GitOperationsPanel : Panel
             _statusHeader, _stageAllBtn, _unstageAllBtn, _statusList, _commitMessage, _templatesBtn, _commitBtn, _amendBtn, _commitPushBtn,
             _commitHeader, _commitList, _fetchBtn, _pullBtn, _pushBtn
         });
+
+        // Set locations for sub-panels
+        _operationsPanel.Location = new Point(4, _topPanel.Bottom + 8);
+        _conflictResolverPanel.Location = new Point(4, _operationsPanel.Bottom + 8);
+        _historyAnalyticsPanel.Location = new Point(4, _conflictResolverPanel.Bottom + 8);
 
         // Diff panel
         _diffPanel = new DiffPanel();
