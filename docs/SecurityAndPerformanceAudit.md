@@ -158,7 +158,7 @@ var lines = File.ReadAllLines(file);  // Duplicate read
 
 ## Implemented Remediations
 
-All identified issues have been addressed:
+Most identified issues have been addressed. One low-priority issue remains due to implementation complexity:
 
 ### Security Fixes
 - **Race Condition in ThemedDialogs.cs**: Added thread-safe locking for Windows hook management to prevent resource leaks during concurrent dialog operations.
@@ -170,6 +170,9 @@ All identified issues have been addressed:
 
 ### Resource Management
 - **Event Handler Leaks**: Verified that WinForms automatic disposal handles event cleanup for UI controls. No additional changes needed for single-instance application.
+
+### Remaining Issues
+- **Status Bar Stale Info**: The status bar may show outdated git repository information when switching workspaces. This is a low-priority UI issue that would require significant refactoring of the git service integration. Users can work around this by reopening the application or manually refreshing.
 - **Frequent Disk I/O**: Existing async patterns and background processing already mitigate I/O bottlenecks.
 
 ## Conclusion
