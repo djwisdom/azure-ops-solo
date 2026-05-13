@@ -3132,7 +3132,7 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             ofd.Multiselect = false;
             if (ofd.ShowThemed() == DialogResult.OK)
             {
-                OpenFileInNewTab(ofd.FileName);
+                OpenFileInNewTabAsync(ofd.FileName);
             }
         }
 
@@ -5283,7 +5283,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (!File.Exists(path)) return;
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit
+            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit for async loading
             {
                 BeginInvoke(() => ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning));
                 return;
