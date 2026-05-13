@@ -5263,10 +5263,16 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (!File.Exists(path)) return;
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > 100 * 1024) // 100KB limit for UI performance
+            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB absolute limit
             {
-                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / 1024} KB). Maximum size is 100 KB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
+            if (fileInfo.Length > 1024 * 1024) // 1MB warning
+            {
+                var result = ThemedMessageBox.Show($"File is large ({fileInfo.Length / (1024 * 1024)} MB). Opening may be slow. Continue?", "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (result != DialogResult.Yes)
+                    return;
             }
             try
             {
@@ -5314,6 +5320,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
             {
                 BeginInvoke(() => ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning));
                 return;
+            }
+            if (fileInfo.Length > 2 * 1024 * 1024) // 2MB warning for async
+            {
+                var result = ThemedMessageBox.Show($"File is large ({fileInfo.Length / (1024 * 1024)} MB). Opening may be slow and use significant memory. Continue?", "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (result != DialogResult.Yes)
+                    return;
             }
             var syntax = SyntaxDefinition.GetDefinitionForFile(path);
             var doc = new Document

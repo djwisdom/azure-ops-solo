@@ -44,7 +44,7 @@ internal static class NativeThemed
 
     private static readonly CbtProcDelegate CbtProc = CbtHookProc;
     private static IntPtr _hook = IntPtr.Zero;
-    private static readonly IntPtr _hookHandle = IntPtr.Zero;
+    private static readonly object _hookLock = new();
 
     [DllImport("user32.dll")]
     private static extern IntPtr SetWindowsHookEx(int idHook, CbtProcDelegate lpfn, IntPtr hmod, uint dwThreadId);
@@ -81,17 +81,23 @@ internal static class NativeThemed
     internal static DialogResult ShowDialogThemed(Func<DialogResult> show)
     {
         var theme = ThemeManager.Instance.CurrentTheme;
+        IntPtr hook = IntPtr.Zero;
         if (!theme.IsLight)
         {
-            _hook = SetWindowsHookEx(WH_CBT, CbtProc, IntPtr.Zero, GetCurrentThreadId());
+            lock (_hookLock)
+            {
+                hook = SetWindowsHookEx(WH_CBT, CbtProc, IntPtr.Zero, GetCurrentThreadId());
+            }
         }
         try { return show(); }
         finally
         {
-            if (_hook != IntPtr.Zero)
+            if (hook != IntPtr.Zero)
             {
-                UnhookWindowsHookEx(_hook);
-                _hook = IntPtr.Zero;
+                lock (_hookLock)
+                {
+                    UnhookWindowsHookEx(hook);
+                }
             }
         }
     }

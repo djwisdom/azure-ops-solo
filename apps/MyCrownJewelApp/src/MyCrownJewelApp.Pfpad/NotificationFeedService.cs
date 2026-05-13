@@ -112,6 +112,9 @@ public sealed class NotificationFeedService : IDisposable
     {
         try
         {
+            if (!IsValidFeedUrl(cfg.Url))
+                return;
+
             var xml = await _http.GetStringAsync(cfg.Url, ct);
             var items = ParseFeed(cfg.Source, xml, cfg.MaxItems);
             _items[cfg.Source] = items;
@@ -119,10 +122,53 @@ public sealed class NotificationFeedService : IDisposable
         catch { }
     }
 
+    private static bool IsValidFeedUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return false;
+
+        // Only allow HTTPS
+        if (uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+
+        // Allow only reputable domains for feeds
+        var allowedHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "github.com",
+            "news.ycombinator.com",
+            "reddit.com",
+            "stackoverflow.com",
+            "devblogs.microsoft.com",
+            "docs.microsoft.com",
+            "blog.jetbrains.com",
+            "blog.rust-lang.org",
+            "blog.golang.org",
+            "aws.amazon.com",
+            "azure.microsoft.com",
+            "cloud.google.com",
+            "kubernetes.io",
+            "docker.com",
+            "techcrunch.com",
+            "arstechnica.com",
+            "wired.com",
+            "theverge.com"
+        };
+
+        return allowedHosts.Contains(uri.Host) ||
+               uri.Host.EndsWith(".github.io", StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith(".microsoft.com", StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase) ||
+               uri.Host.EndsWith(".amazon.com", StringComparison.OrdinalIgnoreCase);
+    }
+
     private List<FeedItem> ParseFeed(FeedSource source, string xml, int maxItems)
     {
         try
         {
+            // Limit XML size to prevent DoS
+            if (xml.Length > 5 * 1024 * 1024) // 5MB limit
+                return new List<FeedItem>();
+
             var doc = XDocument.Parse(xml);
             var root = doc.Root;
 

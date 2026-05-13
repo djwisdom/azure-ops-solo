@@ -232,7 +232,8 @@ public sealed class SymbolIndexService : IDisposable
 
                         foreach (var pat in def.DefinitionPatterns)
                         {
-                            var m = Regex.Match(line, pat, RegexOptions.None, TimeSpan.FromMilliseconds(200));
+                            var regex = new Regex(pat, RegexOptions.Compiled, TimeSpan.FromMilliseconds(200));
+                            var m = regex.Match(line);
                             if (!m.Success) continue;
 
                             string name = m.Groups["name"].Success ? m.Groups["name"].Value : m.Groups[1].Value;
