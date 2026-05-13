@@ -120,8 +120,8 @@ public sealed class PerformanceProfilerDialog : Form
     {
         _isRecording = true;
         _sessionTimer.Restart();
-        _startRecordingBtn.Enabled = false;
-        _stopRecordingBtn.Enabled = true;
+        if (_startRecordingBtn != null) _startRecordingBtn.Enabled = false;
+        if (_stopRecordingBtn != null) _stopRecordingBtn.Enabled = true;
         _events.Clear();
         Log("Recording started");
     }
@@ -130,8 +130,8 @@ public sealed class PerformanceProfilerDialog : Form
     {
         _isRecording = false;
         _sessionTimer.Stop();
-        _startRecordingBtn.Enabled = true;
-        _stopRecordingBtn.Enabled = false;
+        if (_startRecordingBtn != null) _startRecordingBtn.Enabled = true;
+        if (_stopRecordingBtn != null) _stopRecordingBtn.Enabled = false;
         UpdatePerformanceUI();
         Log("Recording stopped");
     }
@@ -139,9 +139,9 @@ public sealed class PerformanceProfilerDialog : Form
     private void ClearPerformanceData()
     {
         _events.Clear();
-        _flameChartList.Items.Clear();
-        _callTreeView.Nodes.Clear();
-        _summaryText.Clear();
+        if (_flameChartList != null) _flameChartList.Items.Clear();
+        if (_callTreeView != null) _callTreeView.Nodes.Clear();
+        if (_summaryText != null) _summaryText.Clear();
         Log("Performance data cleared");
     }
 
@@ -171,39 +171,48 @@ public sealed class PerformanceProfilerDialog : Form
 
     private void UpdatePerformanceUI()
     {
-        _flameChartList.BeginUpdate();
-        _flameChartList.Items.Clear();
-        foreach (var evt in _events.OrderByDescending(e => e.DurationMs))
+        if (_flameChartList != null)
         {
-            var item = new ListViewItem(evt.Name);
-            item.SubItems.Add(evt.DurationMs.ToString());
-            item.SubItems.Add(evt.StartTime.ToString("HH:mm:ss.fff"));
-            item.SubItems.Add(evt.Category);
-            item.Tag = evt;
-            _flameChartList.Items.Add(item);
+            _flameChartList.BeginUpdate();
+            _flameChartList.Items.Clear();
+            foreach (var evt in _events.OrderByDescending(e => e.DurationMs))
+            {
+                var item = new ListViewItem(evt.Name);
+                item.SubItems.Add(evt.DurationMs.ToString());
+                item.SubItems.Add(evt.StartTime.ToString("HH:mm:ss.fff"));
+                item.SubItems.Add(evt.Category);
+                item.Tag = evt;
+                _flameChartList.Items.Add(item);
+            }
+            _flameChartList.EndUpdate();
         }
-        _flameChartList.EndUpdate();
 
         // Build call tree
-        _callTreeView.Nodes.Clear();
-        var root = _callTreeView.Nodes.Add("Root");
-        foreach (var evt in _events)
+        if (_callTreeView != null)
         {
-            var node = root.Nodes.Add($"{evt.Name} ({evt.DurationMs}ms)");
-            foreach (var frame in evt.CallStack.Take(5))
+            _callTreeView.Nodes.Clear();
+            var root = _callTreeView.Nodes.Add("Root");
+            foreach (var evt in _events)
             {
-                node.Nodes.Add(frame);
+                var node = root.Nodes.Add($"{evt.Name} ({evt.DurationMs}ms)");
+                foreach (var frame in evt.CallStack.Take(5))
+                {
+                    node.Nodes.Add(frame);
+                }
             }
+            _callTreeView.ExpandAll();
         }
-        _callTreeView.ExpandAll();
 
         // Summary
-        var totalTime = _events.Sum(e => e.DurationMs);
-        var longTasks = _events.Count(e => e.DurationMs > 50);
-        _summaryText.Text = $"Total recorded time: {_sessionTimer.Elapsed.TotalSeconds:F2}s\r\n" +
-                           $"Long tasks (>50ms): {longTasks}\r\n" +
-                           $"Total long task time: {totalTime}ms\r\n" +
-                           $"Average long task: {(longTasks > 0 ? totalTime / longTasks : 0)}ms";
+        if (_summaryText != null)
+        {
+            var totalTime = _events.Sum(e => e.DurationMs);
+            var longTasks = _events.Count(e => e.DurationMs > 50);
+            _summaryText.Text = $"Total recorded time: {_sessionTimer.Elapsed.TotalSeconds:F2}s\r\n" +
+                               $"Long tasks (>50ms): {longTasks}\r\n" +
+                               $"Total long task time: {totalTime}ms\r\n" +
+                               $"Average long task: {(longTasks > 0 ? totalTime / longTasks : 0)}ms";
+        }
     }
 
     private void TakeMemorySnapshot(object? sender, EventArgs e)
@@ -220,13 +229,13 @@ public sealed class PerformanceProfilerDialog : Form
         );
         _snapshots.Add(snapshot);
         UpdateMemoryUI();
-        _compareSnapshotsBtn.Enabled = _snapshots.Count >= 2;
+        if (_compareSnapshotsBtn != null) _compareSnapshotsBtn.Enabled = _snapshots.Count >= 2;
         Log($"Memory snapshot taken: {snapshot.TotalMemory / 1024 / 1024} MB");
     }
 
     private void CompareSnapshots(object? sender, EventArgs e)
     {
-        if (_snapshots.Count < 2) return;
+        if (_snapshots.Count < 2 || _memorySummary == null) return;
         var last = _snapshots[^1];
         var prev = _snapshots[^2];
         var diff = last.TotalMemory - prev.TotalMemory;
@@ -239,6 +248,7 @@ public sealed class PerformanceProfilerDialog : Form
 
     private void UpdateMemoryUI()
     {
+        if (_memoryList == null) return;
         _memoryList.BeginUpdate();
         _memoryList.Items.Clear();
         foreach (var snap in _snapshots)
@@ -256,9 +266,9 @@ public sealed class PerformanceProfilerDialog : Form
     {
         var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] {message}\r\n";
         _consoleLogs.Append(logLine);
-        if (_consoleText.IsHandleCreated)
+        if (_consoleText != null && _consoleText.IsHandleCreated)
         {
-            BeginInvoke(() => _consoleText.AppendText(logLine));
+            BeginInvoke(() => _consoleText?.AppendText(logLine));
         }
     }
 
@@ -279,12 +289,12 @@ public sealed class PerformanceProfilerDialog : Form
             NativeThemed.ApplyDarkModeToWindow(Handle);
 
         // Apply scrollbar themes
-        SetWindowTheme(_tabControl.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_flameChartList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_callTreeView.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_memoryList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_summaryText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_memorySummary.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_consoleText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_tabControl != null) SetWindowTheme(_tabControl.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_flameChartList != null) SetWindowTheme(_flameChartList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_callTreeView != null) SetWindowTheme(_callTreeView.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_memoryList != null) SetWindowTheme(_memoryList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_summaryText != null) SetWindowTheme(_summaryText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_memorySummary != null) SetWindowTheme(_memorySummary.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        if (_consoleText != null) SetWindowTheme(_consoleText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
     }
 }
