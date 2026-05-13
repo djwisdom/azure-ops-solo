@@ -184,7 +184,7 @@ partial class Form1
         fileMenu = new ToolStripMenuItem("&File");
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click, Keys.Control | Keys.T);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
-        newProjectMenuItem = new ToolStripMenuItem("New &Project...", null, NewProject_Click, Keys.Control | Keys.Shift | Keys.P);
+        newProjectMenuItem = new ToolStripMenuItem("New &Project...", null, NewProject_Click, Keys.Control | Keys.Shift | Keys.N);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
         recentMenuItem = new ToolStripMenuItem("Recent Files");
         recentWorkspacesMenuItem = new ToolStripMenuItem("Recent Workspaces");

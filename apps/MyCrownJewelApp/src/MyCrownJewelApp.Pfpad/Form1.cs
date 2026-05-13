@@ -522,7 +522,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     }
                     else if (File.Exists(arg))
                     {
-                        OpenFileInNewTab(arg);
+                        OpenFileInNewTabAsync(arg);
                         hasFileArgs = true;
                     }
                 }
@@ -997,11 +997,18 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               if (_workspaceSplitContainer == null)
               {
                   _workspacePanel = new WorkspacePanel(_gitService);
-                  _workspacePanel.FileOpenRequested += (path) =>
-                  {
-                      if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                          OpenFileInNewTabAsync(path);
-                  };
+                   _workspacePanel.FileOpenRequested += (path) =>
+                   {
+                       try
+                       {
+                           if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                               OpenFileInNewTabAsync(path);
+                       }
+                       catch (Exception ex)
+                       {
+                           BeginInvoke(() => ThemedMessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
+                       }
+                   };
                   _workspacePanel.CloseRequested += () => ToggleWorkspace();
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
                   _workspacePanel.ScanCompleted += OnWorkspaceScanCompleted;
@@ -1145,7 +1152,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               mainLayout.ResumeLayout(true);
 
               if (!string.IsNullOrEmpty(_workspaceRoot))
-                  _workspacePanel?.SetRoot(_workspaceRoot);
+                        Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
               UpdateWorkspaceProjectLabel();
               _workspaceProjectLabel.Click += WorkspaceProjectLabel_Click;
               // Set initial build config combo selection
@@ -1816,6 +1823,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         wordWrapEnabled = settings.WordWrapEnabled;
                         gutterVisible = settings.GutterVisible;
                         statusBarVisible = settings.StatusBarVisible;
+                        if (statusBarMenuItem != null) statusBarMenuItem.Checked = statusBarVisible;
                         showGuide = settings.ShowGuide;
                         guideColumn = settings.GuideColumn;
                         tabSize = settings.TabSize;
@@ -3782,7 +3790,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
                     _workspaceSplitContainer.PerformLayout();
                     if (!string.IsNullOrEmpty(_workspaceRoot))
-                        _workspacePanel?.SetRoot(_workspaceRoot);
+                Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
                 }
             }
             else
@@ -3823,18 +3831,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
                  {
                      // Ignore if already disposed
                  }
-                 _symbolIndexCts = new CancellationTokenSource();
+                  _symbolIndexCts = new CancellationTokenSource();
                 var token = _symbolIndexCts.Token;
                 _workspaceRoot = dlg.SelectedPath;
-                _workspacePanel?.SetRoot(_workspaceRoot);
+                Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
                 AddToRecentWorkspaces(_workspaceRoot);
-                UpdateWorkspaceProjectLabel();
-                    // Symbol index rebuild on background thread — cancellation prevents stale overwrites
-                Task.Run(() =>
-                {
-                    if (!token.IsCancellationRequested)
-                        _symbolIndex.RebuildIndex(_workspaceRoot);
-                }, token);
+                _ = _symbolIndex.RebuildIndexAsync(_workspaceRoot);
                 if (!_workspaceVisible)
                     ToggleWorkspace();
                 else
@@ -3863,7 +3865,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             Task.Run(() =>
             {
                 if (!token.IsCancellationRequested)
-                    _symbolIndex.RebuildIndex(_workspaceRoot);
+                    _ = _symbolIndex.RebuildIndexAsync(_workspaceRoot);
             }, token);
             if (!_workspaceVisible)
                 ToggleWorkspace();
@@ -4093,7 +4095,71 @@ private void NewWindow_Click(object? sender, EventArgs e)
         }
 
         private void FormatDocument_Click(object? sender, EventArgs e) { FormatDocumentAsync(); }
-        private void ShowCommandPalette() { var palette = new CommandPaletteForm(new List<CommandPaletteForm.CommandEntry>()); palette.ShowDialog(this); }
+        private void ShowQuickOpen() { using var dlg = new QuickOpenDialog(this); dlg.ShowDialog(this); }
+
+        internal List<CommandPaletteForm.CommandEntry> GetCommandPaletteCommands()
+        {
+            return new List<CommandPaletteForm.CommandEntry>
+            {
+                new("Save", "Ctrl+S", () => SaveCurrentDocument()),
+                new("Save All", "Ctrl+Shift+S", () => SaveAllFiles()),
+                new("Open File", "Ctrl+O", () => OpenFile()),
+                new("New File", "Ctrl+N", () => NewFile()),
+                new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
+                new("Go to Line", "Ctrl+G", () => { using var dlg = new GoToDialog(this); dlg.ShowDialog(this); }),
+                new("Find", "Ctrl+F", () => { using var dlg = new FindReplaceDialog(this, false, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
+                new("Find in Files", "Ctrl+Shift+F", () => { using var dlg = new GlobalSearchDialog(this); dlg.ShowDialog(this); }),
+                new("Format Document", "Ctrl+Shift+I", () => FormatDocumentAsync()),
+                new("Rename Symbol", "F2", () => RenameSymbol()),
+                new("Toggle Terminal", "Ctrl+`", () => ToggleTerminal()),
+                new("Run Tests", "Ctrl+R, T", () => RunTests()),
+                new("Run Tests with Coverage", "", () => RunTestsWithCoverage()),
+                new("Start Debugging", "F5", () => StartDebug_Click(null, EventArgs.Empty)),
+                new("Run Without Debugging", "Ctrl+F5", () => RunWithoutDebug_Click(null, EventArgs.Empty)),
+                new("Stop Debugging", "Shift+F5", () => StopDebug_Click(null, EventArgs.Empty)),
+                new("Restart Debugging", "Ctrl+Shift+F5", () => RestartDebug_Click(null, EventArgs.Empty)),
+                new("Build Project", "", () => { string? projDir = GetProjectDirectory(); if (projDir != null) RunDotnetBuild(projDir); }),
+                new("Settings", "", () => { using var dlg = new SettingsDialog(this); dlg.ShowDialog(this); }),
+                new("About", "", () => { using var dlg = new AboutDialog(); dlg.ShowDialog(this); }),
+            };
+        }
+
+        public record OpenTabInfo(string Title, string FilePath, Action Switch);
+
+        internal List<OpenTabInfo> GetOpenTabs()
+        {
+            var tabs = new List<OpenTabInfo>();
+            if (tabControl == null) return tabs;
+            for (int i = 0; i < tabControl.TabPages.Count; i++)
+            {
+                var page = tabControl.TabPages[i];
+                if (page.Tag is Document doc)
+                {
+                    tabs.Add(new OpenTabInfo(page.Text, doc.FilePath ?? "", () => tabControl.SelectedIndex = i));
+                }
+            }
+            return tabs;
+        }
+
+        internal Document? GetCurrentDocument()
+        {
+            return textEditor?.Tag as Document;
+        }
+
+        private string? GetProjectDirectory()
+        {
+            var projectDir = Path.GetDirectoryName(ActiveDoc?.FilePath);
+            if (projectDir == null) return null;
+
+            // Find .csproj file
+            while (!string.IsNullOrEmpty(projectDir))
+            {
+                if (Directory.GetFiles(projectDir, "*.csproj").Length > 0)
+                    return projectDir;
+                projectDir = Path.GetDirectoryName(projectDir);
+            }
+            return null;
+        }
 
         private void RenameSymbol()
         {
@@ -4579,7 +4645,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void GoToFile_Click(object? sender, EventArgs e)
         {
-            ShowCommandPalette();
+            ShowQuickOpen();
         }
 
         private void GoToSymbolInWorkspace_Click(object? sender, EventArgs e)
@@ -5148,6 +5214,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
         internal void OpenFileInNewTab(string path)
         {
             if (!File.Exists(path)) return;
+            var fileInfo = new FileInfo(path);
+            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit
+            {
+                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             try
             {
                 string content = File.ReadAllText(path);
@@ -5186,6 +5258,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
         internal void OpenFileInNewTabAsync(string path)
         {
             if (!File.Exists(path)) return;
+            var fileInfo = new FileInfo(path);
+            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit
+            {
+                BeginInvoke(() => ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning));
+                return;
+            }
             var syntax = SyntaxDefinition.GetDefinitionForFile(path);
             var doc = new Document
             {
@@ -5225,32 +5303,39 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 string content = t.Result;
                 BeginInvoke(() =>
                 {
-                    if (IsDisposed || activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
-                    var d = documents[activeDocIndex];
-                    if (d.FilePath != path) return;
-                    d.Content = content;
-                    d.SavedHash = ComputeContentHash(content);
-
-                    // Only update if this tab is currently active
-                    if (activeDocIndex == tabControl.SelectedIndex && tabControl.SelectedIndex >= 0)
+                    try
                     {
-                        if (textEditor != null && !textEditor.IsDisposed && textEditor.IsHandleCreated)
-                        {
-                            textEditor.TextChanged -= TextEditor_TextChanged;
-                            textEditor.Text = content;
-                            textEditor.TextChanged += TextEditor_TextChanged;
-                            savedContentHash = d.SavedHash;
-                            isModified = false;
+                        if (IsDisposed || activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
+                        var d = documents[activeDocIndex];
+                        if (d.FilePath != path) return;
+                        d.Content = content;
+                        d.SavedHash = ComputeContentHash(content);
 
-                            // Re-highlight and update UI
-                            CreateIncrementalHighlighter();
-                            UpdateStatusBar();
-                            UpdateTabTitle(activeDocIndex);
-                            UpdateThemeColors(_currentTheme);
-                            UpdateBreadcrumbs();
+                        // Only update if this tab is currently active
+                        if (activeDocIndex == tabControl.SelectedIndex && tabControl.SelectedIndex >= 0)
+                        {
+                            if (textEditor != null && !textEditor.IsDisposed && textEditor.IsHandleCreated)
+                            {
+                                textEditor.TextChanged -= TextEditor_TextChanged;
+                                textEditor.Text = content;
+                                textEditor.TextChanged += TextEditor_TextChanged;
+                                savedContentHash = d.SavedHash;
+                                isModified = false;
+
+                                // Re-highlight and update UI
+                                CreateIncrementalHighlighter();
+                                UpdateStatusBar();
+                                UpdateTabTitle(activeDocIndex);
+                                UpdateThemeColors(_currentTheme);
+                                UpdateBreadcrumbs();
+                            }
                         }
+                        ForceCleanState();
                     }
-                    ForceCleanState();
+                    catch (Exception ex)
+                    {
+                        BeginInvoke(() => ThemedMessageBox.Show($"Error loading file content: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
+                    }
                 });
             });
         }
@@ -7717,10 +7802,11 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 {
                     if (File.Exists(snap.Path))
                     {
-                        OpenFileInNewTab(snap.Path);
+                        OpenFileInNewTabAsync(snap.Path);
                         var doc = documents.LastOrDefault();
                         if (doc != null)
                         {
+                            // Store session state to apply after load
                             doc.SelectionStart = snap.SelectionStart;
                             doc.SelectionLength = snap.SelectionLength;
                             doc.FirstVisibleLine = snap.FirstVisibleLine;
@@ -8185,7 +8271,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
 
             if (keyData == (Keys.Alt | Keys.Shift | Keys.F)) { FormatDocumentAsync(); return true; }
-            if (keyData == (Keys.Control | Keys.Shift | Keys.P)) { ShowCommandPalette(); return true; }
+            if (keyData == (Keys.Control | Keys.P)) { ShowQuickOpen(); return true; }
 
             if (vimModeEnabled && vimEngine != null)
             {

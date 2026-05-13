@@ -73,37 +73,40 @@ public sealed class SymbolIndexService : IDisposable
 
     public bool HasIndex => _rootDir is not null;
 
-    public void RebuildIndex(string rootDir)
+    public async Task RebuildIndexAsync(string rootDir)
     {
         _rootDir = rootDir;
         if (_disposed) return;
 
-        var newIndex = new Dictionary<string, List<SymbolLocation>>(StringComparer.OrdinalIgnoreCase);
-
-        // Try ctags first
-        if (TryCtags(rootDir, newIndex))
+        await Task.Run(() =>
         {
-            _index = newIndex;
-            OnIndexUpdated?.Invoke();
-            return;
-        }
+            var newIndex = new Dictionary<string, List<SymbolLocation>>(StringComparer.OrdinalIgnoreCase);
 
-        // Try TreeSitter for supported languages (C, C++, JS, etc.)
-        if (_treeSitterService is not null)
-        {
-            ScanWithTreeSitter(rootDir, newIndex);
-            if (newIndex.Count > 0)
+            // Try ctags first
+            if (TryCtags(rootDir, newIndex))
             {
                 _index = newIndex;
                 OnIndexUpdated?.Invoke();
                 return;
             }
-        }
 
-        // Fall back to regex scanner
-        ScanWithRegex(rootDir, newIndex);
-        _index = newIndex;
-        OnIndexUpdated?.Invoke();
+            // Try TreeSitter for supported languages (C, C++, JS, etc.)
+            if (_treeSitterService is not null)
+            {
+                ScanWithTreeSitter(rootDir, newIndex);
+                if (newIndex.Count > 0)
+                {
+                    _index = newIndex;
+                    OnIndexUpdated?.Invoke();
+                    return;
+                }
+            }
+
+            // Fall back to regex scanner
+            ScanWithRegex(rootDir, newIndex);
+            _index = newIndex;
+            OnIndexUpdated?.Invoke();
+        });
     }
 
     private bool TryCtags(string rootDir, Dictionary<string, List<SymbolLocation>> index)
