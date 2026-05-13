@@ -25,21 +25,22 @@ public sealed class PerformanceProfilerDialog : Form
     private readonly TabPage _consoleTab;
 
     // Performance tab controls
-    private readonly Button _startRecordingBtn;
-    private readonly Button _stopRecordingBtn;
-    private readonly Button _clearBtn;
-    private readonly ListView _flameChartList;
-    private readonly TreeView _callTreeView;
-    private readonly TextBox _summaryText;
+#pragma warning disable CS8618, CS0649, CS0169 // Fields assigned in constructor
+    private Button _startRecordingBtn;
+    private Button _stopRecordingBtn;
+    private ListView _flameChartList;
+    private TreeView _callTreeView;
+    private TextBox _summaryText;
 
     // Memory tab controls
-    private readonly Button _takeSnapshotBtn;
-    private readonly Button _compareSnapshotsBtn;
-    private readonly ListView _memoryList;
-    private readonly TextBox _memorySummary;
+    private Button _takeSnapshotBtn;
+    private Button _compareSnapshotsBtn;
+    private ListView _memoryList;
+    private TextBox _memorySummary;
 
     // Console tab
-    private readonly TextBox _consoleText;
+    private TextBox _consoleText;
+#pragma warning restore CS8618, CS0649
 
     // Profiling data
     private readonly List<PerformanceEvent> _events = new();
