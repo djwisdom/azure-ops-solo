@@ -3621,12 +3621,19 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void ShowPerformanceProfiler()
         {
-            if (_profilerDialog == null || _profilerDialog.IsDisposed)
+            try
             {
-                _profilerDialog = new PerformanceProfilerDialog();
+                if (_profilerDialog == null || _profilerDialog.IsDisposed)
+                {
+                    _profilerDialog = new PerformanceProfilerDialog(this);
+                }
+                _profilerDialog.Show();
+                _profilerDialog.BringToFront();
             }
-            _profilerDialog.Show();
-            _profilerDialog.BringToFront();
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show($"Error opening Performance Profiler: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void GcMonitorTimer_Tick(object? sender, EventArgs e)

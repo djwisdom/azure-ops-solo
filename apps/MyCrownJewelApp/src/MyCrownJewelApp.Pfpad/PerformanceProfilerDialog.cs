@@ -19,27 +19,28 @@ public sealed class PerformanceProfilerDialog : Form
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
+    private readonly Form1 _mainForm;
+
     private readonly TabControl _tabControl;
     private readonly TabPage _performanceTab;
     private readonly TabPage _memoryTab;
     private readonly TabPage _consoleTab;
 
     // Performance tab controls
-#pragma warning disable CS8618, CS0649, CS0169 // Fields assigned in constructor
-    private Button _startRecordingBtn;
-    private Button _stopRecordingBtn;
-    private ListView _flameChartList;
-    private TreeView _callTreeView;
-    private TextBox _summaryText;
+    private Button? _startRecordingBtn;
+    private Button? _stopRecordingBtn;
+    private ListView? _flameChartList;
+    private TreeView? _callTreeView;
+    private TextBox? _summaryText;
 
     // Memory tab controls
-    private Button _takeSnapshotBtn;
-    private Button _compareSnapshotsBtn;
-    private ListView _memoryList;
-    private TextBox _memorySummary;
+    private Button? _takeSnapshotBtn;
+    private Button? _compareSnapshotsBtn;
+    private ListView? _memoryList;
+    private TextBox? _memorySummary;
 
     // Console tab
-    private TextBox _consoleText;
+    private TextBox? _consoleText;
 #pragma warning restore CS8618, CS0649
 
     // Profiling data
@@ -64,13 +65,14 @@ public sealed class PerformanceProfilerDialog : Form
         Dictionary<string, object> Details
     );
 
-    public PerformanceProfilerDialog()
+    public PerformanceProfilerDialog(Form1 mainForm)
     {
+        _mainForm = mainForm;
         Text = "Performance Profiler";
         Size = new Size(1000, 700);
         StartPosition = FormStartPosition.CenterParent;
 
-                Theme theme;
+        Theme theme;
         try
         {
             theme = ThemeManager.Instance.CurrentTheme;
