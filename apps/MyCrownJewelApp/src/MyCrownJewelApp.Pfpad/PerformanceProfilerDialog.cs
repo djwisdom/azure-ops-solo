@@ -27,21 +27,20 @@ public sealed class PerformanceProfilerDialog : Form
     private readonly TabPage _consoleTab;
 
     // Performance tab controls
-    private Button? _startRecordingBtn;
-    private Button? _stopRecordingBtn;
-    private ListView? _flameChartList;
-    private TreeView? _callTreeView;
-    private TextBox? _summaryText;
+    private Button _startRecordingBtn;
+    private Button _stopRecordingBtn;
+    private ListView _flameChartList;
+    private TreeView _callTreeView;
+    private TextBox _summaryText;
 
     // Memory tab controls
-    private Button? _takeSnapshotBtn;
-    private Button? _compareSnapshotsBtn;
-    private ListView? _memoryList;
-    private TextBox? _memorySummary;
+    private Button _takeSnapshotBtn;
+    private Button _compareSnapshotsBtn;
+    private ListView _memoryList;
+    private TextBox _memorySummary;
 
     // Console tab
-    private TextBox? _consoleText;
-#pragma warning restore CS8618, CS0649
+    private TextBox _consoleText;
 
     // Profiling data
     private readonly List<PerformanceEvent> _events = new();
@@ -112,6 +111,47 @@ public sealed class PerformanceProfilerDialog : Form
         };
         _consoleTab.Controls.Add(_consoleText);
 
+        // Performance tab UI
+        _startRecordingBtn = new Button { Text = "Start Recording", Location = new Point(10, 10), BackColor = theme.Background, ForeColor = theme.Text };
+        _startRecordingBtn.Click += StartRecording;
+        _performanceTab.Controls.Add(_startRecordingBtn);
+
+        _stopRecordingBtn = new Button { Text = "Stop Recording", Location = new Point(120, 10), Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
+        _stopRecordingBtn.Click += StopRecording;
+        _performanceTab.Controls.Add(_stopRecordingBtn);
+
+        _flameChartList = new ListView { Location = new Point(10, 50), Size = new Size(450, 200), View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _flameChartList.Columns.Add("Event", 200);
+        _flameChartList.Columns.Add("Duration (ms)", 100);
+        _flameChartList.Columns.Add("Time", 100);
+        _flameChartList.Columns.Add("Category", 100);
+        _performanceTab.Controls.Add(_flameChartList);
+
+        _callTreeView = new TreeView { Location = new Point(470, 50), Size = new Size(200, 200), BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _performanceTab.Controls.Add(_callTreeView);
+
+        _summaryText = new TextBox { Location = new Point(10, 260), Size = new Size(660, 80), Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _performanceTab.Controls.Add(_summaryText);
+
+        // Memory tab UI
+        _takeSnapshotBtn = new Button { Text = "Take Snapshot", Location = new Point(10, 10), BackColor = theme.Background, ForeColor = theme.Text };
+        _takeSnapshotBtn.Click += TakeMemorySnapshot;
+        _memoryTab.Controls.Add(_takeSnapshotBtn);
+
+        _compareSnapshotsBtn = new Button { Text = "Compare", Location = new Point(120, 10), Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
+        _compareSnapshotsBtn.Click += CompareSnapshots;
+        _memoryTab.Controls.Add(_compareSnapshotsBtn);
+
+        _memoryList = new ListView { Location = new Point(10, 50), Size = new Size(660, 200), View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _memoryList.Columns.Add("Time", 100);
+        _memoryList.Columns.Add("Total (MB)", 100);
+        _memoryList.Columns.Add("GC (MB)", 100);
+        _memoryList.Columns.Add("Details", 300);
+        _memoryTab.Controls.Add(_memoryList);
+
+        _memorySummary = new TextBox { Location = new Point(10, 260), Size = new Size(660, 80), Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _memoryTab.Controls.Add(_memorySummary);
+
         // Start logging
         Log("Performance Profiler initialized");
     }
@@ -120,8 +160,8 @@ public sealed class PerformanceProfilerDialog : Form
     {
         _isRecording = true;
         _sessionTimer.Restart();
-        if (_startRecordingBtn != null) _startRecordingBtn.Enabled = false;
-        if (_stopRecordingBtn != null) _stopRecordingBtn.Enabled = true;
+        _startRecordingBtn.Enabled = false;
+        _stopRecordingBtn.Enabled = true;
         _events.Clear();
         Log("Recording started");
     }
@@ -130,8 +170,8 @@ public sealed class PerformanceProfilerDialog : Form
     {
         _isRecording = false;
         _sessionTimer.Stop();
-        if (_startRecordingBtn != null) _startRecordingBtn.Enabled = true;
-        if (_stopRecordingBtn != null) _stopRecordingBtn.Enabled = false;
+        _startRecordingBtn.Enabled = true;
+        _stopRecordingBtn.Enabled = false;
         UpdatePerformanceUI();
         Log("Recording stopped");
     }
@@ -139,9 +179,9 @@ public sealed class PerformanceProfilerDialog : Form
     private void ClearPerformanceData()
     {
         _events.Clear();
-        if (_flameChartList != null) _flameChartList.Items.Clear();
-        if (_callTreeView != null) _callTreeView.Nodes.Clear();
-        if (_summaryText != null) _summaryText.Clear();
+        _flameChartList.Items.Clear();
+        _callTreeView.Nodes.Clear();
+        _summaryText.Clear();
         Log("Performance data cleared");
     }
 
@@ -171,48 +211,39 @@ public sealed class PerformanceProfilerDialog : Form
 
     private void UpdatePerformanceUI()
     {
-        if (_flameChartList != null)
+        _flameChartList.BeginUpdate();
+        _flameChartList.Items.Clear();
+        foreach (var evt in _events.OrderByDescending(e => e.DurationMs))
         {
-            _flameChartList.BeginUpdate();
-            _flameChartList.Items.Clear();
-            foreach (var evt in _events.OrderByDescending(e => e.DurationMs))
-            {
-                var item = new ListViewItem(evt.Name);
-                item.SubItems.Add(evt.DurationMs.ToString());
-                item.SubItems.Add(evt.StartTime.ToString("HH:mm:ss.fff"));
-                item.SubItems.Add(evt.Category);
-                item.Tag = evt;
-                _flameChartList.Items.Add(item);
-            }
-            _flameChartList.EndUpdate();
+            var item = new ListViewItem(evt.Name);
+            item.SubItems.Add(evt.DurationMs.ToString());
+            item.SubItems.Add(evt.StartTime.ToString("HH:mm:ss.fff"));
+            item.SubItems.Add(evt.Category);
+            item.Tag = evt;
+            _flameChartList.Items.Add(item);
         }
+        _flameChartList.EndUpdate();
 
         // Build call tree
-        if (_callTreeView != null)
+        _callTreeView.Nodes.Clear();
+        var root = _callTreeView.Nodes.Add("Root");
+        foreach (var evt in _events)
         {
-            _callTreeView.Nodes.Clear();
-            var root = _callTreeView.Nodes.Add("Root");
-            foreach (var evt in _events)
+            var node = root.Nodes.Add($"{evt.Name} ({evt.DurationMs}ms)");
+            foreach (var frame in evt.CallStack.Take(5))
             {
-                var node = root.Nodes.Add($"{evt.Name} ({evt.DurationMs}ms)");
-                foreach (var frame in evt.CallStack.Take(5))
-                {
-                    node.Nodes.Add(frame);
-                }
+                node.Nodes.Add(frame);
             }
-            _callTreeView.ExpandAll();
         }
+        _callTreeView.ExpandAll();
 
         // Summary
-        if (_summaryText != null)
-        {
-            var totalTime = _events.Sum(e => e.DurationMs);
-            var longTasks = _events.Count(e => e.DurationMs > 50);
-            _summaryText.Text = $"Total recorded time: {_sessionTimer.Elapsed.TotalSeconds:F2}s\r\n" +
-                               $"Long tasks (>50ms): {longTasks}\r\n" +
-                               $"Total long task time: {totalTime}ms\r\n" +
-                               $"Average long task: {(longTasks > 0 ? totalTime / longTasks : 0)}ms";
-        }
+        var totalTime = _events.Sum(e => e.DurationMs);
+        var longTasks = _events.Count(e => e.DurationMs > 50);
+        _summaryText.Text = $"Total recorded time: {_sessionTimer.Elapsed.TotalSeconds:F2}s\r\n" +
+                            $"Long tasks (>50ms): {longTasks}\r\n" +
+                            $"Total long task time: {totalTime}ms\r\n" +
+                            $"Average long task: {(longTasks > 0 ? totalTime / longTasks : 0)}ms";
     }
 
     private void TakeMemorySnapshot(object? sender, EventArgs e)
@@ -229,26 +260,25 @@ public sealed class PerformanceProfilerDialog : Form
         );
         _snapshots.Add(snapshot);
         UpdateMemoryUI();
-        if (_compareSnapshotsBtn != null) _compareSnapshotsBtn.Enabled = _snapshots.Count >= 2;
+        _compareSnapshotsBtn.Enabled = _snapshots.Count >= 2;
         Log($"Memory snapshot taken: {snapshot.TotalMemory / 1024 / 1024} MB");
     }
 
     private void CompareSnapshots(object? sender, EventArgs e)
     {
-        if (_snapshots.Count < 2 || _memorySummary == null) return;
+        if (_snapshots.Count < 2) return;
         var last = _snapshots[^1];
         var prev = _snapshots[^2];
         var diff = last.TotalMemory - prev.TotalMemory;
         _memorySummary.Text = $"Memory Comparison:\r\n" +
-                             $"Previous: {prev.TotalMemory / 1024 / 1024} MB\r\n" +
-                             $"Current: {last.TotalMemory / 1024 / 1024} MB\r\n" +
-                             $"Difference: {diff / 1024 / 1024} MB {(diff > 0 ? "increase" : "decrease")}\r\n" +
-                             $"GC Collections: {last.Details["GC Collections"]} total";
+                              $"Previous: {prev.TotalMemory / 1024 / 1024} MB\r\n" +
+                              $"Current: {last.TotalMemory / 1024 / 1024} MB\r\n" +
+                              $"Difference: {diff / 1024 / 1024} MB {(diff > 0 ? "increase" : "decrease")}\r\n" +
+                              $"GC Collections: {last.Details["GC Collections"]} total";
     }
 
     private void UpdateMemoryUI()
     {
-        if (_memoryList == null) return;
         _memoryList.BeginUpdate();
         _memoryList.Items.Clear();
         foreach (var snap in _snapshots)
@@ -266,9 +296,9 @@ public sealed class PerformanceProfilerDialog : Form
     {
         var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] {message}\r\n";
         _consoleLogs.Append(logLine);
-        if (_consoleText != null && _consoleText.IsHandleCreated)
+        if (_consoleText.IsHandleCreated)
         {
-            BeginInvoke(() => _consoleText?.AppendText(logLine));
+            BeginInvoke(() => _consoleText.AppendText(logLine));
         }
     }
 
@@ -289,12 +319,12 @@ public sealed class PerformanceProfilerDialog : Form
             NativeThemed.ApplyDarkModeToWindow(Handle);
 
         // Apply scrollbar themes
-        if (_tabControl != null) SetWindowTheme(_tabControl.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        if (_flameChartList != null) SetWindowTheme(_flameChartList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        if (_callTreeView != null) SetWindowTheme(_callTreeView.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        if (_memoryList != null) SetWindowTheme(_memoryList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        if (_summaryText != null) SetWindowTheme(_summaryText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        if (_memorySummary != null) SetWindowTheme(_memorySummary.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        if (_consoleText != null) SetWindowTheme(_consoleText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_tabControl.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_flameChartList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_callTreeView.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_memoryList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_summaryText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_memorySummary.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_consoleText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
     }
 }
