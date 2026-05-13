@@ -3212,7 +3212,9 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             {
                 try
                 {
-                    File.WriteAllText(currentFilePath, textEditor.Text);
+                    _profilerDialog?.RecordEvent($"SaveFile({Path.GetFileName(currentFilePath)})", "File I/O", () =>
+                        File.WriteAllText(currentFilePath, textEditor.Text));
+                    _profilerDialog?.Log($"Saved file: {currentFilePath} ({textEditor.Text.Length} chars)");
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
                     modifiedLines.Clear();
@@ -3233,7 +3235,9 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             {
                 try
                 {
-                    File.WriteAllText(sfd.FileName, textEditor.Text);
+                    _profilerDialog?.RecordEvent($"SaveAsFile({Path.GetFileName(sfd.FileName)})", "File I/O", () =>
+                        File.WriteAllText(sfd.FileName, textEditor.Text));
+                    _profilerDialog?.Log($"Saved as file: {sfd.FileName} ({textEditor.Text.Length} chars)");
                     currentFilePath = sfd.FileName;
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
@@ -5266,8 +5270,11 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
             try
             {
-                string content = File.ReadAllText(path);
+                string content = _profilerDialog != null ?
+                    _profilerDialog.RecordEvent($"ReadFile({Path.GetFileName(path)})", "File I/O", () => File.ReadAllText(path)) :
+                    File.ReadAllText(path);
                 var syntax = SyntaxDefinition.GetDefinitionForFile(path);
+                _profilerDialog?.Log($"Opened file: {path} ({content.Length} chars)");
                 var doc = new Document
                 {
                     FilePath = path,
@@ -5332,12 +5339,16 @@ private void NewWindow_Click(object? sender, EventArgs e)
             activeDocIndex = newIndex;
             EnsureSelectedTabVisible();
 
+            _profilerDialog?.Log($"Started async load: {path}");
+
             // Read file content on background thread, then populate editor
             Task.Run(() =>
             {
                 try
                 {
-                    string content = File.ReadAllText(path);
+                    string content = _profilerDialog != null ?
+                        _profilerDialog.RecordEvent($"ReadFileAsync({Path.GetFileName(path)})", "File I/O", () => File.ReadAllText(path)) :
+                        File.ReadAllText(path);
                     return content;
                 }
                 catch { return null; }
@@ -5378,6 +5389,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                             }
                         }
                         ForceCleanState();
+                        _profilerDialog?.Log($"Completed async load: {path} ({content.Length} chars)");
                     }
                     catch (Exception ex)
                     {
@@ -6341,7 +6353,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         public void PerformFind(string text, bool caseSensitive, bool up, bool useRegex = false)
         {
-            if (string.IsNullOrEmpty(text) || textEditor.Text.Length == 0) return;
+            _profilerDialog?.RecordEvent($"PerformFind({text.Length} chars, {(useRegex ? "regex" : "text")})", "Search", () =>
+            {
+                if (string.IsNullOrEmpty(text) || textEditor.Text.Length == 0) return;
 
             string source = textEditor.Text;
             int sourceLen = source.Length;
@@ -6410,6 +6424,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             {
                 ThemedMessageBox.Show("Cannot find \"" + text + "\".", "Find", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+            });
         }
 
         public void PerformReplace(string findText, string replaceText, bool caseSensitive, bool useRegex, bool replaceAll)
@@ -6497,7 +6512,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         public void PerformFindInFiles(string findText, bool caseSensitive, bool useRegex)
         {
-            string? root = _workspacePanel?.RootPath;
+            _profilerDialog?.RecordEvent($"PerformFindInFiles({findText.Length} chars)", "Search", () =>
+            {
+                string? root = _workspacePanel?.RootPath;
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
             {
                 ThemedMessageBox.Show("No workspace folder is open. Use View > Open Folder to set a workspace root.",
@@ -6559,6 +6576,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             using var dlg = new FindInFilesResultsDialog(results, root);
             dlg.ShowDialog(this);
+            });
         }
 
         private static void SearchDirectory(string rootDir, string dir, List<(string File, int Line, string Text)> results,
@@ -7194,6 +7212,10 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 EndUpdate(textEditor);
                 textEditor.ResumeLayout();
                 _lastHighlightDurationMs = _highlightPerfSw.Elapsed.TotalMilliseconds;
+                if (_lastHighlightDurationMs > 50)
+                {
+                    _profilerDialog?.Log($"Syntax highlighting took {_lastHighlightDurationMs:F1}ms for {patches.Count} patches");
+                }
                 textEditor.Select(savedSelStart, savedSelLength);
                 int finalVis = (int)SendMessage(textEditor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
                 if (finalVis != savedFirstVis)

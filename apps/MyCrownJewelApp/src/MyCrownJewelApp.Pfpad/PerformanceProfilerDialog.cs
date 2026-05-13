@@ -209,6 +209,32 @@ public sealed class PerformanceProfilerDialog : Form
         }
     }
 
+    public T RecordEvent<T>(string name, string category, Func<T> func)
+    {
+        if (!_isRecording) return func();
+
+        var sw = Stopwatch.StartNew();
+        var startTime = DateTime.Now;
+        var callStack = new StackTrace().GetFrames().Select(f => f.GetMethod()?.Name ?? "").ToArray();
+
+        T result;
+        try
+        {
+            result = func();
+        }
+        finally
+        {
+            sw.Stop();
+            var duration = sw.ElapsedMilliseconds;
+            if (duration > 50) // Long task threshold
+            {
+                _events.Add(new PerformanceEvent(name, startTime, duration, category, callStack));
+                Log($"Long task: {name} ({duration}ms)");
+            }
+        }
+        return result;
+    }
+
     private void UpdatePerformanceUI()
     {
         _flameChartList.BeginUpdate();
