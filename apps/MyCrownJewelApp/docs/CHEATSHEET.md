@@ -52,6 +52,7 @@
 | `Ctrl+Shift+N` | Notification Center |
 | `Ctrl+Alt+T` | External Tools Config |
 | `Ctrl+Alt+Shift+1..9` | External Tool #1..9 |
+| `Ctrl+Alt+P` | Performance Profiler |
 
 ## View Menu Features
 

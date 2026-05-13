@@ -7,6 +7,7 @@ company-owned Azure resources. Managed by a single developer with AI assistance.
 ## Scope
 - **Infrastructure as Code:** Terraform modules, Bicep templates
 - **Applications:** C# ASP.NET Core web apps (Visual Studio Professional)
+- **Code Editor:** Pfpad - Professional C# code editor with advanced features
 - **Patching:** VM (Windows/Linux) and AKS cluster patching automation
 - **Compliance:** Wiz vulnerability scan integration, management reporting
 - **M365:** Microsoft 365 and Graph API automation
@@ -52,6 +53,29 @@ terraform apply -var="environment=dev"
 # Pull fresh metrics
 .\patching\scripts\Get-PatchMetrics.ps1 -Environment prod
 ```
+
+### Using Pfpad Code Editor
+
+The repository includes Pfpad, a professional C# code editor built with .NET 8 and WinForms:
+
+```bash
+cd apps/MyCrownJewelApp
+dotnet build --configuration Release
+# Run: bin\Release\net8.0-windows\MyCrownJewelApp.Pfpad.exe
+```
+
+**Key Features:**
+- **Advanced Syntax Highlighting:** 12+ languages with incremental highlighting
+- **Full Unicode Support:** UTF-8/16/32 with BOM detection and RTL text handling
+- **Performance Profiling:** Built-in zero-allocation sampling profiler (<3% overhead)
+- **Roslyn Integration:** Go to definition, hover tooltips, diagnostics for C#
+- **Integrated Debugging:** DAP protocol support with visual debugging
+- **Git Integration:** Full Git operations with visual diff and merge tools
+- **Large File Support:** Up to 100MB with graceful feature degradation
+- **Terminal Integration:** Multi-tab terminals with ANSI color support
+- **23 Built-in Themes:** Dark/Light modes with VS Code-inspired schemes
+
+See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 
 ## Memory
 See `MEMORY.md` for current session state, active work, and next steps.

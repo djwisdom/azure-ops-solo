@@ -5632,7 +5632,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
             currentSyntax = doc.Syntax;
 
             // Load text without triggering dirty flag
+#pragma warning disable CS8602 // Method reference is never null
             textEditor.TextChanged -= TextEditor_TextChanged;
+#pragma warning restore CS8602
             textEditor.Text = doc.Content ?? "";
             textEditor.SelectionStart = doc.SelectionStart;
             textEditor.SelectionLength = doc.SelectionLength;
