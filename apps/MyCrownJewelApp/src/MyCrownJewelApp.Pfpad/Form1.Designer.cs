@@ -722,7 +722,7 @@ partial class Form1
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
-        encodingLabel = new ToolStripStatusLabel("UTF-8");
+        encodingLabel = new ToolStripStatusLabel("No File");
 
         // Roslyn status bar section
         roslynDropDown = new ToolStripDropDownButton();

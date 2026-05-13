@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": ".NET Core Launch",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/bin/Debug/net8.0-windows/MyCrownJewelApp.Pfpad.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad",
+            "console": "internalConsole",
+            "stopAtEntry": false,
+            "internalConsoleOptions": "openOnSessionStart"
+        },
+        {
+            "name": ".NET Core Attach",
+            "type": "coreclr",
+            "request": "attach",
+            "processId": "${command:pickProcess}"
+        }
+    ]
+}

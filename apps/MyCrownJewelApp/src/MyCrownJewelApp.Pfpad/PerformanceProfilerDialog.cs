@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Text;
 using System.Text.Json;
 using System.Runtime.InteropServices;
+using System.IO;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -22,18 +23,31 @@ public sealed class PerformanceProfilerDialog : Form
     private readonly Form1 _mainForm;
 
     private readonly TabControl _tabControl;
-    private readonly TabPage _performanceTab;
+    private readonly TabPage _timelineTab;
+    private readonly TabPage _flameGraphTab;
     private readonly TabPage _memoryTab;
     private readonly TabPage _consoleTab;
 
-    // Performance tab controls
-    private Button _startRecordingBtn;
-    private Button _stopRecordingBtn;
-    private ListView _flameChartList;
-    private TreeView _callTreeView;
-    private TextBox _summaryText;
+#if PROFILING
+    // Sampling profiler components
+    public SamplingEngine? _samplingEngine;
+    private BinaryLogger? _binaryLogger;
+    private DebugOverlay? _debugOverlay;
+#endif
 
-    // Memory tab controls
+    // Timeline tab controls
+    private Button _startSamplingBtn;
+    private Button _stopSamplingBtn;
+    private Button _showOverlayBtn;
+    private ListView _timelineList;
+    private TextBox _timelineSummary;
+
+    // Flame graph tab controls
+    private ListView _flameGraphList;
+    private TreeView _callStackTree;
+    private TextBox _flameSummary;
+
+    // Memory tab controls (legacy - will be replaced)
     private Button _takeSnapshotBtn;
     private Button _compareSnapshotsBtn;
     private ListView _memoryList;
@@ -43,11 +57,8 @@ public sealed class PerformanceProfilerDialog : Form
     private TextBox _consoleText;
 
     // Profiling data
-    private readonly List<PerformanceEvent> _events = new();
     private readonly List<MemorySnapshot> _snapshots = new();
     private readonly StringBuilder _consoleLogs = new();
-    private bool _isRecording;
-    private Stopwatch _sessionTimer = new();
 
     public sealed record PerformanceEvent(
         string Name,
@@ -88,9 +99,13 @@ public sealed class PerformanceProfilerDialog : Form
         _tabControl = new TabControl { Dock = DockStyle.Fill, BackColor = theme.Background, ForeColor = theme.Text };
         Controls.Add(_tabControl);
 
-        // Performance Tab
-        _performanceTab = new TabPage("Performance") { BackColor = theme.Background, ForeColor = theme.Text };
-        _tabControl.TabPages.Add(_performanceTab);
+        // Timeline Tab
+        _timelineTab = new TabPage("Timeline") { BackColor = theme.Background, ForeColor = theme.Text };
+        _tabControl.TabPages.Add(_timelineTab);
+
+        // Flame Graph Tab
+        _flameGraphTab = new TabPage("Flame Graph") { BackColor = theme.Background, ForeColor = theme.Text };
+        _tabControl.TabPages.Add(_flameGraphTab);
 
         // Memory Tab
         _memoryTab = new TabPage("Memory") { BackColor = theme.Background, ForeColor = theme.Text };
@@ -99,6 +114,18 @@ public sealed class PerformanceProfilerDialog : Form
         // Console Tab
         _consoleTab = new TabPage("Console") { BackColor = theme.Background, ForeColor = theme.Text };
         _tabControl.TabPages.Add(_consoleTab);
+
+#if PROFILING
+        // Initialize sampling profiler
+        string logDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MyCrownJewelApp",
+            "Pfpad",
+            "PerformanceLogs"
+        );
+        _binaryLogger = new BinaryLogger(logDir);
+        _samplingEngine = new SamplingEngine(_binaryLogger);
+#endif
 
         _consoleText = new TextBox
         {
@@ -112,65 +139,75 @@ public sealed class PerformanceProfilerDialog : Form
         };
         _consoleTab.Controls.Add(_consoleText);
 
-        // Performance tab UI
-        var perfLayout = new TableLayoutPanel
+        // Timeline tab UI
+        var timelineLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             RowCount = 3,
+            ColumnCount = 1,
+            BackColor = theme.Background
+        };
+        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
+        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 70)); // Timeline
+        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
+
+        var timelineButtonPanel = new Panel { Dock = DockStyle.Fill };
+        _startSamplingBtn = new Button { Text = "Start Sampling", Dock = DockStyle.Left, Width = 120, BackColor = theme.Background, ForeColor = theme.Text };
+        _startSamplingBtn.Click += StartSampling;
+
+        _stopSamplingBtn = new Button { Text = "Stop Sampling", Dock = DockStyle.Left, Width = 120, Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
+        _stopSamplingBtn.Click += StopSampling;
+
+        _showOverlayBtn = new Button { Text = "Show Overlay", Dock = DockStyle.Left, Width = 100, BackColor = theme.Background, ForeColor = theme.Text };
+        _showOverlayBtn.Click += ShowOverlay;
+
+        timelineButtonPanel.Controls.Add(_startSamplingBtn);
+        timelineButtonPanel.Controls.Add(_stopSamplingBtn);
+        timelineButtonPanel.Controls.Add(_showOverlayBtn);
+        timelineLayout.Controls.Add(timelineButtonPanel, 0, 0);
+
+        _timelineList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _timelineList.Columns.Add("Time", 120);
+        _timelineList.Columns.Add("Thread", 80);
+        _timelineList.Columns.Add("CPU (ms)", 80);
+        _timelineList.Columns.Add("GC Mem (MB)", 100);
+        _timelineList.Columns.Add("Flags", 100);
+        _timelineList.Columns.Add("Stack", 300);
+        timelineLayout.Controls.Add(_timelineList, 1, 0);
+
+        _timelineSummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        timelineLayout.Controls.Add(_timelineSummary, 2, 0);
+
+        _timelineTab.Controls.Add(timelineLayout);
+
+        // Flame Graph tab UI
+        var flameLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 2,
             ColumnCount = 2,
             BackColor = theme.Background
         };
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); // Charts
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
-        perfLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70)); // Left column
-        perfLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30)); // Right column
+        flameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 70)); // Charts
+        flameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
+        flameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70)); // Left column
+        flameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30)); // Right column
 
-        _startRecordingBtn = new Button { Text = "Start Recording", Dock = DockStyle.Left, Width = 120, BackColor = theme.Background, ForeColor = theme.Text };
-        _startRecordingBtn.Click += StartRecording;
+        _flameGraphList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        _flameGraphList.Columns.Add("Function", 250);
+        _flameGraphList.Columns.Add("Samples", 80);
+        _flameGraphList.Columns.Add("Total Time (ms)", 120);
+        _flameGraphList.Columns.Add("Avg Time (ms)", 100);
+        flameLayout.Controls.Add(_flameGraphList, 0, 0);
 
-        _stopRecordingBtn = new Button { Text = "Stop Recording", Dock = DockStyle.Left, Width = 120, Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
-        _stopRecordingBtn.Click += StopRecording;
+        _callStackTree = new TreeView { Dock = DockStyle.Fill, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        flameLayout.Controls.Add(_callStackTree, 1, 0);
 
-        var buttonPanel = new Panel { Dock = DockStyle.Fill };
-        buttonPanel.Controls.Add(_startRecordingBtn);
-        buttonPanel.Controls.Add(_stopRecordingBtn);
-        perfLayout.Controls.Add(buttonPanel, 0, 0);
-        perfLayout.SetColumnSpan(buttonPanel, 2);
+        _flameSummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        flameLayout.Controls.Add(_flameSummary, 0, 1);
+        flameLayout.SetColumnSpan(_flameSummary, 2);
 
-        _flameChartList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        _flameChartList.Columns.Add("Event", 200);
-        _flameChartList.Columns.Add("Duration (ms)", 100);
-        _flameChartList.Columns.Add("Time", 100);
-        _flameChartList.Columns.Add("Category", 100);
-        perfLayout.Controls.Add(_flameChartList, 0, 1);
-
-        _callTreeView = new TreeView { Dock = DockStyle.Fill, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        perfLayout.Controls.Add(_callTreeView, 1, 1);
-
-        _summaryText = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        perfLayout.Controls.Add(_summaryText, 0, 2);
-        perfLayout.SetColumnSpan(_summaryText, 2);
-
-        _performanceTab.Controls.Add(perfLayout);
-
-perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
-
-perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); // Charts
-
-perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
-
-perfLayout.Controls.Add(buttonPanel, 0, 0);
-
-perfLayout.SetColumnSpan(buttonPanel, 2);
-
-perfLayout.Controls.Add(_flameChartList, 0, 1);
-
-perfLayout.Controls.Add(_callTreeView, 1, 1);
-
-perfLayout.Controls.Add(_summaryText, 0, 2);
-
-perfLayout.SetColumnSpan(_summaryText, 2);
+        _flameGraphTab.Controls.Add(flameLayout);
 
         // Memory tab UI
         var memLayout = new TableLayoutPanel
@@ -211,121 +248,94 @@ perfLayout.SetColumnSpan(_summaryText, 2);
         Log("Performance Profiler initialized");
     }
 
-    private void StartRecording(object? sender, EventArgs e)
+    private void StartSampling(object? sender, EventArgs e)
     {
-        _isRecording = true;
-        _sessionTimer.Restart();
-        _startRecordingBtn.Enabled = false;
-        _stopRecordingBtn.Enabled = true;
-        _events.Clear();
-        Log("Recording started");
+#if PROFILING
+        if (_samplingEngine != null)
+        {
+            _samplingEngine.StartSampling(Thread.CurrentThread.ManagedThreadId);
+            _startSamplingBtn.Enabled = false;
+            _stopSamplingBtn.Enabled = true;
+            Log("Sampling started");
+        }
+#endif
     }
 
-    private void StopRecording(object? sender, EventArgs e)
+    private void StopSampling(object? sender, EventArgs e)
     {
-        _isRecording = false;
-        _sessionTimer.Stop();
-        _startRecordingBtn.Enabled = true;
-        _stopRecordingBtn.Enabled = false;
-        UpdatePerformanceUI();
-        Log("Recording stopped");
+#if PROFILING
+        if (_samplingEngine != null)
+        {
+            _samplingEngine.StopSampling();
+            _startSamplingBtn.Enabled = true;
+            _stopSamplingBtn.Enabled = false;
+            Log("Sampling stopped");
+
+            // Load and analyze the log file
+            LoadAndAnalyzeSamples();
+        }
+#endif
+    }
+
+    private void ShowOverlay(object? sender, EventArgs e)
+    {
+#if PROFILING && DEBUG
+        if (_debugOverlay == null)
+        {
+            _debugOverlay = new DebugOverlay(_mainForm);
+            _debugOverlay.Show();
+            _showOverlayBtn.Text = "Hide Overlay";
+        }
+        else
+        {
+            _debugOverlay.Close();
+            _debugOverlay = null;
+            _showOverlayBtn.Text = "Show Overlay";
+        }
+#endif
+    }
+
+    private void LoadAndAnalyzeSamples()
+    {
+#if PROFILING
+        if (_binaryLogger?.CurrentFilePath == null) return;
+
+        try
+        {
+            // In a real implementation, you would read the binary log file
+            // For now, show a placeholder message
+            _timelineSummary.Text = $"Log file created: {_binaryLogger.CurrentFilePath}\r\n\r\n" +
+                                   "To analyze the binary log file, you would implement a log reader\r\n" +
+                                   "that deserializes PerformanceSample structs and builds\r\n" +
+                                   "timeline views, flame graphs, and statistical summaries.\r\n\r\n" +
+                                   "This would include:\r\n" +
+                                   "- Timeline visualization of thread activity\r\n" +
+                                   "- Flame graph construction from stack traces\r\n" +
+                                   "- Statistical analysis of performance metrics\r\n" +
+                                   "- Identification of performance bottlenecks";
+
+            Log($"Log analysis completed: {_binaryLogger.CurrentFilePath}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Error analyzing samples: {ex.Message}");
+        }
+#endif
     }
 
     private void ClearPerformanceData()
     {
-        _events.Clear();
-        _flameChartList.Items.Clear();
-        _callTreeView.Nodes.Clear();
-        _summaryText.Clear();
+        _timelineList?.Items.Clear();
+        _flameGraphList?.Items.Clear();
+        _callStackTree?.Nodes.Clear();
+        _timelineSummary?.Clear();
+        _flameSummary?.Clear();
         Log("Performance data cleared");
     }
 
-    public void RecordEvent(string name, string category, Action action)
-    {
-        if (!_isRecording) { action(); return; }
 
-        var sw = Stopwatch.StartNew();
-        var startTime = DateTime.Now;
-        var callStack = new StackTrace().GetFrames().Select(f => f.GetMethod()?.Name ?? "").ToArray();
 
-        try
-        {
-            action();
-        }
-        finally
-        {
-            sw.Stop();
-            var duration = sw.ElapsedMilliseconds;
-            if (duration > 50) // Long task threshold
-            {
-                _events.Add(new PerformanceEvent(name, startTime, duration, category, callStack));
-                Log($"Long task: {name} ({duration}ms)");
-            }
-        }
-    }
 
-    public T RecordEvent<T>(string name, string category, Func<T> func)
-    {
-        if (!_isRecording) return func();
-
-        var sw = Stopwatch.StartNew();
-        var startTime = DateTime.Now;
-        var callStack = new StackTrace().GetFrames().Select(f => f.GetMethod()?.Name ?? "").ToArray();
-
-        T result;
-        try
-        {
-            result = func();
-        }
-        finally
-        {
-            sw.Stop();
-            var duration = sw.ElapsedMilliseconds;
-            if (duration > 50) // Long task threshold
-            {
-                _events.Add(new PerformanceEvent(name, startTime, duration, category, callStack));
-                Log($"Long task: {name} ({duration}ms)");
-            }
-        }
-        return result;
-    }
-
-    private void UpdatePerformanceUI()
-    {
-        _flameChartList.BeginUpdate();
-        _flameChartList.Items.Clear();
-        foreach (var evt in _events.OrderByDescending(e => e.DurationMs))
-        {
-            var item = new ListViewItem(evt.Name);
-            item.SubItems.Add(evt.DurationMs.ToString());
-            item.SubItems.Add(evt.StartTime.ToString("HH:mm:ss.fff"));
-            item.SubItems.Add(evt.Category);
-            item.Tag = evt;
-            _flameChartList.Items.Add(item);
-        }
-        _flameChartList.EndUpdate();
-
-        // Build call tree
-        _callTreeView.Nodes.Clear();
-        var root = _callTreeView.Nodes.Add("Root");
-        foreach (var evt in _events)
-        {
-            var node = root.Nodes.Add($"{evt.Name} ({evt.DurationMs}ms)");
-            foreach (var frame in evt.CallStack.Take(5))
-            {
-                node.Nodes.Add(frame);
-            }
-        }
-        _callTreeView.ExpandAll();
-
-        // Summary
-        var totalTime = _events.Sum(e => e.DurationMs);
-        var longTasks = _events.Count(e => e.DurationMs > 50);
-        _summaryText.Text = $"Total recorded time: {_sessionTimer.Elapsed.TotalSeconds:F2}s\r\n" +
-                            $"Long tasks (>50ms): {longTasks}\r\n" +
-                            $"Total long task time: {totalTime}ms\r\n" +
-                            $"Average long task: {(longTasks > 0 ? totalTime / longTasks : 0)}ms";
-    }
 
     private void TakeMemorySnapshot(object? sender, EventArgs e)
     {
@@ -401,11 +411,26 @@ perfLayout.SetColumnSpan(_summaryText, 2);
 
         // Apply scrollbar themes
         SetWindowTheme(_tabControl.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_flameChartList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_callTreeView.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_timelineList?.Handle ?? IntPtr.Zero, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_flameGraphList?.Handle ?? IntPtr.Zero, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_callStackTree?.Handle ?? IntPtr.Zero, isLight ? "" : DARK_MODE_SCROLLBAR, null);
         SetWindowTheme(_memoryList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
-        SetWindowTheme(_summaryText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_timelineSummary?.Handle ?? IntPtr.Zero, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_flameSummary?.Handle ?? IntPtr.Zero, isLight ? "" : DARK_MODE_SCROLLBAR, null);
         SetWindowTheme(_memorySummary.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
         SetWindowTheme(_consoleText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+#if PROFILING
+            _samplingEngine?.Dispose();
+            _binaryLogger?.Dispose();
+            _debugOverlay?.Dispose();
+#endif
+        }
+        base.Dispose(disposing);
     }
 }

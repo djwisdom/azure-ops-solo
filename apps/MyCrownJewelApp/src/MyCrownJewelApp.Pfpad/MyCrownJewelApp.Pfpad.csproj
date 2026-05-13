@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
     <ApplicationVersion>1.0.29.0</ApplicationVersion>
@@ -16,6 +17,10 @@
     <Description>A full-featured code editor with syntax highlighting, minimap, vim mode, git integration, and code folding.</Description>
     <Copyright>Copyright (c) 2026</Copyright>
     <NoWarn>$(NoWarn);NETSDK1057</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DefineConstants>$(DefineConstants);PROFILING</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

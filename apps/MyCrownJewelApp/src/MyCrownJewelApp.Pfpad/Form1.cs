@@ -184,6 +184,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             public SyntaxDefinition? Syntax { get; set; }
             public int? UntitledNumber { get; set; }  // null for non-untitled docs
 
+            // File encoding information
+            public System.Text.Encoding? FileEncoding { get; set; }
+            public bool ContainsRtlText { get; set; } = false;
+
+            // Large file degradation flags
+            public bool DisableSyntaxHighlighting { get; set; } = false;
+            public bool DisableMinimap { get; set; } = false;
+            public bool DisableWordWrap { get; set; } = false;
+
             public string DisplayName =>
                 string.IsNullOrEmpty(FilePath) && UntitledNumber.HasValue ? $"Untitled{UntitledNumber}" :
                 string.IsNullOrEmpty(FilePath) ? "Untitled" :
@@ -285,6 +294,9 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         // Performance profiler
         private PerformanceProfilerDialog? _profilerDialog;
+#if PROFILING && DEBUG
+        private DebugOverlay? _debugOverlay = null;
+#endif
         private System.Windows.Forms.Timer? _gcMonitorTimer;
         private int _lastGCCollections;
 
@@ -332,7 +344,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             List<string>? RecentWorkspaces = null,
             string WindowBounds = "",
             string WindowState = "",
-            string ActiveConfiguration = "Debug"
+            string ActiveConfiguration = "Debug",
+            // File size limits (in MB)
+            int MaxFileSizeMB = 100,
+            int LargeFileWarningMB = 50,
+            int AsyncFileWarningMB = 20,
+            // Feature degradation settings
+            bool DisableSyntaxHighlightingForLargeFiles = true,
+            bool DisableMinimapForLargeFiles = true,
+            bool DisableWordWrapForLargeFiles = false,
+            long SyntaxHighlightingThresholdBytes = 50 * 1024 // 50KB
         );
 
         private string SettingsFilePath =>
@@ -396,6 +417,62 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         public float CurrentFontSize => textEditor.Font.Size;
         public int CurrentTabSize => tabSize;
         public bool CurrentInsertSpaces => insertSpaces;
+
+        /// <summary>
+        /// Updates the encoding label in the status bar based on current document.
+        /// </summary>
+        private void UpdateEncodingLabel()
+        {
+            if (encodingLabel == null) return;
+
+            var currentDoc = GetCurrentDocument();
+            if (currentDoc?.FileEncoding != null)
+            {
+                encodingLabel.Text = UnicodeFileHelper.GetEncodingDisplayName(currentDoc.FileEncoding);
+            }
+            else
+            {
+                encodingLabel.Text = "No File";
+            }
+        }
+
+        /// <summary>
+        /// Apply feature degradation for large files to maintain performance.
+        /// </summary>
+        private void ApplyLargeFileDegradation(Document doc, long fileSize)
+        {
+            long fileSizeMB = fileSize / (1024 * 1024);
+
+            // Disable syntax highlighting for large files
+            if (DisableSyntaxHighlightingForLargeFiles && fileSize > SyntaxHighlightingThresholdBytes)
+            {
+                doc.DisableSyntaxHighlighting = true;
+                _profilerDialog?.Log($"Disabled syntax highlighting for large file ({fileSizeMB}MB)");
+            }
+
+            // Disable minimap for large files
+            if (DisableMinimapForLargeFiles && fileSizeMB > 50) // 50MB threshold for minimap
+            {
+                doc.DisableMinimap = true;
+                _profilerDialog?.Log($"Disabled minimap for large file ({fileSizeMB}MB)");
+            }
+
+            // Disable word wrap for large files
+            if (DisableWordWrapForLargeFiles && fileSizeMB > 20) // 20MB threshold for word wrap
+            {
+                doc.DisableWordWrap = true;
+                _profilerDialog?.Log($"Disabled word wrap for large file ({fileSizeMB}MB)");
+            }
+        }
+
+        // File size limit accessors
+        public int MaxFileSizeMB { get; private set; } = 100;
+        public int LargeFileWarningMB { get; private set; } = 50;
+        public int AsyncFileWarningMB { get; private set; } = 20;
+        public bool DisableSyntaxHighlightingForLargeFiles { get; private set; } = true;
+        public bool DisableMinimapForLargeFiles { get; private set; } = true;
+        public bool DisableWordWrapForLargeFiles { get; private set; } = false;
+        public long SyntaxHighlightingThresholdBytes { get; private set; } = 50 * 1024;
         public bool CurrentWordWrap => wordWrapEnabled;
         public bool CurrentShowGuide => showGuide;
         public int CurrentGuideColumn => guideColumn;
@@ -808,7 +885,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   string fullPath = Path.GetFullPath(Path.Combine(dir, filename));
                   try
                   {
-                      File.WriteAllText(fullPath, textEditor.Text);
+                      UnicodeFileHelper.WriteAllText(fullPath, textEditor.Text);
                       currentFilePath = fullPath;
                       lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                       currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
@@ -1303,6 +1380,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         protected override void WndProc(ref Message m)
         {
+#if PROFILING && DEBUG
+            // Signal UI activity on window messages
+            SignalUiActivity();
+#endif
+
             if (m.Msg == WM_DROPFILES)
             {
                 HandleWmDropFiles(m.WParam);
@@ -1392,14 +1474,14 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 }
                 catch { }
 
-                // Optional: file size limit (10MB)
+                // Configurable file size limit
                 try
                 {
                     var fileInfo = new FileInfo(filePath);
-                    const long maxSize = 10L * 1024 * 1024; // 10 MB
+                    long maxSize = (long)MaxFileSizeMB * 1024 * 1024;
                     if (fileInfo.Length > maxSize)
                     {
-                        ThemedMessageBox.Show($"File is too large ({fileInfo.Length / 1024 / 1024}MB). Maximum allowed is 10MB.",
+                        ThemedMessageBox.Show($"File is too large ({fileInfo.Length / 1024 / 1024}MB). Maximum allowed is {MaxFileSizeMB}MB.",
                             "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
@@ -1866,6 +1948,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                         _savedWindowBounds = settings.WindowBounds;
                         _savedWindowState = settings.WindowState;
                         _activeConfiguration = settings.ActiveConfiguration ?? "Debug";
+
+                        // Load file size limits
+                        MaxFileSizeMB = Math.Max(10, settings.MaxFileSizeMB);
+                        LargeFileWarningMB = Math.Max(1, settings.LargeFileWarningMB);
+                        AsyncFileWarningMB = Math.Max(1, settings.AsyncFileWarningMB);
+                        DisableSyntaxHighlightingForLargeFiles = settings.DisableSyntaxHighlightingForLargeFiles;
+                        DisableMinimapForLargeFiles = settings.DisableMinimapForLargeFiles;
+                        DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
+                        SyntaxHighlightingThresholdBytes = Math.Max(1024, settings.SyntaxHighlightingThresholdBytes);
                     }
                 }
             }
@@ -1951,9 +2042,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                          BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
                            AnalyzersEnabled: _analyzersEnabled,
                            AutoSaveEnabled: _autoSaveEnabled,
-WindowBounds: $"{Left},{Top},{Width},{Height}",
-                            WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
-                            ActiveConfiguration: _activeConfiguration
+ WindowBounds: $"{Left},{Top},{Width},{Height}",
+                             WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
+                             ActiveConfiguration: _activeConfiguration,
+                             MaxFileSizeMB: MaxFileSizeMB,
+                             LargeFileWarningMB: LargeFileWarningMB,
+                             AsyncFileWarningMB: AsyncFileWarningMB,
+                             DisableSyntaxHighlightingForLargeFiles: DisableSyntaxHighlightingForLargeFiles,
+                             DisableMinimapForLargeFiles: DisableMinimapForLargeFiles,
+                             DisableWordWrapForLargeFiles: DisableWordWrapForLargeFiles,
+                             SyntaxHighlightingThresholdBytes: SyntaxHighlightingThresholdBytes
                  );
                 string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(path, json);
@@ -3212,8 +3310,7 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             {
                 try
                 {
-                    _profilerDialog?.RecordEvent($"SaveFile({Path.GetFileName(currentFilePath)})", "File I/O", () =>
-                        File.WriteAllText(currentFilePath, textEditor.Text));
+                    UnicodeFileHelper.WriteAllText(currentFilePath, textEditor.Text);
                     _profilerDialog?.Log($"Saved file: {currentFilePath} ({textEditor.Text.Length} chars)");
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
@@ -3235,8 +3332,7 @@ WindowBounds: $"{Left},{Top},{Width},{Height}",
             {
                 try
                 {
-                    _profilerDialog?.RecordEvent($"SaveAsFile({Path.GetFileName(sfd.FileName)})", "File I/O", () =>
-                        File.WriteAllText(sfd.FileName, textEditor.Text));
+                    UnicodeFileHelper.WriteAllText(sfd.FileName, textEditor.Text);
                     _profilerDialog?.Log($"Saved as file: {sfd.FileName} ({textEditor.Text.Length} chars)");
                     currentFilePath = sfd.FileName;
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
@@ -3639,6 +3735,17 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 ThemedMessageBox.Show($"Error opening Performance Profiler: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
+#if PROFILING && DEBUG
+        /// <summary>
+        /// Signal UI activity for performance profiling.
+        /// </summary>
+        private void SignalUiActivity()
+        {
+            _debugOverlay?.OnFrame();
+            _profilerDialog?._samplingEngine?.SignalUiActivity();
+        }
+#endif
 
         private void GcMonitorTimer_Tick(object? sender, EventArgs e)
         {
@@ -5263,12 +5370,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (!File.Exists(path)) return;
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB absolute limit
+            if (fileInfo.Length > (long)MaxFileSizeMB * 1024 * 1024) // Configurable absolute limit
             {
-                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is {MaxFileSizeMB} MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            if (fileInfo.Length > 1024 * 1024) // 1MB warning
+            if (fileInfo.Length > (long)LargeFileWarningMB * 1024 * 1024) // Configurable warning threshold
             {
                 var result = ThemedMessageBox.Show($"File is large ({fileInfo.Length / (1024 * 1024)} MB). Opening may be slow. Continue?", "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                 if (result != DialogResult.Yes)
@@ -5276,11 +5383,10 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
             try
             {
-                string content = _profilerDialog != null ?
-                    _profilerDialog.RecordEvent($"ReadFile({Path.GetFileName(path)})", "File I/O", () => File.ReadAllText(path)) :
-                    File.ReadAllText(path);
+                var (content, encoding) = UnicodeFileHelper.ReadAllTextWithEncoding(path);
                 var syntax = SyntaxDefinition.GetDefinitionForFile(path);
-                _profilerDialog?.Log($"Opened file: {path} ({content.Length} chars)");
+                bool containsRtl = UnicodeFileHelper.ContainsRtlText(content);
+                _profilerDialog?.Log($"Opened file: {path} ({content.Length} chars, {UnicodeFileHelper.GetEncodingDisplayName(encoding)}{(containsRtl ? ", RTL" : "")})");
                 var doc = new Document
                 {
                     FilePath = path,
@@ -5294,8 +5400,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     SelectionStart = 0,
                     SelectionLength = 0,
                     FirstVisibleLine = 0,
-                    Syntax = syntax
+                    Syntax = syntax,
+                    FileEncoding = encoding,
+                    ContainsRtlText = containsRtl
                 };
+
+                // Apply feature degradation for large files
+                ApplyLargeFileDegradation(doc, fileInfo.Length);
+
                 documents.Add(doc);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
@@ -5316,12 +5428,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (!File.Exists(path)) return;
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit for async loading
+            if (fileInfo.Length > (long)MaxFileSizeMB * 1024 * 1024) // Configurable limit for async loading
             {
-                BeginInvoke(() => ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning));
+                BeginInvoke(() => ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is {MaxFileSizeMB} MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning));
                 return;
             }
-            if (fileInfo.Length > 2 * 1024 * 1024) // 2MB warning for async
+            if (fileInfo.Length > (long)AsyncFileWarningMB * 1024 * 1024) // Configurable warning for async
             {
                 var result = ThemedMessageBox.Show($"File is large ({fileInfo.Length / (1024 * 1024)} MB). Opening may be slow and use significant memory. Continue?", "Large File Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
                 if (result != DialogResult.Yes)
@@ -5341,8 +5453,13 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 SelectionStart = 0,
                 SelectionLength = 0,
                 FirstVisibleLine = 0,
-                Syntax = syntax
+                Syntax = syntax,
+                FileEncoding = null // Will be set when content is loaded
             };
+
+            // Apply feature degradation for large files
+            ApplyLargeFileDegradation(doc, fileInfo.Length);
+
             documents.Add(doc);
             int newIndex = documents.Count - 1;
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
@@ -5358,16 +5475,16 @@ private void NewWindow_Click(object? sender, EventArgs e)
             {
                 try
                 {
-                    string content = _profilerDialog != null ?
-                        _profilerDialog.RecordEvent($"ReadFileAsync({Path.GetFileName(path)})", "File I/O", () => File.ReadAllText(path)) :
-                        File.ReadAllText(path);
-                    return content;
+                    var (content, encoding) = UnicodeFileHelper.ReadAllTextWithEncoding(path);
+                    return (Content: content, Encoding: encoding);
                 }
-                catch { return null; }
+                catch { return (Content: (string?)null, Encoding: (System.Text.Encoding?)null); }
             }).ContinueWith(t =>
             {
-                if (t.Result == null) return;
-                string content = t.Result;
+                var result = t.Result;
+                if (result.Content == null) return;
+                string content = result.Content;
+                var encoding = result.Encoding;
                 BeginInvoke(() =>
                 {
                     try
@@ -5376,6 +5493,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
                         var d = documents[activeDocIndex];
                         if (d.FilePath != path) return;
                         d.Content = content;
+                        d.FileEncoding = encoding;
+                        d.ContainsRtlText = UnicodeFileHelper.ContainsRtlText(content);
                         d.SavedHash = ComputeContentHash(content);
 
                         // Only update if this tab is currently active
@@ -5490,6 +5609,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             LoadDocument(doc);
             UpdateWindowTitle();
             UpdateMarkdownPreview();
+            UpdateEncodingLabel();
         }
 
         // Load document state into editor and UI
@@ -5503,6 +5623,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
             collapsedRegions = doc.CollapsedRegions;
             savedContentHash = doc.SavedHash;
             lastFileWriteTime = doc.LastWriteTime ?? DateTime.MinValue;
+
+            // Configure RTL support
+            if (textEditor != null)
+            {
+                textEditor.RightToLeft = doc.ContainsRtlText ? RightToLeft.Yes : RightToLeft.No;
+            }
             currentSyntax = doc.Syntax;
 
             // Load text without triggering dirty flag
@@ -6365,9 +6491,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         public void PerformFind(string text, bool caseSensitive, bool up, bool useRegex = false)
         {
-            _profilerDialog?.RecordEvent($"PerformFind({text.Length} chars, {(useRegex ? "regex" : "text")})", "Search", () =>
-            {
-                if (string.IsNullOrEmpty(text) || textEditor.Text.Length == 0) return;
+            if (string.IsNullOrEmpty(text) || textEditor.Text.Length == 0) return;
 
             string source = textEditor.Text;
             int sourceLen = source.Length;
@@ -6436,7 +6560,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
             {
                 ThemedMessageBox.Show("Cannot find \"" + text + "\".", "Find", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
-            });
         }
 
         public void PerformReplace(string findText, string replaceText, bool caseSensitive, bool useRegex, bool replaceAll)
@@ -6524,9 +6647,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         public void PerformFindInFiles(string findText, bool caseSensitive, bool useRegex)
         {
-            _profilerDialog?.RecordEvent($"PerformFindInFiles({findText.Length} chars)", "Search", () =>
-            {
-                string? root = _workspacePanel?.RootPath;
+            string? root = _workspacePanel?.RootPath;
             if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
             {
                 ThemedMessageBox.Show("No workspace folder is open. Use View > Open Folder to set a workspace root.",
@@ -6588,7 +6709,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             using var dlg = new FindInFilesResultsDialog(results, root);
             dlg.ShowDialog(this);
-            });
         }
 
         private static void SearchDirectory(string rootDir, string dir, List<(string File, int Line, string Text)> results,
@@ -6899,6 +7019,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (minimapControl == null || editorPanel == null || textEditor == null) return;
             if (!textEditor.IsHandleCreated) return;
 
+            // Check if minimap is disabled for this document (large file degradation)
+            if (GetCurrentDocument()?.DisableMinimap == true)
+            {
+                minimapControl.Visible = false;
+                minimapControl.DetachEditor();
+                return;
+            }
+
             if (!_pendingMinimapVisible)
             {
                 if (minimapControl.Parent != editorPanel)
@@ -6950,7 +7078,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (textEditor != null)
             {
-                textEditor.WordWrap = wordWrapEnabled;
+                // Respect document-level word wrap degradation for large files
+                bool effectiveWordWrap = wordWrapEnabled && (GetCurrentDocument()?.DisableWordWrap != true);
+                textEditor.WordWrap = effectiveWordWrap;
             }
         }
 
@@ -7240,6 +7370,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         private void RequestVisibleHighlight()
         {
             if (incrementalHighlighter == null || !syntaxHighlightingEnabled || !textEditor.IsHandleCreated) return;
+            if (GetCurrentDocument()?.DisableSyntaxHighlighting == true) return;
             var (first, last) = GetVisibleLineRange();
             if (first <= last)
                 incrementalHighlighter.RequestRange(first, last);
