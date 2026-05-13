@@ -3814,7 +3814,20 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
                     _workspaceSplitContainer.PerformLayout();
                     if (!string.IsNullOrEmpty(_workspaceRoot))
-                Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
+                    {
+                        // Check if workspace is too large for smooth operation
+                        try
+                        {
+                            var fileCount = Directory.EnumerateFiles(_workspaceRoot, "*", SearchOption.AllDirectories).Count();
+                            if (fileCount > 1000) // Arbitrary limit
+                            {
+                                BeginInvoke(() => ThemedMessageBox.Show($"Workspace has {fileCount} files, which may cause performance issues. Consider using a smaller project folder.", "Large Workspace", MessageBoxButtons.OK, MessageBoxIcon.Warning));
+                                return; // Don't enable workspace
+                            }
+                        }
+                        catch { }
+                        Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
+                    }
                 }
             }
             else
