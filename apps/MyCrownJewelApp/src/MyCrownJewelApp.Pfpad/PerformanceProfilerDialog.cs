@@ -8,11 +8,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text;
 using System.Text.Json;
+using System.Runtime.InteropServices;
 
 namespace MyCrownJewelApp.Pfpad;
 
 public sealed class PerformanceProfilerDialog : Form
 {
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+
+    private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
+
     private readonly TabControl _tabControl;
     private readonly TabPage _performanceTab;
     private readonly TabPage _memoryTab;
@@ -67,7 +73,7 @@ public sealed class PerformanceProfilerDialog : Form
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
-        _tabControl = new TabControl { Dock = DockStyle.Fill };
+        _tabControl = new TabControl { Dock = DockStyle.Fill, BackColor = theme.Background };
         Controls.Add(_tabControl);
 
         // Performance Tab
@@ -380,6 +386,17 @@ public sealed class PerformanceProfilerDialog : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        _consoleText.Text = _consoleLogs.ToString();
+        var isLight = ThemeManager.Instance.CurrentTheme.IsLight;
+        if (!isLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
+
+        // Apply scrollbar themes
+        SetWindowTheme(_tabControl.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_flameChartList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_callTreeView.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_memoryList.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_summaryText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_memorySummary.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
+        SetWindowTheme(_consoleText.Handle, isLight ? "" : DARK_MODE_SCROLLBAR, null);
     }
 }
