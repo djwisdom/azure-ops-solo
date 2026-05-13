@@ -5239,9 +5239,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (!File.Exists(path)) return;
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit
+            if (fileInfo.Length > 100 * 1024) // 100KB limit for UI performance
             {
-                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / 1024} KB). Maximum size is 100 KB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             try
@@ -5346,8 +5346,11 @@ private void NewWindow_Click(object? sender, EventArgs e)
                                 savedContentHash = d.SavedHash;
                                 isModified = false;
 
-                                // Re-highlight and update UI
-                                CreateIncrementalHighlighter();
+                                // Re-highlight and update UI (skip for large files)
+                                if (content.Length < 50000) // 50KB threshold
+                                {
+                                    CreateIncrementalHighlighter();
+                                }
                                 UpdateStatusBar();
                                 UpdateTabTitle(activeDocIndex);
                                 UpdateThemeColors(_currentTheme);
@@ -5475,8 +5478,11 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             textEditor.TextChanged += TextEditor_TextChanged;
 
-            // Recreate syntax highlighter based on current syntax
-            CreateIncrementalHighlighter();
+            // Recreate syntax highlighter based on current syntax (skip for large files)
+            if ((doc.Content?.Length ?? 0) < 50000) // 50KB threshold for highlighting
+            {
+                CreateIncrementalHighlighter();
+            }
 
             // Update UI (must be after CreateIncrementalHighlighter so file type is current)
             UpdateStatusBar();
