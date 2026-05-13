@@ -1010,15 +1010,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   _workspacePanel = new WorkspacePanel(_gitService);
                    _workspacePanel.FileOpenRequested += (path) =>
                    {
-                       try
-                       {
-                           if (!string.IsNullOrEmpty(path) && File.Exists(path))
-                               OpenFileInNewTabAsync(path);
-                       }
-                       catch (Exception ex)
-                       {
-                           BeginInvoke(() => ThemedMessageBox.Show($"Error opening file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error));
-                       }
+                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                           OpenFileInNewTab(path);
                    };
                   _workspacePanel.CloseRequested += () => ToggleWorkspace();
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
@@ -5244,24 +5237,16 @@ private void NewWindow_Click(object? sender, EventArgs e)
         // Open an existing file in a new tab
         internal void OpenFileInNewTab(string path)
         {
-            _profilerDialog?.Log($"Opening file (sync): {path}");
-            if (!File.Exists(path))
-            {
-                _profilerDialog?.Log($"File not found: {path}");
-                return;
-            }
+            if (!File.Exists(path)) return;
             var fileInfo = new FileInfo(path);
             if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit
             {
-                _profilerDialog?.Log($"File too large: {fileInfo.Length / (1024 * 1024)} MB");
                 ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             try
             {
-                _profilerDialog?.RecordEvent($"Read file: {Path.GetFileName(path)}", "File I/O", () => { });
                 string content = File.ReadAllText(path);
-                _profilerDialog?.Log($"File read complete: {content.Length} chars");
                 var syntax = SyntaxDefinition.GetDefinitionForFile(path);
                 var doc = new Document
                 {
