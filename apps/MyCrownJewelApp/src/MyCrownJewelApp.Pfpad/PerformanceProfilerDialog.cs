@@ -73,152 +73,19 @@ public sealed class PerformanceProfilerDialog : Form
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
-        _tabControl = new TabControl { Dock = DockStyle.Fill, BackColor = theme.Background };
+        _tabControl = new TabControl { Dock = DockStyle.Fill, BackColor = theme.Background, ForeColor = theme.Text };
         Controls.Add(_tabControl);
 
         // Performance Tab
-        _performanceTab = new TabPage("Performance");
+        _performanceTab = new TabPage("Performance") { BackColor = theme.Background, ForeColor = theme.Text };
         _tabControl.TabPages.Add(_performanceTab);
 
-        var perfLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
-        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-
-        _performanceTab.Controls.Add(perfLayout);
-
-        // Buttons
-        var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
-        _startRecordingBtn = new Button
-        {
-            Text = "Start Recording",
-            Width = 120,
-            BackColor = theme.Background,
-            ForeColor = theme.Text,
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
-        };
-        _startRecordingBtn.Click += StartRecording;
-        _stopRecordingBtn = new Button
-        {
-            Text = "Stop Recording",
-            Width = 120,
-            Enabled = false,
-            BackColor = theme.Background,
-            ForeColor = theme.Text,
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
-        };
-        _stopRecordingBtn.Click += StopRecording;
-        _clearBtn = new Button
-        {
-            Text = "Clear",
-            Width = 80,
-            BackColor = theme.Background,
-            ForeColor = theme.Text,
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
-        };
-        _clearBtn.Click += (s, e) => ClearPerformanceData();
-        buttonPanel.Controls.AddRange(new Control[] { _startRecordingBtn, _stopRecordingBtn, _clearBtn });
-        perfLayout.Controls.Add(buttonPanel, 0, 0);
-
-        // Flame Chart
-        var flameGroup = new GroupBox { Text = "Flame Chart (Long Tasks >50ms)", Dock = DockStyle.Fill, ForeColor = theme.Text };
-        _flameChartList = new ListView
-        {
-            View = View.Details,
-            Dock = DockStyle.Fill,
-            BackColor = theme.EditorBackground,
-            ForeColor = theme.Text
-        };
-        _flameChartList.Columns.Add("Event", 200);
-        _flameChartList.Columns.Add("Duration (ms)", 100);
-        _flameChartList.Columns.Add("Start Time", 150);
-        _flameChartList.Columns.Add("Category", 100);
-        flameGroup.Controls.Add(_flameChartList);
-        perfLayout.Controls.Add(flameGroup, 1, 0);
-
-        // Call Tree
-        var callGroup = new GroupBox { Text = "Call Tree", Dock = DockStyle.Fill, ForeColor = theme.Text };
-        _callTreeView = new TreeView { Dock = DockStyle.Fill, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        callGroup.Controls.Add(_callTreeView);
-        perfLayout.Controls.Add(callGroup, 2, 0);
-
-        // Summary
-        _summaryText = new TextBox
-        {
-            Multiline = true,
-            ReadOnly = true,
-            Dock = DockStyle.Fill,
-            ScrollBars = ScrollBars.Vertical,
-            BackColor = theme.EditorBackground,
-            ForeColor = theme.Text
-        };
-        perfLayout.Controls.Add(_summaryText, 3, 0);
-
         // Memory Tab
-        _memoryTab = new TabPage("Memory");
+        _memoryTab = new TabPage("Memory") { BackColor = theme.Background, ForeColor = theme.Text };
         _tabControl.TabPages.Add(_memoryTab);
 
-        var memLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1 };
-        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        memLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 70));
-        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-
-        _memoryTab.Controls.Add(memLayout);
-
-        var memButtonPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
-        _takeSnapshotBtn = new Button
-        {
-            Text = "Take Snapshot",
-            Width = 120,
-            BackColor = theme.Background,
-            ForeColor = theme.Text,
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
-        };
-        _takeSnapshotBtn.Click += TakeMemorySnapshot;
-        _compareSnapshotsBtn = new Button
-        {
-            Text = "Compare Last Two",
-            Width = 140,
-            Enabled = false,
-            BackColor = theme.Background,
-            ForeColor = theme.Text,
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground }
-        };
-        _compareSnapshotsBtn.Click += CompareSnapshots;
-        memButtonPanel.Controls.AddRange(new Control[] { _takeSnapshotBtn, _compareSnapshotsBtn });
-        memLayout.Controls.Add(memButtonPanel, 0, 0);
-
-        _memoryList = new ListView
-        {
-            View = View.Details,
-            Dock = DockStyle.Fill,
-            BackColor = theme.EditorBackground,
-            ForeColor = theme.Text
-        };
-        _memoryList.Columns.Add("Timestamp", 150);
-        _memoryList.Columns.Add("Total Memory (MB)", 120);
-        _memoryList.Columns.Add("GC Memory (MB)", 120);
-        _memoryList.Columns.Add("Details", 200);
-        memLayout.Controls.Add(_memoryList, 1, 0);
-
-        _memorySummary = new TextBox
-        {
-            Multiline = true,
-            ReadOnly = true,
-            Dock = DockStyle.Fill,
-            BackColor = theme.EditorBackground,
-            ForeColor = theme.Text
-        };
-        memLayout.Controls.Add(_memorySummary, 2, 0);
-
         // Console Tab
-        _consoleTab = new TabPage("Console");
+        _consoleTab = new TabPage("Console") { BackColor = theme.Background, ForeColor = theme.Text };
         _tabControl.TabPages.Add(_consoleTab);
 
         _consoleText = new TextBox
