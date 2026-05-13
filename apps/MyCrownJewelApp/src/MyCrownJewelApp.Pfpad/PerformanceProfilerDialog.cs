@@ -70,7 +70,16 @@ public sealed class PerformanceProfilerDialog : Form
         Size = new Size(1000, 700);
         StartPosition = FormStartPosition.CenterParent;
 
-        var theme = ThemeManager.Instance.CurrentTheme;
+                Theme theme;
+        try
+        {
+            theme = ThemeManager.Instance.CurrentTheme;
+        }
+        catch
+        {
+            // Fallback to light theme
+            theme = Theme.Light;
+        }
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
@@ -254,7 +263,16 @@ public sealed class PerformanceProfilerDialog : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        var isLight = ThemeManager.Instance.CurrentTheme.IsLight;
+        Theme theme;
+        try
+        {
+            theme = ThemeManager.Instance.CurrentTheme;
+        }
+        catch
+        {
+            theme = Theme.Light;
+        }
+        var isLight = theme.IsLight;
         if (!isLight)
             NativeThemed.ApplyDarkModeToWindow(Handle);
 
