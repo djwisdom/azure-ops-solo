@@ -1,0 +1,303 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Text;
+using System.Text.Json;
+
+namespace MyCrownJewelApp.Pfpad;
+
+public sealed class PerformanceProfilerDialog : Form
+{
+    private readonly TabControl _tabControl;
+    private readonly TabPage _performanceTab;
+    private readonly TabPage _memoryTab;
+    private readonly TabPage _consoleTab;
+
+    // Performance tab controls
+    private readonly Button _startRecordingBtn;
+    private readonly Button _stopRecordingBtn;
+    private readonly Button _clearBtn;
+    private readonly ListView _flameChartList;
+    private readonly TreeView _callTreeView;
+    private readonly TextBox _summaryText;
+
+    // Memory tab controls
+    private readonly Button _takeSnapshotBtn;
+    private readonly Button _compareSnapshotsBtn;
+    private readonly ListView _memoryList;
+    private readonly TextBox _memorySummary;
+
+    // Console tab
+    private readonly TextBox _consoleText;
+
+    // Profiling data
+    private readonly List<PerformanceEvent> _events = new();
+    private readonly List<MemorySnapshot> _snapshots = new();
+    private readonly StringBuilder _consoleLogs = new();
+    private bool _isRecording;
+    private Stopwatch _sessionTimer = new();
+
+    public sealed record PerformanceEvent(
+        string Name,
+        DateTime StartTime,
+        long DurationMs,
+        string Category,
+        string[] CallStack
+    );
+
+    public sealed record MemorySnapshot(
+        DateTime Timestamp,
+        long TotalMemory,
+        long GCMemory,
+        Dictionary<string, object> Details
+    );
+
+    public PerformanceProfilerDialog()
+    {
+        Text = "Performance Profiler";
+        Size = new Size(1000, 700);
+        StartPosition = FormStartPosition.CenterParent;
+
+        _tabControl = new TabControl { Dock = DockStyle.Fill };
+        Controls.Add(_tabControl);
+
+        // Performance Tab
+        _performanceTab = new TabPage("Performance");
+        _tabControl.TabPages.Add(_performanceTab);
+
+        var perfLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
+
+        _performanceTab.Controls.Add(perfLayout);
+
+        // Buttons
+        var buttonPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        _startRecordingBtn = new Button { Text = "Start Recording", Width = 120 };
+        _startRecordingBtn.Click += StartRecording;
+        _stopRecordingBtn = new Button { Text = "Stop Recording", Width = 120, Enabled = false };
+        _stopRecordingBtn.Click += StopRecording;
+        _clearBtn = new Button { Text = "Clear", Width = 80 };
+        _clearBtn.Click += (s, e) => ClearPerformanceData();
+        buttonPanel.Controls.AddRange(new Control[] { _startRecordingBtn, _stopRecordingBtn, _clearBtn });
+        perfLayout.Controls.Add(buttonPanel, 0, 0);
+
+        // Flame Chart
+        var flameGroup = new GroupBox { Text = "Flame Chart (Long Tasks >50ms)", Dock = DockStyle.Fill };
+        _flameChartList = new ListView { View = View.Details, Dock = DockStyle.Fill };
+        _flameChartList.Columns.Add("Event", 200);
+        _flameChartList.Columns.Add("Duration (ms)", 100);
+        _flameChartList.Columns.Add("Start Time", 150);
+        _flameChartList.Columns.Add("Category", 100);
+        flameGroup.Controls.Add(_flameChartList);
+        perfLayout.Controls.Add(flameGroup, 1, 0);
+
+        // Call Tree
+        var callGroup = new GroupBox { Text = "Call Tree", Dock = DockStyle.Fill };
+        _callTreeView = new TreeView { Dock = DockStyle.Fill };
+        callGroup.Controls.Add(_callTreeView);
+        perfLayout.Controls.Add(callGroup, 2, 0);
+
+        // Summary
+        _summaryText = new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical };
+        perfLayout.Controls.Add(_summaryText, 3, 0);
+
+        // Memory Tab
+        _memoryTab = new TabPage("Memory");
+        _tabControl.TabPages.Add(_memoryTab);
+
+        var memLayout = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1 };
+        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        memLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 70));
+        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
+
+        _memoryTab.Controls.Add(memLayout);
+
+        var memButtonPanel = new FlowLayoutPanel { Dock = DockStyle.Fill };
+        _takeSnapshotBtn = new Button { Text = "Take Snapshot", Width = 120 };
+        _takeSnapshotBtn.Click += TakeMemorySnapshot;
+        _compareSnapshotsBtn = new Button { Text = "Compare Last Two", Width = 140, Enabled = false };
+        _compareSnapshotsBtn.Click += CompareSnapshots;
+        memButtonPanel.Controls.AddRange(new Control[] { _takeSnapshotBtn, _compareSnapshotsBtn });
+        memLayout.Controls.Add(memButtonPanel, 0, 0);
+
+        _memoryList = new ListView { View = View.Details, Dock = DockStyle.Fill };
+        _memoryList.Columns.Add("Timestamp", 150);
+        _memoryList.Columns.Add("Total Memory (MB)", 120);
+        _memoryList.Columns.Add("GC Memory (MB)", 120);
+        _memoryList.Columns.Add("Details", 200);
+        memLayout.Controls.Add(_memoryList, 1, 0);
+
+        _memorySummary = new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill };
+        memLayout.Controls.Add(_memorySummary, 2, 0);
+
+        // Console Tab
+        _consoleTab = new TabPage("Console");
+        _tabControl.TabPages.Add(_consoleTab);
+
+        _consoleText = new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, Font = new Font("Consolas", 9), ScrollBars = ScrollBars.Vertical };
+        _consoleTab.Controls.Add(_consoleText);
+
+        // Start logging
+        Log("Performance Profiler initialized");
+    }
+
+    private void StartRecording(object? sender, EventArgs e)
+    {
+        _isRecording = true;
+        _sessionTimer.Restart();
+        _startRecordingBtn.Enabled = false;
+        _stopRecordingBtn.Enabled = true;
+        _events.Clear();
+        Log("Recording started");
+    }
+
+    private void StopRecording(object? sender, EventArgs e)
+    {
+        _isRecording = false;
+        _sessionTimer.Stop();
+        _startRecordingBtn.Enabled = true;
+        _stopRecordingBtn.Enabled = false;
+        UpdatePerformanceUI();
+        Log("Recording stopped");
+    }
+
+    private void ClearPerformanceData()
+    {
+        _events.Clear();
+        _flameChartList.Items.Clear();
+        _callTreeView.Nodes.Clear();
+        _summaryText.Clear();
+        Log("Performance data cleared");
+    }
+
+    public void RecordEvent(string name, string category, Action action)
+    {
+        if (!_isRecording) { action(); return; }
+
+        var sw = Stopwatch.StartNew();
+        var startTime = DateTime.Now;
+        var callStack = new StackTrace().GetFrames().Select(f => f.GetMethod()?.Name ?? "").ToArray();
+
+        try
+        {
+            action();
+        }
+        finally
+        {
+            sw.Stop();
+            var duration = sw.ElapsedMilliseconds;
+            if (duration > 50) // Long task threshold
+            {
+                _events.Add(new PerformanceEvent(name, startTime, duration, category, callStack));
+                Log($"Long task: {name} ({duration}ms)");
+            }
+        }
+    }
+
+    private void UpdatePerformanceUI()
+    {
+        _flameChartList.BeginUpdate();
+        _flameChartList.Items.Clear();
+        foreach (var evt in _events.OrderByDescending(e => e.DurationMs))
+        {
+            var item = new ListViewItem(evt.Name);
+            item.SubItems.Add(evt.DurationMs.ToString());
+            item.SubItems.Add(evt.StartTime.ToString("HH:mm:ss.fff"));
+            item.SubItems.Add(evt.Category);
+            item.Tag = evt;
+            _flameChartList.Items.Add(item);
+        }
+        _flameChartList.EndUpdate();
+
+        // Build call tree
+        _callTreeView.Nodes.Clear();
+        var root = _callTreeView.Nodes.Add("Root");
+        foreach (var evt in _events)
+        {
+            var node = root.Nodes.Add($"{evt.Name} ({evt.DurationMs}ms)");
+            foreach (var frame in evt.CallStack.Take(5))
+            {
+                node.Nodes.Add(frame);
+            }
+        }
+        _callTreeView.ExpandAll();
+
+        // Summary
+        var totalTime = _events.Sum(e => e.DurationMs);
+        var longTasks = _events.Count(e => e.DurationMs > 50);
+        _summaryText.Text = $"Total recorded time: {_sessionTimer.Elapsed.TotalSeconds:F2}s\r\n" +
+                           $"Long tasks (>50ms): {longTasks}\r\n" +
+                           $"Total long task time: {totalTime}ms\r\n" +
+                           $"Average long task: {(longTasks > 0 ? totalTime / longTasks : 0)}ms";
+    }
+
+    private void TakeMemorySnapshot(object? sender, EventArgs e)
+    {
+        var snapshot = new MemorySnapshot(
+            DateTime.Now,
+            GC.GetTotalMemory(false),
+            GC.GetTotalMemory(true) - GC.GetTotalMemory(false),
+            new Dictionary<string, object>
+            {
+                ["GC Collections"] = GC.CollectionCount(0) + GC.CollectionCount(1) + GC.CollectionCount(2),
+                ["Process Memory"] = Process.GetCurrentProcess().WorkingSet64 / 1024 / 1024
+            }
+        );
+        _snapshots.Add(snapshot);
+        UpdateMemoryUI();
+        _compareSnapshotsBtn.Enabled = _snapshots.Count >= 2;
+        Log($"Memory snapshot taken: {snapshot.TotalMemory / 1024 / 1024} MB");
+    }
+
+    private void CompareSnapshots(object? sender, EventArgs e)
+    {
+        if (_snapshots.Count < 2) return;
+        var last = _snapshots[^1];
+        var prev = _snapshots[^2];
+        var diff = last.TotalMemory - prev.TotalMemory;
+        _memorySummary.Text = $"Memory Comparison:\r\n" +
+                             $"Previous: {prev.TotalMemory / 1024 / 1024} MB\r\n" +
+                             $"Current: {last.TotalMemory / 1024 / 1024} MB\r\n" +
+                             $"Difference: {diff / 1024 / 1024} MB {(diff > 0 ? "increase" : "decrease")}\r\n" +
+                             $"GC Collections: {last.Details["GC Collections"]} total";
+    }
+
+    private void UpdateMemoryUI()
+    {
+        _memoryList.BeginUpdate();
+        _memoryList.Items.Clear();
+        foreach (var snap in _snapshots)
+        {
+            var item = new ListViewItem(snap.Timestamp.ToString("HH:mm:ss"));
+            item.SubItems.Add((snap.TotalMemory / 1024 / 1024).ToString("F2"));
+            item.SubItems.Add((snap.GCMemory / 1024 / 1024).ToString("F2"));
+            item.SubItems.Add(string.Join(", ", snap.Details.Select(kv => $"{kv.Key}: {kv.Value}")));
+            _memoryList.Items.Add(item);
+        }
+        _memoryList.EndUpdate();
+    }
+
+    public void Log(string message)
+    {
+        var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] {message}\r\n";
+        _consoleLogs.Append(logLine);
+        if (_consoleText.IsHandleCreated)
+        {
+            BeginInvoke(() => _consoleText.AppendText(logLine));
+        }
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        _consoleText.Text = _consoleLogs.ToString();
+    }
+}

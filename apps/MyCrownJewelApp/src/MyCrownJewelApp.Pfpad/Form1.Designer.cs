@@ -562,7 +562,8 @@ partial class Form1
         // Help menu
         var helpMenu = new ToolStripMenuItem("&Help");
         var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
-        helpMenu.DropDownItems.Add(aboutMenuItem);
+        var profilerMenuItem = new ToolStripMenuItem("&Performance Profiler", null, (s, e) => ShowPerformanceProfiler());
+        helpMenu.DropDownItems.AddRange(new ToolStripItem[] { aboutMenuItem, new ToolStripSeparator(), profilerMenuItem });
         menuStrip.Items.Add(helpMenu);
         menuStrip.Dock = DockStyle.Fill;
 

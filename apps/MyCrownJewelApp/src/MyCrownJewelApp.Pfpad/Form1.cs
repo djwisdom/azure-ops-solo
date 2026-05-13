@@ -283,6 +283,11 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private bool _cliArgsProvided;
         private bool _workspaceRootFromCli;
 
+        // Performance profiler
+        private PerformanceProfilerDialog? _profilerDialog;
+        private System.Windows.Forms.Timer? _gcMonitorTimer;
+        private int _lastGCCollections;
+
         // Recent files
         private const int MaxRecentFiles = 10;
         private List<string> recentFiles = new List<string>();
@@ -441,6 +446,12 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         // Initialize status bar visibility (Vim mode starts disabled)
         UpdateStatusBarVisibility();
+
+        // Start GC monitoring
+        _lastGCCollections = GC.CollectionCount(0) + GC.CollectionCount(1) + GC.CollectionCount(2);
+        _gcMonitorTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        _gcMonitorTimer.Tick += GcMonitorTimer_Tick;
+        _gcMonitorTimer.Start();
 
         try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
@@ -3615,6 +3626,26 @@ private void NewWindow_Click(object? sender, EventArgs e)
             dlg.ShowDialog(this);
         }
 
+        private void ShowPerformanceProfiler()
+        {
+            if (_profilerDialog == null || _profilerDialog.IsDisposed)
+            {
+                _profilerDialog = new PerformanceProfilerDialog();
+            }
+            _profilerDialog.Show();
+            _profilerDialog.BringToFront();
+        }
+
+        private void GcMonitorTimer_Tick(object? sender, EventArgs e)
+        {
+            var currentGC = GC.CollectionCount(0) + GC.CollectionCount(1) + GC.CollectionCount(2);
+            if (currentGC > _lastGCCollections)
+            {
+                _profilerDialog?.Log($"GC Activity: {currentGC - _lastGCCollections} collections occurred");
+                _lastGCCollections = currentGC;
+            }
+        }
+
         // External tools
         private List<ExternalTool> _externalTools = new();
         private ToolStripItem? _externalToolsSeparator;
@@ -5213,16 +5244,24 @@ private void NewWindow_Click(object? sender, EventArgs e)
         // Open an existing file in a new tab
         internal void OpenFileInNewTab(string path)
         {
-            if (!File.Exists(path)) return;
+            _profilerDialog?.Log($"Opening file (sync): {path}");
+            if (!File.Exists(path))
+            {
+                _profilerDialog?.Log($"File not found: {path}");
+                return;
+            }
             var fileInfo = new FileInfo(path);
             if (fileInfo.Length > 10 * 1024 * 1024) // 10MB limit
             {
+                _profilerDialog?.Log($"File too large: {fileInfo.Length / (1024 * 1024)} MB");
                 ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is 10 MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             try
             {
+                _profilerDialog?.RecordEvent($"Read file: {Path.GetFileName(path)}", "File I/O", () => { });
                 string content = File.ReadAllText(path);
+                _profilerDialog?.Log($"File read complete: {content.Length} chars");
                 var syntax = SyntaxDefinition.GetDefinitionForFile(path);
                 var doc = new Document
                 {
