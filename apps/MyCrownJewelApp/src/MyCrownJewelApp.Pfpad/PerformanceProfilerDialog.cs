@@ -69,6 +69,7 @@ public sealed class PerformanceProfilerDialog : Form
         _mainForm = mainForm;
         Text = "Performance Profiler";
         Size = new Size(1000, 700);
+        MinimumSize = new Size(600, 400);
         StartPosition = FormStartPosition.CenterParent;
 
         Theme theme;
@@ -112,45 +113,99 @@ public sealed class PerformanceProfilerDialog : Form
         _consoleTab.Controls.Add(_consoleText);
 
         // Performance tab UI
-        _startRecordingBtn = new Button { Text = "Start Recording", Location = new Point(10, 10), BackColor = theme.Background, ForeColor = theme.Text };
+        var perfLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 3,
+            ColumnCount = 2,
+            BackColor = theme.Background
+        };
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); // Charts
+        perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
+        perfLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70)); // Left column
+        perfLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30)); // Right column
+
+        _startRecordingBtn = new Button { Text = "Start Recording", Dock = DockStyle.Left, Width = 120, BackColor = theme.Background, ForeColor = theme.Text };
         _startRecordingBtn.Click += StartRecording;
-        _performanceTab.Controls.Add(_startRecordingBtn);
 
-        _stopRecordingBtn = new Button { Text = "Stop Recording", Location = new Point(120, 10), Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
+        _stopRecordingBtn = new Button { Text = "Stop Recording", Dock = DockStyle.Left, Width = 120, Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
         _stopRecordingBtn.Click += StopRecording;
-        _performanceTab.Controls.Add(_stopRecordingBtn);
 
-        _flameChartList = new ListView { Location = new Point(10, 50), Size = new Size(450, 200), View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        var buttonPanel = new Panel { Dock = DockStyle.Fill };
+        buttonPanel.Controls.Add(_startRecordingBtn);
+        buttonPanel.Controls.Add(_stopRecordingBtn);
+        perfLayout.Controls.Add(buttonPanel, 0, 0);
+        perfLayout.SetColumnSpan(buttonPanel, 2);
+
+        _flameChartList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
         _flameChartList.Columns.Add("Event", 200);
         _flameChartList.Columns.Add("Duration (ms)", 100);
         _flameChartList.Columns.Add("Time", 100);
         _flameChartList.Columns.Add("Category", 100);
-        _performanceTab.Controls.Add(_flameChartList);
+        perfLayout.Controls.Add(_flameChartList, 0, 1);
 
-        _callTreeView = new TreeView { Location = new Point(470, 50), Size = new Size(200, 200), BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        _performanceTab.Controls.Add(_callTreeView);
+        _callTreeView = new TreeView { Dock = DockStyle.Fill, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        perfLayout.Controls.Add(_callTreeView, 1, 1);
 
-        _summaryText = new TextBox { Location = new Point(10, 260), Size = new Size(660, 80), Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        _performanceTab.Controls.Add(_summaryText);
+        _summaryText = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        perfLayout.Controls.Add(_summaryText, 0, 2);
+        perfLayout.SetColumnSpan(_summaryText, 2);
+
+        _performanceTab.Controls.Add(perfLayout);
+
+perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
+
+perfLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); // Charts
+
+perfLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
+
+perfLayout.Controls.Add(buttonPanel, 0, 0);
+
+perfLayout.SetColumnSpan(buttonPanel, 2);
+
+perfLayout.Controls.Add(_flameChartList, 0, 1);
+
+perfLayout.Controls.Add(_callTreeView, 1, 1);
+
+perfLayout.Controls.Add(_summaryText, 0, 2);
+
+perfLayout.SetColumnSpan(_summaryText, 2);
 
         // Memory tab UI
-        _takeSnapshotBtn = new Button { Text = "Take Snapshot", Location = new Point(10, 10), BackColor = theme.Background, ForeColor = theme.Text };
+        var memLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 3,
+            ColumnCount = 1,
+            BackColor = theme.Background
+        };
+        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
+        memLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); // List
+        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
+
+        var memButtonPanel = new Panel { Dock = DockStyle.Fill };
+        _takeSnapshotBtn = new Button { Text = "Take Snapshot", Dock = DockStyle.Left, Width = 120, BackColor = theme.Background, ForeColor = theme.Text };
         _takeSnapshotBtn.Click += TakeMemorySnapshot;
-        _memoryTab.Controls.Add(_takeSnapshotBtn);
+        memButtonPanel.Controls.Add(_takeSnapshotBtn);
 
-        _compareSnapshotsBtn = new Button { Text = "Compare", Location = new Point(120, 10), Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
+        _compareSnapshotsBtn = new Button { Text = "Compare", Dock = DockStyle.Left, Width = 120, Enabled = false, BackColor = theme.Background, ForeColor = theme.Text };
         _compareSnapshotsBtn.Click += CompareSnapshots;
-        _memoryTab.Controls.Add(_compareSnapshotsBtn);
+        memButtonPanel.Controls.Add(_compareSnapshotsBtn);
 
-        _memoryList = new ListView { Location = new Point(10, 50), Size = new Size(660, 200), View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        memLayout.Controls.Add(memButtonPanel, 0, 0);
+
+        _memoryList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
         _memoryList.Columns.Add("Time", 100);
         _memoryList.Columns.Add("Total (MB)", 100);
         _memoryList.Columns.Add("GC (MB)", 100);
         _memoryList.Columns.Add("Details", 300);
-        _memoryTab.Controls.Add(_memoryList);
+        memLayout.Controls.Add(_memoryList, 0, 1);
 
-        _memorySummary = new TextBox { Location = new Point(10, 260), Size = new Size(660, 80), Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        _memoryTab.Controls.Add(_memorySummary);
+        _memorySummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
+        memLayout.Controls.Add(_memorySummary, 0, 2);
+
+        _memoryTab.Controls.Add(memLayout);
 
         // Start logging
         Log("Performance Profiler initialized");
