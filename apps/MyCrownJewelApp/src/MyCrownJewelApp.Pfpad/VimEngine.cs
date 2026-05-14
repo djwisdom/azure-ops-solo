@@ -1533,10 +1533,26 @@ namespace MyCrownJewelApp.Pfpad
         #endregion
 
         #region Scrolling
-        private void PageDown() { /* Editor handles this natively */ }
-        private void PageUp() { /* Editor handles this natively */ }
-        private void HalfPageDown() { /* Editor handles this natively */ }
-        private void HalfPageUp() { /* Editor handles this natively */ }
+        private void PageDown()
+        {
+            int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height);
+            for (int i = 0; i < lines; i++) MoveDown();
+        }
+        private void PageUp()
+        {
+            int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height);
+            for (int i = 0; i < lines; i++) MoveUp();
+        }
+        private void HalfPageDown()
+        {
+            int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height / 2);
+            for (int i = 0; i < lines; i++) MoveDown();
+        }
+        private void HalfPageUp()
+        {
+            int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height / 2);
+            for (int i = 0; i < lines; i++) MoveUp();
+        }
         #endregion
 
         #region Undo/Redo
