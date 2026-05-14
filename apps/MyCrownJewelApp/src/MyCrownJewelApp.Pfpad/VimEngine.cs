@@ -36,6 +36,25 @@ namespace MyCrownJewelApp.Pfpad
         // Repeat last action
         private (string Action, string? Data, int Repeat)? _lastAction;
 
+        // Multi-layered undo/redo system
+        private class UndoPoint
+        {
+            public string Text { get; set; }
+            public int SelectionStart { get; set; }
+            public int SelectionLength { get; set; }
+            public UndoPoint(string text, int selectionStart, int selectionLength)
+            {
+                Text = text;
+                SelectionStart = selectionStart;
+                SelectionLength = selectionLength;
+            }
+        }
+
+        private readonly List<UndoPoint> _undoStack = new();
+        private readonly List<UndoPoint> _redoStack = new();
+        private UndoPoint? _lastSavedState;
+        private bool _inUndoRedoOperation;
+
         public event Action? SaveRequested;
         public event Action<string>? SaveAsRequested;
         public event Action? CloseRequested;
@@ -65,15 +84,34 @@ namespace MyCrownJewelApp.Pfpad
         public VimEngine(RichTextBox textBox)
         {
             _tb = textBox;
+            // Create initial undo point
+            CreateUndoPoint();
         }
 
         public void SetEditor(RichTextBox textBox)
         {
             _tb = textBox;
+            // Reset undo/redo when switching editors
+            ClearUndoRedoHistory();
+            CreateUndoPoint();
+        }
+
+        public void ClearUndoRedoHistory()
+        {
+            _undoStack.Clear();
+            _redoStack.Clear();
+            _lastSavedState = null;
         }
 
         public void EnterMode(VimMode mode)
         {
+            // Create undo point when entering/leaving insert mode
+            if ((CurrentMode == VimMode.Insert && mode != VimMode.Insert) ||
+                (CurrentMode != VimMode.Insert && mode == VimMode.Insert))
+            {
+                CreateUndoPoint();
+            }
+
             CurrentMode = mode;
             _cmdBuffer.Clear();
             _repeatCount = 1;
@@ -1100,6 +1138,8 @@ namespace MyCrownJewelApp.Pfpad
         private void RecordAction(string action, string? data = null)
         {
             _lastAction = (action, data, 1);
+            // Create undo point after operations that change text
+            CreateUndoPoint();
         }
 
         private void RepeatLast()
@@ -1134,12 +1174,74 @@ namespace MyCrownJewelApp.Pfpad
         #endregion
 
         #region Undo/Redo
-        private void SendCtrlZ() { _tb.Undo(); }
-        private void SendCtrlR()
+        public void CreateUndoPoint()
         {
-            if (_tb.IsHandleCreated && _tb.CanRedo)
-                SendMessage(_tb.Handle, EM_REDO, IntPtr.Zero, IntPtr.Zero);
+            if (_inUndoRedoOperation) return;
+
+            var currentState = new UndoPoint(_tb.Text, _tb.SelectionStart, _tb.SelectionLength);
+
+            // Don't create undo point if nothing changed
+            if (_lastSavedState != null &&
+                _lastSavedState.Text == currentState.Text &&
+                _lastSavedState.SelectionStart == currentState.SelectionStart &&
+                _lastSavedState.SelectionLength == currentState.SelectionLength)
+            {
+                return;
+            }
+
+            _undoStack.Add(currentState);
+            _lastSavedState = currentState;
+            _redoStack.Clear(); // Clear redo stack when new change is made
         }
+
+        private void VimUndo()
+        {
+            if (_undoStack.Count == 0) return;
+
+            _inUndoRedoOperation = true;
+
+            // Save current state to redo stack
+            var currentState = new UndoPoint(_tb.Text, _tb.SelectionStart, _tb.SelectionLength);
+            _redoStack.Add(currentState);
+
+            // Restore previous state
+            var undoState = _undoStack[^1];
+            _undoStack.RemoveAt(_undoStack.Count - 1);
+
+            _tb.Text = undoState.Text;
+            _tb.SelectionStart = undoState.SelectionStart;
+            _tb.SelectionLength = undoState.SelectionLength;
+
+            _lastSavedState = undoState;
+
+            _inUndoRedoOperation = false;
+        }
+
+        private void VimRedo()
+        {
+            if (_redoStack.Count == 0) return;
+
+            _inUndoRedoOperation = true;
+
+            // Save current state to undo stack
+            var currentState = new UndoPoint(_tb.Text, _tb.SelectionStart, _tb.SelectionLength);
+            _undoStack.Add(currentState);
+
+            // Restore next state
+            var redoState = _redoStack[^1];
+            _redoStack.RemoveAt(_redoStack.Count - 1);
+
+            _tb.Text = redoState.Text;
+            _tb.SelectionStart = redoState.SelectionStart;
+            _tb.SelectionLength = redoState.SelectionLength;
+
+            _lastSavedState = redoState;
+
+            _inUndoRedoOperation = false;
+        }
+
+        public void SendCtrlZ() { VimUndo(); }
+        public void SendCtrlR() { VimRedo(); }
         #endregion
 
         #region Search

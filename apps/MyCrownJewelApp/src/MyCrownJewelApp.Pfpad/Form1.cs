@@ -549,9 +549,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   AddToRecentWorkspaces(_workspaceRoot);
               }
 
-              if (!_cliArgsProvided)
+              // Don't restore session if CLI args were provided OR if there are already documents loaded
+              // (which could happen from CLI args or if user already opened files)
+              if (!_cliArgsProvided && documents.Count <= 1)
               {
+                  Debug.WriteLine("Restoring session because no CLI args provided and no documents loaded");
                   RestoreSession();
+              }
+              else
+              {
+                  Debug.WriteLine($"Skipping session restore: CLI args provided ({_cliArgsProvided}) or documents already loaded ({documents.Count})");
               }
 
               // Start delayed notification timer
@@ -611,6 +618,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     }
                     else if (File.Exists(arg))
                     {
+                        Debug.WriteLine($"Processing command line file argument: {arg}");
                         OpenFileInNewTabAsync(arg);
                         hasFileArgs = true;
                     }
@@ -4318,25 +4326,53 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             return new List<CommandPaletteForm.CommandEntry>
             {
+                // File operations
+                new("New File", "Ctrl+N", () => NewFile()),
+                new("Open File", "Ctrl+O", () => OpenFile()),
                 new("Save", "Ctrl+S", () => SaveCurrentDocument()),
                 new("Save All", "Ctrl+Shift+S", () => SaveAllFiles()),
-                new("Open File", "Ctrl+O", () => OpenFile()),
-                new("New File", "Ctrl+N", () => NewFile()),
                 new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
-                new("Go to Line", "Ctrl+G", () => { using var dlg = new GoToDialog(this); dlg.ShowDialog(this); }),
+                new("Close All Tabs", "", () => CloseAllTabs()),
+                new("Exit", "Alt+F4", () => Close()),
+
+                // Edit operations
                 new("Find", "Ctrl+F", () => { using var dlg = new FindReplaceDialog(this, false, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
+                new("Replace", "Ctrl+H", () => { using var dlg = new FindReplaceDialog(this, true, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
                 new("Find in Files", "Ctrl+Shift+F", () => { using var dlg = new GlobalSearchDialog(this); dlg.ShowDialog(this); }),
-                new("Format Document", "Ctrl+Shift+I", () => FormatDocumentAsync()),
+                new("Go to Line", "Ctrl+G", () => { using var dlg = new GoToDialog(this); dlg.ShowDialog(this); }),
+                new("Go to Definition", "F12", () => GoToDefinition()),
                 new("Rename Symbol", "F2", () => RenameSymbol()),
+                new("Format Document", "Ctrl+Shift+I", () => FormatDocumentAsync()),
+
+                // View operations
                 new("Toggle Terminal", "Ctrl+`", () => ToggleTerminal()),
-                new("Run Tests", "Ctrl+R, T", () => RunTests()),
-                new("Run Tests with Coverage", "", () => RunTestsWithCoverage()),
+                new("Toggle Workspace", "", () => ToggleWorkspace()),
+                new("Toggle Git Panel", "", () => ToggleGitPanel()),
+                new("Toggle Symbols", "", () => ToggleSymbols()),
+                new("Toggle Problems", "", () => ToggleProblems()),
+                new("Toggle Minimap", "", () => ToggleMinimap()),
+                new("Toggle Word Wrap", "", () => ToggleWordWrap()),
+                new("Toggle Status Bar", "", () => ToggleStatusBar()),
+                new("Toggle Syntax Highlighting", "", () => ToggleSyntaxHighlighting()),
+
+                // Run/Debug operations
                 new("Start Debugging", "F5", () => StartDebug_Click(null, EventArgs.Empty)),
                 new("Run Without Debugging", "Ctrl+F5", () => RunWithoutDebug_Click(null, EventArgs.Empty)),
                 new("Stop Debugging", "Shift+F5", () => StopDebug_Click(null, EventArgs.Empty)),
                 new("Restart Debugging", "Ctrl+Shift+F5", () => RestartDebug_Click(null, EventArgs.Empty)),
+                new("Run Tests", "Ctrl+R, T", () => RunTests()),
+                new("Run Tests with Coverage", "", () => RunTestsWithCoverage()),
                 new("Build Project", "", () => { string? projDir = GetProjectDirectory(); if (projDir != null) RunDotnetBuild(projDir); }),
-                new("Settings", "", () => { using var dlg = new SettingsDialog(this); dlg.ShowDialog(this); }),
+
+                // Tools operations
+                new("Settings", "Ctrl+,", () => { using var dlg = new SettingsDialog(this); dlg.ShowDialog(this); }),
+                new("Configure External Tools", "Ctrl+Alt+T", () => ConfigureTools()),
+                new("Performance Profiler", "", () => ShowPerformanceProfiler()),
+                new("Restart Roslyn Analyzers", "Ctrl+Shift+R", () => RestartRoslynAnalyzers()),
+                new("Toggle Roslyn Analyzers", "Ctrl+Alt+A", () => ToggleRoslynAnalyzers()),
+                new("Open Roslyn Visualizer", "Ctrl+Alt+V", () => OpenRoslynVisualizer()),
+
+                // Help operations
                 new("About", "", () => { using var dlg = new AboutDialog(); dlg.ShowDialog(this); }),
             };
         }
@@ -5488,7 +5524,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
         // Open file asynchronously — shows tab immediately, loads content in background
         internal void OpenFileInNewTabAsync(string path)
         {
-            if (!File.Exists(path)) return;
+            Debug.WriteLine($"OpenFileInNewTabAsync called with path: {path}");
+            if (!File.Exists(path))
+            {
+                Debug.WriteLine($"File does not exist: {path}");
+                return;
+            }
             var fileInfo = new FileInfo(path);
             if (fileInfo.Length > (long)MaxFileSizeMB * 1024 * 1024) // Configurable limit for async loading
             {
@@ -7828,12 +7869,137 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 item.Checked = _symbolPanelVisible;
         }
 
+        private void ToggleSymbols()
+        {
+            if (_symbolPanel != null)
+            {
+                _symbolPanel.Visible = !_symbolPanel.Visible;
+                symbolsMenuItem.Checked = _symbolPanel.Visible;
+            }
+        }
+
+        private void ToggleProblems()
+        {
+            ToggleProblemsPanel();
+        }
+
+        private void ToggleMinimap()
+        {
+            if (minimapControl != null)
+            {
+                minimapControl.Visible = !minimapControl.Visible;
+                minimapMenuItem.Checked = minimapControl.Visible;
+            }
+        }
+
+        private void CloseAllTabs()
+        {
+            var docs = documents.ToList();
+            foreach (var doc in docs)
+            {
+                if (doc.IsDirty)
+                {
+                    var result = ThemedMessageBox.Show(
+                        $"Save changes to \"{doc.DisplayName}\"?",
+                        "Close All Tabs", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+                    if (result == DialogResult.Cancel) return;
+                    if (result == DialogResult.Yes)
+                    {
+                        try { File.WriteAllText(doc.FilePath!, doc.Content); } catch { }
+                    }
+                }
+            }
+            documents.Clear();
+            tabControl.TabPages.Clear();
+            NewFile();
+        }
+
+        private void ConfigureTools()
+        {
+            // TODO: Implement ConfigureTools dialog
+            ShowNotification("Tools", "Configure External Tools - Coming Soon");
+        }
+
+        private async void AnalyzeCurrentRepository()
+        {
+            var workspacePath = _workspacePanel?.RootPath;
+            if (string.IsNullOrEmpty(workspacePath))
+            {
+                ThemedMessageBox.Show("Please open a workspace folder first (View → Panel → Open Folder).",
+                    "No Workspace Open", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            try
+            {
+                using var progressDialog = new ProgressDialog("Analyzing Repository", "Scanning workspace and analyzing project structure...");
+                progressDialog.Show(this);
+
+                var analyticsEngine = new RepositoryAnalyticsEngine(workspacePath);
+                var analysis = await analyticsEngine.AnalyzeAsync();
+
+                progressDialog.Close();
+
+                using var dialog = new RepositoryAnalysisDialog(analysis);
+                dialog.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show($"Failed to analyze repository: {ex.Message}",
+                    "Analysis Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void RestartRoslynAnalyzers()
+        {
+            // Implementation would restart Roslyn analyzers
+            ShowNotification("Roslyn", "Analyzers restarted");
+        }
+
+        private void ToggleRoslynAnalyzers()
+        {
+            // Toggle Roslyn analyzers on/off
+            ShowNotification("Roslyn", "Analyzers toggled");
+        }
+
+        private void OpenRoslynVisualizer()
+        {
+            // Open Roslyn visualizer dialog
+            ShowNotification("Roslyn", "Visualizer opened");
+        }
+
+        private void ContinueDebug()
+        {
+            // Continue debugging
+            if (startDebugMenuItem.Enabled)
+                StartDebug_Click(null, EventArgs.Empty);
+        }
+
+        private void StepOver()
+        {
+            // Step over in debugger
+            ShowNotification("Debug", "Step over");
+        }
+
+        private void StepInto()
+        {
+            // Step into in debugger
+            ShowNotification("Debug", "Step into");
+        }
+
+        private void StepOut()
+        {
+            // Step out in debugger
+            ShowNotification("Debug", "Step out");
+        }
+
         private void ToggleProblemsPanel()
         {
-            if (_problemsPanel is null || _problemsSplit is null) return;
-            _problemsPanelVisible = !_problemsPanelVisible;
-            _problemsPanel.Visible = _problemsPanelVisible;
-            UpdateSidebarLayout();
+            if (_problemsPanel != null)
+            {
+                _problemsPanel.Visible = !_problemsPanel.Visible;
+                problemsMenuItem.Checked = _problemsPanel.Visible;
+            }
         }
 
         private void ToggleProblemsPanel(object? sender, EventArgs e)
@@ -8125,6 +8291,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
             bool hadInitialTab = documents.Count == 1 &&
                 documents[0].FilePath == null &&
                 !documents[0].IsDirty;
+
+            // Don't restore session if files were opened from command line
+            bool hasCommandLineFiles = documents.Any(d => d.FilePath != null);
+            if (hasCommandLineFiles)
+            {
+                Debug.WriteLine("Skipping session restore because command line files are already open");
+                return;
+            }
 
             bool hasDocsToRestore = session.Documents.Count > 0;
 

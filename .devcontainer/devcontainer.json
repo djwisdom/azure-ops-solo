@@ -1,0 +1,26 @@
+{
+    "name": "Azure Ops Solo Dev",
+    "image": "mcr.microsoft.com/devcontainers/dotnet:8.0",
+    "features": {
+        "ghcr.io/devcontainers/features/azure-cli:1": {},
+        "ghcr.io/devcontainers/features/terraform:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-dotnettools.csharp",
+                "hashicorp.terraform",
+                "ms-azuretools.vscode-bicep",
+                "ms-vscode.powershell"
+            ],
+            "settings": {
+                "omnisharp.enableRoslynAnalyzers": true,
+                "terraform.validateOnSave": true,
+                "bicep.enableArmSchemaValidation": true
+            }
+        }
+    },
+    "postCreateCommand": "pip install pre-commit && pre-commit install",
+    "remoteUser": "vscode"
+}

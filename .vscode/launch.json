@@ -2,22 +2,26 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": ".NET Core Launch",
+            "name": "Debug Pfpad",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/bin/Debug/net8.0-windows/MyCrownJewelApp.Pfpad.dll",
+            "program": "${workspaceFolder}/apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/bin/Debug/net8.0-windows/MyCrownJewelApp.Pfpad.exe",
             "args": [],
             "cwd": "${workspaceFolder}/apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad",
             "console": "internalConsole",
-            "stopAtEntry": false,
-            "internalConsoleOptions": "openOnSessionStart"
+            "stopAtEntry": false
         },
         {
-            "name": ".NET Core Attach",
+            "name": "Debug Tests",
             "type": "coreclr",
-            "request": "attach",
-            "processId": "${command:pickProcess}"
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/apps/MyCrownJewelApp/tests/bin/Debug/net8.0/xunit.console.exe",
+            "args": ["${workspaceFolder}/apps/MyCrownJewelApp/tests/bin/Debug/net8.0/MyCrownJewelApp.Pfpad.Tests.dll"],
+            "cwd": "${workspaceFolder}/apps/MyCrownJewelApp/tests",
+            "console": "internalConsole",
+            "stopAtEntry": false
         }
     ]
 }

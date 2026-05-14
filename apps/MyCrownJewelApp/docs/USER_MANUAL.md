@@ -20,18 +20,22 @@ The short answer is "rather a lot for a solo project" — including enterprise-g
 
 ### 1.1 Installation
 
-The installer (`PersonalFlipPad-Setup-1.0.29.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
+The installer (`PersonalFlipPad-1.0.30.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
 
 ```
-PersonalFlipPad-Setup-1.0.29.0.exe /CURRENTUSER   # No admin required
-PersonalFlipPad-Setup-1.0.29.0.exe /ALLUSERS       # Admin required
-PersonalFlipPad-Setup-1.0.29.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
+PersonalFlipPad-1.0.30.0.exe /CURRENTUSER   # No admin required
+PersonalFlipPad-1.0.30.0.exe /ALLUSERS       # Admin required
+PersonalFlipPad-1.0.30.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
 ```
 
-The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 180 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, and LibGit2.
+The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 200 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, LibGit2, and advanced performance profiling tools.
+
+**File Associations:** During installation, you can choose to associate Personal Flip Pad with common text/code file types (.txt, .cs, .js, .py, .cpp, .h, .json, .xml, .md). After installation, these files will show Personal Flip Pad as an option in the "Open with" context menu in File Explorer.
+
+**Context Menu Integration:** Right-clicking on files or folders will show Personal Flip Pad as an option to open them directly in the editor.
 
 **Key Capabilities:**
-- **File Size Support**: Up to 100MB with intelligent feature degradation
+- **File Size Support**: Up to 500MB with intelligent feature degradation
 - **Unicode Support**: Full UTF-8/16/32 with BOM detection and RTL text rendering
 - **Performance Profiling**: Built-in zero-overhead sampling profiler (<3% overhead)
 - **Large File Optimization**: Automatic disabling of features for files >50KB to maintain responsiveness
@@ -47,7 +51,7 @@ Pfpad.exe file1.cs file2.cs README.md
 Each file opens in its own tab. If no files are specified, you get a single untitled document. Crash logs go to `%LOCALAPPDATA%\MyCrownJewelApp\Pfpad\crash.log` — hopefully you won't need them, but they're there if you do.
 
 **File Handling Capabilities:**
-- **Size limits**: Up to 100MB files (warnings at 50MB and 20MB)
+- **Size limits**: Up to 500MB files (warnings at 50MB and 20MB)
 - **Unicode support**: Automatic UTF-8/16/32 detection with BOM handling
 - **RTL text**: Proper display of Arabic and Hebrew scripts
 - **Large file optimization**: Automatic feature disabling for performance
@@ -58,6 +62,99 @@ Each file opens in its own tab. If no files are specified, you get a single unti
 ## 2. The Menu System
 
 The menu strip at the top contains six menus: File, Edit, View, Panel, Run, and Tools. (Plus a Help menu with exactly one item, which is about as helpful as you'd expect from a software project.) The separation is deliberate — View controls how the editor looks, Panel controls which sidebars appear, and Run controls what happens when you press the "go" lever.
+
+**Recent Improvements:**
+- **Menu Reorganization**: View and Edit menus now use logical submenus for better discoverability
+- **Command Palette**: Press `Ctrl+Shift+P` for searchable access to all commands
+- **Enhanced Vim Mode**: Multi-layered undo/redo system matching Vim's behavior exactly
+
+### 2.0 Command Palette (Ctrl+Shift+P)
+
+Press `Ctrl+Shift+P` to open the **Command Palette** — a searchable interface that provides quick access to all editor commands and features. It's inspired by VS Code's command palette and serves as an alternative to navigating through menus and remembering keyboard shortcuts.
+
+#### Command Palette Features:
+- **Fuzzy Search**: Type any part of a command name to find it quickly
+- **Keyboard Shortcuts**: See and learn shortcuts for each command
+- **Categorized Results**: Commands are grouped by functionality
+- **Recent Commands**: Frequently used commands appear at the top
+
+#### Available Commands:
+
+##### File Operations
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| New File | `Ctrl+N` | Creates a new untitled document |
+| Open File | `Ctrl+O` | Opens the file browser dialog |
+| Save | `Ctrl+S` | Saves the current document |
+| Save All | `Ctrl+Shift+S` | Saves all open documents |
+| Close Tab | `Ctrl+W` | Closes the current tab |
+| Close All Tabs | | Closes all open tabs with save prompts |
+| Exit | `Alt+F4` | Closes the application |
+
+##### Edit Operations
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| Find | `Ctrl+F` | Opens the find dialog |
+| Replace | `Ctrl+H` | Opens the find and replace dialog |
+| Find in Files | `Ctrl+Shift+F` | Opens the global workspace search |
+| Go to Line | `Ctrl+G` | Jumps to a specific line number |
+| Go to Definition | `F12` | Navigates to symbol definition |
+| Go to References | `Shift+F12` | Shows all references to symbol |
+| Rename Symbol | `F2` | Renames symbol across workspace |
+| Format Document | `Ctrl+Shift+I` | Formats the current document |
+
+##### View Operations
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| Toggle Terminal | `Ctrl+\`` | Shows/hides the integrated terminal |
+| Toggle Workspace | | Shows/hides the file explorer panel |
+| Toggle Git Panel | | Shows/hides the Git source control panel |
+| Toggle Symbols | | Shows/hides the symbol navigation panel |
+| Toggle Problems | | Shows/hides the diagnostics panel |
+| Toggle Minimap | | Shows/hides the code minimap |
+| Toggle Word Wrap | | Enables/disables word wrapping |
+| Toggle Status Bar | | Shows/hides the status bar |
+| Toggle Syntax Highlighting | | Enables/disables syntax highlighting |
+
+##### Run & Debug Operations
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| Start Debugging | `F5` | Launches the .NET debugger |
+| Run Without Debugging | `Ctrl+F5` | Runs the application without debugging |
+| Stop Debugging | `Shift+F5` | Stops the debug session |
+| Restart Debugging | `Ctrl+Shift+F5` | Restarts the debug session |
+| Run Tests | `Ctrl+R, T` | Executes unit tests in the workspace |
+| Run Tests with Coverage | | Runs tests with code coverage analysis |
+| Build Project | | Builds the current .NET project |
+
+##### Tools & Settings
+| Command | Shortcut | Description |
+|---------|----------|-------------|
+| Settings | `Ctrl+,` | Opens the settings dialog |
+| Configure External Tools | `Ctrl+Alt+T` | Sets up custom external tool integrations |
+| Performance Profiler | | Opens the built-in performance profiler |
+| Restart Roslyn Analyzers | `Ctrl+Shift+R` | Restarts the Roslyn code analysis engine |
+| Toggle Roslyn Analyzers | `Ctrl+Alt+A` | Enables/disables Roslyn diagnostics |
+| Open Roslyn Visualizer | `Ctrl+Alt+V` | Opens the Roslyn syntax tree visualizer |
+
+##### Help & Information
+| Command | Description |
+|---------|-------------|
+| About | Shows application version and system information |
+
+#### Command Palette Tips:
+- **Partial Matching**: Type "tog" to find all toggle commands
+- **Category Filtering**: Type "debug" to see debugging-related commands
+- **Learning Shortcuts**: Use the palette to discover keyboard shortcuts you didn't know existed
+- **Quick Access**: Faster than navigating through menus for power users
+
+The command palette is particularly useful for:
+- Discovering new features you didn't know existed
+- Learning keyboard shortcuts organically
+- Accessing commands when menu navigation is cumbersome
+- Power users who prefer keyboard-driven workflows
+
+---
 
 ### 2.1 File Menu
 
@@ -77,61 +174,104 @@ The menu strip at the top contains six menus: File, Edit, View, Panel, Run, and 
 
 ### 2.2 Edit Menu
 
+The Edit menu has been reorganized into logical submenus for better organization and discoverability.
+
+#### Clipboard Submenu
 | Command | Shortcut | What It Does |
 |---------|----------|-------------|
-| Undo | `Ctrl+Z` | Reverses the last edit. The editor also tracks dirty state using a SHA-256 hash of the content, so it knows when you've returned to the saved version. |
-| Cut | `Ctrl+X` | Removes selected text and places it on the clipboard. Classic. |
+| Undo | `Ctrl+Z` | Reverses the last edit. SHA-256 hash tracks dirty state. |
+| Redo | `Ctrl+Y` | Re-applies the last undone edit. |
+| Cut | `Ctrl+X` | Removes selected text and places it on the clipboard. |
 | Copy | `Ctrl+C` | Duplicates selected text to the clipboard without removing it. |
 | Paste | `Ctrl+V` | Inserts clipboard contents at the cursor position. |
 | Delete | `Delete` | Removes selected text without copying. |
-| Find | `Ctrl+F` | Opens the Find dialog. Supports case-sensitive, regex, direction (up/down), and wrap-around searching. |
-| Find in Files | `Ctrl+Shift+F` | Opens the Global Search dialog for async workspace-wide search with file type filters, exclude dirs, regex, and Replace All. |
-| Find Next | `F3` | Repeats the last search forward. |
+
+#### Find && Replace Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Find | `Ctrl+F` | Opens the Find dialog (case-sensitive, regex, direction, wrap-around). |
 | Find Next | `F3` | Repeats the last search forward. |
 | Find Previous | `Shift+F3` | Repeats the last search backward. |
-| Replace | `Ctrl+H` | Opens the Replace variant of the Find dialog, with Replace and Replace All buttons. |
-| Go To | `Ctrl+G` | Jumps to a specific line number. If you type a number larger than the total lines, it gracefully clamps to the last line rather than throwing an exception. |
+| Replace | `Ctrl+H` | Opens the Replace dialog with Replace and Replace All buttons. |
+| Find in Files | `Ctrl+Shift+F` | Global workspace search (async, file type filters, exclude dirs, regex). |
+| Go to Line | `Ctrl+G` | Jumps to a specific line number (clamps to valid range). |
+
+#### Selection Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
 | Select All | `Ctrl+A` | Selects the entire document. |
-| Time/Date | `F5` | Inserts the current time and date in `HH:mm:ss yyyy-MM-dd` format at the cursor. |
+| Time/Date | `F5` | Inserts current time/date in `HH:mm:ss yyyy-MM-dd` format. |
 | Font | `Ctrl+Shift+F` | Opens the standard Font dialog to change the editor font. |
-| Toggle Bookmark | `Ctrl+F2` | Places or removes an orange bookmark dot in the gutter at the current line. |
+
+#### Navigation Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Toggle Bookmark | `Ctrl+F2` | Places or removes an orange bookmark dot in the gutter. |
 | Next Bookmark | `F2` | Moves the cursor to the next bookmark. |
 | Previous Bookmark | `Shift+F2` | Moves the cursor to the previous bookmark. |
 | Clear Bookmarks | | Removes all bookmarks at once. |
+
+#### Code Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
 | Toggle Fold | `Ctrl+Shift+[` | Collapses or expands the code fold at the current line. |
 | Toggle All Folds | `Ctrl+Alt+[` | Collapses or expands all foldable regions. |
-| Go to Definition | `F12` | Navigates to the definition of the identifier at the cursor. For C# files, uses Roslyn's semantic model for ~98% accuracy — handles generics, partial classes, inherited members, and NuGet package types. Falls back to ctags or regex-based matching for other languages. |
-| Rename | `F2` | Opens a project-wide rename dialog for the identifier at the cursor. Regex-based, not semantic — it renames every occurrence in every workspace file. Preview before applying. |
-| Call Hierarchy | `Ctrl+Shift+H` | Shows incoming callers and outgoing calls for the method at the cursor. Tree view with clickable navigation. |
-| Parse Stack Trace | `Ctrl+Shift+T` | Parses a selected .NET, JavaScript, Python, or generic stack trace into clickable file:line frames. |
+| Go to Definition | `F12` | Navigates to identifier definition (Roslyn for C#, fallback to ctags/regex). |
+| Rename | `F2` | Project-wide rename dialog (regex-based, preview before applying). |
+| Call Hierarchy | `Ctrl+Shift+H` | Shows incoming callers and outgoing calls (tree view navigation). |
+| Parse Stack Trace | `Ctrl+Shift+T` | Parses .NET/JavaScript/Python stack traces into clickable frames. |
+| Format Document | `Ctrl+Shift+I` | Formats the current document using language-specific rules. |
 
 ### 2.3 View Menu
 
-This is where most of the editor's personality lives.
+This is where most of the editor's personality lives. The View menu has been reorganized into logical submenus for better discoverability.
 
+#### Panels Submenu
 | Command | Shortcut | What It Does |
 |---------|----------|-------------|
+| Terminal | `` Ctrl+` `` | Toggles the integrated terminal panel. |
+| Workspace | `Ctrl+Shift+W` | Toggles the file tree sidebar. |
+| Source Control | `Ctrl+Alt+G` | Toggles the Git panel in the sidebar. |
+| Symbols | `Ctrl+Alt+S` | Toggles the symbol index sidebar. |
+| Problems | `Ctrl+Alt+P` | Toggles the diagnostics panel. |
+| Notification Center | `Ctrl+Shift+N` | Opens the RSS feed notification viewer. |
+
+#### Layout Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Split Vertical | `Ctrl+Shift+V` | Creates a vertical split pane showing a different document. |
+| Split Horizontal | `Ctrl+Alt+H` | Creates a horizontal split pane. |
 | Zoom In | `Ctrl+Plus` | Increases the zoom factor by 0.1, up to a maximum of 5.0 (500%). |
 | Zoom Out | `Ctrl+Minus` | Decreases the zoom factor by 0.1, down to a minimum of 0.5 (50%). |
 | Restore Default Zoom | `Ctrl+0` | Resets zoom to 1.0 (100%). |
-| Status Bar | | Toggles the status bar at the bottom. The status bar shows cursor position, character count, git branch, zoom level, line endings, encoding, theme, syntax type, and notification count. It's quite informative for a single line of pixels. |
+
+#### Display Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
 | Word Wrap | | Toggles whether long lines wrap at the window edge. |
-| Syntax Highlighting | | Enables or disables the incremental syntax highlighter. When disabled, all text is rendered in the base color — useful if you find colors distracting, or if you've already memorized the syntax of all 12 supported languages. |
-| Current Line Highlight | | Three sub-options: **Off** (nothing), **Line Number Only** (gutter line number in bold), **Whole Line** (full-width background highlight). |
-| Insert Spaces | | When enabled, pressing Tab inserts spaces instead of a tab character. The number of spaces is determined by the Tab Size setting. |
-| Tab Size | | Submenu with options: 2, 4, 6, 8, 10, 12. If you use anything other than 4, you should be prepared to defend your choice. |
-| Auto Indent | | When enabled, pressing Enter on a line copies the leading whitespace from the previous line. |
-| Smart Tabs | | When enabled, pressing Tab at the start of a line indents to the next tab stop; pressing Tab in the middle of text inserts an actual tab character. |
-| Elastic Tabs | | When enabled, tab stops are computed dynamically based on the maximum column width of visible lines — similar to the "elastic tabstops" concept. This runs on a background thread with a 250ms debounce. |
-| Column Guide | | Submenu with presets (72, 80, 100, 120, 150) and a "Custom" option. Shows a vertical dotted line at the specified column. |
-| Gutter | | Toggles the line number gutter on the left side of the editor. |
-| Show Whitespace | | Renders dots for spaces, arrows for tabs, and return symbols for newlines. On by default — you can finally see where all those trailing spaces are. |
-| Minimap | | Toggles the code minimap overlay on the right side of the editor. Shows a syntax-colored overview of the entire document with a viewport indicator. Click to jump, drag to scroll. Automatically disabled for files >50MB to maintain performance. |
-| Vim Mode | `Ctrl+Alt+V` | Enables or disables Vim emulation. See the Vim section below for the full list of supported commands. |
-| Split Vertical | `Ctrl+Shift+V` | Creates a vertical split pane showing a different document. |
-| Split Horizontal | `Ctrl+Alt+H` | Creates a horizontal split pane. |
-| Theme | | Submenu with 23 built-in themes: Dark (default), Light, four Catppuccin variants (Latte, Frappe, Macchiato, Mocha), Dracula, One Dark Pro, Tokyo Night, Night Owl, Shades of Purple, Atom One Light, GitHub Light, Light Owl, Ayu Light, Bluloco Light, and additional VS Code-inspired themes. |
-| Performance Profiler | `Ctrl+Alt+P` | Opens the advanced performance profiler with sampling-based metrics, flame graphs, and real-time FPS/memory monitoring. |
+| Syntax Highlighting | | Enables or disables the incremental syntax highlighter. When disabled, all text is rendered in the base color. |
+| Current Line Highlight | | Three sub-options: **Off**, **Line Number Only**, **Whole Line**. |
+| Insert Spaces | | When enabled, pressing Tab inserts spaces instead of a tab character. |
+| Tab Size | | Submenu with options: 2, 4, 6, 8, 10, 12. |
+| Auto Indent | | When enabled, pressing Enter copies leading whitespace from the previous line. |
+| Smart Tabs | | Tab at line start indents; tab in middle inserts actual tab character. |
+| Elastic Tabs | | Dynamic tab stops based on visible line content (background thread, 250ms debounce). |
+| Column Guide | | Vertical line at specified column (presets: 72, 80, 100, 120, 150 + Custom). |
+| Gutter | | Toggles the line number gutter on the left side. |
+| Show Whitespace | | Renders dots for spaces, arrows for tabs, return symbols for newlines. |
+| Minimap | | Code minimap overlay (auto-disabled for files >50MB). |
+| Vim Mode | `Ctrl+Alt+V` | Enables or disables Vim emulation. |
+
+#### Appearance Submenu
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Status Bar | | Toggles the status bar at the bottom (shows cursor position, encoding, git branch, etc.). |
+| Theme | | Submenu with 23 built-in themes (Dark default, Light, Catppuccin variants, Dracula, One Dark Pro, etc.). |
+
+#### Other View Commands
+| Command | Shortcut | What It Does |
+|---------|----------|-------------|
+| Performance Profiler | `Ctrl+Alt+P` | Opens the advanced performance profiler with sampling-based metrics and flame graphs. |
 
 ### 2.4 Panel Menu
 
@@ -302,7 +442,7 @@ Supported languages (12):
 | PowerShell | `.ps1`, `.psm1`, `.psd1` |
 | Bash | `.sh`, `.bash`, `.zsh`, `.ksh` |
 
-Token types that are highlighted: **keywords**, **strings**, **numbers**, **comments** (line and block), **preprocessor directives**, and **types**. Comments, types, and preprocessor tokens are rendered in italic. Because we can.
+Token types that are highlighted: **keywords**, **strings**, **numbers**, **comments** (line and block), **preprocessor directives**, and **types**. Comments, types, and preprocessor tokens are rendered in italic. Syntax highlighting is automatically disabled for files larger than 200KB to maintain performance.
 
 ### 5.2 Code Folding
 
@@ -602,11 +742,11 @@ The profiler captures:
 
 For files larger than certain thresholds, Pfpad automatically disables features to maintain performance:
 
-- **50KB+**: Syntax highlighting disabled (configurable)
+- **200KB+**: Syntax highlighting disabled (increased from 50KB for better performance)
 - **50MB+**: Minimap disabled (configurable)
 - **20MB+**: Word wrap disabled (configurable, currently off)
 
-These thresholds are configurable in settings for power users who want to override the defaults.
+These thresholds are configurable in settings for power users who want to override the defaults. The syntax highlighting threshold was increased to 200KB to provide better performance on larger files while still maintaining syntax highlighting for most common file sizes.
 
 ---
 
@@ -684,7 +824,29 @@ You can configure which feeds are enabled, their URLs, labels, and polling inter
 
 Press `Ctrl+Alt+V` or navigate to View > Vim Mode. The status bar will display `-- NORMAL --`, confirming the mode is active. Note that this is *modal editing* — keys behave differently depending on which mode you're in.
 
-### 8.2 Modes
+### 9.2 Multi-Layered Undo/Redo
+
+Pfpad's Vim mode implements authentic **multi-layered undo/redo** that matches Vim's behavior exactly:
+
+- **`u`** - Undo one change (can be pressed multiple times for deeper undo levels)
+- **`Ctrl+R`** - Redo one change (can be pressed multiple times for deeper redo levels)
+
+**How it works:**
+- Each editing operation creates an **undo point** at the right time
+- Undo points are created when entering/leaving insert mode and after operations like `dd`, `x`, `p`, etc.
+- You can undo multiple times to navigate back through your edit history
+- You can redo multiple times to move forward through changes
+- Unlike basic text editor undo, this system maintains proper layering like Vim
+
+**Example workflow:**
+```
+Type some text → [i] enter insert mode → type "Hello" → [Esc] exit insert → [u] undo insert → [u] undo typing
+Result: Back to the state before you started typing, just like in Vim
+```
+
+This implementation uses a proper undo stack system (not RichTextBox's basic undo) for authentic Vim behavior.
+
+### 9.3 Modes
 
 | Mode | Trigger | Description |
 |------|---------|-------------|
@@ -696,7 +858,7 @@ Press `Ctrl+Alt+V` or navigate to View > Vim Mode. The status bar will display `
 | **Search Forward** | `/` | Interactive search |
 | **Search Backward** | `?` | Interactive search (upward) |
 
-### 8.3 Normal Mode Motions
+### 9.4 Normal Mode Motions
 
 | Key | Action |
 |-----|--------|
@@ -715,7 +877,7 @@ Press `Ctrl+Alt+V` or navigate to View > Vim Mode. The status bar will display `
 | `%` | Matching bracket |
 | `Space` | Right (one character) |
 
-### 8.4 Normal Mode Editing
+### 9.5 Normal Mode Editing
 
 | Key | Action |
 |-----|--------|
@@ -731,15 +893,15 @@ Press `Ctrl+Alt+V` or navigate to View > Vim Mode. The status bar will display `
 | `cc` | Change (delete + enter Insert) |
 | `C` | Change to end of line |
 | `cw` / `ciw` | Change word / inner word |
-| `u` | Undo |
-| `Ctrl+R` | Redo |
+| `u` | Undo (multi-layered - press multiple times for deeper undo) |
+| `Ctrl+R` | Redo (multi-layered - press multiple times for deeper redo) |
 | `>>` / `<<` | Indent / outdent |
 | `~` | Toggle case |
 | `J` | Join lines |
 | `.` | Repeat last action |
 | `d{motion}` / `y{motion}` / `c{motion}` | Delete / yank / change with motion |
 
-### 8.5 Visual Mode
+### 9.6 Visual Mode
 
 Select text using motions, then:
 - `d` or `x` — Cut
@@ -748,7 +910,7 @@ Select text using motions, then:
 - `.` — Indent selection
 - `,` — Outdent selection
 
-### 8.6 Search
+### 9.7 Search
 
 - `/` — Search forward
 - `?` — Search backward
@@ -756,7 +918,7 @@ Select text using motions, then:
 - `N` — Previous match (wraps around)
 - Search is case-insensitive plain text.
 
-### 8.7 Command Mode (:)
+### 9.8 Command Mode (:)
 
 | Command | Action |
 |---------|--------|

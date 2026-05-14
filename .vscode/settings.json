@@ -1,0 +1,19 @@
+{
+    "omnisharp.enableRoslynAnalyzers": true,
+    "omnisharp.enableEditorConfigSupport": true,
+    "dotnet.defaultSolution": "apps/MyCrownJewelApp/MyCrownJewelApp.sln",
+    "csharp.format.enable": true,
+    "terraform.languageServer.enable": true,
+    "terraform.validateOnSave": true,
+    "bicep.enableArmSchemaValidation": true,
+    "bicep.enableExperimentalFeatures": true,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit"
+    },
+    "files.associations": {
+        "*.bicep": "bicep"
+    },
+    "git.autofetch": true,
+    "workbench.colorTheme": "GitHub Dark"
+}

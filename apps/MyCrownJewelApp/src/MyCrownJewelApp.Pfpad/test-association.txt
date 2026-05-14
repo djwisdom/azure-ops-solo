@@ -1,0 +1,8 @@
+# Test File Association
+
+This is a test file to verify that Pfpad file associations are working correctly.
+When you right-click this file in Windows Explorer and select "Open with" > "Personal Flip Pad",
+the file should open in Pfpad and display this content.
+
+If the file opens but shows empty content or default content, there may be an issue with
+the file association setup or command-line argument processing.

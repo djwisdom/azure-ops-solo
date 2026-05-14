@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Personal Flip Pad"
+           Manufacturer="Personal Flip Pad"
+           Version="1.0.30.0"
+           UpgradeCode="YOUR-UPGRADE-CODE-HERE"
+           Language="1033">
+
+    <SummaryInformation Description="A full-featured code editor with syntax highlighting, minimap, vim mode, git integration, and code folding." />
+
+    <!-- Define installation scope -->
+    <Property Id="ALLUSERS" Secure="yes" />
+    <Property Id="MSIINSTALLPERUSER" Secure="yes" Value="1" />
+
+    <!-- Installation directory -->
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="INSTALLFOLDER" Name="Personal Flip Pad" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="Personal Flip Pad" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Feature definition -->
+    <Feature Id="MainFeature" Title="Personal Flip Pad" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="ProgramMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+      <ComponentRef Id="FileAssociations" />
+    </Feature>
+
+    <!-- UI customization -->
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" />
+    </UI>
+
+    <!-- Custom action to refresh icon cache -->
+    <CustomAction Id="RefreshIconCache" Directory="INSTALLFOLDER" ExeCommand="[SystemFolder]ie4uinit.exe -show" Execute="immediate" Impersonate="yes" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RefreshIconCache" After="InstallFinalize" />
+    </InstallExecuteSequence>
+
+  </Package>
+
+  <!-- Define fragments -->
+  <Fragment>
+    <ComponentGroup Id="ProductComponents">
+      <Component Id="MainExecutable" Directory="INSTALLFOLDER">
+        <File Id="PfpadExe" Source="MyCrownJewelApp.Pfpad.exe" KeyPath="yes" />
+      </Component>
+
+      <Component Id="MainExecutableConfig" Directory="INSTALLFOLDER">
+        <File Id="PfpadConfig" Source="MyCrownJewelApp.Pfpad.exe.config" />
+      </Component>
+
+      <Component Id="MainExecutableDeps" Directory="INSTALLFOLDER">
+        <File Id="PfpadDeps" Source="MyCrownJewelApp.Pfpad.deps.json" />
+      </Component>
+
+      <Component Id="MainExecutableRuntimeConfig" Directory="INSTALLFOLDER">
+        <File Id="PfpadRuntimeConfig" Source="MyCrownJewelApp.Pfpad.runtimeconfig.json" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="ProgramMenuShortcut" Directory="ProgramMenuDir">
+      <Shortcut Id="StartMenuShortcut"
+                Name="Personal Flip Pad"
+                Description="A full-featured code editor"
+                Target="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="ProgramMenuDir" On="uninstall" />
+      <RegistryKey Root="HKCU" Key="Software\Microsoft\PersonalFlipPad" Action="create" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder">
+      <Shortcut Id="DesktopShortcut"
+                Name="Personal Flip Pad"
+                Description="A full-featured code editor"
+                Target="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryKey Root="HKCU" Key="Software\Microsoft\PersonalFlipPad" Action="create" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Component Id="FileAssociations" Directory="INSTALLFOLDER">
+      <!-- Register application for Open With menu -->
+      <RegistryKey Root="HKCR" Key="Applications\MyCrownJewelApp.Pfpad.exe">
+        <RegistryValue Type="string" Value="" />
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <!-- Register for specific file extensions -->
+      <RegistryKey Root="HKCR" Key=".txt">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.txt" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".cs">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.cs" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".js">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.js" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".py">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.py" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".cpp">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.cpp" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".h">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.h" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".json">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.json" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".xml">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.xml" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key=".md">
+        <RegistryKey Key="OpenWithProgids">
+          <RegistryValue Type="string" Name="MyCrownJewelApp.Pfpad.md" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <!-- ProgID definitions -->
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.txt">
+        <RegistryValue Type="string" Value="Text Document" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.cs">
+        <RegistryValue Type="string" Value="C# Source File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.js">
+        <RegistryValue Type="string" Value="JavaScript File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.py">
+        <RegistryValue Type="string" Value="Python File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.cpp">
+        <RegistryValue Type="string" Value="C++ Source File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.h">
+        <RegistryValue Type="string" Value="C/C++ Header File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.json">
+        <RegistryValue Type="string" Value="JSON File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.xml">
+        <RegistryValue Type="string" Value="XML File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="MyCrownJewelApp.Pfpad.md">
+        <RegistryValue Type="string" Value="Markdown File" />
+        <RegistryKey Key="DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe,0" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <!-- Add to Open With for all files -->
+      <RegistryKey Root="HKCR" Key="*">
+        <RegistryKey Key="shellex\ContextMenuHandlers\MyCrownJewelApp.Pfpad">
+          <RegistryValue Type="string" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="Folder">
+        <RegistryKey Key="shellex\ContextMenuHandlers\MyCrownJewelApp.Pfpad">
+          <RegistryValue Type="string" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCR" Key="Directory\Background">
+        <RegistryKey Key="shellex\ContextMenuHandlers\MyCrownJewelApp.Pfpad">
+          <RegistryValue Type="string" Value="" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <!-- Context menu handler -->
+      <RegistryKey Root="HKCR" Key="CLSID\{YOUR-CLSID-HERE}">
+        <RegistryValue Type="string" Value="Personal Flip Pad Context Menu" />
+        <RegistryKey Key="InprocServer32">
+          <RegistryValue Type="string" Value="shell32.dll" />
+          <RegistryValue Type="string" Name="ThreadingModel" Value="Apartment" />
+        </RegistryKey>
+        <RegistryKey Key="shell\open\command">
+          <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]MyCrownJewelApp.Pfpad.exe&quot; &quot;%1&quot;" />
+        </RegistryKey>
+      </RegistryKey>
+
+      <RegistryKey Root="HKCU" Key="Software\Microsoft\PersonalFlipPad" Action="create">
+        <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
+        <RegistryValue Type="string" Name="Version" Value="1.0.30.0" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+</Wix>

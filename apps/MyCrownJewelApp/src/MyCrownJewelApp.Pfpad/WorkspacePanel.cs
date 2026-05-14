@@ -44,6 +44,7 @@ internal sealed class WorkspacePanel : UserControl
     private readonly ContextMenuStrip _fileContextMenu;
     private string _rootPath = "";
     private readonly HashSet<string> _textExtensions;
+    private RepositoryAnalyticsEngine? _analyticsEngine;
 #pragma warning disable CS0649
     private bool _showAllFiles;
 #pragma warning restore CS0649
@@ -457,6 +458,8 @@ internal sealed class WorkspacePanel : UserControl
                 rootNode.Expand();
             }
 
+
+
             // Start FileSystemWatcher for instant refresh on file/dir changes
             try
             {
@@ -473,6 +476,31 @@ internal sealed class WorkspacePanel : UserControl
             catch { }
         }
         _refreshTimer.Stop();
+    }
+
+    private async void RunRepositoryAnalyticsAsync(string path)
+    {
+        try
+        {
+            _analyticsEngine = new RepositoryAnalyticsEngine(path);
+            var analysis = await _analyticsEngine.AnalyzeAsync();
+
+            // Show analysis results to user
+            BeginInvoke(() =>
+            {
+                ShowRepositoryAnalysis(analysis);
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Repository analysis failed: {ex.Message}");
+        }
+    }
+
+    private void ShowRepositoryAnalysis(RepositoryAnalysis analysis)
+    {
+        using var dialog = new RepositoryAnalysisDialog(analysis);
+        dialog.ShowDialog(ParentForm);
     }
 
     private void OnWatcherChange(object sender, FileSystemEventArgs e)

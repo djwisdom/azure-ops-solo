@@ -36,28 +36,41 @@ stages:
               packageType: sdk
               version: $(dotnetSdkVersion)
 
-          - task: DotNetCoreCLI@2
-            displayName: Restore
-            inputs:
-              command: restore
-              projects: apps/MyCrownJewelApp/**/*.csproj
+           - task: DotNetCoreCLI@2
+             displayName: Restore
+             inputs:
+               command: restore
+               projects: apps/MyCrownJewelApp/**/*.csproj
 
-          - task: DotNetCoreCLI@2
-            displayName: Build
+           - task: DotNetCoreCLI@2
+             displayName: Format Check
+             inputs:
+               command: custom
+               custom: format
+               arguments: --check --verbosity quiet apps/MyCrownJewelApp/MyCrownJewelApp.sln
+
+           - task: DotNetCoreCLI@2
+             displayName: Build
             inputs:
               command: build
               projects: apps/MyCrownJewelApp/**/*.csproj
               arguments: --configuration $(buildConfiguration) --no-restore
 
-          - task: DotNetCoreCLI@2
-            displayName: Unit Tests
-            inputs:
-              command: test
-              projects: apps/MyCrownJewelApp/tests/**/*.csproj
-              arguments: --configuration $(buildConfiguration) --no-build --verbosity normal
+           - task: DotNetCoreCLI@2
+             displayName: Unit Tests
+             inputs:
+               command: test
+               projects: apps/MyCrownJewelApp/tests/**/*.csproj
+               arguments: --configuration $(buildConfiguration) --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory $(Build.ArtifactStagingDirectory)/coverage
 
-          - task: DotNetCoreCLI@2
-            displayName: Publish
+           - task: PublishCodeCoverageResults@2
+             displayName: Publish Coverage
+             inputs:
+               summaryFileLocation: $(Build.ArtifactStagingDirectory)/coverage/**/coverage.cobertura.xml
+               reportDirectory: $(Build.ArtifactStagingDirectory)/coverage
+
+           - task: DotNetCoreCLI@2
+             displayName: Publish
             inputs:
               command: publish
               publishWebProjects: false

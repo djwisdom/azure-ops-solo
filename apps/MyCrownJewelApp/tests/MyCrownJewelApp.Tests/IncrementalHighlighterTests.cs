@@ -308,6 +308,68 @@ public class VimEngineTests
     }
 
     [Fact]
+    public void VimUndo_UndoSingleChange()
+    {
+        var rtb = new RichTextBox();
+        var vim = new VimEngine(rtb) { Enabled = true };
+
+        // Initial state
+        rtb.Text = "Hello World";
+        rtb.SelectionStart = 0;
+
+        // Make a change (simulate delete operation)
+        vim.CreateUndoPoint();
+        rtb.Text = "Hello";
+        rtb.SelectionStart = 5;
+
+        // Undo should restore previous state
+        vim.SendCtrlZ();
+        Assert.Equal("Hello World", rtb.Text);
+        Assert.Equal(0, rtb.SelectionStart);
+
+        rtb.Dispose();
+    }
+
+    [Fact]
+    public void VimUndo_MultipleUndoRedo()
+    {
+        var rtb = new RichTextBox();
+        var vim = new VimEngine(rtb) { Enabled = true };
+
+        // Initial state
+        rtb.Text = "Original";
+        rtb.SelectionStart = 0;
+
+        // First change
+        vim.CreateUndoPoint();
+        rtb.Text = "First change";
+        rtb.SelectionStart = 12;
+
+        // Second change
+        vim.CreateUndoPoint();
+        rtb.Text = "Second change";
+        rtb.SelectionStart = 13;
+
+        // Third change
+        vim.CreateUndoPoint();
+        rtb.Text = "Third change";
+        rtb.SelectionStart = 12;
+
+        // Undo twice
+        vim.SendCtrlZ(); // Should go back to "Second change"
+        Assert.Equal("Second change", rtb.Text);
+
+        vim.SendCtrlZ(); // Should go back to "First change"
+        Assert.Equal("First change", rtb.Text);
+
+        // Redo once
+        vim.SendCtrlR(); // Should go back to "Second change"
+        Assert.Equal("Second change", rtb.Text);
+
+        rtb.Dispose();
+    }
+
+    [Fact]
     public void ProcessKey_NormalMode_J_MovesCursor()
     {
         var rtb = new RichTextBox();

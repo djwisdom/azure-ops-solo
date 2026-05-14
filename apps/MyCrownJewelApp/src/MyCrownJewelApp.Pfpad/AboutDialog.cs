@@ -130,7 +130,7 @@ public sealed class AboutDialog : Form
                 ForeColor = theme.Text,
                 BackColor = Color.Transparent,
                 AutoSize = true,
-                Location = new Point(0, y)
+                Location = new Point(margin, y)
             };
             content.Controls.Add(lbl);
             y = lbl.Bottom + lineGap;
@@ -145,9 +145,9 @@ public sealed class AboutDialog : Form
                 BorderStyle = BorderStyle.None,
                 BackColor = theme.Muted,
                 Height = 1,
-                Width = 550
+                Width = contentWidth
             };
-            sep.Location = new Point(0, y);
+            sep.Location = new Point(margin, y);
             content.Controls.Add(sep);
             y = sep.Bottom;
         }
@@ -163,7 +163,6 @@ public sealed class AboutDialog : Form
             AddLine(copyright, FontStyle.Regular, theme.Disabled);
 
         AddSeparator();
-        AddSectionHeader("NuGet Dependencies");
 
         var knownPackagePrefixes = new[]
         {
@@ -185,18 +184,67 @@ public sealed class AboutDialog : Form
 
         var extraPackages = new[] { ("xunit.core", "2.8.*"), ("xunit.runner.visualstudio", "2.8.*"), ("coverlet.collector", "6.0.*") };
         var displayed = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Features and Dependencies in a scrollable RichTextBox
+        y += 20; // Extra spacing similar to commit section
+        var featuresLabel = new Label
+        {
+            Text = "Features & Dependencies",
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            ForeColor = theme.Text,
+            BackColor = Color.Transparent,
+            AutoSize = true,
+            Location = new Point(margin, y)
+        };
+        content.Controls.Add(featuresLabel);
+        y = featuresLabel.Bottom + lineGap;
+
+        var featuresBox = new RichTextBox
+        {
+            ReadOnly = true,
+            BorderStyle = BorderStyle.None,
+            BackColor = theme.PanelBackground,
+            ForeColor = theme.Text,
+            Font = new Font("Consolas", 9),
+            ScrollBars = RichTextBoxScrollBars.Vertical,
+            Location = new Point(margin, y),
+            Size = new Size(contentWidth, 200),
+            WordWrap = true
+        };
+
+        var featuresText = new System.Text.StringBuilder();
+        featuresText.AppendLine("Features:");
+        featuresText.AppendLine("• Advanced code editor with syntax highlighting and minimap");
+        featuresText.AppendLine("• Vim mode with full keybindings and macros");
+        featuresText.AppendLine("• Git integration with visual status indicators");
+        featuresText.AppendLine("• Roslyn-powered IntelliSense and semantic highlighting");
+        featuresText.AppendLine("• Code folding and navigation features");
+        featuresText.AppendLine("• Performance profiler with flame graph analysis");
+        featuresText.AppendLine("• Command palette with 40+ searchable commands");
+        featuresText.AppendLine("• File associations for Infrastructure as Code (Terraform, Bicep, Ansible)");
+        featuresText.AppendLine("• DeepWiki-style repository analytics and intelligence");
+        featuresText.AppendLine("• Multi-panel workspace with cross-integration");
+        featuresText.AppendLine("• Theme support with 23 built-in themes");
+        featuresText.AppendLine("• Unicode support with BOM detection and RTL text");
+        featuresText.AppendLine();
+        featuresText.AppendLine("NuGet Dependencies:");
+
         foreach (var p in knownPackages)
         {
             if (p.Name == null || !displayed.Add(p.Name)) continue;
-            AddLine($"  {p.Name}  {p.Version}", FontStyle.Regular, theme.Muted);
+            featuresText.AppendLine($"  {p.Name}  {p.Version}");
         }
         foreach (var (name, ver) in extraPackages)
         {
             if (!displayed.Add(name)) continue;
-            AddLine($"  {name}  {ver}", FontStyle.Regular, theme.Muted);
+            featuresText.AppendLine($"  {name}  {ver}");
         }
 
-        AddLine($"  .NET Runtime  {clrVersion}  ({arch})", FontStyle.Regular, theme.Muted);
+        featuresText.AppendLine($"  .NET Runtime  {clrVersion}  ({arch})");
+
+        featuresBox.Text = featuresText.ToString();
+        content.Controls.Add(featuresBox);
+        y = featuresBox.Bottom + lineGap;
 
         AddSeparator();
         AddSectionHeader("System");
@@ -226,14 +274,14 @@ public sealed class AboutDialog : Form
         int finalContentWidth = 620 - 2 * margin; // matches totalWidth minus left/right margins
         okBtn.Location = new Point((finalContentWidth - okBtn.Width) / 2, y);
         content.Controls.Add(okBtn);
-        y = okBtn.Bottom;
+        y = okBtn.Bottom + margin; // Add extra margin below the OK button
 
         Controls.Add(content);
         Controls.Add(titleBar);
 
         // Size the dialog to fit all content without scrollbars
-        int totalHeight = titleBar.Height + y + margin;
-        totalHeight = Math.Max(420, Math.Min(totalHeight, 720));
+        int totalHeight = titleBar.Height + y;
+        totalHeight = Math.Max(510, Math.Min(totalHeight, 660));
         int totalWidth = 620;
         Size = new Size(totalWidth, totalHeight);
         MinimumSize = Size;

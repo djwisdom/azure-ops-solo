@@ -250,32 +250,6 @@ partial class Form1
         toggleFoldMenuItem = new ToolStripMenuItem("Toggle Fold", null, ToggleFold_Click, Keys.Control | Keys.Shift | Keys.OemOpenBrackets);
         toggleAllFoldsMenuItem = new ToolStripMenuItem("Toggle All Folds", null, ToggleAllFolds_Click, Keys.Control | Keys.Alt | Keys.OemOpenBrackets);
         #pragma warning restore CS0169
-        // Build Edit menu
-        editMenu.DropDownItems.Add(undoMenuItem);
-        editMenu.DropDownItems.Add(new ToolStripSeparator());
-        editMenu.DropDownItems.Add(cutMenuItem);
-        editMenu.DropDownItems.Add(copyMenuItem);
-        editMenu.DropDownItems.Add(pasteMenuItem);
-        editMenu.DropDownItems.Add(deleteMenuItem);
-        editMenu.DropDownItems.Add(new ToolStripSeparator());
-        editMenu.DropDownItems.Add(findMenuItem);
-        editMenu.DropDownItems.Add(findNextMenuItem);
-        editMenu.DropDownItems.Add(findPreviousMenuItem);
-        editMenu.DropDownItems.Add(replaceMenuItem);
-        editMenu.DropDownItems.Add(gotoMenuItem);
-        editMenu.DropDownItems.Add(globalSearchMenuItem);
-        editMenu.DropDownItems.Add(new ToolStripSeparator());
-        editMenu.DropDownItems.Add(selectAllMenuItem);
-        editMenu.DropDownItems.Add(timeDateMenuItem);
-        editMenu.DropDownItems.Add(fontMenuItem);
-        editMenu.DropDownItems.Add(new ToolStripSeparator());
-        editMenu.DropDownItems.Add(toggleBookmarkMenuItem);
-        editMenu.DropDownItems.Add(nextBookmarkMenuItem);
-        editMenu.DropDownItems.Add(prevBookmarkMenuItem);
-        editMenu.DropDownItems.Add(clearBookmarksMenuItem);
-        editMenu.DropDownItems.Add(new ToolStripSeparator());
-        editMenu.DropDownItems.Add(toggleFoldMenuItem);
-        editMenu.DropDownItems.Add(toggleAllFoldsMenuItem);
 
         // Go menu
         goMenu = new ToolStripMenuItem("&Go");
@@ -408,25 +382,7 @@ partial class Form1
             fileMenu.DropDownItems.Insert(ins, preferencesMenuItem);
             fileMenu.DropDownItems.Insert(ins + 1, new ToolStripSeparator());
         }
-        viewMenu.DropDownItems.Add(zoomMenu);
-        viewMenu.DropDownItems.Add(new ToolStripSeparator());
-        viewMenu.DropDownItems.Add(statusBarMenuItem);
-        viewMenu.DropDownItems.Add(wordWrapMenuItem);
-        viewMenu.DropDownItems.Add(syntaxHighlightingMenuItem);
-        viewMenu.DropDownItems.Add(currentLineHighlightMenu);
-        viewMenu.DropDownItems.Add(insertSpacesMenuItem);
-        viewMenu.DropDownItems.Add(tabSizeMenu);
-        viewMenu.DropDownItems.Add(autoIndentMenuItem);
-        viewMenu.DropDownItems.Add(smartTabsMenuItem);
-        viewMenu.DropDownItems.Add(elasticTabsMenuItem);
-        viewMenu.DropDownItems.Add(columnGuideMenuItem);
-        viewMenu.DropDownItems.Add(gutterMenuItem);
-        viewMenu.DropDownItems.Add(whitespaceMenuItem);
-        viewMenu.DropDownItems.Add(minimapMenuItem);
-        viewMenu.DropDownItems.Add(stickyScrollMenuItem);
-        viewMenu.DropDownItems.Add(rainbowBracketsMenuItem);
-        viewMenu.DropDownItems.Add(breadcrumbMenuItem);
-        viewMenu.DropDownItems.Add(rulerMenuItem);
+
         viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(fontMenuItem);
@@ -540,10 +496,15 @@ partial class Form1
         configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);
         configureToolsMenuItem.ShortcutKeys = Keys.Control | Keys.Alt | Keys.T;
         toolsMenu.DropDownItems.Add(configureToolsMenuItem);
+        var projectAnalysisMenuItem = new ToolStripMenuItem("&Analyze Repository", null, (s, e) => AnalyzeCurrentRepository());
+        projectAnalysisMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.A;
+        toolsMenu.DropDownItems.Add(projectAnalysisMenuItem);
         toolsMenu.DropDownItems.Add(new ToolStripSeparator());
-        settingsMenuItem = new ToolStripMenuItem("&Settings...", null, Settings_Click, Keys.Control | Keys.Oemcomma);
-        toolsMenu.DropDownItems.Add(settingsMenuItem);
-        toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+        // Performance submenu
+        var performanceMenu = new ToolStripMenuItem("&Performance");
+        var profilerMenuItem = new ToolStripMenuItem("&Performance Profiler", null, (s, e) => ShowPerformanceProfiler());
+        performanceMenu.DropDownItems.Add(profilerMenuItem);
+
         // Roslyn control submenu
         var roslynMenu = new ToolStripMenuItem("&Roslyn");
         restartAnalyzersMenuItem = new ToolStripMenuItem("&Restart Analyzers", null, null, Keys.Control | Keys.Shift | Keys.R);
@@ -555,15 +516,16 @@ partial class Form1
         roslynMenu.DropDownItems.Add(toggleAnalyzersMenuItem);
         roslynMenu.DropDownItems.Add(new ToolStripSeparator());
         roslynMenu.DropDownItems.Add(openVisualizerMenuItem);
+
         toolsMenu.DropDownItems.Add(new ToolStripSeparator());
+        toolsMenu.DropDownItems.Add(performanceMenu);
         toolsMenu.DropDownItems.Add(roslynMenu);
         menuStrip.Items.Add(toolsMenu);
 
         // Help menu
         var helpMenu = new ToolStripMenuItem("&Help");
         var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
-        var profilerMenuItem = new ToolStripMenuItem("&Performance Profiler", null, (s, e) => ShowPerformanceProfiler());
-        helpMenu.DropDownItems.AddRange(new ToolStripItem[] { aboutMenuItem, new ToolStripSeparator(), profilerMenuItem });
+        helpMenu.DropDownItems.Add(aboutMenuItem);
         menuStrip.Items.Add(helpMenu);
         menuStrip.Dock = DockStyle.Fill;
 
@@ -822,6 +784,74 @@ partial class Form1
         Controls.Add(mainLayout);
 
         MainMenuStrip = menuStrip;
+
+        // Reorganize View menu into logical submenus (after all menu items are initialized)
+        viewMenu.DropDownItems.Clear(); // Clear existing items
+
+        var panelsSubmenu = new ToolStripMenuItem("&Panels");
+        panelsSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            terminalMenuItem, workspaceMenuItem, gitPanelMenuItem, symbolsMenuItem,
+            problemsMenuItem, notificationCenterMenuItem, openFolderMenuItem
+        });
+
+        var layoutSubmenu = new ToolStripMenuItem("&Layout");
+        layoutSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            splitVMenuItem, splitHMenuItem, zoomMenu
+        });
+
+        var displaySubmenu = new ToolStripMenuItem("&Display");
+        displaySubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            wordWrapMenuItem, syntaxHighlightingMenuItem, currentLineHighlightMenu,
+            insertSpacesMenuItem, tabSizeMenu, autoIndentMenuItem, smartTabsMenuItem,
+            elasticTabsMenuItem, columnGuideMenuItem, gutterMenuItem, whitespaceMenuItem,
+            minimapMenuItem, stickyScrollMenuItem, rainbowBracketsMenuItem,
+            breadcrumbMenuItem, rulerMenuItem
+        });
+
+        var appearanceSubmenu = new ToolStripMenuItem("&Appearance");
+        appearanceSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            statusBarMenuItem, themeMenu
+        });
+
+        viewMenu.DropDownItems.Add(panelsSubmenu);
+        viewMenu.DropDownItems.Add(layoutSubmenu);
+        viewMenu.DropDownItems.Add(displaySubmenu);
+        viewMenu.DropDownItems.Add(appearanceSubmenu);
+
+        // Reorganize Edit menu into logical submenus (after all menu items are initialized)
+        editMenu.DropDownItems.Clear(); // Clear existing items
+
+        var clipboardSubmenu = new ToolStripMenuItem("&Clipboard");
+        clipboardSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            undoMenuItem, new ToolStripSeparator(), cutMenuItem, copyMenuItem, pasteMenuItem, deleteMenuItem
+        });
+
+        var findSubmenu = new ToolStripMenuItem("&Find && Replace");
+        findSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            findMenuItem, findNextMenuItem, findPreviousMenuItem, replaceMenuItem,
+            gotoMenuItem, globalSearchMenuItem
+        });
+
+        var selectionSubmenu = new ToolStripMenuItem("&Selection");
+        selectionSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            selectAllMenuItem, timeDateMenuItem, fontMenuItem
+        });
+
+        var navigationSubmenu = new ToolStripMenuItem("&Navigation");
+        navigationSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            toggleBookmarkMenuItem, nextBookmarkMenuItem, prevBookmarkMenuItem, clearBookmarksMenuItem
+        });
+
+        var codeSubmenu = new ToolStripMenuItem("&Code");
+        codeSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
+            toggleFoldMenuItem, toggleAllFoldsMenuItem, formatDocumentMenuItem
+        });
+
+        editMenu.DropDownItems.Add(clipboardSubmenu);
+        editMenu.DropDownItems.Add(findSubmenu);
+        editMenu.DropDownItems.Add(selectionSubmenu);
+        editMenu.DropDownItems.Add(navigationSubmenu);
+        editMenu.DropDownItems.Add(codeSubmenu);
 
         ResumeLayout(false);
         PerformLayout();

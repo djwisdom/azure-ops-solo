@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  - repo: https://github.com/dotnet/format
+    rev: 5.1.250801
+    hooks:
+      - id: dotnet-format
+        files: \.(cs|vb)$
+        exclude: ^.*\\bin\\|^.*\\obj\\
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.1
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+      - id: tflint
+
+  - repo: local
+    hooks:
+      - id: bicep-lint
+        name: Bicep Lint
+        entry: az bicep lint --file
+        language: system
+        files: \.bicep$
+        pass_filenames: true
