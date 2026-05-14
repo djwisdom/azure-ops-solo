@@ -1,8 +1,8 @@
 [Setup]
 AppId=YOUR-APP-ID-HERE
 AppName=Personal Flip Pad
-AppVersion=1.0.31.0
-AppVerName=Personal Flip Pad 1.0.31.0
+AppVersion=1.0.32.0
+AppVerName=Personal Flip Pad 1.0.32.0
 AppPublisher=Personal Flip Pad
 AppPublisherURL=https://github.com/djwisdom/azure-ops-solo
 AppSupportURL=https://github.com/djwisdom/azure-ops-solo/issues
@@ -12,7 +12,7 @@ DefaultGroupName=Personal Flip Pad
 AllowNoIcons=yes
 
 OutputDir=.
-OutputBaseFilename=PersonalFlipPad-1.0.31.0
+OutputBaseFilename=PersonalFlipPad-1.0.32.0
 ; SetupIconFile=app.ico
 Compression=lzma
 SolidCompression=yes
@@ -152,10 +152,13 @@ Root: HKCR; Subkey: "*\shellex\ContextMenuHandlers\MyCrownJewelApp.Pfpad"; Value
 Root: HKCR; Subkey: "Folder\shellex\ContextMenuHandlers\MyCrownJewelApp.Pfpad"; ValueType: string; ValueData: ""; Flags: uninsdeletekey
 Root: HKCR; Subkey: "Directory\Background\shellex\ContextMenuHandlers\MyCrownJewelApp.Pfpad"; ValueType: string; ValueData: ""; Flags: uninsdeletekey
 
+; Add to "Open with" list for all files
+Root: HKCR; Subkey: "*\OpenWithProgids\MyCrownJewelApp.Pfpad"; ValueType: string; ValueData: ""; Flags: uninsdeletekey
+
 ; Store installation information
 Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "Version"; ValueData: "1.0.31.0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "Version"; ValueData: "1.0.32.0"; Flags: uninsdeletekey
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

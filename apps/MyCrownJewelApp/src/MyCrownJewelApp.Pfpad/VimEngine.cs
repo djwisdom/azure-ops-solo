@@ -8,33 +8,396 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad
 {
+    /// <summary>
+    /// Represents the different modes in Vim.
+    /// </summary>
     public enum VimMode
     {
         Normal, Insert, Visual, VisualLine, VisualBlock, Command,
         SearchForward, SearchBackward
     }
 
+    /// <summary>
+    /// Interface for Vim state classes in the State design pattern.
+    /// Each mode implements this to handle its specific key processing and behavior.
+    /// </summary>
+    public interface IVimState
+    {
+        /// <summary>
+        /// Processes a key press in the context of this state.
+        /// </summary>
+        /// <param name="keyData">The key data from the key event.</param>
+        /// <param name="engine">Reference to the VimEngine for shared state and operations.</param>
+        /// <returns>True if the key was consumed, false if it should be passed through.</returns>
+        bool ProcessKey(Keys keyData, VimEngine engine);
+
+        /// <summary>
+        /// Called when entering this state.
+        /// </summary>
+        /// <param name="engine">Reference to the VimEngine.</param>
+        void Enter(VimEngine engine);
+
+        /// <summary>
+        /// Called when exiting this state.
+        /// </summary>
+        /// <param name="engine">Reference to the VimEngine.</param>
+        void Exit(VimEngine engine);
+    }
+
+    /// <summary>
+    /// Base class for Vim states, providing common functionality.
+    /// </summary>
+    public abstract class VimStateBase : IVimState
+    {
+        public abstract bool ProcessKey(Keys keyData, VimEngine engine);
+        public virtual void Enter(VimEngine engine) { }
+        public virtual void Exit(VimEngine engine) { }
+
+        /// <summary>
+        /// Helper to extract key and modifiers from keyData.
+        /// </summary>
+        protected static (Keys key, bool ctrl, bool shift, bool alt) ParseKey(Keys keyData)
+        {
+            Keys key = keyData & Keys.KeyCode;
+            bool ctrl = (keyData & Keys.Control) != 0;
+            bool shift = (keyData & Keys.Shift) != 0;
+            bool alt = (keyData & Keys.Alt) != 0;
+            return (key, ctrl, shift, alt);
+        }
+
+        /// <summary>
+        /// Helper to convert key to char, considering shift.
+        /// </summary>
+        protected static char? KeyToChar(Keys key, bool shift) => VimEngine.KeyToChar(key, shift);
+    }
+
+    /// <summary>
+    /// Normal mode state: Default command mode for navigation and operations.
+    /// </summary>
+    public class NormalState : VimStateBase
+    {
+        private StringBuilder CommandBuffer = new();
+        private int RepeatCount = 1;
+
+        public override void Enter(VimEngine engine)
+        {
+            CommandBuffer.Clear();
+            RepeatCount = 1;
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (alt) return false;
+
+            // Repeat count
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                // Handle repeat count logic (similar to original)
+                if (CommandBuffer.Length > 0 && char.IsDigit(CommandBuffer[0]))
+                {
+                    int val = int.Parse(CommandBuffer.ToString());
+                    RepeatCount = val * 10 + (key - Keys.D0);
+                    CommandBuffer.Append((char)('0' + (key - Keys.D0)));
+                }
+                else if (key != Keys.D0)
+                {
+                    RepeatCount = key - Keys.D0;
+                    CommandBuffer.Append((char)('0' + (key - Keys.D0)));
+                }
+                return true;
+            }
+
+            char? ch = KeyToChar(key, shift);
+            CommandBuffer.Append(ch);
+
+            string buf = CommandBuffer.ToString();
+
+            // Strip leading digits
+            string stripped = buf;
+            while (stripped.Length > 0 && char.IsDigit(stripped[0]))
+                stripped = stripped[1..];
+
+            // Handle commands (delegate to engine for complex logic)
+            bool handled = engine.HandleNormalBuffer(stripped, key, shift);
+            if (handled)
+            {
+                ResetBuffer();
+                return true;
+            }
+
+            if (!engine.IsPrefixOfCommand(stripped))
+            {
+                ResetBuffer();
+                return false;
+            }
+
+            return true;
+        }
+
+        public void ResetBuffer() { CommandBuffer.Clear(); RepeatCount = 1; }
+    }
+
+    /// <summary>
+    /// Insert mode state: Typing mode where keys insert text.
+    /// </summary>
+    public class InsertState : VimStateBase
+    {
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                engine.SelectionLength = 0;
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            return false; // Let key through for typing
+        }
+    }
+
+    /// <summary>
+    /// Visual mode state: Character-wise selection mode.
+    /// </summary>
+    public class VisualState : VimStateBase
+    {
+        public override void Enter(VimEngine engine)
+        {
+            engine.SelectionLength = 0; // Start with no selection
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                engine.SelectionLength = 0;
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+
+            // Handle motions and operations (delegate to engine)
+            return engine.HandleVisualMode(key, ctrl, shift, false);
+        }
+    }
+
+    /// <summary>
+    /// Visual line mode state: Line-wise selection mode.
+    /// </summary>
+    public class VisualLineState : VimStateBase
+    {
+        public override void Enter(VimEngine engine)
+        {
+            engine.SelectionLength = 0;
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                engine.SelectionLength = 0;
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            return engine.HandleVisualMode(key, ctrl, shift, true);
+        }
+    }
+
+    /// <summary>
+    /// Command mode state: Ex commands like :w, :q.
+    /// </summary>
+    public class CommandState : VimStateBase
+    {
+        public override void Enter(VimEngine engine)
+        {
+            engine.CommandBuffer.Clear();
+            engine.CommandBuffer.Append(':');
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                engine.CommandBuffer.Clear();
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Enter)
+            {
+                engine.ExecuteCommand(engine.CommandBuffer.ToString().Trim());
+                engine.CommandBuffer.Clear();
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Back)
+            {
+                if (engine.CommandBuffer.Length > 1)
+                    engine.CommandBuffer.Remove(engine.CommandBuffer.Length - 1, 1);
+                return true;
+            }
+
+            char? ch = KeyToChar(key, shift);
+            if (ch != null && ch >= 32)
+            {
+                engine.CommandBuffer.Append(ch.Value);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Search forward state: / search mode.
+    /// </summary>
+    public class SearchForwardState : VimStateBase
+    {
+        public override void Enter(VimEngine engine)
+        {
+            engine.CommandBuffer.Clear();
+            engine.CommandBuffer.Append('/');
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                engine.CommandBuffer.Clear();
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Enter)
+            {
+                string pattern = engine.CommandBuffer.Length > 1 ? engine.CommandBuffer.ToString(1, engine.CommandBuffer.Length - 1) : engine.LastSearchPattern;
+                if (!string.IsNullOrEmpty(pattern))
+                {
+                    engine.LastSearchPattern = pattern;
+                    engine.LastSearchForward = true;
+                    engine.ExecuteSearch(engine.SelectionStart + engine.SelectionLength, true);
+                }
+                engine.CommandBuffer.Clear();
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Back)
+            {
+                if (engine.CommandBuffer.Length > 1)
+                    engine.CommandBuffer.Remove(engine.CommandBuffer.Length - 1, 1);
+                return true;
+            }
+
+            char? ch = KeyToChar(key, shift);
+            if (ch != null && ch >= 32)
+            {
+                engine.CommandBuffer.Append(ch.Value);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Search backward state: ? search mode.
+    /// </summary>
+    public class SearchBackwardState : VimStateBase
+    {
+        public override void Enter(VimEngine engine)
+        {
+            engine.CommandBuffer.Clear();
+            engine.CommandBuffer.Append('?');
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            var (key, ctrl, shift, alt) = ParseKey(keyData);
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                engine.CommandBuffer.Clear();
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Enter)
+            {
+                string pattern = engine.CommandBuffer.Length > 1 ? engine.CommandBuffer.ToString(1, engine.CommandBuffer.Length - 1) : engine.LastSearchPattern;
+                if (!string.IsNullOrEmpty(pattern))
+                {
+                    engine.LastSearchPattern = pattern;
+                    engine.LastSearchForward = false;
+                    engine.ExecuteSearch(engine.SelectionStart, false);
+                }
+                engine.CommandBuffer.Clear();
+                engine.EnterMode(VimMode.Normal);
+                return true;
+            }
+            if (key == Keys.Back)
+            {
+                if (engine.CommandBuffer.Length > 1)
+                    engine.CommandBuffer.Remove(engine.CommandBuffer.Length - 1, 1);
+                return true;
+            }
+
+            char? ch = KeyToChar(key, shift);
+            if (ch != null && ch >= 32)
+            {
+                engine.CommandBuffer.Append(ch.Value);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Visual block mode state: Rectangular selection (placeholder for future enhancement).
+    /// </summary>
+    public class VisualBlockState : VimStateBase
+    {
+        public override void Enter(VimEngine engine)
+        {
+            engine.SelectionLength = 0;
+        }
+
+        public override bool ProcessKey(Keys keyData, VimEngine engine)
+        {
+            // For now, delegate to VisualState (can enhance later)
+            return new VisualState().ProcessKey(keyData, engine);
+        }
+    }
+
+    /// <summary>
+    /// Main Vim engine class, refactored to use the State pattern.
+    /// </summary>
     public class VimEngine
     {
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int EM_REDO = 0x042D;
+
+        // State pattern: current state
+        private IVimState _currentState;
+
         public VimMode CurrentMode { get; private set; } = VimMode.Normal;
         public bool Enabled { get; set; }
-        public string CommandText => _cmdBuffer.ToString();
+        public string CommandText => CommandBuffer.ToString();
+
+        // Exposed for states
+        public StringBuilder CommandBuffer { get; } = new();
+        public string? LastYank { get; set; }
+        public string LastSearchPattern { get; set; } = "";
+        public bool LastSearchForward { get; set; } = true;
+        public (string Action, string? Data, int Repeat)? LastAction { get; set; }
+        public int RepeatCount { get; set; } = 1;
+
+        // TextBox access
+        public RichTextBox TextBox => _tb;
+        public int SelectionStart { get => _tb.SelectionStart; set => _tb.SelectionStart = value; }
+        public int SelectionLength { get => _tb.SelectionLength; set => _tb.SelectionLength = value; }
+        public string Text => _tb.Text;
+        public void Select(int start, int length) => _tb.Select(start, length);
 
         private RichTextBox _tb;
-        private readonly StringBuilder _cmdBuffer = new();
-        private string? _lastYank;
-        private int _repeatCount = 1;
         private bool _pendingWindowCommand; // after Ctrl+W, waiting for second key
-
-        // Search state
-        private string _lastSearchPattern = "";
-        private bool _lastSearchForward = true;
-
-        // Repeat last action
-        private (string Action, string? Data, int Repeat)? _lastAction;
 
         // Multi-layered undo/redo system
         private class UndoPoint
@@ -84,6 +447,7 @@ namespace MyCrownJewelApp.Pfpad
         public VimEngine(RichTextBox textBox)
         {
             _tb = textBox;
+            _currentState = new NormalState();
             // Create initial undo point
             CreateUndoPoint();
         }
@@ -93,6 +457,7 @@ namespace MyCrownJewelApp.Pfpad
             _tb = textBox;
             // Reset undo/redo when switching editors
             ClearUndoRedoHistory();
+            _currentState = new NormalState();
             CreateUndoPoint();
         }
 
@@ -112,12 +477,26 @@ namespace MyCrownJewelApp.Pfpad
                 CreateUndoPoint();
             }
 
+            _currentState?.Exit(this);
             CurrentMode = mode;
-            _cmdBuffer.Clear();
-            _repeatCount = 1;
+            _currentState = mode switch
+            {
+                VimMode.Normal => new NormalState(),
+                VimMode.Insert => new InsertState(),
+                VimMode.Visual => new VisualState(),
+                VimMode.VisualLine => new VisualLineState(),
+                VimMode.VisualBlock => new VisualBlockState(),
+                VimMode.Command => new CommandState(),
+                VimMode.SearchForward => new SearchForwardState(),
+                VimMode.SearchBackward => new SearchBackwardState(),
+                _ => new NormalState()
+            };
+            CommandBuffer.Clear();
+            RepeatCount = 1;
             _pendingWindowCommand = false;
             if (mode == VimMode.Normal && _tb.SelectionLength > 0)
                 _tb.SelectionLength = 0;
+        _currentState.Enter(this);
         }
 
         public bool ProcessKey(Keys keyData)
@@ -157,19 +536,8 @@ namespace MyCrownJewelApp.Pfpad
                 // For any other key, fall through to normal processing
             }
 
-            if (CurrentMode == VimMode.Insert)
-                return ProcessInsertMode(key, ctrl, shift);
-
-            if (CurrentMode == VimMode.Visual || CurrentMode == VimMode.VisualLine)
-                return ProcessVisualMode(key, ctrl, shift);
-
-            if (CurrentMode == VimMode.Command)
-                return ProcessCommandMode(key, ctrl, shift);
-
-            if (CurrentMode == VimMode.SearchForward || CurrentMode == VimMode.SearchBackward)
-                return ProcessSearchMode(key, ctrl, shift);
-
-            return ProcessNormalMode(key, ctrl, shift);
+            // Delegate to current state
+            return _currentState.ProcessKey(keyData, this);
         }
 
         private bool ProcessInsertMode(Keys key, bool ctrl, bool shift)
@@ -183,16 +551,14 @@ namespace MyCrownJewelApp.Pfpad
             return false; // let the key through to normal typing
         }
 
-        private bool ProcessVisualMode(Keys key, bool ctrl, bool shift)
+        public bool HandleVisualMode(Keys key, bool ctrl, bool shift, bool linewise)
         {
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
-                _tb.SelectionLength = 0;
+                SelectionLength = 0;
                 EnterMode(VimMode.Normal);
                 return true;
             }
-
-            bool linewise = CurrentMode == VimMode.VisualLine;
 
             switch (key)
             {
@@ -234,21 +600,21 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
-                _cmdBuffer.Clear();
+                CommandBuffer.Clear();
                 EnterMode(VimMode.Normal);
                 return true;
             }
             if (key == Keys.Enter)
             {
-                ExecuteCommand(_cmdBuffer.ToString().Trim());
-                _cmdBuffer.Clear();
+                ExecuteCommand(CommandBuffer.ToString().Trim());
+                CommandBuffer.Clear();
                 EnterMode(VimMode.Normal);
                 return true;
             }
             if (key == Keys.Back)
             {
-                if (_cmdBuffer.Length > 0)
-                    _cmdBuffer.Remove(_cmdBuffer.Length - 1, 1);
+                if (CommandBuffer.Length > 0)
+                    CommandBuffer.Remove(CommandBuffer.Length - 1, 1);
                 return true;
             }
 
@@ -256,7 +622,7 @@ namespace MyCrownJewelApp.Pfpad
             char? ch = KeyToChar(key, shift);
             if (ch != null && ch >= 32)
             {
-                _cmdBuffer.Append(ch.Value);
+                CommandBuffer.Append(ch.Value);
                 return true;
             }
 
@@ -266,64 +632,64 @@ namespace MyCrownJewelApp.Pfpad
         private void EnterSearchMode(bool forward)
         {
             EnterMode(forward ? VimMode.SearchForward : VimMode.SearchBackward);
-            _cmdBuffer.Clear();
-            _cmdBuffer.Append(forward ? '/' : '?');
+            CommandBuffer.Clear();
+            CommandBuffer.Append(forward ? '/' : '?');
         }
 
         private bool ProcessSearchMode(Keys key, bool ctrl, bool shift)
         {
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
-                _cmdBuffer.Clear();
+                CommandBuffer.Clear();
                 EnterMode(VimMode.Normal);
                 return true;
             }
             if (key == Keys.Enter)
             {
-                string pattern = _cmdBuffer.Length > 1 ? _cmdBuffer.ToString(1, _cmdBuffer.Length - 1) : _lastSearchPattern;
+                string pattern = CommandBuffer.Length > 1 ? CommandBuffer.ToString(1, CommandBuffer.Length - 1) : LastSearchPattern;
                 if (!string.IsNullOrEmpty(pattern))
                 {
-                    _lastSearchPattern = pattern;
-                    _lastSearchForward = CurrentMode == VimMode.SearchForward;
-                    ExecuteSearch(_lastSearchForward? 0 : _tb.TextLength, _lastSearchForward);
+                    LastSearchPattern = pattern;
+                    LastSearchForward = CurrentMode == VimMode.SearchForward;
+                    ExecuteSearch(LastSearchForward? 0 : _tb.TextLength, LastSearchForward);
                 }
-                _cmdBuffer.Clear();
+                CommandBuffer.Clear();
                 EnterMode(VimMode.Normal);
                 return true;
             }
             if (key == Keys.Back)
             {
-                if (_cmdBuffer.Length > 1)
-                    _cmdBuffer.Remove(_cmdBuffer.Length - 1, 1);
+                if (CommandBuffer.Length > 1)
+                    CommandBuffer.Remove(CommandBuffer.Length - 1, 1);
                 return true;
             }
 
             char? ch = KeyToChar(key, shift);
             if (ch != null && ch >= 32)
             {
-                _cmdBuffer.Append(ch.Value);
+                CommandBuffer.Append(ch.Value);
                 return true;
             }
 
             return false;
         }
 
-        private bool ExecuteSearch(int startFrom, bool forward)
+        public bool ExecuteSearch(int startFrom, bool forward)
         {
-            if (string.IsNullOrEmpty(_lastSearchPattern)) return false;
+            if (string.IsNullOrEmpty(LastSearchPattern)) return false;
             string text = _tb.Text;
             // Update stored direction for n/N
-            _lastSearchForward = forward;
+            LastSearchForward = forward;
 
             // Use IndexOf for plain text search (case-insensitive)
             var comparison = StringComparison.CurrentCultureIgnoreCase;
             if (forward)
             {
-                int found = text.IndexOf(_lastSearchPattern, Math.Min(startFrom, text.Length), comparison);
+                int found = text.IndexOf(LastSearchPattern, Math.Min(startFrom, text.Length), comparison);
                 if (found >= 0)
                 {
                     _tb.SelectionStart = found;
-                    _tb.SelectionLength = _lastSearchPattern.Length;
+                    _tb.SelectionLength = LastSearchPattern.Length;
                     _tb.ScrollToCaret();
                     return true;
                 }
@@ -333,15 +699,15 @@ namespace MyCrownJewelApp.Pfpad
                 // Backward search: scan from startFrom backward
                 int found = -1;
                 int searchUpTo = Math.Min(startFrom, text.Length);
-                for (int i = 0; i <= searchUpTo - _lastSearchPattern.Length; i++)
+                for (int i = 0; i <= searchUpTo - LastSearchPattern.Length; i++)
                 {
-                    if (text.AsSpan(i, _lastSearchPattern.Length).Equals(_lastSearchPattern, comparison))
+                    if (text.AsSpan(i, LastSearchPattern.Length).Equals(LastSearchPattern, comparison))
                         found = i;
                 }
                 if (found >= 0)
                 {
                     _tb.SelectionStart = found;
-                    _tb.SelectionLength = _lastSearchPattern.Length;
+                    _tb.SelectionLength = LastSearchPattern.Length;
                     _tb.ScrollToCaret();
                     return true;
                 }
@@ -355,24 +721,24 @@ namespace MyCrownJewelApp.Pfpad
             if (key >= Keys.D0 && key <= Keys.D9)
             {
                 int d = key - Keys.D0;
-                if (_cmdBuffer.Length > 0 && char.IsDigit(_cmdBuffer[0]))
+                if (CommandBuffer.Length > 0 && char.IsDigit(CommandBuffer[0]))
                 {
-                    int val = int.Parse(_cmdBuffer.ToString());
-                    _repeatCount = val * 10 + d;
-                    _cmdBuffer.Append(d.ToString());
+                    int val = int.Parse(CommandBuffer.ToString());
+                    RepeatCount = val * 10 + d;
+                    CommandBuffer.Append(d.ToString());
                 }
                 else if (d > 0)
                 {
-                    _repeatCount = d;
-                    _cmdBuffer.Append(d.ToString());
+                    RepeatCount = d;
+                    CommandBuffer.Append(d.ToString());
                 }
                 return true;
             }
 
             char? ch = KeyToChar(key, shift);
-            _cmdBuffer.Append(ch);
+            CommandBuffer.Append(ch);
 
-            string buf = _cmdBuffer.ToString();
+            string buf = CommandBuffer.ToString();
 
             // Single-key commands
             switch (key)
@@ -385,7 +751,7 @@ namespace MyCrownJewelApp.Pfpad
             if (shift && ch == 'A') { MoveToLineEnd(); EnterMode(VimMode.Insert); ResetBuffer(); return true; }
 
             // Enter command mode on ':'
-            if (ch == ':') { EnterMode(VimMode.Command); _cmdBuffer.Clear(); return true; }
+            if (ch == ':') { EnterMode(VimMode.Command); CommandBuffer.Clear(); return true; }
 
             // Strip leading digit prefix (repeat count) before matching commands
             string stripped = buf;
@@ -408,7 +774,7 @@ namespace MyCrownJewelApp.Pfpad
             return true;
         }
 
-        private bool HandleNormalBuffer(string buf, Keys key, bool shift)
+        public bool HandleNormalBuffer(string buf, Keys key, bool shift)
         {
             switch (buf)
             {
@@ -557,7 +923,7 @@ namespace MyCrownJewelApp.Pfpad
             switch (op)
             {
                 case 'd': _tb.SelectedText = ""; break;
-                case 'y': _lastYank = _tb.SelectedText; break;
+                case 'y': LastYank = _tb.SelectedText; break;
                 case 'c': _tb.SelectedText = ""; EnterMode(VimMode.Insert); break;
             }
 
@@ -565,9 +931,9 @@ namespace MyCrownJewelApp.Pfpad
         }
 
         private void UpdateCommandLine() { /* status bar indicator managed by Form1 */ }
-        private void ResetBuffer() { _cmdBuffer.Clear(); _repeatCount = 1; }
+        private void ResetBuffer() { CommandBuffer.Clear(); RepeatCount = 1; }
 
-        private bool IsPrefixOfCommand(string buf)
+        public bool IsPrefixOfCommand(string buf)
         {
             if (buf.Length == 1)
             {
@@ -594,7 +960,7 @@ namespace MyCrownJewelApp.Pfpad
             return false;
         }
 
-        private void ExecuteCommand(string cmd)
+        public void ExecuteCommand(string cmd)
         {
             if (cmd == "set")
             {
@@ -724,7 +1090,7 @@ namespace MyCrownJewelApp.Pfpad
             CommandFeedback?.Invoke(message);
         }
 
-        private void ExecuteSet(string args)
+        public void ExecuteSet(string args)
         {
             foreach (var part in args.Split(','))
             {
@@ -753,13 +1119,13 @@ namespace MyCrownJewelApp.Pfpad
         }
 
         #region Movement
-        private int GetCurrentLine() => _tb.GetLineFromCharIndex(_tb.SelectionStart);
-        private int GetLineStart(int line) => _tb.GetFirstCharIndexFromLine(line);
-        private int GetLineEnd(int line)
+        public int GetCurrentLine() => TextBox.GetLineFromCharIndex(SelectionStart);
+        public int GetLineStart(int line) => TextBox.GetFirstCharIndexFromLine(line);
+        public int GetLineEnd(int line)
         {
-            int next = _tb.GetFirstCharIndexFromLine(line + 1);
+            int next = TextBox.GetFirstCharIndexFromLine(line + 1);
             if (next >= 0) return Math.Max(0, next - 1);
-            return Math.Max(0, _tb.TextLength);
+            return Math.Max(0, Text.Length);
         }
         private string GetCurrentLineText()
         {
@@ -776,26 +1142,26 @@ namespace MyCrownJewelApp.Pfpad
             if (s < 0 || e < 0) return 0;
             return Math.Max(0, e - s);
         }
-        private int GetRepeat() => Math.Max(1, _repeatCount);
+        public int GetRepeat() => Math.Max(1, RepeatCount);
 
-        private void MoveLeft() => _tb.SelectionStart = Math.Max(0, _tb.SelectionStart - GetRepeat());
-        private void MoveRight() => _tb.SelectionStart = Math.Min(_tb.TextLength, _tb.SelectionStart + GetRepeat());
-        private void MoveUp()
+        public void MoveLeft() => SelectionStart = Math.Max(0, SelectionStart - RepeatCount);
+        public void MoveRight() => SelectionStart = Math.Min(Text.Length, SelectionStart + RepeatCount);
+        public void MoveUp()
         {
             int line = GetCurrentLine();
-            int col = _tb.SelectionStart - GetLineStart(line);
-            int target = Math.Max(0, line - GetRepeat());
-            _tb.SelectionStart = Math.Min(GetLineEnd(target), GetLineStart(target) + col);
+            int col = SelectionStart - GetLineStart(line);
+            int target = Math.Max(0, line - RepeatCount);
+            SelectionStart = Math.Min(GetLineEnd(target), GetLineStart(target) + col);
         }
-        private void MoveDown()
+        public void MoveDown()
         {
             int line = GetCurrentLine();
-            int col = _tb.SelectionStart - GetLineStart(line);
-            int target = Math.Min(_tb.GetLineFromCharIndex(_tb.TextLength), line + GetRepeat());
-            _tb.SelectionStart = Math.Min(GetLineEnd(target), GetLineStart(target) + col);
+            int col = SelectionStart - GetLineStart(line);
+            int target = Math.Min(TextBox.GetLineFromCharIndex(Text.Length), line + RepeatCount);
+            SelectionStart = Math.Min(GetLineEnd(target), GetLineStart(target) + col);
         }
-        private void MoveToLineStart() => _tb.SelectionStart = GetLineStart(GetCurrentLine());
-        private void MoveToLineEnd() => _tb.SelectionStart = Math.Max(0, GetLineEnd(GetCurrentLine()));
+        public void MoveToLineStart() => SelectionStart = GetLineStart(GetCurrentLine());
+        public void MoveToLineEnd() => SelectionStart = Math.Max(0, GetLineEnd(GetCurrentLine()));
         private void MoveToFirstNonBlank()
         {
             int s = GetLineStart(GetCurrentLine());
@@ -958,7 +1324,7 @@ namespace MyCrownJewelApp.Pfpad
             if (end > _tb.TextLength) end = _tb.TextLength;
             int len = end - start;
             if (len <= 0) return;
-            _lastYank = _tb.Text.Substring(start, len);
+            LastYank = _tb.Text.Substring(start, len);
             _tb.SelectionStart = start;
             _tb.SelectionLength = len;
             _tb.SelectedText = "";
@@ -968,7 +1334,7 @@ namespace MyCrownJewelApp.Pfpad
             int start = _tb.SelectionStart;
             int end = GetLineEnd(GetCurrentLine());
             if (end <= start) return;
-            _lastYank = _tb.Text.Substring(start, end - start);
+            LastYank = _tb.Text.Substring(start, end - start);
             _tb.SelectionLength = end - start;
             _tb.SelectedText = "";
         }
@@ -1008,32 +1374,32 @@ namespace MyCrownJewelApp.Pfpad
             int start = GetLineStart(line);
             int end = GetLineEnd(endLine) + 1;
             if (end > _tb.TextLength) end = _tb.TextLength;
-            _lastYank = start >= 0 && end > start ? _tb.Text.Substring(start, end - start) : "";
+            LastYank = start >= 0 && end > start ? _tb.Text.Substring(start, end - start) : "";
         }
         private void YankWord()
         {
             int p = _tb.SelectionStart;
             int e = FindNextWord(p);
-            if (e > p) _lastYank = _tb.Text.Substring(p, e - p);
+            if (e > p) LastYank = _tb.Text.Substring(p, e - p);
         }
         private void PasteAfter()
         {
-            if (_lastYank == null) return;
+            if (LastYank == null) return;
             int p = _tb.SelectionStart;
             int count = GetRepeat();
-            var sb = new StringBuilder(_lastYank.Length * count);
-            for (int i = 0; i < count; i++) sb.Append(_lastYank);
+            var sb = new StringBuilder(LastYank.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(LastYank);
             _tb.SelectionStart = p;
             _tb.SelectedText = sb.ToString();
             _tb.SelectionStart = p;
         }
         private void PasteBefore()
         {
-            if (_lastYank == null) return;
+            if (LastYank == null) return;
             int p = _tb.SelectionStart;
             int count = GetRepeat();
-            var sb = new StringBuilder(_lastYank.Length * count);
-            for (int i = 0; i < count; i++) sb.Append(_lastYank);
+            var sb = new StringBuilder(LastYank.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(LastYank);
             _tb.SelectionStart = p;
             _tb.SelectedText = sb.ToString();
             _tb.SelectionStart = p + sb.Length;
@@ -1127,25 +1493,25 @@ namespace MyCrownJewelApp.Pfpad
         private void CutSelection()
         {
             if (_tb.SelectionLength <= 0) return;
-            _lastYank = _tb.SelectedText;
+            LastYank = _tb.SelectedText;
             _tb.SelectedText = "";
         }
         private void YankSelection()
         {
             if (_tb.SelectionLength > 0)
-                _lastYank = _tb.SelectedText;
+                LastYank = _tb.SelectedText;
         }
         private void RecordAction(string action, string? data = null)
         {
-            _lastAction = (action, data, 1);
+            LastAction = (action, data, 1);
             // Create undo point after operations that change text
             CreateUndoPoint();
         }
 
         private void RepeatLast()
         {
-            if (_lastAction == null) return;
-            var (action, data, _) = _lastAction.Value;
+            if (LastAction == null) return;
+            var (action, data, _) = LastAction.Value;
             switch (action)
             {
                 case "delete-char": DeleteChar(); break;
@@ -1247,7 +1613,7 @@ namespace MyCrownJewelApp.Pfpad
         #region Search
         private void FindNext()
         {
-            if (string.IsNullOrEmpty(_lastSearchPattern)) return;
+            if (string.IsNullOrEmpty(LastSearchPattern)) return;
             int start = _tb.SelectionStart + _tb.SelectionLength;
             if (start >= _tb.TextLength) start = 0;
             if (!ExecuteSearch(start, true))
@@ -1259,7 +1625,7 @@ namespace MyCrownJewelApp.Pfpad
 
         private void FindPrevious()
         {
-            if (string.IsNullOrEmpty(_lastSearchPattern)) return;
+            if (string.IsNullOrEmpty(LastSearchPattern)) return;
             int start = _tb.SelectionStart;
             if (!ExecuteSearch(start, false))
             {
@@ -1271,7 +1637,7 @@ namespace MyCrownJewelApp.Pfpad
         #endregion
 
         #region Char handling
-        private static char? KeyToChar(Keys key, bool shift)
+        public static char? KeyToChar(Keys key, bool shift)
         {
             if (key >= Keys.A && key <= Keys.Z)
                 return shift ? (char)('A' + (key - Keys.A)) : (char)('a' + (key - Keys.A));

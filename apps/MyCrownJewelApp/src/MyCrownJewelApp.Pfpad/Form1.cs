@@ -619,7 +619,70 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                     else if (File.Exists(arg))
                     {
                         Debug.WriteLine($"Processing command line file argument: {arg}");
-                        OpenFileInNewTabAsync(arg);
+
+                        // Load file synchronously for CLI args
+                        var fileInfo = new FileInfo(arg);
+                        if (fileInfo.Length > (long)MaxFileSizeMB * 1024 * 1024)
+                        {
+                            ThemedMessageBox.Show($"File is too large to open ({fileInfo.Length / (1024 * 1024)} MB). Maximum size is {MaxFileSizeMB} MB.", "File Too Large", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            continue;
+                        }
+
+                        var syntax = SyntaxDefinition.GetDefinitionForFile(arg);
+                        var doc = new Document
+                        {
+                            FilePath = arg,
+                            Content = "",
+                            IsDirty = false,
+                            ModifiedLines = new HashSet<int>(),
+                            Bookmarks = new HashSet<int>(),
+                            CollapsedRegions = new HashSet<int>(),
+                            SavedHash = "",
+                            LastWriteTime = File.GetLastWriteTimeUtc(arg),
+                            SelectionStart = 0,
+                            SelectionLength = 0,
+                            FirstVisibleLine = 0,
+                            Syntax = syntax,
+                            FileEncoding = null
+                        };
+
+                        // Apply feature degradation for large files
+                        ApplyLargeFileDegradation(doc, fileInfo.Length);
+
+                        documents.Add(doc);
+                        int newIndex = documents.Count - 1;
+                        var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+                        tabControl.TabPages.Add(tabPage);
+                        tabControl.SelectedIndex = newIndex;
+                        activeDocIndex = newIndex;
+                        EnsureSelectedTabVisible();
+
+                        // Load content synchronously
+                        try
+                        {
+                            var (content, encoding) = UnicodeFileHelper.ReadAllTextWithEncoding(arg);
+                            doc.Content = content;
+                            doc.FileEncoding = encoding;
+                            doc.ContainsRtlText = UnicodeFileHelper.ContainsRtlText(content);
+                            doc.SavedHash = ComputeContentHash(content);
+
+                            // Update editor
+                            textEditor.TextChanged -= TextEditor_TextChanged;
+                            textEditor.Text = content;
+                            textEditor.TextChanged += TextEditor_TextChanged;
+                            savedContentHash = doc.SavedHash;
+                            isModified = false;
+
+                            UpdateStatusBar();
+                            CreateIncrementalHighlighter();
+                            UpdateTabTitle(newIndex);
+                            AddToRecentFiles(arg);
+                        }
+                        catch (Exception ex)
+                        {
+                            ThemedMessageBox.Show($"Error loading file: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+
                         hasFileArgs = true;
                     }
                 }
