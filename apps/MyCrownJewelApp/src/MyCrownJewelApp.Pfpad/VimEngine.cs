@@ -119,6 +119,7 @@ namespace MyCrownJewelApp.Pfpad
                 stripped = stripped[1..];
 
             // Handle commands (delegate to engine for complex logic)
+            engine.RepeatCount = RepeatCount;
             bool handled = engine.HandleNormalBuffer(stripped, key, shift);
             if (handled)
             {
