@@ -146,6 +146,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         // Hover docs + signature help
         private readonly HoverTooltipForm _hoverTooltip = new();
         private readonly SignatureHelpForm _signatureHelp = new();
+        private CompletionPopupForm? _completionPopup;
         private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 400 };
         private string _lastHoveredWord = "";
 
@@ -346,14 +347,14 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             string WindowState = "",
             string ActiveConfiguration = "Debug",
             // File size limits (in MB)
-            int MaxFileSizeMB = 100,
+            int MaxFileSizeMB = 500,
             int LargeFileWarningMB = 50,
             int AsyncFileWarningMB = 20,
             // Feature degradation settings
             bool DisableSyntaxHighlightingForLargeFiles = true,
             bool DisableMinimapForLargeFiles = true,
             bool DisableWordWrapForLargeFiles = false,
-            long SyntaxHighlightingThresholdBytes = 50 * 1024 // 50KB
+            long SyntaxHighlightingThresholdBytes = 200 * 1024 // 200KB
         );
 
         private string SettingsFilePath =>
@@ -466,7 +467,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         }
 
         // File size limit accessors
-        public int MaxFileSizeMB { get; private set; } = 100;
+        public int MaxFileSizeMB { get; private set; } = 500;
         public int LargeFileWarningMB { get; private set; } = 50;
         public int AsyncFileWarningMB { get; private set; } = 20;
         public bool DisableSyntaxHighlightingForLargeFiles { get; private set; } = true;
@@ -787,7 +788,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             }
 
             // Initialize folding manager and scan regions
-            _foldingManager = new FoldingManager(textEditor!);
+            _foldingManager = new FoldingManager(textEditor!, _roslynWorkspace);
             textEditor!.FoldingManager = _foldingManager;
             _stickyScroll = new StickyScrollService();
             textEditor!.TextChanged += (s, e) =>
@@ -1093,7 +1094,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   _workspacePanel.CloseRequested += () => ToggleWorkspace();
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
                   _workspacePanel.ScanCompleted += OnWorkspaceScanCompleted;
-                  _workspacePanel.ScanProgressChanged += OnWorkspaceScanProgressChanged;
+                   _workspacePanel.ScanProgressChanged += OnWorkspaceScanProgressChanged;
+                   _workspacePanel.RootChanged += (path) => ActiveTerminal?.SendInput($"cd \"{path}\"{Environment.NewLine}");
  
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
@@ -1102,7 +1104,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
                           OpenFileInNewTab(path);
                   };
-                  _gitPanel.CloseRequested += () => ToggleGitPanel();
+                   _gitPanel.CloseRequested += () => ToggleGitPanel();
+                   _gitPanel.StatusChanged += () => _workspacePanel?.RefreshGitStatusIndicators();
 
                   // Symbol panel
                   _symbolPanel = new SymbolPanel(_symbolIndex);
@@ -2803,6 +2806,65 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 RenameSymbol();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+            }
+            else if (e.Control && e.KeyCode == Keys.Space)
+            {
+                TriggerCompletion();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private async void TriggerCompletion()
+        {
+            if (textEditor is null || !_roslynWorkspace.IsReady || currentSyntax != SyntaxDefinition.CSharp) return;
+
+            try
+            {
+                var completionData = await _roslynWorkspace.GetCompletionAsync(textEditor.SelectionStart);
+                if (completionData != null && completionData.Items.Count > 0)
+                {
+                    ShowCompletionPopup(completionData);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Completion error: {ex.Message}");
+            }
+        }
+
+        private void ShowCompletionPopup(Roslyn.CompletionData completionData)
+        {
+            if (textEditor is null) return;
+
+            // Dismiss existing popup
+            _completionPopup?.Close();
+            _completionPopup = null;
+
+            // Calculate position
+            var charPos = textEditor.GetPositionFromCharIndex(completionData.StartPosition + completionData.Length);
+            var screenPos = textEditor.PointToScreen(charPos);
+            screenPos.Y += (int)textEditor.Font.GetHeight() + 2;
+
+            _completionPopup = new CompletionPopupForm(completionData, screenPos);
+            _completionPopup.ItemSelected += CompletionItemSelected;
+            _completionPopup.Dismissed += () => _completionPopup = null;
+            _completionPopup.Show(this);
+        }
+
+        private void CompletionItemSelected(string insertText)
+        {
+            if (textEditor is null || _completionPopup is null) return;
+
+            // Replace the current completion span with the selected text
+            var data = _completionPopup._completionData;
+            if (data != null)
+            {
+                textEditor.SelectionStart = data.StartPosition;
+                textEditor.SelectionLength = data.Length;
+                textEditor.SelectedText = insertText;
+                textEditor.SelectionStart = data.StartPosition + insertText.Length;
+                textEditor.SelectionLength = 0;
             }
         }
 
@@ -5509,7 +5571,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                                 isModified = false;
 
                                 // Re-highlight and update UI (skip for large files)
-                                if (content.Length < 50000) // 50KB threshold
+                                if (content.Length < 200000) // 200KB threshold
                                 {
                                     CreateIncrementalHighlighter();
                                 }
@@ -5543,16 +5605,26 @@ private void NewWindow_Click(object? sender, EventArgs e)
             int closeIndex = activeDocIndex;
             if (closeIndex >= documents.Count || closeIndex >= tabControl.TabPages.Count) return;
 
-            // Force activeDocIndex to -1 so that SelectedIndexChanged → SwitchToTab does not bail
-            activeDocIndex = -1;
+            // Suspend layout to prevent flicker during tab removal
+            tabControl.SuspendLayout();
 
-            documents.RemoveAt(closeIndex);
-            tabControl.TabPages.RemoveAt(closeIndex);
+            try
+            {
+                // Force activeDocIndex to -1 so that SelectedIndexChanged → SwitchToTab does not bail
+                activeDocIndex = -1;
 
-            // Select another tab
-            int newIndex = closeIndex < documents.Count ? closeIndex : documents.Count - 1;
-            if (newIndex >= 0)
-                SwitchToTab(newIndex);
+                documents.RemoveAt(closeIndex);
+                tabControl.TabPages.RemoveAt(closeIndex);
+
+                // Select another tab
+                int newIndex = closeIndex < documents.Count ? closeIndex : documents.Count - 1;
+                if (newIndex >= 0)
+                    SwitchToTab(newIndex);
+            }
+            finally
+            {
+                tabControl.ResumeLayout();
+            }
         }
 
         // Close a specific tab by index without switching to it first.
@@ -5579,18 +5651,28 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 }
             }
 
-            // Remove document and tab
-            documents.RemoveAt(index);
+            // Suspend layout to prevent flicker during tab removal
+            tabControl.SuspendLayout();
 
-            // Adjust activeDocIndex BEFORE removing the tab page, because
-            // TabPages.RemoveAt can fire SelectedIndexChanged → SwitchToTab → SaveCurrentDocument,
-            // which would use a stale out-of-range activeDocIndex.
-            if (index < activeDocIndex)
-                activeDocIndex--;
-            else if (index == activeDocIndex)
-                activeDocIndex = -1;
+            try
+            {
+                // Remove document and tab
+                documents.RemoveAt(index);
 
-            tabControl.TabPages.RemoveAt(index);
+                // Adjust activeDocIndex BEFORE removing the tab page, because
+                // TabPages.RemoveAt can fire SelectedIndexChanged → SwitchToTab → SaveCurrentDocument,
+                // which would use a stale out-of-range activeDocIndex.
+                if (index < activeDocIndex)
+                    activeDocIndex--;
+                else if (index == activeDocIndex)
+                    activeDocIndex = -1;
+
+                tabControl.TabPages.RemoveAt(index);
+            }
+            finally
+            {
+                tabControl.ResumeLayout();
+            }
         }
 
         // Switch to document at given index (0-based)
@@ -5610,6 +5692,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             UpdateWindowTitle();
             UpdateMarkdownPreview();
             UpdateEncodingLabel();
+            _workspacePanel?.SetActiveFile(doc.FilePath);
         }
 
         // Load document state into editor and UI
@@ -5651,7 +5734,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             textEditor.TextChanged += TextEditor_TextChanged;
 
             // Recreate syntax highlighter based on current syntax (skip for large files)
-            if ((doc.Content?.Length ?? 0) < 50000) // 50KB threshold for highlighting
+            if ((doc.Content?.Length ?? 0) < 200000) // 200KB threshold for highlighting
             {
                 CreateIncrementalHighlighter();
             }
@@ -6705,9 +6788,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             if (results.Count == 0)
             {
+                _workspacePanel?.ClearSearchHighlights();
                 ThemedMessageBox.Show("No results found.", "Find in Files", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            // Highlight files with search results in workspace
+            var resultFiles = results.Select(r => Path.Combine(root, r.File)).Distinct();
+            _workspacePanel?.HighlightSearchResults(resultFiles);
 
             using var dlg = new FindInFilesResultsDialog(results, root);
             dlg.ShowDialog(this);
@@ -6808,6 +6896,31 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 int cursorLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
                 incrementalHighlighter?.InvalidateFrom(cursorLine);
                 RequestVisibleHighlight();
+
+            // Trigger completion on certain characters
+            if (textDelta == 1 && currentSyntax == SyntaxDefinition.CSharp && _roslynWorkspace.IsReady)
+            {
+                char lastChar = textEditor.Text[textEditor.SelectionStart - 1];
+                if (lastChar is '.' or '(' or '[' or '<' or ' ')
+                {
+                    // Delay completion slightly to avoid interfering with typing
+                    BeginInvoke(async () =>
+                    {
+                        try
+                        {
+                            var completionData = await _roslynWorkspace.GetCompletionAsync(textEditor.SelectionStart, lastChar);
+                            if (completionData != null && completionData.Items.Count > 0)
+                            {
+                                ShowCompletionPopup(completionData);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Auto-completion error: {ex.Message}");
+                        }
+                    });
+                }
+            }
             }
             _previousTextLength = textEditor.TextLength;
 
@@ -7270,7 +7383,15 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 return;
             }
 
-            incrementalHighlighter = new IncrementalHighlighter(textEditor, currentSyntax);
+            if (currentSyntax == SyntaxDefinition.CSharp && _roslynWorkspace.IsReady)
+            {
+                var roslynHighlighter = new RoslynHighlighter(_roslynWorkspace);
+                incrementalHighlighter = new IncrementalHighlighter(textEditor, currentSyntax, roslynHighlighter);
+            }
+            else
+            {
+                incrementalHighlighter = new IncrementalHighlighter(textEditor, currentSyntax);
+            }
             incrementalHighlighter.PatchReady += ApplyHighlightPatches;
             RequestVisibleHighlight();
         }
