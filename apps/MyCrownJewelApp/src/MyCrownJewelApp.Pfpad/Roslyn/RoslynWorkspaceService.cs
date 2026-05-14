@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Classification;
+using Microsoft.CodeAnalysis.Completion;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -246,6 +247,35 @@ public sealed class RoslynWorkspaceService : IRoslynWorkspace
             return [.. refs];
         }
         catch { return []; }
+    }
+
+    public async Task<CompletionData?> GetCompletionAsync(int position, char triggerChar = '\0')
+    {
+        if (_disposed || !IsReady) return null;
+        try
+        {
+            var doc = CurrentSolution.GetDocument(CurrentDocumentId);
+            if (doc is null) return null;
+
+            var completionService = CompletionService.GetService(doc);
+            if (completionService is null) return null;
+
+            var trigger = CompletionTrigger.Invoke;
+            var completions = await completionService.GetCompletionsAsync(
+                doc, position, trigger, cancellationToken: _cts.Token);
+
+            if (completions is null || completions.ItemsList.Count == 0) return null;
+
+            var items = completions.ItemsList.Select(item => new CompletionItem(
+                item.DisplayText,
+                item.Properties.TryGetValue("InsertionText", out var insertText) ? insertText : item.DisplayText,
+                item.InlineDescription,
+                item.Tags.FirstOrDefault() ?? "unknown"
+            )).ToList();
+
+            return new CompletionData(items, completions.Span.Start, completions.Span.Length);
+        }
+        catch { return null; }
     }
 
     public string? GetXmlDocumentation(ISymbol symbol)

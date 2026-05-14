@@ -27,6 +27,7 @@ public interface IRoslynWorkspace : IDisposable
     Task<Solution> PrepareRenameAsync(ISymbol symbol, string newName);
     Task<SignatureHelpData?> GetSignatureHelpAsync(int position);
     Task<IReadOnlyList<ReferencedSymbol>> FindReferencesAsync(ISymbol symbol);
+    Task<CompletionData?> GetCompletionAsync(int position, char triggerChar = '\0');
     string? GetXmlDocumentation(ISymbol symbol);
     string GetSymbolDisplayString(ISymbol symbol);
     ISymbol? GetSymbolAtLineColumn(string filePath, int line, int column);
@@ -37,6 +38,19 @@ public sealed record SignatureHelpData(
     IReadOnlyList<string> ParameterNames,
     int CurrentParameter,
     IReadOnlyList<string> ParameterDocumentation
+);
+
+public sealed record CompletionItem(
+    string DisplayText,
+    string InsertText,
+    string? Description,
+    string Kind
+);
+
+public sealed record CompletionData(
+    IReadOnlyList<CompletionItem> Items,
+    int StartPosition,
+    int Length
 );
 
 public enum WorkspaceKind { None, Adhoc, MSBuild }

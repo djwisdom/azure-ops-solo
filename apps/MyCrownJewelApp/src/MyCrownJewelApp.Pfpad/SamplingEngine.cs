@@ -22,7 +22,7 @@ public sealed class SamplingEngine : IDisposable
     private readonly Task _processingTask;
 
     private volatile bool _isRunning;
-    private TimeSpan _samplingInterval = TimeSpan.FromMilliseconds(10); // 100Hz
+    private TimeSpan _samplingInterval = TimeSpan.FromMilliseconds(50); // 20Hz
     private int _mainThreadId;
     private TimeSpan _lastCpuTime;
     private long _sessionStartTicks;
@@ -72,13 +72,17 @@ public sealed class SamplingEngine : IDisposable
         _isRunning = false;
         _cts.Cancel();
 
-        try
+        // Don't block UI thread - let the thread finish asynchronously
+        Task.Run(() =>
         {
-            _samplingThread.Join(1000); // Wait up to 1 second
-        }
-        catch { }
+            try
+            {
+                _samplingThread.Join(1000); // Wait up to 1 second
+            }
+            catch { }
+        });
 
-        // Flush remaining samples
+        // Flush remaining samples immediately
         FlushRingBuffer();
     }
 

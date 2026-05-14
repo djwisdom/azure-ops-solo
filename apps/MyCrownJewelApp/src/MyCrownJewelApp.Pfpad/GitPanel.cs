@@ -776,6 +776,7 @@ internal sealed class GitOperationsPanel : Panel
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
+    public event Action? StatusChanged;
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
@@ -1484,6 +1485,8 @@ internal sealed class GitOperationsPanel : Panel
         }
 
         LayoutControls();
+
+        StatusChanged?.Invoke();
     }
 
     private int FindStatusIndexByPath(string? path)

@@ -4,6 +4,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -46,9 +49,12 @@ public sealed class FoldingManager
 
     public event Action<int, int>? FoldStateChanged;
 
-    public FoldingManager(RichTextBox editor)
+    private readonly Roslyn.RoslynWorkspaceService? _roslynWorkspace;
+
+    public FoldingManager(RichTextBox editor, Roslyn.RoslynWorkspaceService? roslynWorkspace = null)
     {
         _editor = editor;
+        _roslynWorkspace = roslynWorkspace;
     }
 
     public void ScanRegions()
@@ -57,6 +63,177 @@ public sealed class FoldingManager
         string text = _editor.Text;
         if (string.IsNullOrEmpty(text)) return;
 
+        // Try Roslyn-based folding for C# files
+        if (_roslynWorkspace?.IsReady == true && IsCSharpFile())
+        {
+            ScanRegionsWithRoslyn(text);
+        }
+        else
+        {
+            // Fall back to text-based folding
+            ScanRegionsWithText(text);
+        }
+    }
+
+    private bool IsCSharpFile()
+    {
+        // Simple check - could be enhanced to check file extension or syntax
+        return _editor.Text.Contains("using ") || _editor.Text.Contains("namespace ") ||
+               _editor.Text.Contains("class ") || _editor.Text.Contains("void ");
+    }
+
+    private void ScanRegionsWithRoslyn(string text)
+    {
+        try
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(text);
+            var root = syntaxTree.GetRoot();
+
+            // Find folding regions using Roslyn syntax analysis
+            var regions = new List<FoldRegion>();
+
+            // Block-level folding (methods, classes, etc.)
+            foreach (var node in root.DescendantNodes())
+            {
+                if (node is BlockSyntax block)
+                {
+                    var openBrace = block.OpenBraceToken;
+                    var closeBrace = block.CloseBraceToken;
+
+                    if (openBrace.IsMissing || closeBrace.IsMissing) continue;
+
+                    var openLine = GetLineFromPosition(text, openBrace.Span.Start);
+                    var closeLine = GetLineFromPosition(text, closeBrace.Span.End);
+
+                    if (closeLine - openLine > 1) // Only fold if there's content
+                    {
+                        regions.Add(new FoldRegion
+                        {
+                            OpenLine = openLine,
+                            CloseLine = closeLine,
+                            NestLevel = GetNestingLevel(node),
+                            OpenText = GetFoldText(text, openLine),
+                            IsCollapsed = false
+                        });
+                    }
+                }
+                else if (node is NamespaceDeclarationSyntax ns)
+                {
+                    var openLine = GetLineFromPosition(text, ns.Span.Start);
+                    var closeLine = GetLineFromPosition(text, ns.Span.End);
+                    regions.Add(new FoldRegion
+                    {
+                        OpenLine = openLine,
+                        CloseLine = closeLine,
+                        NestLevel = 0,
+                        OpenText = GetFoldText(text, openLine),
+                        IsCollapsed = false
+                    });
+                }
+                else if (node is ClassDeclarationSyntax cls)
+                {
+                    var openLine = GetLineFromPosition(text, cls.Span.Start);
+                    var closeLine = GetLineFromPosition(text, cls.Span.End);
+                    regions.Add(new FoldRegion
+                    {
+                        OpenLine = openLine,
+                        CloseLine = closeLine,
+                        NestLevel = GetNestingLevel(cls),
+                        OpenText = GetFoldText(text, openLine),
+                        IsCollapsed = false
+                    });
+                }
+            }
+
+            // Sort by position and nesting
+            regions.Sort((a, b) =>
+            {
+                int cmp = a.OpenLine.CompareTo(b.OpenLine);
+                return cmp != 0 ? cmp : a.NestLevel.CompareTo(b.NestLevel);
+            });
+
+            _regions.AddRange(regions);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Roslyn folding failed: {ex.Message}");
+            // Fall back to text-based folding
+            ScanRegionsWithText(text);
+        }
+    }
+
+    private int GetLineFromPosition(string text, int position)
+    {
+        int line = 0;
+        for (int i = 0; i < position && i < text.Length; i++)
+        {
+            if (text[i] == '\n') line++;
+        }
+        return line;
+    }
+
+    private int GetNestingLevel(SyntaxNode node)
+    {
+        int level = 0;
+        var current = node.Parent;
+        while (current != null)
+        {
+            if (current is BlockSyntax || current is ClassDeclarationSyntax ||
+                current is MethodDeclarationSyntax || current is PropertyDeclarationSyntax)
+            {
+                level++;
+            }
+            current = current.Parent;
+        }
+        return level;
+    }
+
+    private string GetFoldText(string text, int lineIndex)
+    {
+        var lines = text.Split('\n');
+        if (lineIndex < lines.Length)
+        {
+            return lines[lineIndex].Trim();
+        }
+        return "";
+    }
+
+    private void ScanPreprocessorRegions(string text)
+    {
+        var lines = text.Split('\n');
+        var regionStack = new Stack<int>();
+        int regionDepth = 0;
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string trimmed = lines[i].TrimStart();
+
+            if (trimmed.StartsWith("#endregion"))
+            {
+                regionDepth--;
+                if (regionStack.Count > 0)
+                {
+                    var openLine = regionStack.Pop();
+                    _regions.Add(new FoldRegion
+                    {
+                        OpenLine = openLine,
+                        CloseLine = i,
+                        NestLevel = regionDepth,
+                        OpenText = lines[openLine].Trim(),
+                        IsCollapsed = false
+                    });
+                }
+            }
+            else if (trimmed.StartsWith("#region"))
+            {
+                regionStack.Push(i);
+                regionDepth++;
+            }
+        }
+    }
+
+    private void ScanRegionsWithText(string text)
+    {
         var lines = text.Split('\n');
         var regionStack = new Stack<(int line, int type)>();
         var braceStack = new Stack<int>();
@@ -66,6 +243,7 @@ public sealed class FoldingManager
         {
             string trimmed = lines[i].TrimStart();
 
+            // Preprocessor regions
             if (trimmed.StartsWith("#endregion"))
             {
                 regionDepth--;
@@ -88,6 +266,7 @@ public sealed class FoldingManager
                 regionDepth++;
             }
 
+            // Brace folding
             for (int c = 0; c < lines[i].Length; c++)
             {
                 char ch = lines[i][c];
@@ -100,7 +279,7 @@ public sealed class FoldingManager
                     if (braceStack.Count > 0)
                     {
                         int openLine = braceStack.Pop();
-                        if (openLine < i)
+                        if (i - openLine > 1) // Only fold if there's content
                         {
                             _regions.Add(new FoldRegion
                             {

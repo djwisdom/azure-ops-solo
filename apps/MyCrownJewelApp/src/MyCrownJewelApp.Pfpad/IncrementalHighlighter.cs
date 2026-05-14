@@ -31,6 +31,8 @@ public sealed class IncrementalHighlighter : IDisposable
     private readonly Channel<(int Line, string Text)> _channel;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _worker;
+    private readonly RoslynHighlighter? _roslynHighlighter;
+    private readonly bool _useRoslyn;
     private readonly HashSet<string> _keywords;
     private readonly HashSet<string> _types;
     private readonly HashSet<string> _preprocs;
@@ -53,9 +55,13 @@ public sealed class IncrementalHighlighter : IDisposable
 
     public event Action<List<HighlightPatch>>? PatchReady;
 
-    public IncrementalHighlighter(RichTextBox editor, SyntaxDefinition syntax)
+    public IncrementalHighlighter(RichTextBox editor, SyntaxDefinition syntax, RoslynHighlighter? roslynHighlighter = null)
     {
         _editor = editor;
+        _roslynHighlighter = roslynHighlighter;
+        _useRoslyn = roslynHighlighter != null && syntax == SyntaxDefinition.CSharp;
+
+        // Always initialize collections, even if not used for Roslyn
         _keywords = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
         _types = new HashSet<string>(syntax.Types, StringComparer.Ordinal);
         _preprocs = new HashSet<string>(syntax.Preprocessor, StringComparer.Ordinal);
@@ -175,22 +181,35 @@ public sealed class IncrementalHighlighter : IDisposable
                     }
 
                     int lineNum = batch[i].Line;
-                    var (tokens, nextState) = TokenizeLine(batch[i].Text.AsSpan(), state);
-                    if (tokens.Count == 1 && tokens[0].Type == SyntaxTokenType.Comment && tokens[0].Length == batch[i].Text.Length && tokens[0].StartIndex == 0)
-                    {
-                        bool wasTimeout = state.InComment && tokens[0].Length < batch[i].Text.Length;
-                        if (wasTimeout)
-                        {
-                            consecutiveTimeoutsThisBatch++;
-                            Interlocked.Increment(ref _totalTimeouts);
-                        }
-                    }
-                    if (state.InComment == nextState.InComment && state.InComment)
-                        Interlocked.Increment(ref _stateCycleCount);
-                    else
-                        Interlocked.Exchange(ref _stateCycleCount, 0);
+                    IReadOnlyList<TokenInfo> tokens;
 
-                    state = nextState;
+                    if (_useRoslyn && _roslynHighlighter != null)
+                    {
+                        // For Roslyn, calculate the position in the document
+                        int lineStartPosition = GetLineStartPosition(lineNum);
+                        tokens = await _roslynHighlighter.GetTokensForLineAsync(lineNum, batch[i].Text, lineStartPosition);
+                    }
+                    else
+                    {
+                        var (tokenList, nextState) = TokenizeLine(batch[i].Text.AsSpan(), state);
+                        if (tokenList.Count == 1 && tokenList[0].Type == SyntaxTokenType.Comment && tokenList[0].Length == batch[i].Text.Length && tokenList[0].StartIndex == 0)
+                        {
+                            bool wasTimeout = state.InComment && tokenList[0].Length < batch[i].Text.Length;
+                            if (wasTimeout)
+                            {
+                                consecutiveTimeoutsThisBatch++;
+                                Interlocked.Increment(ref _totalTimeouts);
+                            }
+                        }
+                        if (state.InComment == nextState.InComment && state.InComment)
+                            Interlocked.Increment(ref _stateCycleCount);
+                        else
+                            Interlocked.Exchange(ref _stateCycleCount, 0);
+
+                        state = nextState;
+                        tokens = tokenList;
+                    }
+
                     _cache[lineNum] = new LineTokens(tokens, state);
                     patches.Add(new HighlightPatch(lineNum, tokens));
                 }
@@ -353,13 +372,19 @@ public sealed class IncrementalHighlighter : IDisposable
         tokens.Add(new TokenInfo { Type = type, StartIndex = start, Length = length });
     }
 
+    private int GetLineStartPosition(int lineIndex)
+    {
+        int position = 0;
+        for (int i = 0; i < lineIndex && i < _editor.Lines.Length; i++)
+        {
+            position += _editor.Lines[i].Length + 1; // +1 for newline
+        }
+        return position;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
-        _cts.Cancel();
-        _channel.Writer.TryComplete();
-        try { _worker.Wait(500); } catch { }
-        _cts.Dispose();
         _disposed = true;
     }
 }

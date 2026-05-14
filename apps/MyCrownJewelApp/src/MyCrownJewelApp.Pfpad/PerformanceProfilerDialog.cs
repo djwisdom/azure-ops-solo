@@ -139,19 +139,8 @@ public sealed class PerformanceProfilerDialog : Form
         };
         _consoleTab.Controls.Add(_consoleText);
 
-        // Timeline tab UI
-        var timelineLayout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            RowCount = 3,
-            ColumnCount = 1,
-            BackColor = theme.Background
-        };
-        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
-        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 70)); // Timeline
-        timelineLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
-
-        var timelineButtonPanel = new Panel { Dock = DockStyle.Fill };
+        // Timeline tab UI - make it resizable with SplitContainer
+        var timelineButtonPanel = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = theme.Background };
         _startSamplingBtn = new Button { Text = "Start Sampling", Dock = DockStyle.Left, Width = 120, BackColor = theme.Background, ForeColor = theme.Text };
         _startSamplingBtn.Click += StartSampling;
 
@@ -164,64 +153,79 @@ public sealed class PerformanceProfilerDialog : Form
         timelineButtonPanel.Controls.Add(_startSamplingBtn);
         timelineButtonPanel.Controls.Add(_stopSamplingBtn);
         timelineButtonPanel.Controls.Add(_showOverlayBtn);
-        timelineLayout.Controls.Add(timelineButtonPanel, 0, 0);
+
+        var timelineSplit = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterWidth = 4,
+            Panel1MinSize = 100,
+            Panel2MinSize = 50
+        };
 
         _timelineList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
         _timelineList.Columns.Add("Time", 120);
-        _timelineList.Columns.Add("Thread", 80);
-        _timelineList.Columns.Add("CPU (ms)", 80);
-        _timelineList.Columns.Add("GC Mem (MB)", 100);
-        _timelineList.Columns.Add("Flags", 100);
-        _timelineList.Columns.Add("Stack", 300);
-        timelineLayout.Controls.Add(_timelineList, 1, 0);
+        _timelineList.Columns.Add("UI Thread", 80);
+        _timelineList.Columns.Add("BG Thread", 80);
+        _timelineList.Columns.Add("Total", 80);
+        timelineSplit.Panel1.Controls.Add(_timelineList);
 
-        _timelineSummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        timelineLayout.Controls.Add(_timelineSummary, 2, 0);
+        _timelineSummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text, ScrollBars = ScrollBars.Vertical };
+        timelineSplit.Panel2.Controls.Add(_timelineSummary);
 
-        _timelineTab.Controls.Add(timelineLayout);
+        // Set initial splitter position (70% top, 30% bottom)
+        timelineSplit.SplitterDistance = (int)(timelineSplit.Height * 0.7f);
 
-        // Flame Graph tab UI
-        var flameLayout = new TableLayoutPanel
+        var timelineContainer = new Panel { Dock = DockStyle.Fill };
+        timelineContainer.Controls.Add(timelineSplit);
+        timelineContainer.Controls.Add(timelineButtonPanel);
+
+        _timelineTab.Controls.Add(timelineContainer);
+
+        // Flame Graph tab UI - make it resizable
+        var flameTopSplit = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            RowCount = 2,
-            ColumnCount = 2,
-            BackColor = theme.Background
+            Orientation = Orientation.Vertical,
+            SplitterWidth = 4,
+            Panel1MinSize = 100,
+            Panel2MinSize = 100
         };
-        flameLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 70)); // Charts
-        flameLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
-        flameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70)); // Left column
-        flameLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30)); // Right column
 
         _flameGraphList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
         _flameGraphList.Columns.Add("Function", 250);
         _flameGraphList.Columns.Add("Samples", 80);
         _flameGraphList.Columns.Add("Total Time (ms)", 120);
         _flameGraphList.Columns.Add("Avg Time (ms)", 100);
-        flameLayout.Controls.Add(_flameGraphList, 0, 0);
+        flameTopSplit.Panel1.Controls.Add(_flameGraphList);
 
         _callStackTree = new TreeView { Dock = DockStyle.Fill, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        flameLayout.Controls.Add(_callStackTree, 1, 0);
+        flameTopSplit.Panel2.Controls.Add(_callStackTree);
 
-        _flameSummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        flameLayout.Controls.Add(_flameSummary, 0, 1);
-        flameLayout.SetColumnSpan(_flameSummary, 2);
+        // Set initial splitter position (70% left, 30% right)
+        flameTopSplit.SplitterDistance = (int)(flameTopSplit.Width * 0.7f);
 
-        _flameGraphTab.Controls.Add(flameLayout);
-
-        // Memory tab UI
-        var memLayout = new TableLayoutPanel
+        var flameMainSplit = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            RowCount = 3,
-            ColumnCount = 1,
-            BackColor = theme.Background
+            Orientation = Orientation.Horizontal,
+            SplitterWidth = 4,
+            Panel1MinSize = 100,
+            Panel2MinSize = 50
         };
-        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // Buttons
-        memLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 60)); // List
-        memLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 80)); // Summary
 
-        var memButtonPanel = new Panel { Dock = DockStyle.Fill };
+        flameMainSplit.Panel1.Controls.Add(flameTopSplit);
+
+        _flameSummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text, ScrollBars = ScrollBars.Vertical };
+        flameMainSplit.Panel2.Controls.Add(_flameSummary);
+
+        // Set initial splitter position (70% top, 30% bottom)
+        flameMainSplit.SplitterDistance = (int)(flameMainSplit.Height * 0.7f);
+
+        _flameGraphTab.Controls.Add(flameMainSplit);
+
+        // Memory tab UI - make it resizable
+        var memButtonPanel = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = theme.Background };
         _takeSnapshotBtn = new Button { Text = "Take Snapshot", Dock = DockStyle.Left, Width = 120, BackColor = theme.Background, ForeColor = theme.Text };
         _takeSnapshotBtn.Click += TakeMemorySnapshot;
         memButtonPanel.Controls.Add(_takeSnapshotBtn);
@@ -230,19 +234,33 @@ public sealed class PerformanceProfilerDialog : Form
         _compareSnapshotsBtn.Click += CompareSnapshots;
         memButtonPanel.Controls.Add(_compareSnapshotsBtn);
 
-        memLayout.Controls.Add(memButtonPanel, 0, 0);
+        var memSplit = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Horizontal,
+            SplitterWidth = 4,
+            Panel1MinSize = 100,
+            Panel2MinSize = 50
+        };
 
         _memoryList = new ListView { Dock = DockStyle.Fill, View = View.Details, BackColor = theme.EditorBackground, ForeColor = theme.Text };
         _memoryList.Columns.Add("Time", 100);
         _memoryList.Columns.Add("Total (MB)", 100);
         _memoryList.Columns.Add("GC (MB)", 100);
         _memoryList.Columns.Add("Details", 300);
-        memLayout.Controls.Add(_memoryList, 0, 1);
+        memSplit.Panel1.Controls.Add(_memoryList);
 
-        _memorySummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text };
-        memLayout.Controls.Add(_memorySummary, 0, 2);
+        _memorySummary = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, BackColor = theme.EditorBackground, ForeColor = theme.Text, ScrollBars = ScrollBars.Vertical };
+        memSplit.Panel2.Controls.Add(_memorySummary);
 
-        _memoryTab.Controls.Add(memLayout);
+        // Set initial splitter position (70% top, 30% bottom)
+        memSplit.SplitterDistance = (int)(memSplit.Height * 0.7f);
+
+        var memContainer = new Panel { Dock = DockStyle.Fill };
+        memContainer.Controls.Add(memSplit);
+        memContainer.Controls.Add(memButtonPanel);
+
+        _memoryTab.Controls.Add(memContainer);
 
         // Start logging
         Log("Performance Profiler initialized");
@@ -261,18 +279,34 @@ public sealed class PerformanceProfilerDialog : Form
 #endif
     }
 
-    private void StopSampling(object? sender, EventArgs e)
+    private async void StopSampling(object? sender, EventArgs e)
     {
 #if PROFILING
         if (_samplingEngine != null)
         {
             _samplingEngine.StopSampling();
+
             _startSamplingBtn.Enabled = true;
             _stopSamplingBtn.Enabled = false;
             Log("Sampling stopped");
 
-            // Load and analyze the log file
-            LoadAndAnalyzeSamples();
+            // Ensure the log file is properly closed before reading (async to avoid blocking UI)
+            try
+            {
+                if (_binaryLogger != null)
+                {
+                    await _binaryLogger.FlushAsync();
+                    string? logFilePath = _binaryLogger.CurrentFilePath; // Store path before closing
+                    _binaryLogger.CloseCurrentFile();
+
+                    // Load and analyze the log file
+                    LoadAndAnalyzeSamples(logFilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Error closing log file: {ex.Message}");
+            }
         }
 #endif
     }
@@ -295,32 +329,297 @@ public sealed class PerformanceProfilerDialog : Form
 #endif
     }
 
-    private void LoadAndAnalyzeSamples()
+    private void LoadAndAnalyzeSamples(string? logFilePath = null)
     {
 #if PROFILING
-        if (_binaryLogger?.CurrentFilePath == null) return;
+        if (logFilePath == null && _binaryLogger?.CurrentFilePath == null) return;
+        logFilePath ??= _binaryLogger?.CurrentFilePath;
+        if (logFilePath == null) return;
 
         try
         {
-            // In a real implementation, you would read the binary log file
-            // For now, show a placeholder message
-            _timelineSummary.Text = $"Log file created: {_binaryLogger.CurrentFilePath}\r\n\r\n" +
-                                   "To analyze the binary log file, you would implement a log reader\r\n" +
-                                   "that deserializes PerformanceSample structs and builds\r\n" +
-                                   "timeline views, flame graphs, and statistical summaries.\r\n\r\n" +
-                                   "This would include:\r\n" +
-                                   "- Timeline visualization of thread activity\r\n" +
-                                   "- Flame graph construction from stack traces\r\n" +
-                                   "- Statistical analysis of performance metrics\r\n" +
-                                   "- Identification of performance bottlenecks";
+            // Read and analyze the JSONL log file
+            var samples = ReadPerformanceSamples(logFilePath);
+            if (samples.Count == 0)
+            {
+                _timelineSummary.Text = "No performance samples found in log file.";
+                return;
+            }
 
-            Log($"Log analysis completed: {_binaryLogger.CurrentFilePath}");
+            // Analyze the samples
+            var analysis = AnalyzeSamples(samples);
+
+            // Update UI with results
+            UpdateTimelineView(samples, analysis);
+            UpdateFlameGraphView(samples, analysis);
+            UpdateStatistics(analysis);
+
+            Log($"Log analysis completed: {samples.Count} samples processed from {logFilePath}");
         }
         catch (Exception ex)
         {
             Log($"Error analyzing samples: {ex.Message}");
+            _timelineSummary.Text = $"Error analyzing log file: {ex.Message}";
         }
 #endif
+    }
+
+    private List<PerformanceSample> ReadPerformanceSamples(string filePath)
+    {
+        var samples = new List<PerformanceSample>();
+        try
+        {
+            using var reader = new StreamReader(filePath);
+            string? line;
+            bool headerRead = false;
+
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                try
+                {
+                    // Parse JSON line
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(line);
+                    var root = jsonDoc.RootElement;
+
+                    // Skip header
+                    if (!headerRead && root.TryGetProperty("Header", out _))
+                    {
+                        headerRead = true;
+                        continue;
+                    }
+
+                    // Parse sample
+                    var sample = new PerformanceSample
+                    {
+                        Timestamp = root.GetProperty("Timestamp").GetInt64(),
+                        ThreadId = root.GetProperty("ThreadId").GetInt32(),
+                        IsUiThread = root.GetProperty("IsUiThread").GetBoolean(),
+                        CpuTimeTicks = root.GetProperty("CpuTimeTicks").GetInt64(),
+                        WallTimeTicks = root.GetProperty("WallTimeTicks").GetInt64(),
+                        GcCollectionCount = root.GetProperty("GcCollectionCount").GetInt32(),
+                        GcMemoryBytes = root.GetProperty("GcMemoryBytes").GetInt64(),
+                        ManagedThreadId = root.GetProperty("ManagedThreadId").GetInt32(),
+                        ActivityId = root.GetProperty("ActivityId").GetUInt32(),
+                        Flags = (PerformanceSample.SampleFlags)root.GetProperty("Flags").GetInt32()
+                    };
+
+                    // Parse stack trace
+                    if (root.TryGetProperty("StackTrace", out var stackTraceElement))
+                    {
+                        var stackLines = stackTraceElement.GetString()?.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries)
+                                                        ?? Array.Empty<string>();
+                        sample.StackTraceFrames = stackLines;
+                        sample.StackFrameCount = stackLines.Length;
+                    }
+                    else
+                    {
+                        sample.StackTraceFrames = Array.Empty<string>();
+                        sample.StackFrameCount = 0;
+                    }
+
+                    samples.Add(sample);
+                }
+                catch (Exception ex)
+                {
+                    Log($"Error parsing sample: {ex.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Error reading log file: {ex.Message}");
+        }
+
+        return samples;
+    }
+
+    private class SampleAnalysis
+    {
+        public long StartTimestamp { get; set; }
+        public long EndTimestamp { get; set; }
+        public TimeSpan Duration { get; set; }
+        public int TotalSamples { get; set; }
+        public int UniqueThreads { get; set; }
+        public Dictionary<string, int> MethodCounts { get; } = new();
+        public Dictionary<string, FlameNode> FlameGraph { get; } = new();
+        public List<(long Timestamp, int ThreadId, string TopMethod)> TimelineEvents { get; } = new();
+    }
+
+    private SampleAnalysis AnalyzeSamples(List<PerformanceSample> samples)
+    {
+        var analysis = new SampleAnalysis();
+
+        if (samples.Count == 0) return analysis;
+
+        analysis.StartTimestamp = samples.Min(s => s.Timestamp);
+        analysis.EndTimestamp = samples.Max(s => s.Timestamp);
+        analysis.TotalSamples = samples.Count;
+        analysis.UniqueThreads = samples.Select(s => s.ManagedThreadId).Distinct().Count();
+
+        // Convert timestamps to TimeSpan for duration calculation
+        double ticksPerSecond = Stopwatch.Frequency;
+        analysis.Duration = TimeSpan.FromSeconds((analysis.EndTimestamp - analysis.StartTimestamp) / ticksPerSecond);
+
+        // Analyze methods and build flame graph
+        foreach (var sample in samples)
+        {
+            // Extract top method for timeline
+            string topMethod = sample.StackFrameCount > 0 ? sample.StackTraceFrames[0] : "<unknown>";
+            analysis.TimelineEvents.Add((sample.Timestamp, sample.ManagedThreadId, topMethod));
+
+            // Count method occurrences
+            foreach (var frame in sample.StackTraceFrames)
+            {
+                analysis.MethodCounts[frame] = analysis.MethodCounts.GetValueOrDefault(frame, 0) + 1;
+            }
+
+            // Build flame graph
+            BuildFlameNode(analysis.FlameGraph, sample.StackTraceFrames, 0);
+        }
+
+        return analysis;
+    }
+
+    private void BuildFlameNode(Dictionary<string, FlameNode> nodes, string[] stackTrace, int depth)
+    {
+        if (depth >= stackTrace.Length) return;
+
+        string method = stackTrace[depth];
+        if (!nodes.TryGetValue(method, out var node))
+        {
+            node = new FlameNode { Name = method, Count = 0 };
+            nodes[method] = node;
+        }
+
+        node.Count++;
+        BuildFlameNode(node.Children, stackTrace, depth + 1);
+    }
+
+    private void UpdateTimelineView(List<PerformanceSample> samples, SampleAnalysis analysis)
+    {
+        _timelineList.Items.Clear();
+
+        // Group samples by time windows (e.g., 100ms windows)
+        long ticksPerWindow = Stopwatch.Frequency / 10; // 100ms windows
+        var windows = new Dictionary<long, List<PerformanceSample>>();
+
+        foreach (var sample in samples)
+        {
+            long windowKey = sample.Timestamp / ticksPerWindow;
+            if (!windows.TryGetValue(windowKey, out var windowSamples))
+            {
+                windowSamples = new List<PerformanceSample>();
+                windows[windowKey] = windowSamples;
+            }
+            windowSamples.Add(sample);
+        }
+
+        foreach (var kvp in windows.OrderBy(kvp => kvp.Key))
+        {
+            long windowStart = kvp.Key * ticksPerWindow;
+            double timeSeconds = (windowStart - analysis.StartTimestamp) / (double)Stopwatch.Frequency;
+
+            var samplesInWindow = kvp.Value;
+            int uiThreadSamples = samplesInWindow.Count(s => s.IsUiThread);
+            int backgroundThreadSamples = samplesInWindow.Count - uiThreadSamples;
+
+            var item = new ListViewItem(new[] {
+                $"{timeSeconds:F2}s",
+                uiThreadSamples.ToString(),
+                backgroundThreadSamples.ToString(),
+                samplesInWindow.Count.ToString()
+            });
+            _timelineList.Items.Add(item);
+        }
+
+        _timelineSummary.Text = $"Performance Analysis Summary:\r\n" +
+                               $"Duration: {analysis.Duration.TotalSeconds:F2} seconds\r\n" +
+                               $"Total Samples: {analysis.TotalSamples}\r\n" +
+                               $"Unique Threads: {analysis.UniqueThreads}\r\n" +
+                               $"Samples/Second: {analysis.TotalSamples / analysis.Duration.TotalSeconds:F1}\r\n" +
+                               $"\r\nTop Methods:\r\n" +
+                               string.Join("\r\n", analysis.MethodCounts
+                                   .OrderByDescending(kvp => kvp.Value)
+                                   .Take(10)
+                                   .Select(kvp => $"{kvp.Key}: {kvp.Value} samples"));
+    }
+
+    private void UpdateFlameGraphView(List<PerformanceSample> samples, SampleAnalysis analysis)
+    {
+        _flameGraphList.Items.Clear();
+        _callStackTree.Nodes.Clear();
+
+        // Build tree view of flame graph
+        var rootNode = _callStackTree.Nodes.Add("Root", "Call Stacks");
+
+        foreach (var kvp in analysis.FlameGraph.OrderByDescending(kvp => kvp.Value.Count))
+        {
+            var methodNode = rootNode.Nodes.Add(kvp.Key, $"{kvp.Key} ({kvp.Value.Count})");
+            AddFlameChildren(methodNode, kvp.Value.Children);
+        }
+
+        _callStackTree.ExpandAll();
+
+        // Build list view of top methods
+        foreach (var kvp in analysis.MethodCounts.OrderByDescending(kvp => kvp.Value))
+        {
+            var item = new ListViewItem(new[] { kvp.Key, kvp.Value.ToString() });
+            _flameGraphList.Items.Add(item);
+        }
+
+        _flameSummary.Text = $"Flame Graph Analysis:\r\n" +
+                            $"Total Methods: {analysis.MethodCounts.Count}\r\n" +
+                            $"Max Stack Depth: {GetMaxDepth(analysis.FlameGraph)}\r\n" +
+                            $"\r\nHot Path (most frequent call stack):\r\n" +
+                            GetHottestPath(analysis.FlameGraph);
+    }
+
+    private void AddFlameChildren(TreeNode parent, Dictionary<string, FlameNode> children)
+    {
+        foreach (var kvp in children.OrderByDescending(kvp => kvp.Value.Count))
+        {
+            var childNode = parent.Nodes.Add(kvp.Key, $"{kvp.Key} ({kvp.Value.Count})");
+            AddFlameChildren(childNode, kvp.Value.Children);
+        }
+    }
+
+    private int GetMaxDepth(Dictionary<string, FlameNode> nodes)
+    {
+        if (nodes.Count == 0) return 0;
+        return 1 + nodes.Values.Max(node => GetMaxDepth(node.Children));
+    }
+
+    private string GetHottestPath(Dictionary<string, FlameNode> nodes)
+    {
+        if (nodes.Count == 0) return "No data";
+
+        var hottest = nodes.OrderByDescending(kvp => kvp.Value.Count).First();
+        var path = new List<string> { hottest.Key };
+        var currentChildren = hottest.Value.Children;
+
+        while (currentChildren.Count > 0)
+        {
+            var next = currentChildren.OrderByDescending(kvp => kvp.Value.Count).First();
+            path.Add(next.Key);
+            currentChildren = next.Value.Children;
+        }
+
+        return string.Join(" → ", path);
+    }
+
+    private void UpdateStatistics(SampleAnalysis analysis)
+    {
+        // Could add more statistical views here
+        Log($"Analysis complete: {analysis.TotalSamples} samples, {analysis.MethodCounts.Count} methods");
+    }
+
+    private class FlameNode
+    {
+        public string Name { get; set; } = "";
+        public int Count { get; set; }
+        public Dictionary<string, FlameNode> Children { get; } = new();
     }
 
     private void ClearPerformanceData()

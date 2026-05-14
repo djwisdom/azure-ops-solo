@@ -32,8 +32,8 @@ public sealed class DebugOverlay : Form
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;
-        BackColor = Color.FromArgb(180, 0, 0, 0); // Semi-transparent black
-        TransparencyKey = Color.FromArgb(0, 255, 0, 0); // Use magenta as transparent
+        BackColor = Color.Black;
+        Opacity = 0.8; // 80% opacity for semi-transparent overlay
         Size = new Size(300, 80);
         StartPosition = FormStartPosition.Manual;
 
@@ -47,7 +47,7 @@ public sealed class DebugOverlay : Form
         _fpsLabel = new Label
         {
             ForeColor = Color.Lime,
-            BackColor = Color.Transparent,
+            BackColor = Color.Black,
             Font = new Font("Consolas", 10, FontStyle.Bold),
             AutoSize = true,
             Location = new Point(10, 5)
@@ -56,7 +56,7 @@ public sealed class DebugOverlay : Form
         _memoryLabel = new Label
         {
             ForeColor = Color.Cyan,
-            BackColor = Color.Transparent,
+            BackColor = Color.Black,
             Font = new Font("Consolas", 9),
             AutoSize = true,
             Location = new Point(10, 25)
@@ -65,7 +65,7 @@ public sealed class DebugOverlay : Form
         _gcLabel = new Label
         {
             ForeColor = Color.Yellow,
-            BackColor = Color.Transparent,
+            BackColor = Color.Black,
             Font = new Font("Consolas", 9),
             AutoSize = true,
             Location = new Point(10, 45)

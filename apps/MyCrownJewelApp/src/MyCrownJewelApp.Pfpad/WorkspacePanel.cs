@@ -57,6 +57,9 @@ internal sealed class WorkspacePanel : UserControl
     private FileSystemWatcher? _fileWatcher;
     private string _searchFilter = "";
     private TreeNode? _hoveredNode;
+    private string? _activeFilePath;
+    private HashSet<string>? _searchResultFiles;
+    private Dictionary<string, GitStatusType>? _gitStatusCache;
     private readonly HashSet<TreeNode> _multiSelectedNodes = new();
     private readonly HashSet<string> _favorites = new(StringComparer.OrdinalIgnoreCase);
     private TreeNode? _favoritesRoot;
@@ -65,7 +68,23 @@ internal sealed class WorkspacePanel : UserControl
     public event Action? CloseRequested;
     public event Action? ScanStarted;
     public event Action? ScanCompleted;
+#pragma warning disable CS0067 // Event is never used - kept for future extensibility
     public event Action<string>? ScanProgressChanged;
+#pragma warning restore CS0067
+    public event Action<string?>? ActiveFileChanged;
+    public event Action<string>? RootChanged;
+
+    public void HighlightSearchResults(IEnumerable<string> filePaths)
+    {
+        _searchResultFiles = new HashSet<string>(filePaths, StringComparer.OrdinalIgnoreCase);
+        RefreshTreeHighlight();
+    }
+
+    public void ClearSearchHighlights()
+    {
+        _searchResultFiles = null;
+        RefreshTreeHighlight();
+    }
 
     public string RootPath => _rootPath;
     public bool IsScanning => _scanCts is not null;
@@ -323,12 +342,23 @@ internal sealed class WorkspacePanel : UserControl
         var copyPathItem = new ToolStripMenuItem("Copy Path", null, (s, e) => CopyPath());
         var copyRelativePathItem = new ToolStripMenuItem("Copy Relative Path", null, (s, e) => CopyRelativePath());
 
+        // Git operations submenu
+        var gitMenu = new ToolStripMenuItem("Git");
+        gitMenu.DropDownItems.AddRange(new ToolStripItem[] {
+            new ToolStripMenuItem("Stage", null, (s, e) => GitStageSelected()),
+            new ToolStripMenuItem("Unstage", null, (s, e) => GitUnstageSelected()),
+            new ToolStripMenuItem("Discard Changes", null, (s, e) => GitDiscardSelected()),
+            new ToolStripSeparator(),
+            new ToolStripMenuItem("Diff", null, (s, e) => GitDiffSelected())
+        });
+
         _fileContextMenu.Items.AddRange(new ToolStripItem[] {
             openItem, openToSideItem, new ToolStripSeparator(),
             openFolderItem, revealInExplorerItem, new ToolStripSeparator(),
             new ToolStripMenuItem("New File...", null, (s, e) => CreateNewFile()),
             new ToolStripMenuItem("New Folder...", null, (s, e) => CreateNewFolder()),
             new ToolStripSeparator(),
+            gitMenu, new ToolStripSeparator(),
             copyPathItem, copyRelativePathItem, new ToolStripSeparator(),
             new ToolStripMenuItem("Add to Favorites", null, (s, e) => AddToFavorites()),
             new ToolStripSeparator(),
@@ -406,6 +436,7 @@ internal sealed class WorkspacePanel : UserControl
         _fileWatcher?.Dispose();
         _fileWatcher = null;
         _rootPath = path;
+        RootChanged?.Invoke(path);
         _workspaceTitle.Text = !string.IsNullOrEmpty(path) ? Path.GetFileName(path) ?? "Workspace" : "Explorer";
         _tree.Nodes.Clear();
         if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
@@ -480,7 +511,8 @@ internal sealed class WorkspacePanel : UserControl
     {
         foreach (TreeNode node in nodes)
         {
-            if (node.Tag is string path && node.IsExpanded)
+            var path = GetNodePath(node);
+            if (path != null && node.IsExpanded)
             {
                 _expandedPaths.Add(path);
                 CollectExpanded(node.Nodes);
@@ -497,7 +529,8 @@ internal sealed class WorkspacePanel : UserControl
     {
         foreach (TreeNode node in nodes)
         {
-            if (node.Tag is string path && _expandedPaths.Contains(path))
+            var path = GetNodePath(node);
+            if (path != null && _expandedPaths.Contains(path))
             {
                 node.Expand();
                 RestoreExpanded(node.Nodes);
@@ -517,7 +550,8 @@ internal sealed class WorkspacePanel : UserControl
 
             foreach (TreeNode child in node.Nodes)
             {
-                if (child.Tag is string childPath)
+                var childPath = GetNodePath(child);
+                if (childPath != null)
                 {
                     if (Directory.Exists(childPath))
                         currentDirs.Add(childPath);
@@ -634,9 +668,10 @@ internal sealed class WorkspacePanel : UserControl
 
 private TreeNode CreateDirectoryNode(string dirPath)
     {
+        var gitStatus = GetDirectoryGitStatusType(dirPath);
         var node = new TreeNode(Path.GetFileName(dirPath))
         {
-            Tag = dirPath,
+            Tag = new FileNodeTag(dirPath, gitStatus),
             ImageIndex = FileIconProvider.FolderIconIndex,
             SelectedImageIndex = FileIconProvider.FolderIconIndex
         };
@@ -646,7 +681,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void EnsureNodePopulated(TreeNode node)
     {
-        if (node.Tag is not string path || !Directory.Exists(path)) return;
+        var path = GetNodePath(node);
+        if (path == null || !Directory.Exists(path)) return;
         if (node.Nodes.Count == 1 && node.Nodes[0].Text == "Loading...")
         {
             node.Nodes.Clear();
@@ -658,10 +694,9 @@ private TreeNode CreateDirectoryNode(string dirPath)
     {
         int iconIdx = FileIconProvider.GetIconIndex(filePath);
         string fileName = Path.GetFileName(filePath);
-        string gitStatus = GetGitStatusIndicator(filePath);
-        return new TreeNode(fileName + gitStatus)
+        return new TreeNode(fileName)
         {
-            Tag = filePath,
+            Tag = new FileNodeTag(filePath, GitStatusType.None), // Initial status, will be updated later
             ImageIndex = iconIdx,
             SelectedImageIndex = iconIdx
         };
@@ -670,7 +705,9 @@ private TreeNode CreateDirectoryNode(string dirPath)
     private void Tree_BeforeExpand(object? sender, TreeViewCancelEventArgs e)
     {
         var node = e.Node;
-        if (node?.Tag is not string path || !Directory.Exists(path)) return;
+        if (node == null) return;
+        var path = GetNodePath(node);
+        if (path == null || !Directory.Exists(path)) return;
 
         if (node.Nodes.Count == 1 && node.Nodes[0].Text == "Loading...")
         {
@@ -791,6 +828,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             var dirs = new List<string>();
             var files = new List<string>();
 
+            // Collect directories and files
             foreach (var d in Directory.EnumerateDirectories(dirPath))
             {
                 if (token.IsCancellationRequested) return;
@@ -810,6 +848,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             dirs.Sort(StringComparer.OrdinalIgnoreCase);
             files.Sort(StringComparer.OrdinalIgnoreCase);
 
+            // Sequential processing (parallel would be too complex with the existing structure)
             foreach (var d in dirs)
             {
                 if (token.IsCancellationRequested) return;
@@ -818,17 +857,13 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 CollectDir(child, d, token, ref progressCount);
             }
 
-            entry.Files.AddRange(files);
-
-            progressCount++;
-            if (progressCount % 25 == 0 && IsHandleCreated)
+            foreach (var f in files)
             {
-                int pct = Math.Min(progressCount, 100);
-                BeginInvoke(new Action(() =>
-                    ScanProgressChanged?.Invoke($"Scanning ({pct}%)...")));
+                entry.Files.Add(f);
             }
         }
-        catch { }
+        catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
     }
 
     private void ApplyNodes(TreeNode parentNode, DirEntry entry)
@@ -1056,6 +1091,26 @@ private TreeNode CreateDirectoryNode(string dirPath)
             OpenToSide();
             e.Handled = true;
         }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.S)
+        {
+            GitStageSelected();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.U)
+        {
+            GitUnstageSelected();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && (Control.ModifierKeys & Keys.Shift) == Keys.Shift && e.KeyCode == Keys.D)
+        {
+            GitDiscardSelected();
+            e.Handled = true;
+        }
+        else if ((Control.ModifierKeys & Keys.Control) == Keys.Control && e.KeyCode == Keys.D)
+        {
+            GitDiffSelected();
+            e.Handled = true;
+        }
     }
 
     private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
@@ -1104,7 +1159,21 @@ private TreeNode CreateDirectoryNode(string dirPath)
             e.Graphics.DrawImage(FileIconProvider.ImageList.Images[node.ImageIndex], iconBounds);
         }
 
-        // Text
+        // Git status indicator
+        GitStatusType gitStatus = GitStatusType.None;
+        if (node.Tag is FileNodeTag fileTag)
+        {
+            gitStatus = fileTag.GitStatus;
+        }
+
+        // Calculate text bounds accounting for status indicator
+        int statusIndicatorSize = gitStatus != GitStatusType.None ? 8 : 0;
+        int statusIndicatorMargin = gitStatus != GitStatusType.None ? 6 : 0;
+
+        var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 22 + statusIndicatorSize + statusIndicatorMargin, bounds.Y + 2,
+                                       bounds.Width - (node.Level * _tree.Indent) - 22 - statusIndicatorSize - statusIndicatorMargin, bounds.Height - 4);
+
+        // Text color
         Color textColor;
         if (node.BackColor != Color.Transparent) // Search highlight
         {
@@ -1115,11 +1184,27 @@ private TreeNode CreateDirectoryNode(string dirPath)
             textColor = theme.Text;
         }
 
-        var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 22, bounds.Y + 2,
-                                       bounds.Width - (node.Level * _tree.Indent) - 22, bounds.Height - 4);
-
         TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textBounds, textColor,
                              TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
+
+        // Draw Git status indicator
+        if (gitStatus != GitStatusType.None)
+        {
+            Color statusColor = GetGitStatusColor(gitStatus, theme);
+            int indicatorX = bounds.X + (node.Level * _tree.Indent) + 22;
+            int indicatorY = bounds.Y + (bounds.Height / 2) - (statusIndicatorSize / 2);
+
+            using (var brush = new SolidBrush(statusColor))
+            {
+                e.Graphics.FillEllipse(brush, indicatorX, indicatorY, statusIndicatorSize, statusIndicatorSize);
+            }
+
+            // Add border for better visibility
+            using (var pen = new Pen(Color.FromArgb(128, statusColor), 1))
+            {
+                e.Graphics.DrawEllipse(pen, indicatorX, indicatorY, statusIndicatorSize, statusIndicatorSize);
+            }
+        }
     }
 
     private void Tree_MouseDown(object? sender, MouseEventArgs e)
@@ -1188,7 +1273,13 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void OpenNode(TreeNode node)
     {
-        if (node.Tag is string path)
+        string? path = null;
+        if (node.Tag is FileNodeTag fileTag)
+            path = fileTag.FilePath;
+        else if (node.Tag is string strPath)
+            path = strPath;
+
+        if (path != null)
         {
             if (File.Exists(path))
                 FileOpenRequested?.Invoke(path);
@@ -1204,7 +1295,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void OpenContainingFolder()
     {
-        if (_tree.SelectedNode?.Tag is string path)
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null)
         {
             string dir = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? "";
             if (!string.IsNullOrEmpty(dir))
@@ -1220,7 +1312,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void CopyPath()
     {
-        if (_tree.SelectedNode?.Tag is string path)
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null)
         {
             try { Clipboard.SetText(path); }
             catch { }
@@ -1268,7 +1361,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private string? GetSelectedDirectory()
     {
-        if (_tree.SelectedNode?.Tag is string path)
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null)
         {
             if (System.IO.Directory.Exists(path)) return path;
             if (System.IO.File.Exists(path)) return System.IO.Path.GetDirectoryName(path);
@@ -1396,7 +1490,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void OpenToSide()
     {
-        if (_tree.SelectedNode?.Tag is string path && File.Exists(path))
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null && File.Exists(path))
         {
             FileOpenRequested?.Invoke(path); // For now, just open normally - tab system handles "to side"
         }
@@ -1404,7 +1499,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void RevealInExplorer()
     {
-        if (_tree.SelectedNode?.Tag is string path)
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null)
         {
             string dir = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? "";
             if (!string.IsNullOrEmpty(dir))
@@ -1420,7 +1516,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void CopyRelativePath()
     {
-        if (_tree.SelectedNode?.Tag is string path && !string.IsNullOrEmpty(_rootPath))
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null && !string.IsNullOrEmpty(_rootPath))
         {
             try
             {
@@ -1441,7 +1538,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void DeleteSelected()
     {
-        if (_tree.SelectedNode?.Tag is string path)
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null)
         {
             string itemType = Directory.Exists(path) ? "folder" : "file";
             string itemName = Path.GetFileName(path);
@@ -1474,9 +1572,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void DeleteSelectedItems()
     {
-        if (_multiSelectedNodes.Count == 0) return;
-
-        var items = _multiSelectedNodes.Select(n => n.Tag as string).Where(p => p != null).ToList();
+        var items = GetSelectedFilePaths();
         if (items.Count == 0) return;
 
         string itemType = items.Count == 1 ? (Directory.Exists(items[0]) ? "folder" : "file") : "items";
@@ -1525,7 +1621,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void AddToFavorites()
     {
-        if (_tree.SelectedNode?.Tag is string path)
+        var path = GetNodePath(_tree.SelectedNode);
+        if (path != null)
         {
             if (_favorites.Add(path))
             {
@@ -1570,9 +1667,10 @@ private TreeNode CreateDirectoryNode(string dirPath)
     {
         string name = Path.GetFileName(path);
         int iconIdx = FileIconProvider.GetIconIndex(path);
+        GitStatusType gitStatus = Directory.Exists(path) ? GetDirectoryGitStatusType(path) : GetGitStatusType(path);
         var node = new TreeNode(name)
         {
-            Tag = path,
+            Tag = new FileNodeTag(path, gitStatus),
             ImageIndex = iconIdx,
             SelectedImageIndex = iconIdx
         };
@@ -1635,9 +1733,16 @@ private TreeNode CreateDirectoryNode(string dirPath)
         }
     }
 
-    private string GetGitStatusIndicator(string filePath)
+    private GitStatusType GetGitStatusType(string filePath)
     {
-        if (_git?.IsActive != true) return "";
+        // Use cached status if available
+        if (_gitStatusCache != null && _gitStatusCache.TryGetValue(filePath, out var cachedStatus))
+        {
+            return cachedStatus;
+        }
+
+        // Fallback to direct calculation if cache is not available
+        if (_git?.IsActive != true) return GitStatusType.None;
 
         try
         {
@@ -1647,27 +1752,27 @@ private TreeNode CreateDirectoryNode(string dirPath)
             var stagedEntry = staged.FirstOrDefault(s => s.Path == filePath);
             if (stagedEntry != null)
             {
-                if (stagedEntry.State.HasFlag(FileStatus.NewInIndex)) return " [+]";
-                if (stagedEntry.State.HasFlag(FileStatus.ModifiedInIndex)) return " [M]";
-                if (stagedEntry.State.HasFlag(FileStatus.DeletedFromIndex)) return " [-]";
-                if (stagedEntry.State.HasFlag(FileStatus.RenamedInIndex)) return " [R]";
+                if (stagedEntry.State.HasFlag(FileStatus.NewInIndex)) return GitStatusType.Added;
+                if (stagedEntry.State.HasFlag(FileStatus.ModifiedInIndex)) return GitStatusType.Modified;
+                if (stagedEntry.State.HasFlag(FileStatus.DeletedFromIndex)) return GitStatusType.Deleted;
+                if (stagedEntry.State.HasFlag(FileStatus.RenamedInIndex)) return GitStatusType.Renamed;
             }
 
             // Check unstaged files
             var unstagedEntry = unstaged.FirstOrDefault(s => s.Path == filePath);
             if (unstagedEntry != null)
             {
-                if (unstagedEntry.State.HasFlag(FileStatus.NewInWorkdir)) return " [+]";
-                if (unstagedEntry.State.HasFlag(FileStatus.ModifiedInWorkdir)) return " [M]";
-                if (unstagedEntry.State.HasFlag(FileStatus.DeletedFromWorkdir)) return " [-]";
-                if (unstagedEntry.State.HasFlag(FileStatus.RenamedInWorkdir)) return " [R]";
+                if (unstagedEntry.State.HasFlag(FileStatus.NewInWorkdir)) return GitStatusType.Added;
+                if (unstagedEntry.State.HasFlag(FileStatus.ModifiedInWorkdir)) return GitStatusType.Modified;
+                if (unstagedEntry.State.HasFlag(FileStatus.DeletedFromWorkdir)) return GitStatusType.Deleted;
+                if (unstagedEntry.State.HasFlag(FileStatus.RenamedInWorkdir)) return GitStatusType.Renamed;
             }
 
             // Check untracked files
             var untrackedEntry = untracked.FirstOrDefault(s => s.Path == filePath);
             if (untrackedEntry != null)
             {
-                return " [?]";
+                return GitStatusType.Untracked;
             }
         }
         catch
@@ -1675,10 +1780,55 @@ private TreeNode CreateDirectoryNode(string dirPath)
             // Ignore git errors
         }
 
-        return "";
+        return GitStatusType.None;
     }
 
-    private void RefreshGitStatusIndicators()
+    private GitStatusType GetDirectoryGitStatusType(string dirPath)
+    {
+        if (_git?.IsActive != true) return GitStatusType.None;
+
+        try
+        {
+            // Use cached status if available
+            if (_gitStatusCache != null)
+            {
+                foreach (var kvp in _gitStatusCache)
+                {
+                    if (kvp.Value != GitStatusType.None &&
+                        (kvp.Key.StartsWith(dirPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                         kvp.Key.StartsWith(dirPath + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return GitStatusType.Modified;
+                    }
+                }
+                return GitStatusType.None;
+            }
+
+            // Fallback to direct calculation
+            var (staged, unstaged, untracked) = _git.GetStatus();
+
+            // Check if any file under this directory has changes
+            var allChangedFiles = staged.Concat(unstaged).Concat(untracked);
+
+            foreach (var entry in allChangedFiles)
+            {
+                if (entry.Path.StartsWith(dirPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    entry.Path.StartsWith(dirPath + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Directory has modified content - return Modified as the status
+                    return GitStatusType.Modified;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore git errors
+        }
+
+        return GitStatusType.None;
+    }
+
+    public void RefreshGitStatusIndicators()
     {
         if (!IsHandleCreated) return;
 
@@ -1686,6 +1836,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         {
             try
             {
+                // Build Git status cache for all files at once
+                BuildGitStatusCache();
                 UpdateGitStatusInNodes(_tree.Nodes);
             }
             catch
@@ -1695,20 +1847,210 @@ private TreeNode CreateDirectoryNode(string dirPath)
         });
     }
 
+    private void BuildGitStatusCache()
+    {
+        _gitStatusCache = new Dictionary<string, GitStatusType>(StringComparer.OrdinalIgnoreCase);
+
+        if (_git?.IsActive != true) return;
+
+        try
+        {
+            var (staged, unstaged, untracked) = _git.GetStatus();
+
+            // Build a lookup dictionary for faster access
+            var stagedLookup = staged.ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
+            var unstagedLookup = unstaged.ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
+            var untrackedLookup = untracked.ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
+
+            // Get all files that are currently displayed in the tree
+            var allFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            CollectAllFilePaths(_tree.Nodes, allFiles);
+
+            // Only compute status for files that are actually in the tree
+            foreach (var filePath in allFiles)
+            {
+                GitStatusType status = GitStatusType.None;
+
+                // Check staged files first
+                if (stagedLookup.TryGetValue(filePath, out var stagedEntry))
+                {
+                    if (stagedEntry.State.HasFlag(FileStatus.NewInIndex)) status = GitStatusType.Added;
+                    else if (stagedEntry.State.HasFlag(FileStatus.ModifiedInIndex)) status = GitStatusType.Modified;
+                    else if (stagedEntry.State.HasFlag(FileStatus.DeletedFromIndex)) status = GitStatusType.Deleted;
+                    else if (stagedEntry.State.HasFlag(FileStatus.RenamedInIndex)) status = GitStatusType.Renamed;
+                }
+                // Check unstaged files
+                else if (unstagedLookup.TryGetValue(filePath, out var unstagedEntry))
+                {
+                    if (unstagedEntry.State.HasFlag(FileStatus.NewInWorkdir)) status = GitStatusType.Added;
+                    else if (unstagedEntry.State.HasFlag(FileStatus.ModifiedInWorkdir)) status = GitStatusType.Modified;
+                    else if (unstagedEntry.State.HasFlag(FileStatus.DeletedFromWorkdir)) status = GitStatusType.Deleted;
+                    else if (unstagedEntry.State.HasFlag(FileStatus.RenamedInWorkdir)) status = GitStatusType.Renamed;
+                }
+                // Check untracked files
+                else if (untrackedLookup.TryGetValue(filePath, out var untrackedEntry))
+                {
+                    status = GitStatusType.Untracked;
+                }
+
+                _gitStatusCache[filePath] = status;
+            }
+        }
+        catch
+        {
+            // Ignore git errors
+            _gitStatusCache?.Clear();
+        }
+    }
+
+    private void CollectAllFilePaths(TreeNodeCollection nodes, HashSet<string> files)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            var path = GetNodePath(node);
+            if (path != null && File.Exists(path))
+            {
+                files.Add(path);
+            }
+            CollectAllFilePaths(node.Nodes, files);
+        }
+    }
+
+    public void SetActiveFile(string? filePath)
+    {
+        if (_activeFilePath == filePath) return;
+        _activeFilePath = filePath;
+        ActiveFileChanged?.Invoke(filePath);
+        RefreshTreeHighlight();
+    }
+
+    private void RefreshTreeHighlight()
+    {
+        if (!IsHandleCreated) return;
+
+        BeginInvoke(() =>
+        {
+            try
+            {
+                UpdateActiveFileHighlight(_tree.Nodes);
+            }
+            catch
+            {
+                // Ignore errors
+            }
+        });
+    }
+
+    private void UpdateActiveFileHighlight(TreeNodeCollection nodes)
+    {
+        var theme = ThemeManager.Instance.CurrentTheme;
+        foreach (TreeNode node in nodes)
+        {
+            if (node.Tag is FileNodeTag fileTag)
+            {
+                if (fileTag.FilePath == _activeFilePath)
+                {
+                    // Active file - highest priority
+                    node.BackColor = theme.Accent;
+                    node.ForeColor = Color.White;
+                }
+                else if (_searchResultFiles?.Contains(fileTag.FilePath) == true)
+                {
+                    // Search result file
+                    node.BackColor = Color.FromArgb(60, theme.Accent);
+                    node.ForeColor = theme.Text;
+                }
+                else
+                {
+                    // Normal file
+                    node.BackColor = Color.Transparent;
+                    node.ForeColor = theme.Text;
+                }
+            }
+
+            // Recursively update child nodes
+            UpdateActiveFileHighlight(node.Nodes);
+        }
+    }
+
     private void UpdateGitStatusInNodes(TreeNodeCollection nodes)
     {
         foreach (TreeNode node in nodes)
         {
-            if (node.Tag is string filePath && File.Exists(filePath))
+            if (node.Tag is FileNodeTag existingTag && File.Exists(existingTag.FilePath))
             {
+                GitStatusType gitStatus = GetGitStatusType(existingTag.FilePath);
+                node.Tag = existingTag with { GitStatus = gitStatus };
+            }
+            else if (node.Tag is string filePath && File.Exists(filePath))
+            {
+                // Legacy support for nodes created before FileNodeTag
                 string fileName = Path.GetFileName(filePath);
-                string gitStatus = GetGitStatusIndicator(filePath);
-                node.Text = fileName + gitStatus;
+                GitStatusType gitStatus = GetGitStatusType(filePath);
+                node.Text = fileName; // Clean filename without status text
+                node.Tag = new FileNodeTag(filePath, gitStatus);
+            }
+            else if (node.Tag is string dirPath && Directory.Exists(dirPath))
+            {
+                // Directory node
+                GitStatusType gitStatus = GetDirectoryGitStatusType(dirPath);
+                node.Tag = new FileNodeTag(dirPath, gitStatus);
             }
 
             // Recursively update child nodes
             UpdateGitStatusInNodes(node.Nodes);
         }
+    }
+
+    private enum GitStatusType
+    {
+        None,
+        Modified,
+        Added,
+        Deleted,
+        Renamed,
+        Untracked,
+        Conflicted
+    }
+
+    private record FileNodeTag(string FilePath, GitStatusType GitStatus);
+
+    /// <summary>
+    /// Extracts the file path from a node tag, handling both string and FileNodeTag types.
+    /// </summary>
+    private string? GetNodePath(TreeNode? node)
+    {
+        if (node?.Tag is FileNodeTag fileTag)
+            return fileTag.FilePath;
+        if (node?.Tag is string path)
+            return path;
+        return null;
+    }
+
+    /// <summary>
+    /// Gets all selected file paths from multi-selected nodes.
+    /// </summary>
+    private List<string> GetSelectedFilePaths()
+    {
+        return _multiSelectedNodes
+            .Select(n => GetNodePath(n))
+            .Where(p => p != null && File.Exists(p))
+            .Cast<string>()
+            .ToList();
+    }
+
+    private Color GetGitStatusColor(GitStatusType status, Theme theme)
+    {
+        return status switch
+        {
+            GitStatusType.Modified => Color.FromArgb(255, 200, 100), // Orange - modified
+            GitStatusType.Added => Color.FromArgb(100, 200, 100),    // Green - added
+            GitStatusType.Deleted => Color.FromArgb(200, 100, 100),  // Red - deleted
+            GitStatusType.Renamed => Color.FromArgb(150, 150, 255),  // Blue - renamed
+            GitStatusType.Untracked => Color.FromArgb(150, 150, 150), // Gray - untracked
+            GitStatusType.Conflicted => Color.FromArgb(255, 100, 255), // Magenta - conflicted
+            _ => theme.Text // None - use default text color
+        };
     }
 
     private void LoadFavorites()
@@ -1739,4 +2081,130 @@ private TreeNode CreateDirectoryNode(string dirPath)
         }
         catch { }
     }
+
+    // Git bulk operations for selected files
+    private void GitStageSelected()
+    {
+        var filePaths = GetSelectedFilePaths();
+        if (filePaths.Count == 0) return;
+
+        try
+        {
+            foreach (var path in filePaths)
+            {
+                _git?.Stage(path);
+            }
+            RefreshGitStatusIndicators();
+            _git?.Refresh();
+            ThemedMessageBox.Show($"Staged {filePaths.Count} file(s).", "Git Stage", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Git stage failed: {ex.Message}", "Git Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void GitUnstageSelected()
+    {
+        var filePaths = GetSelectedFilePaths();
+        if (filePaths.Count == 0) return;
+
+        try
+        {
+            foreach (var path in filePaths)
+            {
+                _git?.Unstage(path);
+            }
+            RefreshGitStatusIndicators();
+            _git?.Refresh();
+            ThemedMessageBox.Show($"Unstaged {filePaths.Count} file(s).", "Git Unstage", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Git unstage failed: {ex.Message}", "Git Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void GitDiscardSelected()
+    {
+        var filePaths = GetSelectedFilePaths();
+        if (filePaths.Count == 0) return;
+
+        string message = filePaths.Count == 1
+            ? $"Discard changes to '{Path.GetFileName(filePaths[0])}'?"
+            : $"Discard changes to {filePaths.Count} selected files?";
+
+        var result = ThemedMessageBox.Show(message, "Discard Changes", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes) return;
+
+        try
+        {
+            foreach (var path in filePaths)
+            {
+                _git?.DiscardFile(path);
+            }
+            RefreshGitStatusIndicators();
+            _git?.Refresh();
+            ThemedMessageBox.Show($"Discarded changes to {filePaths.Count} file(s).", "Git Discard", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Git discard failed: {ex.Message}", "Git Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void GitDiffSelected()
+    {
+        var filePaths = GetSelectedFilePaths();
+        if (filePaths.Count == 0) return;
+
+        // For now, show diff for the first selected file
+        // Future enhancement: show multi-file diff
+        var path = filePaths[0];
+        try
+        {
+            var diff = _git?.GetDiffContent(path, false);
+            if (!string.IsNullOrEmpty(diff))
+            {
+                // Open diff in a new tab or dedicated diff view
+                // For now, show in message box (limited by size)
+                if (diff.Length > 10000)
+                {
+                    ThemedMessageBox.Show($"Diff is too large to display ({diff.Length} chars). Use Git Panel for full diff.", "Large Diff", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    using var diffForm = new Form
+                    {
+                        Text = $"Diff: {Path.GetFileName(path)}",
+                        Size = new Size(800, 600),
+                        StartPosition = FormStartPosition.CenterParent
+                    };
+
+                    var textBox = new TextBox
+                    {
+                        Multiline = true,
+                        ReadOnly = true,
+                        ScrollBars = ScrollBars.Both,
+                        Dock = DockStyle.Fill,
+                        Font = new Font("Consolas", 9),
+                        Text = diff
+                    };
+
+                    diffForm.Controls.Add(textBox);
+                    diffForm.ShowDialog(this);
+                }
+            }
+            else
+            {
+                ThemedMessageBox.Show("No changes to diff.", "Git Diff", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Git diff failed: {ex.Message}", "Git Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+
 }
