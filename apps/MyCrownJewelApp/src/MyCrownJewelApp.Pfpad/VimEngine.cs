@@ -962,6 +962,7 @@ namespace MyCrownJewelApp.Pfpad
 
         public void ExecuteCommand(string cmd)
         {
+            cmd = cmd.TrimStart(':');
             if (cmd == "set")
             {
                 ShowNotification("Usage: :set option[=value], :set {option}?");
