@@ -383,7 +383,6 @@ partial class Form1
             fileMenu.DropDownItems.Insert(ins + 1, new ToolStripSeparator());
         }
 
-        viewMenu.DropDownItems.Add(vimModeMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         viewMenu.DropDownItems.Add(fontMenuItem);
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -495,6 +494,8 @@ partial class Form1
         toolsMenu = new ToolStripMenuItem("&Tools");
         configureToolsMenuItem = new ToolStripMenuItem("External &Tools...", null, ConfigureTools_Click);
         configureToolsMenuItem.ShortcutKeys = Keys.Control | Keys.Alt | Keys.T;
+        toolsMenu.DropDownItems.Add(vimModeMenuItem);
+        toolsMenu.DropDownItems.Add(new ToolStripSeparator());
         toolsMenu.DropDownItems.Add(configureToolsMenuItem);
         var projectAnalysisMenuItem = new ToolStripMenuItem("&Analyze Repository", null, (s, e) => AnalyzeCurrentRepository());
         projectAnalysisMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.A;

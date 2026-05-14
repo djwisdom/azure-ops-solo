@@ -644,8 +644,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                             FirstVisibleLine = 0,
                             Syntax = syntax,
                             FileEncoding = null
-                        };
-
+               };
+               if (vimEngine != null) vimEngine.ModeChanged += UpdateStatusBar;
                         // Apply feature degradation for large files
                         ApplyLargeFileDegradation(doc, fileInfo.Length);
 
@@ -2392,6 +2392,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private void ToggleVimMode(object? sender, EventArgs e)
         {
             vimModeEnabled = !vimModeEnabled;
+            if (vimModeMenuItem != null) vimModeMenuItem.Checked = vimModeEnabled;
             if (vimEngine != null)
             {
                 if (vimModeEnabled)
@@ -7166,10 +7167,10 @@ private void NewWindow_Click(object? sender, EventArgs e)
               if (vimModeEnabled)
               {
                   vimModeLabel.Visible = true;
-                  if (vimEngine?.CurrentMode == VimMode.Command)
-                  {
-                      vimModeLabel.Text = ":" + vimEngine.CommandText;
-                  }
+                   if (vimEngine?.CurrentMode == VimMode.Command)
+                   {
+                       vimModeLabel.Text = vimEngine.CommandText;
+                   }
                   else
                   {
                       vimModeLabel.Text = vimEngine?.CurrentMode switch
