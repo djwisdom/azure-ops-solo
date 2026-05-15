@@ -825,10 +825,16 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 if (gutterVisible)
                 {
                     gutterPanel.UpdateLineNumberWidth();
+                    mainTable!.PerformLayout();
+                    mainTable!.Refresh();
+                    gutterPanel.MarkDataDirty();
                 }
                 else
                 {
-                    gutterPanel.Visible = false;
+                    gutterPanel.Width = 0;
+                    mainTable!.PerformLayout();
+                    mainTable!.Refresh();
+                    gutterPanel.MarkDataDirty();
                 }
             }
             
@@ -958,10 +964,15 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
-               vimEngine.OnShowLineNumbersChanged += value => { if (gutterPanel != null) { gutterPanel.ShowLineNumbers = value; gutterPanel.UpdateLineNumberWidth(); mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); if (value) { gutterVisible = true; } } if (lineNumberToolStripMenuItem != null) lineNumberToolStripMenuItem.Checked = value; };
-              vimEngine.OnRelativeNumbersChanged += value => { if (gutterPanel != null) { gutterPanel.RelativeNumbers = value; gutterPanel.UpdateLineNumberWidth(); mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); if (value) { gutterVisible = true; } } if (relativeLineNumberToolStripMenuItem != null) relativeLineNumberToolStripMenuItem.Checked = value; };
-              vimEngine.OnGutterVisibilityChanged += value => { if (value) { gutterVisible = true; gutterPanel.UpdateLineNumberWidth(); mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); } else { gutterVisible = false; gutterPanel.Width = 0; mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); } if (gutterMenuItem != null) gutterMenuItem.Checked = gutterVisible; if (!value) { gutterPanel.ShowLineNumbers = false; gutterPanel.RelativeNumbers = false; } };
+               vimEngine.OnShowLineNumbersChanged += value => { gutterPanel!.ShowLineNumbers = value; gutterPanel!.UpdateLineNumberWidth(); gutterPanel!.MarkDataDirty(); if (lineNumberToolStripMenuItem != null) lineNumberToolStripMenuItem.Checked = value && !vimEngine.RelativeNumbers; };
+              vimEngine.OnRelativeNumbersChanged += value => { gutterPanel!.RelativeNumbers = value; gutterPanel!.UpdateLineNumberWidth(); gutterPanel!.MarkDataDirty(); if (relativeLineNumberToolStripMenuItem != null) relativeLineNumberToolStripMenuItem.Checked = value; };
+              vimEngine.OnGutterVisibilityChanged += value => { if (value) { gutterVisible = true; gutterPanel!.ShowLineNumbers = vimEngine.ShowLineNumbers; gutterPanel!.RelativeNumbers = vimEngine.RelativeNumbers; gutterPanel!.UpdateLineNumberWidth(); mainTable!.ColumnStyles[0].SizeType = SizeType.Absolute; mainTable!.ColumnStyles[0].Width = gutterPanel!.Width; mainTable!.PerformLayout(); mainTable!.Refresh(); this.PerformLayout(); this.Refresh(); gutterPanel!.MarkDataDirty(); gutterPanel!.Visible = true; } else { gutterPanel!.Visible = false; gutterVisible = false; gutterPanel!.Width = 0; mainTable!.ColumnStyles[0].SizeType = SizeType.Absolute; mainTable!.ColumnStyles[0].Width = 0; mainTable!.PerformLayout(); mainTable!.Refresh(); this.PerformLayout(); this.Refresh(); gutterPanel!.MarkDataDirty(); } if (!value) { gutterPanel!.ShowLineNumbers = false; gutterPanel!.RelativeNumbers = false; } if (gutterMenuItem != null) gutterMenuItem.Checked = value; };
               LoadVimrc();
+
+              // Sync menu checked states with VimEngine after loading .vimrc
+              lineNumberToolStripMenuItem.Checked = vimEngine.ShowLineNumbers && !vimEngine.RelativeNumbers;
+              relativeLineNumberToolStripMenuItem.Checked = vimEngine.RelativeNumbers;
+              gutterMenuItem.Checked = vimEngine.GutterVisible;
 
               // Add line number menu items to View menu
               var viewMenu = menuStrip.Items[3] as ToolStripMenuItem; // View menu is index 3
@@ -979,40 +990,34 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               relativeLineNumberToolStripMenuItem.Checked = relative;
 
               // Menu click events (mutually exclusive, direct control)
-              lineNumberToolStripMenuItem.Click += (s, e) => {
-                  bool isChecked = lineNumberToolStripMenuItem.Checked;
-                  if (isChecked) {
-                      relativeLineNumberToolStripMenuItem.Checked = false;
-                      gutterPanel.ShowLineNumbers = true;
-                      gutterPanel.RelativeNumbers = false;
-                  } else {
-                      gutterPanel.ShowLineNumbers = false;
-                      gutterPanel.RelativeNumbers = false;
-                  }
-                  gutterPanel.UpdateLineNumberWidth();
-                  mainTable.PerformLayout();
-                  mainTable.Invalidate();
-                  mainTable.Update();
-                  gutterPanel.MarkDataDirty();
-              };
-              relativeLineNumberToolStripMenuItem.Click += (s, e) => {
-                  bool isChecked = relativeLineNumberToolStripMenuItem.Checked;
-                  if (isChecked) {
-                      lineNumberToolStripMenuItem.Checked = false;
-                      gutterPanel.ShowLineNumbers = true;
-                      gutterPanel.RelativeNumbers = true;
-                  } else {
-                      gutterPanel.RelativeNumbers = false;
-                      if (!lineNumberToolStripMenuItem.Checked) {
-                          gutterPanel.ShowLineNumbers = false;
-                      }
-                  }
-                  gutterPanel.UpdateLineNumberWidth();
-                  mainTable.PerformLayout();
-                  mainTable.Invalidate();
-                  mainTable.Update();
-                  gutterPanel.MarkDataDirty();
-              };
+               lineNumberToolStripMenuItem.Click += (s, e) => {
+                   bool isChecked = lineNumberToolStripMenuItem.Checked;
+                   if (isChecked) {
+                       relativeLineNumberToolStripMenuItem.Checked = false;
+                       vimEngine.GutterVisible = true;
+                       vimEngine.ShowLineNumbers = true;
+                       vimEngine.RelativeNumbers = false;
+                   } else {
+                       vimEngine.GutterVisible = false;
+                       vimEngine.ShowLineNumbers = false;
+                       vimEngine.RelativeNumbers = false;
+                   }
+               };
+               relativeLineNumberToolStripMenuItem.Click += (s, e) => {
+                   bool isChecked = relativeLineNumberToolStripMenuItem.Checked;
+                   if (isChecked) {
+                       lineNumberToolStripMenuItem.Checked = false;
+                       vimEngine.GutterVisible = true;
+                       vimEngine.ShowLineNumbers = true;
+                       vimEngine.RelativeNumbers = true;
+                   } else {
+                       vimEngine.RelativeNumbers = false;
+                       if (!lineNumberToolStripMenuItem.Checked) {
+                           vimEngine.GutterVisible = false;
+                           vimEngine.ShowLineNumbers = false;
+                       }
+                   }
+               };
               textEditor.Enter += (s, e) => { if (vimModeEnabled) vimEngine?.SetEditor(textEditor); };
                _snippetEngine = new SnippetEngine(textEditor!);
                _multiCaret = new MultiCaretManager(textEditor!);
@@ -1079,7 +1084,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
               vimEngine.TabSizeRequested += (s) => { SetTabSize(s); ShowNotification("Vim", $"tabstop={s}"); };
               vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) { ToggleAutoIndent(); ShowNotification("Vim", v ? "smartindent" : "nosmartindent"); } };
               vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) { ToggleSmartTabs(); ShowNotification("Vim", v ? "smarttab" : "nosmarttab"); } };
-              vimEngine.GoToLineRequested += (line) => GoToLine(line);
+
               vimEngine.FileOpenRequested += (filename) =>
               {
                   string dir = !string.IsNullOrEmpty(currentFilePath)
@@ -2442,24 +2447,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         internal void ToggleGutter()
         {
-            gutterVisible = !gutterVisible;
+            vimEngine!.ExecuteCommand(gutterVisible ? "set nogutter" : "set gutter");
             gutterMenuItem.Checked = gutterVisible;
-            if (gutterVisible)
-            {
-                gutterPanel.UpdateLineNumberWidth();
-                mainTable.PerformLayout();
-                mainTable.Invalidate();
-                mainTable.Update();
-                gutterPanel.MarkDataDirty();
-            }
-            else
-            {
-                gutterPanel.Width = 0;
-                mainTable.PerformLayout();
-                mainTable.Invalidate();
-                mainTable.Update();
-                gutterPanel.MarkDataDirty();
-            }
             SaveSettings();
         }
 

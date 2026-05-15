@@ -714,9 +714,13 @@ namespace MyCrownJewelApp.Pfpad
         public event Action<int>? TabSizeRequested;
         public event Action<bool>? AutoIndentRequested;
         public event Action<bool>? SmartTabsRequested;
-        public event Action<int>? GoToLineRequested;
+
         public event Action? TerminalRequested;
         public event Action<string>? CommandFeedback;
+
+        public bool ShowLineNumbers { get; set; } = true;
+        public bool RelativeNumbers { get; set; } = false;
+        public bool GutterVisible { get; set; } = true;
         public event Action<string>? FileOpenRequested;
 
         private static readonly HashSet<Keys> MotionKeys = new()
@@ -1214,6 +1218,7 @@ namespace MyCrownJewelApp.Pfpad
 
         public void ExecuteCommand(string cmd)
         {
+            bool handled = false;
             cmd = cmd.TrimStart(':');
             if (cmd == "set")
             {
@@ -1223,25 +1228,51 @@ namespace MyCrownJewelApp.Pfpad
 
             if (cmd.StartsWith("set "))
             {
-                ExecuteSet(cmd[4..].Trim());
-                return;
-            }
-
-            if (int.TryParse(cmd, out int line) && line > 0)
-            {
-                GoToLineRequested?.Invoke(line);
-                return;
-            }
-
-            bool handled = false;
-
-            switch (cmd)
-            {
-                case "w":
-                case "write":
-                    SaveRequested?.Invoke();
-                    handled = true;
-                    break;
+                string setCmd = cmd[4..].Trim();
+                switch (setCmd)
+                {
+                    case "nu":
+                        ShowLineNumbers = true;
+                        RelativeNumbers = false;
+                        OnShowLineNumbersChanged?.Invoke(true);
+                        OnRelativeNumbersChanged?.Invoke(false);
+                        CommandFeedback?.Invoke("nu=on rnu=off gutter=on");
+                        handled = true;
+                        break;
+                    case "nonu":
+                        ShowLineNumbers = false;
+                        RelativeNumbers = false;
+                        OnShowLineNumbersChanged?.Invoke(false);
+                        OnRelativeNumbersChanged?.Invoke(false);
+                        CommandFeedback?.Invoke("nu=off rnu=off gutter=on");
+                        handled = true;
+                        break;
+                    case "rnu":
+                        ShowLineNumbers = true;
+                        RelativeNumbers = true;
+                        OnShowLineNumbersChanged?.Invoke(true);
+                        OnRelativeNumbersChanged?.Invoke(true);
+                        CommandFeedback?.Invoke("nu=on rnu=on gutter=on");
+                        handled = true;
+                        break;
+                    case "nornu":
+                        RelativeNumbers = false;
+                        OnRelativeNumbersChanged?.Invoke(false);
+                        CommandFeedback?.Invoke("nu=on rnu=off gutter=on");
+                        handled = true;
+                        break;
+                    case "gutter":
+                        GutterVisible = true;
+                        OnGutterVisibilityChanged?.Invoke(true);
+                        CommandFeedback?.Invoke("nu=on rnu=off gutter=on");
+                        handled = true;
+                        break;
+                    case "nogutter":
+                        GutterVisible = false;
+                        OnGutterVisibilityChanged?.Invoke(false);
+                        CommandFeedback?.Invoke("nu=on rnu=off gutter=off");
+                        handled = true;
+                        break;
                 case "wq":
                 case "x":
                     SaveRequested?.Invoke();
@@ -1281,25 +1312,46 @@ namespace MyCrownJewelApp.Pfpad
                     VerticalSplitRequested?.Invoke();
                     break;
                 case "set nu":
+                    ShowLineNumbers = true;
+                    RelativeNumbers = false;
                     OnShowLineNumbersChanged?.Invoke(true);
                     OnRelativeNumbersChanged?.Invoke(false);
+                    CommandFeedback?.Invoke($"nu=on rnu=off gutter={(GutterVisible ? "on" : "off")}");
+                    handled = true;
                     break;
                 case "set nonu":
+                    ShowLineNumbers = false;
+                    RelativeNumbers = false;
                     OnShowLineNumbersChanged?.Invoke(false);
                     OnRelativeNumbersChanged?.Invoke(false);
+                    CommandFeedback?.Invoke($"nu=off rnu=off gutter={(GutterVisible ? "on" : "off")}");
+                    handled = true;
                     break;
                 case "set rnu":
+                    ShowLineNumbers = true;
+                    RelativeNumbers = true;
                     OnShowLineNumbersChanged?.Invoke(true);
                     OnRelativeNumbersChanged?.Invoke(true);
+                    CommandFeedback?.Invoke($"nu=on rnu=on gutter={(GutterVisible ? "on" : "off")}");
+                    handled = true;
                     break;
                 case "set nornu":
+                    RelativeNumbers = false;
                     OnRelativeNumbersChanged?.Invoke(false);
+                    CommandFeedback?.Invoke($"nu={(ShowLineNumbers ? "on" : "off")} rnu=off gutter={(GutterVisible ? "on" : "off")}");
+                    handled = true;
                     break;
                 case "set gutter":
+                    GutterVisible = true;
                     OnGutterVisibilityChanged?.Invoke(true);
+                    CommandFeedback?.Invoke($"nu={(ShowLineNumbers ? "on" : "off")} rnu={(RelativeNumbers ? "on" : "off")} gutter=on");
+                    handled = true;
                     break;
                 case "set nogutter":
+                    GutterVisible = false;
                     OnGutterVisibilityChanged?.Invoke(false);
+                    CommandFeedback?.Invoke($"nu={(ShowLineNumbers ? "on" : "off")} rnu={(RelativeNumbers ? "on" : "off")} gutter=off");
+                    handled = true;
                     break;
 
                 case "term":
@@ -1310,8 +1362,65 @@ namespace MyCrownJewelApp.Pfpad
                     handled = false;
                     break;
             }
+            }
 
             if (handled) return;
+
+            // Handle :wq filename (save as then close)
+            if (cmd.StartsWith("wq ") && cmd.Length > 3)
+            {
+                string filename = cmd[3..].Trim();
+                if (!string.IsNullOrEmpty(filename))
+                {
+                    SaveAsRequested?.Invoke(filename);
+                    CloseRequested?.Invoke();
+                }
+            }
+
+
+
+            // Handle :q and :quit (close)
+            if (cmd == "q" || cmd == "quit")
+            {
+                CloseRequested?.Invoke();
+                return;
+            }
+
+            // Handle :wq (save then close)
+            if (cmd == "wq")
+            {
+                SaveRequested?.Invoke();
+                CloseRequested?.Invoke();
+                return;
+            }
+
+            // Handle :w (save)
+            if (cmd == "w")
+            {
+                SaveRequested?.Invoke();
+                return;
+            }
+
+            // Handle :version
+            if (cmd == "version")
+            {
+                CommandFeedback?.Invoke("Pfpad Vim Mode 1.0");
+                return;
+            }
+
+            if (handled) return;
+
+            if (cmd == "set")
+            {
+                CommandFeedback?.Invoke($"nu={(ShowLineNumbers ? "on" : "off")} rnu={(RelativeNumbers ? "on" : "off")} gutter={(GutterVisible ? "on" : "off")}");
+                return;
+            }
+
+            if (cmd == "version")
+            {
+                CommandFeedback?.Invoke("Pfpad Vim Mode 1.0");
+                return;
+            }
 
             // Handle :w filename and :write filename (save as)
             if (cmd.StartsWith("w ") || cmd.StartsWith("write "))

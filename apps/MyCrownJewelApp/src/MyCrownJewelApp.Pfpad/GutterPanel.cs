@@ -51,8 +51,7 @@ public class GutterPanel : Panel
     public void MarkDataDirty()
     {
         _gutterDataDirty = true;
-        Invalidate();
-        Update();
+        Refresh();
     }
 
     public void SetCoverage(Dictionary<int, int>? lineHits)
@@ -260,11 +259,12 @@ public class GutterPanel : Panel
                 float scaledSize = editor.Font.Size * editor.ZoomFactor;
                 using var measureFont = new Font(editor.Font.FontFamily, scaledSize);
                 string sample = new string('8', digitCount);
-                int textWidth = TextRenderer.MeasureText(sample, measureFont).Width;
-                lineNumberWidth = textWidth + 6;
+                using var g = Graphics.FromImage(new Bitmap(1, 1));
+                int textWidth = (int)Math.Ceiling(g.MeasureString(sample, measureFont).Width);
+                lineNumberWidth = textWidth + 15;
             }
         }
-        if (lineNumberWidth < 20) lineNumberWidth = 20;
+        if (lineNumberWidth < 60) lineNumberWidth = 60;
         if (lineNumberWidth > 400) lineNumberWidth = 400;
 
         lineNumberWidth += 8; // left edge padding
