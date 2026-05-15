@@ -27,10 +27,13 @@ namespace MyCrownJewelApp.Pfpad
         /// <summary>
         /// Processes a key press in the context of this state.
         /// </summary>
-        /// <param name="keyData">The key data from the key event.</param>
+        /// <param name="key">The key.</param>
+        /// <param name="ctrl">True if Ctrl is pressed.</param>
+        /// <param name="shift">True if Shift is pressed.</param>
+        /// <param name="alt">True if Alt is pressed.</param>
         /// <param name="engine">Reference to the VimEngine for shared state and operations.</param>
         /// <returns>True if the key was consumed, false if it should be passed through.</returns>
-        bool ProcessKey(Keys keyData, object engine);
+        bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine);
 
         /// <summary>
         /// Called when entering this state.
@@ -50,14 +53,14 @@ namespace MyCrownJewelApp.Pfpad
     /// </summary>
     public abstract class VimStateBase : IVimState
     {
-        public abstract bool ProcessKey(Keys keyData, object engine);
+        public abstract bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine);
         public virtual void Enter(object engine) { }
         public virtual void Exit(object engine) { }
 
         /// <summary>
         /// Helper to extract key and modifiers from keyData.
         /// </summary>
-        protected static (Keys key, bool ctrl, bool shift, bool alt) ParseKey(Keys keyData)
+        public static (Keys key, bool ctrl, bool shift, bool alt) ParseKey(Keys keyData)
         {
             Keys key = keyData & Keys.KeyCode;
             bool ctrl = (keyData & Keys.Control) != 0;
@@ -74,13 +77,54 @@ namespace MyCrownJewelApp.Pfpad
             if (key >= Keys.A && key <= Keys.Z)
                 return shift ? (char)('A' + (key - Keys.A)) : (char)('a' + (key - Keys.A));
             if (key >= Keys.D0 && key <= Keys.D9)
-                return shift ? ")!@#$%^&*("[key - Keys.D0] : (char)('0' + (key - Keys.D0));
+            {
+                int d = key - Keys.D0;
+                if (shift)
+                {
+                    return d switch
+                    {
+                        0 => ')',
+                        1 => '!',
+                        2 => '@',
+                        3 => '#',
+                        4 => '$',
+                        5 => '%',
+                        6 => '^',
+                        7 => '&',
+                        8 => '*',
+                        9 => '(',
+                        _ => null
+                    };
+                }
+                else
+                {
+                    return (char)('0' + d);
+                }
+            }
             if (key == Keys.Space) return ' ';
             if (key == Keys.OemSemicolon) return shift ? ':' : ';';
             if (key == Keys.OemPeriod) return shift ? '>' : '.';
             if (key == Keys.Oemcomma) return shift ? '<' : ',';
             if (key == Keys.OemMinus) return shift ? '_' : '-';
             return null;
+        }
+
+        /// <summary>
+        /// Helper to convert char to key.
+        /// </summary>
+        protected static Keys KeyFromChar(char c)
+        {
+            if (c >= 'a' && c <= 'z') return (Keys)(Keys.A + (c - 'a'));
+            if (c >= 'A' && c <= 'Z') return (Keys)(Keys.A + (c - 'A'));
+            if (c >= '0' && c <= '9') return (Keys)(Keys.D0 + (c - '0'));
+            if (c == ' ') return Keys.Space;
+            if (c == ';') return Keys.OemSemicolon;
+            if (c == ':') return Keys.OemSemicolon; // shift
+            if (c == '.') return Keys.OemPeriod;
+            if (c == ',') return Keys.Oemcomma;
+            if (c == '-') return Keys.OemMinus;
+            if (c == '_') return Keys.OemMinus; // shift
+            return Keys.None;
         }
     }
 
@@ -91,6 +135,13 @@ namespace MyCrownJewelApp.Pfpad
     {
         private StringBuilder CommandBuffer = new();
         private int RepeatCount = 1;
+        private bool IsRecording = false;
+        private char CurrentRecordingRegister = '\0';
+        private StringBuilder RecordingBuffer = new();
+        private bool WaitingForRecordRegister = false;
+        private bool WaitingForPlaybackRegister = false;
+        private bool WaitingForMarkRegister = false;
+        private bool WaitingForJumpMark = false;
 
         public override void Enter(object engine)
         {
@@ -98,11 +149,145 @@ namespace MyCrownJewelApp.Pfpad
             RepeatCount = 1;
         }
 
-        public override bool ProcessKey(Keys keyData, object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (alt) return false;
+
+            char? ch = KeyToChar(key, shift);
+
+            // Handle key mappings
+            // if (ch.HasValue)
+            // {
+            //                     string potential = CommandBuffer.ToString() + ch.Value;
+            //     if (e.KeyMappings.TryGetValue(potential, out string mapped))
+            //     {
+            //         var keys = ParseKeys(mapped);
+            //         foreach (var k in keys)
+            //         {
+            //             e.EnqueuePending(k.key, k.ctrl, k.shift, k.alt);
+            //         }
+            //         ResetBuffer();
+            //         return true;
+            //     }
+            // }
+
+            // Handle macro recording/playback before buffer
+            if (ch.HasValue)
+            {
+                if (IsRecording && ch == 'q')
+                {
+                    // Stop recording
+                    e.Registers[CurrentRecordingRegister] = RecordingBuffer.ToString();
+                    IsRecording = false;
+                    CurrentRecordingRegister = '\0';
+                    RecordingBuffer.Clear();
+                    ResetBuffer();
+                    return true;
+                }
+
+                if (WaitingForRecordRegister)
+                {
+                    if (char.IsLetter(ch.Value))
+                    {
+                        CurrentRecordingRegister = ch.Value;
+                        if (!e.Registers.ContainsKey(CurrentRecordingRegister)) e.Registers[CurrentRecordingRegister] = "";
+                        IsRecording = true;
+                        WaitingForRecordRegister = false;
+                        RecordingBuffer.Clear();
+                        return true;
+                    }
+                    else
+                    {
+                        WaitingForRecordRegister = false;
+                        ResetBuffer();
+                        return false;
+                    }
+                }
+
+                if (WaitingForPlaybackRegister)
+                {
+                    if (char.IsLetter(ch.Value))
+                    {
+                        if (e.Registers.TryGetValue(ch.Value, out string? macro) && macro != null)
+                        {
+                            e.PlaybackMacro(macro);
+                        }
+                        WaitingForPlaybackRegister = false;
+                        ResetBuffer();
+                        return true;
+                    }
+                    else
+                    {
+                        WaitingForPlaybackRegister = false;
+                        ResetBuffer();
+                        return false;
+                    }
+                }
+
+                if (WaitingForMarkRegister)
+                {
+                    if (char.IsLetter(ch.Value))
+                    {
+                        e.Marks[ch.Value] = e.TextBox.SelectionStart;
+                        WaitingForMarkRegister = false;
+                        ResetBuffer();
+                        return true;
+                    }
+                    else
+                    {
+                        WaitingForMarkRegister = false;
+                        ResetBuffer();
+                        return false;
+                    }
+                }
+
+                if (WaitingForJumpMark)
+                {
+                    if (char.IsLetter(ch.Value) && e.Marks.TryGetValue(ch.Value, out int pos))
+                    {
+                        e.TextBox.SelectionStart = pos;
+                        e.TextBox.SelectionLength = 0;
+                        WaitingForJumpMark = false;
+                        ResetBuffer();
+                        return true;
+                    }
+                    else
+                    {
+                        WaitingForJumpMark = false;
+                        ResetBuffer();
+                        return false;
+                    }
+                }
+
+                if (ch == 'q' && !IsRecording)
+                {
+                    WaitingForRecordRegister = true;
+                    ResetBuffer();
+                    return true;
+                }
+
+                if (ch == '@')
+                {
+                    WaitingForPlaybackRegister = true;
+                    ResetBuffer();
+                    return true;
+                }
+
+                if (ch == 'm' && !WaitingForMarkRegister)
+                {
+                    WaitingForMarkRegister = true;
+                    ResetBuffer();
+                    return true;
+                }
+
+                if (ch == '\'')
+                {
+                    WaitingForJumpMark = true;
+                    ResetBuffer();
+                    return true;
+                }
+            }
 
             // Repeat count
             if (key >= Keys.D0 && key <= Keys.D9)
@@ -119,11 +304,13 @@ namespace MyCrownJewelApp.Pfpad
                     RepeatCount = key - Keys.D0;
                     CommandBuffer.Append((char)('0' + (key - Keys.D0)));
                 }
+                if (IsRecording) RecordingBuffer.Append(ch);
                 return true;
             }
 
-            char? ch = KeyToChar(key, shift);
-            CommandBuffer.Append(ch);
+            if (ch.HasValue)
+            {
+                CommandBuffer.Append(ch.Value);
 
             string buf = CommandBuffer.ToString();
 
@@ -132,22 +319,46 @@ namespace MyCrownJewelApp.Pfpad
             while (stripped.Length > 0 && char.IsDigit(stripped[0]))
                 stripped = stripped[1..];
 
+            // Handle register prefix
+            if (stripped.StartsWith('"') && stripped.Length > 1)
+            {
+                char reg = stripped[1];
+                if (char.IsLetter(reg))
+                {
+                    e.CurrentRegister = char.ToLower(reg);
+                    e.IsAppendRegister = char.IsUpper(reg);
+                    stripped = stripped[2..];
+                }
+                else
+                {
+                    ResetBuffer();
+                    return false;
+                }
+            }
+
             // Handle commands (delegate to engine for complex logic)
             e.RepeatCount = RepeatCount;
             bool handled = e.HandleNormalBuffer(stripped, key, shift);
             if (handled)
             {
                 ResetBuffer();
+                e.CurrentRegister = '"';
+                e.IsAppendRegister = false;
+                if (IsRecording && ch.HasValue) RecordingBuffer.Append(ch);
                 return true;
             }
 
-            if (!e.IsPrefixOfCommand(stripped))
-            {
-                ResetBuffer();
-                return false;
+                if (!e.IsPrefixOfCommand(stripped))
+                {
+                    ResetBuffer();
+                    return false;
+                }
+
+                if (IsRecording) RecordingBuffer.Append(ch);
+                return true;
             }
 
-            return true;
+            return false;
         }
 
         public void ResetBuffer() { CommandBuffer.Clear(); RepeatCount = 1; }
@@ -158,10 +369,9 @@ namespace MyCrownJewelApp.Pfpad
     /// </summary>
     public class InsertState : VimStateBase
     {
-        public override bool ProcessKey(Keys keyData, object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
                 e.SelectionLength = 0;
@@ -183,10 +393,9 @@ namespace MyCrownJewelApp.Pfpad
             e.SelectionLength = 0; // Start with no selection
         }
 
-        public override bool ProcessKey(Keys keyData, object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
                 e.SelectionLength = 0;
@@ -210,10 +419,9 @@ namespace MyCrownJewelApp.Pfpad
             e.SelectionLength = 0;
         }
 
-        public override bool ProcessKey(Keys keyData, object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
                 e.SelectionLength = 0;
@@ -236,10 +444,9 @@ namespace MyCrownJewelApp.Pfpad
             e.CommandBuffer.Append(':');
         }
 
-        public override bool ProcessKey(Keys keyData, object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
                 e.CommandBuffer.Clear();
@@ -268,29 +475,6 @@ namespace MyCrownJewelApp.Pfpad
             }
             return false;
         }
-            if (key == Keys.Enter)
-            {
-                engine.ExecuteCommand(engine.CommandBuffer.ToString().Trim());
-                engine.CommandBuffer.Clear();
-                engine.EnterMode(VimMode.Normal);
-                return true;
-            }
-            if (key == Keys.Back)
-            {
-                if (engine.CommandBuffer.Length > 1)
-                    engine.CommandBuffer.Remove(engine.CommandBuffer.Length - 1, 1);
-                return true;
-            }
-
-            char? ch = KeyToChar(key, shift);
-            if (ch != null && ch >= 32)
-            {
-                engine.CommandBuffer.Append(ch.Value);
-                return true;
-            }
-
-            return false;
-        }
     }
 
     /// <summary>
@@ -298,17 +482,9 @@ namespace MyCrownJewelApp.Pfpad
     /// </summary>
     public class SearchForwardState : VimStateBase
     {
-        public override void Enter(object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            e.CommandBuffer.Clear();
-            e.CommandBuffer.Append('/');
-        }
-
-        public override bool ProcessKey(Keys keyData, object engine)
-        {
-            VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
                 e.CommandBuffer.Clear();
@@ -350,17 +526,9 @@ namespace MyCrownJewelApp.Pfpad
     /// </summary>
     public class SearchBackwardState : VimStateBase
     {
-        public override void Enter(object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
             VimEngine e = (VimEngine)engine;
-            e.CommandBuffer.Clear();
-            e.CommandBuffer.Append('?');
-        }
-
-        public override bool ProcessKey(Keys keyData, object engine)
-        {
-            VimEngine e = (VimEngine)engine;
-            var (key, ctrl, shift, alt) = ParseKey(keyData);
             if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
             {
                 e.CommandBuffer.Clear();
@@ -408,10 +576,16 @@ namespace MyCrownJewelApp.Pfpad
             e.SelectionLength = 0;
         }
 
-        public override bool ProcessKey(Keys keyData, object engine)
+        public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
         {
-            // For now, delegate to VisualState (can enhance later)
-            return new VisualState().ProcessKey(keyData, engine);
+            VimEngine e = (VimEngine)engine;
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                e.EnterMode(VimMode.Normal);
+                return true;
+            }
+            // Handle motions and operations (delegate to engine)
+            return e.HandleVisualMode(key, ctrl, shift, false);
         }
     }
 
@@ -426,12 +600,72 @@ namespace MyCrownJewelApp.Pfpad
 
         // State pattern: current state
         private IVimState _currentState;
+        private bool _pendingWindowCommand = false;
+        public Dictionary<char, string> Registers = new();
+        public char CurrentRegister = '"';
+        public bool IsAppendRegister = false;
+        public Dictionary<char, int> Marks = new();
+        public int BlockMinLine, BlockMaxLine, BlockMinCol, BlockMaxCol;
+        public event Action<bool>? OnShowLineNumbersChanged;
+        public event Action<bool>? OnRelativeNumbersChanged;
+        public event Action<bool>? OnGutterVisibilityChanged;
+        public Dictionary<string, string> KeyMappings = new();
+
+        public struct PendingKey
+        {
+            public Keys key;
+            public bool ctrl, shift, alt;
+        }
+        public Queue<PendingKey> PendingKeys = new();
+
+
+        public void SetRegister(char reg, bool append, string text)
+        {
+            if (reg == '"')
+                LastYank = text;
+            else
+            {
+                if (append)
+                    Registers[reg] = Registers.GetValueOrDefault(reg, "") + text;
+                else
+                    Registers[reg] = text;
+            }
+        }
+
+        public string GetRegister(char reg)
+        {
+            if (reg == '"')
+                return LastYank ?? "";
+            else
+                return Registers.GetValueOrDefault(reg, "");
+        }
+
+        public int GetCurrentColumn()
+        {
+            int lineStart = GetLineStart(GetCurrentLine());
+            return _tb.SelectionStart - lineStart;
+        }
 
         public VimMode CurrentMode { get; private set; } = VimMode.Normal;
         public bool Enabled { get; set; }
         public string CommandText => CommandBuffer.ToString();
 
         public event Action? ModeChanged;
+
+        public static Keys KeyFromChar(char c)
+        {
+            if (c >= 'a' && c <= 'z') return (Keys)(Keys.A + (c - 'a'));
+            if (c >= 'A' && c <= 'Z') return (Keys)(Keys.A + (c - 'A'));
+            if (c >= '0' && c <= '9') return (Keys)(Keys.D0 + (c - '0'));
+            if (c == ' ') return Keys.Space;
+            if (c == ';') return Keys.OemSemicolon;
+            if (c == ':') return Keys.OemSemicolon; // shift
+            if (c == '.') return Keys.OemPeriod;
+            if (c == ',') return Keys.Oemcomma;
+            if (c == '-') return Keys.OemMinus;
+            if (c == '_') return Keys.OemMinus; // shift
+            return Keys.None;
+        }
 
         // Exposed for states
         public StringBuilder CommandBuffer { get; } = new();
@@ -449,7 +683,6 @@ namespace MyCrownJewelApp.Pfpad
         public void Select(int start, int length) => _tb.Select(start, length);
 
         private RichTextBox _tb;
-        private bool _pendingWindowCommand; // after Ctrl+W, waiting for second key
 
         // Multi-layered undo/redo system
         private class UndoPoint
@@ -552,25 +785,20 @@ namespace MyCrownJewelApp.Pfpad
         _currentState.Enter(this);
         }
 
-        public bool ProcessKey(Keys keyData)
+        public bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt)
         {
-            if (!Enabled) return false;
+            if (PendingKeys.Count > 0)
+            {
+                var pk = PendingKeys.Dequeue();
+                return ProcessKey(pk.key, pk.ctrl, pk.shift, pk.alt);
+            }
 
-            Keys key = keyData & Keys.KeyCode;
-            bool ctrl = (keyData & Keys.Control) != 0;
-            bool shift = (keyData & Keys.Shift) != 0;
-            bool alt = (keyData & Keys.Alt) != 0;
-
-            if (alt) return false;
-
-            // Ctrl+W prefix: consume and wait for the next key
             if (ctrl && key == Keys.W)
             {
                 _pendingWindowCommand = true;
                 return true;
             }
 
-            // If a Ctrl+W window command is pending, handle the second key
             if (_pendingWindowCommand)
             {
                 _pendingWindowCommand = false;
@@ -589,20 +817,72 @@ namespace MyCrownJewelApp.Pfpad
                 // For any other key, fall through to normal processing
             }
 
-            // Delegate to current state
-            return _currentState.ProcessKey(keyData, this);
+            return _currentState.ProcessKey(key, ctrl, shift, alt, this);
         }
 
-        private bool ProcessInsertMode(Keys key, bool ctrl, bool shift)
+        public void EnqueuePending(Keys key, bool ctrl, bool shift, bool alt)
         {
-            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
-            {
-                _tb.SelectionLength = 0;
-                EnterMode(VimMode.Normal);
-                return true;
-            }
-            return false; // let the key through to normal typing
+            PendingKeys.Enqueue(new PendingKey { key = key, ctrl = ctrl, shift = shift, alt = alt });
         }
+
+
+
+        public PendingKey[] ParseKeys(string s)
+        {
+            List<PendingKey> keys = new();
+            int i = 0;
+            while (i < s.Length)
+            {
+                if (s[i] == '<')
+                {
+                    int end = s.IndexOf('>', i);
+                    if (end > i)
+                    {
+                        string special = s[(i + 1)..end];
+                        Keys k = Keys.None;
+                        bool c = false, sh = false, a = false;
+                        switch (special)
+                        {
+                            case "Esc": k = Keys.Escape; break;
+                            case "CR": case "Enter": k = Keys.Enter; break;
+                            case "Tab": k = Keys.Tab; break;
+                            case "BS": case "Backspace": k = Keys.Back; break;
+                            case "Space": k = Keys.Space; break;
+                            case "C-": // Ctrl
+                                if (end + 1 < s.Length)
+                                {
+                                    char next = s[end + 1];
+                                    k = CharToKey(next);
+                                    c = true;
+                                    i = end + 2;
+                                    continue;
+                                }
+                                break;
+                        }
+                        if (k != Keys.None)
+                        {
+                            keys.Add(new PendingKey { key = k, ctrl = c, shift = sh, alt = a });
+                        }
+                        i = end + 1;
+                    }
+                    else
+                    {
+                        keys.Add(new PendingKey { key = (Keys)s[i], ctrl = false, shift = false, alt = false });
+                        i++;
+                    }
+                }
+                else
+                {
+                    keys.Add(new PendingKey { key = (Keys)s[i], ctrl = false, shift = false, alt = false });
+                    i++;
+                }
+            }
+            return keys.ToArray();
+        }
+
+
+
+
 
         public bool HandleVisualMode(Keys key, bool ctrl, bool shift, bool linewise)
         {
@@ -649,82 +929,11 @@ namespace MyCrownJewelApp.Pfpad
             return false;
         }
 
-        private bool ProcessCommandMode(Keys key, bool ctrl, bool shift)
-        {
-            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
-            {
-                CommandBuffer.Clear();
-                EnterMode(VimMode.Normal);
-                return true;
-            }
-            if (key == Keys.Enter)
-            {
-                ExecuteCommand(CommandBuffer.ToString().Trim());
-                CommandBuffer.Clear();
-                EnterMode(VimMode.Normal);
-                return true;
-            }
-            if (key == Keys.Back)
-            {
-                if (engine.CommandBuffer.Length > 1)
-                    engine.CommandBuffer.Remove(engine.CommandBuffer.Length - 1, 1);
-                return true;
-            }
 
-            char? ch = KeyToChar(key, shift);
-            if (ch != null && ch >= 32)
-            {
-                engine.CommandBuffer.Append(ch.Value);
-                return true;
-            }
 
-            return false;
-        }
 
-        private void EnterSearchMode(bool forward)
-        {
-            EnterMode(forward ? VimMode.SearchForward : VimMode.SearchBackward);
-            CommandBuffer.Clear();
-            CommandBuffer.Append(forward ? '/' : '?');
-        }
 
-        private bool ProcessSearchMode(Keys key, bool ctrl, bool shift)
-        {
-            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
-            {
-                CommandBuffer.Clear();
-                EnterMode(VimMode.Normal);
-                return true;
-            }
-            if (key == Keys.Enter)
-            {
-                string pattern = CommandBuffer.Length > 1 ? CommandBuffer.ToString(1, CommandBuffer.Length - 1) : LastSearchPattern;
-                if (!string.IsNullOrEmpty(pattern))
-                {
-                    LastSearchPattern = pattern;
-                    LastSearchForward = CurrentMode == VimMode.SearchForward;
-                    ExecuteSearch(LastSearchForward? 0 : _tb.TextLength, LastSearchForward);
-                }
-                CommandBuffer.Clear();
-                EnterMode(VimMode.Normal);
-                return true;
-            }
-            if (key == Keys.Back)
-            {
-                if (CommandBuffer.Length > 1)
-                    CommandBuffer.Remove(CommandBuffer.Length - 1, 1);
-                return true;
-            }
 
-            char? ch = KeyToChar(key, shift);
-            if (ch != null && ch >= 32)
-            {
-                CommandBuffer.Append(ch.Value);
-                return true;
-            }
-
-            return false;
-        }
 
         public bool ExecuteSearch(int startFrom, bool forward)
         {
@@ -811,64 +1020,7 @@ namespace MyCrownJewelApp.Pfpad
             return false;
         }
 
-        private bool ProcessNormalMode(Keys key, bool ctrl, bool shift)
-        {
-            // Repeat count: digits before a command
-            if (key >= Keys.D0 && key <= Keys.D9)
-            {
-                int d = key - Keys.D0;
-                if (CommandBuffer.Length > 0 && char.IsDigit(CommandBuffer[0]))
-                {
-                    int val = int.Parse(CommandBuffer.ToString());
-                    RepeatCount = val * 10 + d;
-                    CommandBuffer.Append(d.ToString());
-                }
-                else if (d > 0)
-                {
-                    RepeatCount = d;
-                    CommandBuffer.Append(d.ToString());
-                }
-                return true;
-            }
 
-            char? ch = KeyToChar(key, shift);
-            CommandBuffer.Append(ch);
-
-            string buf = CommandBuffer.ToString();
-
-            // Single-key commands
-            switch (key)
-            {
-                case Keys.I: EnterMode(VimMode.Insert); ResetBuffer(); return true;
-                case Keys.A: MoveRight(); EnterMode(VimMode.Insert); ResetBuffer(); return true;
-            }
-
-            if (shift && ch == 'I') { MoveToLineStart(); EnterMode(VimMode.Insert); ResetBuffer(); return true; }
-            if (shift && ch == 'A') { MoveToLineEnd(); EnterMode(VimMode.Insert); ResetBuffer(); return true; }
-
-            // Enter command mode on ':'
-            if (ch == ':') { EnterMode(VimMode.Command); CommandBuffer.Clear(); return true; }
-
-            // Strip leading digit prefix (repeat count) before matching commands
-            string stripped = buf;
-            while (stripped.Length > 0 && char.IsDigit(stripped[0]))
-                stripped = stripped[1..];
-
-            // Handle the buffer
-            bool handled = HandleNormalBuffer(stripped, key, shift);
-            if (handled) { ResetBuffer(); return true; }
-
-            // If buffer doesn't match any command, reset it
-            if (!IsPrefixOfCommand(stripped))
-            {
-                ResetBuffer();
-                return false;
-            }
-
-            // Buffer is a valid prefix of a multi-key command (e.g. "g" waiting for "gg").
-            // Consume the key to prevent it from being typed into the editor.
-            return true;
-        }
 
         public bool HandleNormalBuffer(string buf, Keys key, bool shift)
         {
@@ -930,6 +1082,7 @@ namespace MyCrownJewelApp.Pfpad
                 // Visual
                 case "v": EnterMode(VimMode.Visual); _tb.SelectionLength = 0; return true;
                 case "V": EnterMode(VimMode.VisualLine); _tb.SelectionLength = 0; return true;
+                case "\x16": EnterMode(VimMode.VisualBlock); return true;
 
                 // Undo / Redo
                 case "u": SendCtrlZ(); return true;
@@ -949,10 +1102,13 @@ namespace MyCrownJewelApp.Pfpad
                 case ".": RepeatLast(); return true;
 
                 // Search
-                case "/": EnterSearchMode(true); return true;
-                case "?": EnterSearchMode(false); return true;
+                case "/": EnterMode(VimMode.SearchForward); return true;
+                case "?": EnterMode(VimMode.SearchBackward); return true;
                 case "n": FindNext(); return true;
                 case "N": FindPrevious(); return true;
+
+                // Command mode
+                case ":": EnterMode(VimMode.Command); return true;
 
                 // Page scroll
                 case "\x0C": PageDown(); return true; // Ctrl+F
@@ -1077,13 +1233,14 @@ namespace MyCrownJewelApp.Pfpad
                 return;
             }
 
-            bool handled = true;
+            bool handled = false;
 
             switch (cmd)
             {
                 case "w":
                 case "write":
                     SaveRequested?.Invoke();
+                    handled = true;
                     break;
                 case "wq":
                 case "x":
@@ -1123,6 +1280,28 @@ namespace MyCrownJewelApp.Pfpad
                 case "vsplit":
                     VerticalSplitRequested?.Invoke();
                     break;
+                case "set nu":
+                    OnShowLineNumbersChanged?.Invoke(true);
+                    OnRelativeNumbersChanged?.Invoke(false);
+                    break;
+                case "set nonu":
+                    OnShowLineNumbersChanged?.Invoke(false);
+                    OnRelativeNumbersChanged?.Invoke(false);
+                    break;
+                case "set rnu":
+                    OnShowLineNumbersChanged?.Invoke(true);
+                    OnRelativeNumbersChanged?.Invoke(true);
+                    break;
+                case "set nornu":
+                    OnRelativeNumbersChanged?.Invoke(false);
+                    break;
+                case "set gutter":
+                    OnGutterVisibilityChanged?.Invoke(true);
+                    break;
+                case "set nogutter":
+                    OnGutterVisibilityChanged?.Invoke(false);
+                    break;
+
                 case "term":
                 case "terminal":
                     TerminalRequested?.Invoke();
@@ -1399,6 +1578,8 @@ namespace MyCrownJewelApp.Pfpad
         {
             int len = Math.Min(GetRepeat(), _tb.TextLength - _tb.SelectionStart);
             if (len <= 0) return;
+            string text = _tb.Text.Substring(_tb.SelectionStart, len);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
             _tb.SelectionLength = len;
             _tb.SelectedText = "";
         }
@@ -1406,8 +1587,12 @@ namespace MyCrownJewelApp.Pfpad
         {
             int p = _tb.SelectionStart;
             if (p <= 0) return;
-            _tb.SelectionStart = Math.Max(0, p - GetRepeat());
-            _tb.SelectionLength = Math.Min(GetRepeat(), p);
+            int start = Math.Max(0, p - GetRepeat());
+            int len = Math.Min(GetRepeat(), p);
+            string text = _tb.Text.Substring(start, len);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
+            _tb.SelectionStart = start;
+            _tb.SelectionLength = len;
             _tb.SelectedText = "";
         }
         private void DeleteLine()
@@ -1421,7 +1606,8 @@ namespace MyCrownJewelApp.Pfpad
             if (end > _tb.TextLength) end = _tb.TextLength;
             int len = end - start;
             if (len <= 0) return;
-            LastYank = _tb.Text.Substring(start, len);
+            string text = _tb.Text.Substring(start, len);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
             _tb.SelectionStart = start;
             _tb.SelectionLength = len;
             _tb.SelectedText = "";
@@ -1431,7 +1617,8 @@ namespace MyCrownJewelApp.Pfpad
             int start = _tb.SelectionStart;
             int end = GetLineEnd(GetCurrentLine());
             if (end <= start) return;
-            LastYank = _tb.Text.Substring(start, end - start);
+            string text = _tb.Text.Substring(start, end - start);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
             _tb.SelectionLength = end - start;
             _tb.SelectedText = "";
         }
@@ -1440,6 +1627,8 @@ namespace MyCrownJewelApp.Pfpad
             int p = _tb.SelectionStart;
             int end = FindNextWord(p);
             if (end <= p) return;
+            string text = _tb.Text.Substring(p, end - p);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
             _tb.SelectionLength = end - p;
             _tb.SelectedText = "";
         }
@@ -1449,8 +1638,12 @@ namespace MyCrownJewelApp.Pfpad
             int s = FindPrevWord(p);
             int e = FindNextWord(p);
             if (s >= e) return;
-            _tb.SelectionStart = s == p ? FindPrevWord(s) : s;
-            _tb.SelectionLength = e - _tb.SelectionStart;
+            int start = s == p ? FindPrevWord(s) : s;
+            int len = e - start;
+            string text = _tb.Text.Substring(start, len);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
+            _tb.SelectionStart = start;
+            _tb.SelectionLength = len;
             _tb.SelectedText = "";
         }
         private void DeleteToLineStart()
@@ -1458,8 +1651,11 @@ namespace MyCrownJewelApp.Pfpad
             int start = GetLineStart(GetCurrentLine());
             int end = _tb.SelectionStart;
             if (end <= start) return;
+            int len = end - start;
+            string text = _tb.Text.Substring(start, len);
+            SetRegister(CurrentRegister, IsAppendRegister, text);
             _tb.SelectionStart = start;
-            _tb.SelectionLength = end - start;
+            _tb.SelectionLength = len;
             _tb.SelectedText = "";
         }
         private void YankLine()
@@ -1471,32 +1667,35 @@ namespace MyCrownJewelApp.Pfpad
             int start = GetLineStart(line);
             int end = GetLineEnd(endLine) + 1;
             if (end > _tb.TextLength) end = _tb.TextLength;
-            LastYank = start >= 0 && end > start ? _tb.Text.Substring(start, end - start) : "";
+            string text = start >= 0 && end > start ? _tb.Text.Substring(start, end - start) : "";
+            SetRegister(CurrentRegister, IsAppendRegister, text);
         }
         private void YankWord()
         {
             int p = _tb.SelectionStart;
             int e = FindNextWord(p);
-            if (e > p) LastYank = _tb.Text.Substring(p, e - p);
+            if (e > p) SetRegister(CurrentRegister, IsAppendRegister, _tb.Text.Substring(p, e - p));
         }
         private void PasteAfter()
         {
-            if (LastYank == null) return;
+            string text = GetRegister(CurrentRegister);
+            if (string.IsNullOrEmpty(text)) return;
             int p = _tb.SelectionStart;
             int count = GetRepeat();
-            var sb = new StringBuilder(LastYank.Length * count);
-            for (int i = 0; i < count; i++) sb.Append(LastYank);
+            var sb = new StringBuilder(text.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(text);
             _tb.SelectionStart = p;
             _tb.SelectedText = sb.ToString();
             _tb.SelectionStart = p;
         }
         private void PasteBefore()
         {
-            if (LastYank == null) return;
+            string text = GetRegister(CurrentRegister);
+            if (string.IsNullOrEmpty(text)) return;
             int p = _tb.SelectionStart;
             int count = GetRepeat();
-            var sb = new StringBuilder(LastYank.Length * count);
-            for (int i = 0; i < count; i++) sb.Append(LastYank);
+            var sb = new StringBuilder(text.Length * count);
+            for (int i = 0; i < count; i++) sb.Append(text);
             _tb.SelectionStart = p;
             _tb.SelectedText = sb.ToString();
             _tb.SelectionStart = p + sb.Length;
@@ -1596,7 +1795,7 @@ namespace MyCrownJewelApp.Pfpad
         private void YankSelection()
         {
             if (_tb.SelectionLength > 0)
-                LastYank = _tb.SelectedText;
+                SetRegister(CurrentRegister, IsAppendRegister, _tb.SelectedText);
         }
         private void RecordAction(string action, string? data = null)
         {
@@ -1747,6 +1946,114 @@ namespace MyCrownJewelApp.Pfpad
                 if (len > 0) ExecuteSearch(len, false);
             }
         }
+
+        public void PlaybackMacro(string macro)
+        {
+            foreach (char c in macro)
+            {
+                Keys k = CharToKey(c);
+                if (k != Keys.None)
+                {
+                    // ProcessKey(k.key, k.ctrl, k.shift, k.alt);
+                }
+            }
+        }
+
+        public void DeleteBlock()
+        {
+            for (int line = BlockMinLine; line <= BlockMaxLine; line++)
+            {
+                int lineStart = GetLineStart(line);
+                int lineEnd = GetLineEnd(line);
+                int delStart = lineStart + BlockMinCol;
+                int delEnd = Math.Min(lineStart + BlockMaxCol + 1, lineEnd);
+                if (delStart < delEnd)
+                {
+                    _tb.SelectionStart = delStart;
+                    _tb.SelectionLength = delEnd - delStart;
+                    _tb.SelectedText = "";
+                }
+            }
+            EnterMode(VimMode.Normal);
+        }
+
+        public void YankBlock()
+        {
+            StringBuilder sb = new();
+            for (int line = BlockMinLine; line <= BlockMaxLine; line++)
+            {
+                int lineStart = GetLineStart(line);
+                int lineEnd = GetLineEnd(line);
+                int start = lineStart + BlockMinCol;
+                int end = Math.Min(lineStart + BlockMaxCol + 1, lineEnd);
+                if (start < end)
+                {
+                    sb.Append(_tb.Text.Substring(start, end - start));
+                }
+                if (line < BlockMaxLine) sb.Append('\n');
+            }
+            SetRegister(CurrentRegister, IsAppendRegister, sb.ToString());
+            EnterMode(VimMode.Normal);
+        }
+
+        private Keys CharToKey(char c)
+        {
+            if (char.IsLower(c))
+            {
+                return Keys.A + (c - 'a');
+            }
+            if (char.IsUpper(c))
+            {
+                return Keys.A + (c - 'A') | Keys.Shift;
+            }
+            if (char.IsDigit(c))
+            {
+                return Keys.D0 + (c - '0');
+            }
+            switch (c)
+            {
+                case ' ': return Keys.Space;
+                case '\n': return Keys.Enter;
+                case '\t': return Keys.Tab;
+                case '\b': return Keys.Back;
+                case '\r': return Keys.Enter;
+                case '/': return Keys.OemQuestion; // / is shift of ?
+                case '?': return Keys.OemQuestion;
+                case ':': return Keys.OemSemicolon | Keys.Shift;
+                case ';': return Keys.OemSemicolon;
+                case '.': return Keys.OemPeriod;
+                case ',': return Keys.Oemcomma;
+
+                case '[': return Keys.OemOpenBrackets;
+                case ']': return Keys.OemCloseBrackets;
+                case '{': return Keys.OemOpenBrackets | Keys.Shift;
+                case '}': return Keys.OemCloseBrackets | Keys.Shift;
+                case '<': return Keys.Oemcomma | Keys.Shift;
+                case '>': return Keys.OemPeriod | Keys.Shift;
+                case '=': return Keys.Oemplus | Keys.Shift;
+                case '+': return Keys.Oemplus;
+                case '-': return Keys.OemMinus;
+                case '_': return Keys.OemMinus | Keys.Shift;
+                case '"': return Keys.OemQuotes | Keys.Shift;
+                case '\'': return Keys.OemQuotes;
+                case '\\': return Keys.OemPipe | Keys.Shift;
+                case '|': return Keys.OemPipe;
+                case '~': return Keys.Oemtilde;
+                case '`': return Keys.Oemtilde | Keys.Shift;
+                case '!': return Keys.D1 | Keys.Shift;
+                case '@': return Keys.D2 | Keys.Shift;
+                case '#': return Keys.D3 | Keys.Shift;
+                case '$': return Keys.D4 | Keys.Shift;
+                case '%': return Keys.D5 | Keys.Shift;
+                case '^': return Keys.D6 | Keys.Shift;
+                case '&': return Keys.D7 | Keys.Shift;
+                case '*': return Keys.D8 | Keys.Shift;
+                case '(': return Keys.D9 | Keys.Shift;
+                case ')': return Keys.D0 | Keys.Shift;
+                default: return Keys.None;
+            }
+        }
+
         #endregion
     }
 }

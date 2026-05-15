@@ -48,6 +48,13 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private const int SB_TOP = 6;
 
         // DWM API for native title bar dark mode (Windows 10 1809+)
+
+        private ToolStripMenuItem? lineNumberToolStripMenuItem;
+        private ToolStripMenuItem? relativeLineNumberToolStripMenuItem;
+
+
+
+
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
@@ -522,6 +529,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     {
         InitializeComponent();
 
+        this.KeyDown += Form1_KeyDown;
+
         // Initialize status bar visibility (Vim mode starts disabled)
         UpdateStatusBarVisibility();
 
@@ -533,7 +542,6 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
         try { this.Opacity = 0; } catch { }
         this.KeyPreview = true;
-        this.KeyDown += Form1_KeyDown;
         this.FormClosing += Form1_FormClosing;
         this.Activated += Form1_Activated;
           this.Shown += (s, e) =>
@@ -944,11 +952,85 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
              // Initialize incremental highlighter (after colors are loaded)
              if (documents.Count > 0) CreateIncrementalHighlighter();
 
+              // Initialize line number menu items first
+              lineNumberToolStripMenuItem = new ToolStripMenuItem("Line &number") { CheckOnClick = true };
+              relativeLineNumberToolStripMenuItem = new ToolStripMenuItem("&Relative line number") { CheckOnClick = true };
+
               // Initialize Vim engine
               vimEngine = new VimEngine(textEditor!);
+               vimEngine.OnShowLineNumbersChanged += value => { if (gutterPanel != null) { gutterPanel.ShowLineNumbers = value; gutterPanel.UpdateLineNumberWidth(); mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); if (value) { gutterVisible = true; } } if (lineNumberToolStripMenuItem != null) lineNumberToolStripMenuItem.Checked = value; };
+              vimEngine.OnRelativeNumbersChanged += value => { if (gutterPanel != null) { gutterPanel.RelativeNumbers = value; gutterPanel.UpdateLineNumberWidth(); mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); if (value) { gutterVisible = true; } } if (relativeLineNumberToolStripMenuItem != null) relativeLineNumberToolStripMenuItem.Checked = value; };
+              vimEngine.OnGutterVisibilityChanged += value => { if (value) { gutterVisible = true; gutterPanel.UpdateLineNumberWidth(); mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); } else { gutterVisible = false; gutterPanel.Width = 0; mainTable.PerformLayout(); mainTable.Invalidate(); mainTable.Update(); gutterPanel.MarkDataDirty(); } if (gutterMenuItem != null) gutterMenuItem.Checked = gutterVisible; if (!value) { gutterPanel.ShowLineNumbers = false; gutterPanel.RelativeNumbers = false; } };
+              LoadVimrc();
+
+              // Add line number menu items to View menu
+              var viewMenu = menuStrip.Items[3] as ToolStripMenuItem; // View menu is index 3
+              if (viewMenu != null)
+              {
+                  viewMenu.DropDownItems.Add(new ToolStripSeparator());
+                  viewMenu.DropDownItems.Add(lineNumberToolStripMenuItem);
+                  viewMenu.DropDownItems.Add(relativeLineNumberToolStripMenuItem);
+              }
+
+              // Set initial checked (mutually exclusive)
+              bool showNumbers = gutterPanel?.ShowLineNumbers ?? true;
+              bool relative = gutterPanel?.RelativeNumbers ?? false;
+              lineNumberToolStripMenuItem.Checked = showNumbers && !relative;
+              relativeLineNumberToolStripMenuItem.Checked = relative;
+
+              // Menu click events (mutually exclusive, direct control)
+              lineNumberToolStripMenuItem.Click += (s, e) => {
+                  bool isChecked = lineNumberToolStripMenuItem.Checked;
+                  if (isChecked) {
+                      relativeLineNumberToolStripMenuItem.Checked = false;
+                      gutterPanel.ShowLineNumbers = true;
+                      gutterPanel.RelativeNumbers = false;
+                  } else {
+                      gutterPanel.ShowLineNumbers = false;
+                      gutterPanel.RelativeNumbers = false;
+                  }
+                  gutterPanel.UpdateLineNumberWidth();
+                  mainTable.PerformLayout();
+                  mainTable.Invalidate();
+                  mainTable.Update();
+                  gutterPanel.MarkDataDirty();
+              };
+              relativeLineNumberToolStripMenuItem.Click += (s, e) => {
+                  bool isChecked = relativeLineNumberToolStripMenuItem.Checked;
+                  if (isChecked) {
+                      lineNumberToolStripMenuItem.Checked = false;
+                      gutterPanel.ShowLineNumbers = true;
+                      gutterPanel.RelativeNumbers = true;
+                  } else {
+                      gutterPanel.RelativeNumbers = false;
+                      if (!lineNumberToolStripMenuItem.Checked) {
+                          gutterPanel.ShowLineNumbers = false;
+                      }
+                  }
+                  gutterPanel.UpdateLineNumberWidth();
+                  mainTable.PerformLayout();
+                  mainTable.Invalidate();
+                  mainTable.Update();
+                  gutterPanel.MarkDataDirty();
+              };
               textEditor.Enter += (s, e) => { if (vimModeEnabled) vimEngine?.SetEditor(textEditor); };
                _snippetEngine = new SnippetEngine(textEditor!);
                _multiCaret = new MultiCaretManager(textEditor!);
+              void LoadVimrc()
+              {
+                  string vimrcPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".vimrc");
+                  if (!File.Exists(vimrcPath))
+                      vimrcPath = ".vimrc";
+                  if (File.Exists(vimrcPath))
+                  {
+                      foreach (string line in File.ReadLines(vimrcPath))
+                      {
+                          string trimmed = line.Trim();
+                          if (trimmed.StartsWith(":"))
+                              vimEngine.ExecuteCommand(trimmed[1..]);
+                      }
+                  }
+              }
               vimEngine.SaveRequested += () => { if (currentFilePath != null) { SaveFile(); ShowNotification("Vim", "File saved"); } else { SaveAsFile(); } };
               vimEngine.SaveAsRequested += (filename) =>
               {
@@ -2362,21 +2444,22 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         {
             gutterVisible = !gutterVisible;
             gutterMenuItem.Checked = gutterVisible;
-            gutterPanel.Visible = gutterVisible;
-            if (mainTable.ColumnCount > 0)
+            if (gutterVisible)
             {
-                if (gutterVisible)
-                {
-                    gutterPanel.Visible = true;
-                    gutterPanel.UpdateLineNumberWidth();
-                    mainTable.PerformLayout();
-                }
-                else
-                {
-                    gutterPanel.Visible = false;
-                }
+                gutterPanel.UpdateLineNumberWidth();
+                mainTable.PerformLayout();
+                mainTable.Invalidate();
+                mainTable.Update();
+                gutterPanel.MarkDataDirty();
             }
-            gutterPanel.RefreshGutter();
+            else
+            {
+                gutterPanel.Width = 0;
+                mainTable.PerformLayout();
+                mainTable.Invalidate();
+                mainTable.Update();
+                gutterPanel.MarkDataDirty();
+            }
             SaveSettings();
         }
 
@@ -7167,10 +7250,11 @@ private void NewWindow_Click(object? sender, EventArgs e)
               if (vimModeEnabled)
               {
                   vimModeLabel.Visible = true;
-                   if (vimEngine?.CurrentMode == VimMode.Command)
-                   {
-                       vimModeLabel.Text = vimEngine.CommandText;
-                   }
+                    if (vimEngine?.CurrentMode == VimMode.Command)
+                    {
+                        vimModeLabel.Text = vimEngine.CommandText;
+                        vimModeLabel.Invalidate();
+                    }
                   else
                   {
                       vimModeLabel.Text = vimEngine?.CurrentMode switch
@@ -7203,6 +7287,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             fileTypeLabel.Text = fileType;
 
             // File type icon removed - text only
+            statusStrip.Refresh();
         }
 
         private void UpdateStatusBarVisibility()
@@ -8218,6 +8303,23 @@ private void NewWindow_Click(object? sender, EventArgs e)
         #region Fullscreen Toggle
         private void Form1_KeyDown(object? sender, KeyEventArgs e)
         {
+            if (vimModeEnabled && vimEngine != null)
+            {
+                var (key, ctrl, shift, alt) = VimStateBase.ParseKey(e.KeyData);
+                if (vimEngine.ProcessKey(key, ctrl, shift, alt))
+                {
+                    UpdateStatusBar();
+                    if (gutterPanel != null)
+                    {
+                        gutterPanel.CurrentLine = vimEngine.GetCurrentLine() + 1;
+                        gutterPanel.Invalidate();
+                    }
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    return;
+                }
+            }
+
             if (e.KeyCode == Keys.F11)
             {
                 ToggleFullScreen();
@@ -8848,15 +8950,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             if (keyData == (Keys.Alt | Keys.Shift | Keys.F)) { FormatDocumentAsync(); return true; }
             if (keyData == (Keys.Control | Keys.P)) { ShowQuickOpen(); return true; }
-
-            if (vimModeEnabled && vimEngine != null)
-            {
-                if (vimEngine.ProcessKey(keyData))
-                {
-                    UpdateStatusBar(); // refresh mode indicator on status bar
-                    return true;
-                }
-            }
 
             return base.ProcessCmdKey(ref msg, keyData);
         }

@@ -48,6 +48,13 @@ public class GutterPanel : Panel
         Invalidate();
     }
 
+    public void MarkDataDirty()
+    {
+        _gutterDataDirty = true;
+        Invalidate();
+        Update();
+    }
+
     public void SetCoverage(Dictionary<int, int>? lineHits)
     {
         _coverageHits = lineHits;
@@ -90,6 +97,8 @@ public class GutterPanel : Panel
 
     [Category("Appearance")]
     public bool ShowLineNumbers { get; set; } = true;
+    public bool RelativeNumbers { get; set; } = false;
+    public int CurrentLine { get; set; } = 1;
 
     [Category("Appearance")]
     public bool ShowBookmarks { get; set; } = false;
@@ -240,7 +249,7 @@ public class GutterPanel : Panel
 
     public void UpdateLineNumberWidth()
     {
-        int lineNumberWidth = LineNumberMarginWidth;
+        int lineNumberWidth = ShowLineNumbers ? LineNumberMarginWidth : 0;
         if (mainForm?.textEditor != null && ShowLineNumbers)
         {
             var editor = mainForm.textEditor;
@@ -422,18 +431,27 @@ public class GutterPanel : Panel
 
     private void DrawLineNumber(Graphics g, int lineNumber, int x, int y)
     {
-        string text = lineNumber.ToString();
         RichTextBox editor = mainForm.textEditor;
+        int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
+        bool isCurrent = lineNumber == currentLineNum;
+        string text;
+        if (RelativeNumbers && !isCurrent)
+        {
+            text = Math.Abs(lineNumber - currentLineNum).ToString();
+        }
+        else
+        {
+            text = lineNumber.ToString();
+        }
 
         bool isCurrentLine = false;
         if (mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly || mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberAndWholeLine)
         {
-            int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
             isCurrentLine = (lineNumber == currentLineNum);
         }
 
         FontStyle style = editor.Font.Style;
-        Color color = Color.FromArgb(120, 120, 120);
+        Color color = mainForm.IsDarkTheme ? Color.LightGray : Color.DarkGray;
         if (isCurrentLine)
         {
             style |= FontStyle.Bold;
