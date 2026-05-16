@@ -1026,15 +1026,22 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                   string vimrcPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".vimrc");
                   if (!File.Exists(vimrcPath))
                       vimrcPath = ".vimrc";
-                  if (File.Exists(vimrcPath))
-                  {
-                      foreach (string line in File.ReadLines(vimrcPath))
-                      {
-                          string trimmed = line.Trim();
-                          if (trimmed.StartsWith(":"))
-                              vimEngine.ExecuteCommand(trimmed[1..]);
-                      }
-                  }
+                   if (File.Exists(vimrcPath))
+                   {
+                       try
+                       {
+                           foreach (string line in File.ReadLines(vimrcPath))
+                           {
+                               string trimmed = line.Trim();
+                               if (trimmed.StartsWith(":"))
+                                   vimEngine.ExecuteCommand(trimmed[1..]);
+                           }
+                       }
+                       catch (Exception ex)
+                       {
+                           ShowNotification("Vim", $"Failed to load .vimrc: {ex.Message}");
+                       }
+                   }
               }
               vimEngine.SaveRequested += () => { if (currentFilePath != null) { SaveFile(); ShowNotification("Vim", "File saved"); } else { SaveAsFile(); } };
               vimEngine.SaveAsRequested += (filename) =>
@@ -1080,7 +1087,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                       ShowNotification("Vim", "Horizontal split created");
                   }
               };
-              vimEngine.InsertSpacesRequested += (v) => { if (insertSpaces != v) { ToggleInsertSpaces(); ShowNotification("Vim", v ? "expendtab" : "noexpandtab"); } };
+              vimEngine.InsertSpacesRequested += (v) => { if (insertSpaces != v) { ToggleInsertSpaces(); ShowNotification("Vim", v ? "expandtab" : "noexpandtab"); } };
               vimEngine.TabSizeRequested += (s) => { SetTabSize(s); ShowNotification("Vim", $"tabstop={s}"); };
               vimEngine.AutoIndentRequested += (v) => { if (autoIndentEnabled != v) { ToggleAutoIndent(); ShowNotification("Vim", v ? "smartindent" : "nosmartindent"); } };
               vimEngine.SmartTabsRequested += (v) => { if (smartTabsEnabled != v) { ToggleSmartTabs(); ShowNotification("Vim", v ? "smarttab" : "nosmarttab"); } };
@@ -2445,9 +2452,10 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
             return _currentProfile.TestCommand;
         }
 
-        internal void ToggleGutter()
-        {
-            vimEngine!.ExecuteCommand(gutterVisible ? "set nogutter" : "set gutter");
+internal void ToggleGutter()
+{
+    if (vimEngine == null) return;
+    vimEngine.ExecuteCommand(gutterVisible ? "set nogutter" : "set gutter");
             gutterMenuItem.Checked = gutterVisible;
             SaveSettings();
         }
@@ -2475,7 +2483,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
                 else
                 {
                     vimEngine.Enabled = false;
-                    // Return to normal insert mode when disabling vim
+                    // Vim mode disabled; editor returns to default input behavior
                     // (this is handled by the engine disabling)
                 }
             }

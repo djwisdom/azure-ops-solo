@@ -157,20 +157,20 @@ namespace MyCrownJewelApp.Pfpad
             char? ch = KeyToChar(key, shift);
 
             // Handle key mappings
-            // if (ch.HasValue)
-            // {
-            //                     string potential = CommandBuffer.ToString() + ch.Value;
-            //     if (e.KeyMappings.TryGetValue(potential, out string mapped))
-            //     {
-            //         var keys = ParseKeys(mapped);
-            //         foreach (var k in keys)
-            //         {
-            //             e.EnqueuePending(k.key, k.ctrl, k.shift, k.alt);
-            //         }
-            //         ResetBuffer();
-            //         return true;
-            //     }
-            // }
+            if (ch.HasValue)
+            {
+                string potential = CommandBuffer.ToString() + ch.Value;
+                if (e.KeyMappings.TryGetValue(potential, out string mapped))
+                {
+                    var keys = e.ParseKeys(mapped);
+                    foreach (var k in keys)
+                    {
+                        e.EnqueuePending(k.key, k.ctrl, k.shift, k.alt);
+                    }
+                    ResetBuffer();
+                    return true;
+                }
+            }
 
             // Handle macro recording/playback before buffer
             if (ch.HasValue)
@@ -566,7 +566,7 @@ namespace MyCrownJewelApp.Pfpad
     }
 
     /// <summary>
-    /// Visual block mode state: Rectangular selection (placeholder for future enhancement).
+    /// Visual block mode state: Rectangular (column) selection.
     /// </summary>
     public class VisualBlockState : VimStateBase
     {
@@ -574,6 +574,10 @@ namespace MyCrownJewelApp.Pfpad
         {
             VimEngine e = (VimEngine)engine;
             e.SelectionLength = 0;
+            int line = e.GetCurrentLine();
+            int col = e.GetCurrentColumn();
+            e.BlockMinLine = e.BlockMaxLine = line;
+            e.BlockMinCol = e.BlockMaxCol = col;
         }
 
         public override bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt, object engine)
@@ -584,8 +588,7 @@ namespace MyCrownJewelApp.Pfpad
                 e.EnterMode(VimMode.Normal);
                 return true;
             }
-            // Handle motions and operations (delegate to engine)
-            return e.HandleVisualMode(key, ctrl, shift, false);
+            return e.HandleVisualBlockMode(key, ctrl, shift);
         }
     }
 
@@ -673,6 +676,8 @@ namespace MyCrownJewelApp.Pfpad
         public string LastSearchPattern { get; set; } = "";
         public bool LastSearchForward { get; set; } = true;
         public (string Action, string? Data, int Repeat)? LastAction { get; set; }
+        private string? _lastTextObject = null;
+        private int _lastInsertPosition = -1;
         public int RepeatCount { get; set; } = 1;
 
         // TextBox access
@@ -763,6 +768,8 @@ namespace MyCrownJewelApp.Pfpad
             if ((CurrentMode == VimMode.Insert && mode != VimMode.Insert) ||
                 (CurrentMode != VimMode.Insert && mode == VimMode.Insert))
             {
+                if (CurrentMode == VimMode.Insert)
+                    _lastInsertPosition = _tb.SelectionStart;
                 CreateUndoPoint();
             }
 
@@ -791,6 +798,7 @@ namespace MyCrownJewelApp.Pfpad
 
         public bool ProcessKey(Keys key, bool ctrl, bool shift, bool alt)
         {
+            if (!Enabled) return false;
             if (PendingKeys.Count > 0)
             {
                 var pk = PendingKeys.Dequeue();
@@ -933,6 +941,76 @@ namespace MyCrownJewelApp.Pfpad
             return false;
         }
 
+        public bool HandleVisualBlockMode(Keys key, bool ctrl, bool shift)
+        {
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                EnterMode(VimMode.Normal);
+                return true;
+            }
+
+            int minLine = Math.Min(BlockMinLine, BlockMaxLine);
+            int maxLine = Math.Max(BlockMinLine, BlockMaxLine);
+            int minCol = Math.Min(BlockMinCol, BlockMaxCol);
+            int maxCol = Math.Max(BlockMinCol, BlockMaxCol);
+
+            switch (key)
+            {
+                case Keys.H: case Keys.Left:  BlockMaxCol = Math.Max(0, BlockMaxCol - 1); UpdateBlockSelection(); return true;
+                case Keys.L: case Keys.Right: BlockMaxCol = BlockMaxCol + 1; UpdateBlockSelection(); return true;
+                case Keys.J: case Keys.Down:  BlockMaxLine = Math.Min(_tb.GetLineFromCharIndex(_tb.TextLength - 1), BlockMaxLine + 1); UpdateBlockSelection(); return true;
+                case Keys.K: case Keys.Up:    BlockMaxLine = Math.Max(0, BlockMaxLine - 1); UpdateBlockSelection(); return true;
+                case Keys.D: case Keys.X:     DeleteBlock(); return true;
+                case Keys.Y:                  YankBlock(); return true;
+                case Keys.I:                  BlockInsert(); return true;
+                case Keys.A:                  BlockAppend(); return true;
+                case Keys.C:                  DeleteBlock(); EnterMode(VimMode.Insert); return true;
+            }
+            return false;
+        }
+
+        private void UpdateBlockSelection()
+        {
+            int startLine = Math.Min(BlockMinLine, BlockMaxLine);
+            int endLine = Math.Max(BlockMinLine, BlockMaxLine);
+            int startCol = Math.Min(BlockMinCol, BlockMaxCol);
+            int endCol = Math.Max(BlockMinCol, BlockMaxCol);
+
+            int start = GetLineStart(startLine) + startCol;
+            int end = GetLineStart(endLine) + endCol;
+
+            if (end >= _tb.TextLength) end = _tb.TextLength - 1;
+
+            _tb.SelectionStart = Math.Min(start, end);
+            _tb.SelectionLength = Math.Abs(end - start);
+        }
+
+        public void BlockInsert()
+        {
+            // Insert at the left edge of the block on every line
+            int col = Math.Min(BlockMinCol, BlockMaxCol);
+            for (int line = BlockMinLine; line <= BlockMaxLine; line++)
+            {
+                int pos = GetLineStart(line) + col;
+                _tb.SelectionStart = pos;
+                _tb.SelectedText = "";
+            }
+            EnterMode(VimMode.Insert);
+        }
+
+        public void BlockAppend()
+        {
+            // Append at the right edge of the block on every line
+            int col = Math.Max(BlockMinCol, BlockMaxCol) + 1;
+            for (int line = BlockMinLine; line <= BlockMaxLine; line++)
+            {
+                int pos = Math.Min(GetLineStart(line) + col, GetLineEnd(line));
+                _tb.SelectionStart = pos;
+                _tb.SelectedText = "";
+            }
+            EnterMode(VimMode.Insert);
+        }
+
 
 
 
@@ -1054,6 +1132,7 @@ namespace MyCrownJewelApp.Pfpad
                 // Insert
                 case "i": EnterMode(VimMode.Insert); return true;
                 case "a": MoveRight(); EnterMode(VimMode.Insert); return true;
+                case "gi": if (_lastInsertPosition >= 0) _tb.SelectionStart = _lastInsertPosition; EnterMode(VimMode.Insert); return true;
                 case "I": MoveToLineStart(); EnterMode(VimMode.Insert); return true;
                 case "A": MoveToLineEnd(); EnterMode(VimMode.Insert); return true;
                 case "o": OpenLineBelow(); return true;
@@ -1066,6 +1145,12 @@ namespace MyCrownJewelApp.Pfpad
                 case "D": case "d$": DeleteToLineEnd(); RecordAction("delete-to-line-end"); return true;
                 case "dw": DeleteWord(); RecordAction("delete-word"); return true;
                 case "diw": DeleteInnerWord(); RecordAction("delete-inner-word"); return true;
+                case "di\"": DeleteInnerQuotes('"'); return true;
+                case "di'": DeleteInnerQuotes('\''); return true;
+                case "di`": DeleteInnerQuotes('`'); return true;
+                case "di(": case "di)": DeleteInnerBrackets('(', ')'); return true;
+                case "di[": case "di]": DeleteInnerBrackets('[', ']'); return true;
+                case "di{": case "di}": DeleteInnerBrackets('{', '}'); return true;
                 case "d0": DeleteToLineStart(); RecordAction("delete-to-line-start"); return true;
                 case "d^": DeleteToLineStart(); RecordAction("delete-to-line-start"); return true;
 
@@ -1080,6 +1165,12 @@ namespace MyCrownJewelApp.Pfpad
                 case "C": DeleteToLineEnd(); EnterMode(VimMode.Insert); return true;
                 case "cw": DeleteWord(); EnterMode(VimMode.Insert); return true;
                 case "ciw": DeleteInnerWord(); EnterMode(VimMode.Insert); return true;
+                case "ci\"": ChangeInnerQuotes('"'); return true;
+                case "ci'": ChangeInnerQuotes('\''); return true;
+                case "ci`": ChangeInnerQuotes('`'); return true;
+                case "ci(": case "ci)": ChangeInnerBrackets('(', ')'); return true;
+                case "ci[": case "ci]": ChangeInnerBrackets('[', ']'); return true;
+                case "ci{": case "ci}": ChangeInnerBrackets('{', '}'); return true;
                 case "s": DeleteChar(); EnterMode(VimMode.Insert); return true;
                 case "S": DeleteLine(); EnterMode(VimMode.Insert); return true;
 
@@ -1110,6 +1201,9 @@ namespace MyCrownJewelApp.Pfpad
                 case "?": EnterMode(VimMode.SearchBackward); return true;
                 case "n": FindNext(); return true;
                 case "N": FindPrevious(); return true;
+                case "zz": CenterCurrentLine(); return true;
+                case "*": SearchWordUnderCursor(true); return true;
+                case "#": SearchWordUnderCursor(false); return true;
 
                 // Command mode
                 case ":": EnterMode(VimMode.Command); return true;
@@ -1210,7 +1304,13 @@ namespace MyCrownJewelApp.Pfpad
             }
             if (buf.Length == 3)
             {
-                if (buf == "diw" || buf == "ciw" || buf == "yiw" || buf == "daw")
+                if (buf == "diw" || buf == "ciw" || buf == "yiw" || buf == "daw" ||
+                    buf.StartsWith("di\"") || buf.StartsWith("ci\"") ||
+                    buf.StartsWith("di'") || buf.StartsWith("ci'") ||
+                    buf.StartsWith("di`") || buf.StartsWith("ci`") ||
+                    buf.StartsWith("di(") || buf.StartsWith("ci(") ||
+                    buf.StartsWith("di[") || buf.StartsWith("ci[") ||
+                    buf.StartsWith("di{") || buf.StartsWith("ci{"))
                     return true;
             }
             return false;
@@ -1358,6 +1458,27 @@ namespace MyCrownJewelApp.Pfpad
                 case "terminal":
                     TerminalRequested?.Invoke();
                     break;
+                case "noh":
+                case "nohlsearch":
+                    LastSearchPattern = "";
+                    CommandFeedback?.Invoke("search highlight cleared");
+                    handled = true;
+                    break;
+                case "ls":
+                case "buffers":
+                    CommandFeedback?.Invoke("current file only (multi-buffer list not yet exposed)");
+                    handled = true;
+                    break;
+
+                case var m when m.StartsWith("map ") || m.StartsWith("noremap "):
+                    HandleKeyMapping(m);
+                    handled = true;
+                    break;
+
+                case var cmd2 when cmd2.StartsWith("%s/") || cmd2.StartsWith("s/"):
+                    ExecuteSubstitute(cmd2);
+                    handled = true;
+                    break;
                 default:
                     handled = false;
                     break;
@@ -1473,6 +1594,65 @@ namespace MyCrownJewelApp.Pfpad
         private void ShowNotification(string message)
         {
             CommandFeedback?.Invoke(message);
+        }
+
+        private void HandleKeyMapping(string cmd)
+        {
+            // :map lhs rhs   or   :noremap lhs rhs
+            string[] parts = cmd.Split(' ', 3);
+            if (parts.Length < 3)
+            {
+                CommandFeedback?.Invoke("Usage: :map lhs rhs");
+                return;
+            }
+            string lhs = parts[1];
+            string rhs = parts[2];
+            KeyMappings[lhs] = rhs;
+            CommandFeedback?.Invoke($"mapped {lhs} → {rhs}");
+        }
+
+        private void ExecuteSubstitute(string cmd)
+        {
+            // Basic :%s/old/new/g or :s/old/new/g
+            // Format: %s/pat/repl/flags  or s/pat/repl/flags
+            try
+            {
+                string pattern = cmd;
+                if (pattern.StartsWith("%s/")) pattern = pattern[3..];
+                else if (pattern.StartsWith("s/")) pattern = pattern[2..];
+
+                string[] parts = pattern.Split('/');
+                if (parts.Length < 2) { CommandFeedback?.Invoke("Invalid substitute syntax"); return; }
+
+                string pat = parts[0];
+                string repl = parts.Length > 1 ? parts[1] : "";
+                string flags = parts.Length > 2 ? parts[2] : "";
+
+                bool global = flags.Contains('g');
+                bool confirm = flags.Contains('c');
+
+                string text = _tb.Text;
+                var regex = new Regex(pat, RegexOptions.None, TimeSpan.FromSeconds(2));
+
+                int count = 0;
+                string result = global
+                    ? regex.Replace(text, m => { count++; return repl; })
+                    : regex.Replace(text, m => { if (count == 0) { count++; return repl; } return m.Value; }, 1);
+
+                if (count > 0)
+                {
+                    _tb.Text = result;
+                    CommandFeedback?.Invoke($"Replaced {count} occurrence(s)");
+                }
+                else
+                {
+                    CommandFeedback?.Invoke("No matches found");
+                }
+            }
+            catch (Exception ex)
+            {
+                CommandFeedback?.Invoke($"Substitute error: {ex.Message}");
+            }
         }
 
         public void ExecuteSet(string args)
@@ -1631,6 +1811,44 @@ namespace MyCrownJewelApp.Pfpad
         }
         #endregion
 
+        #region Text Objects
+        private (int start, int end) FindInnerQuotes(char quote)
+        {
+            string t = _tb.Text;
+            int p = SelectionStart;
+            int start = -1, end = -1;
+            for (int i = p - 1; i >= 0; i--) { if (t[i] == quote) { start = i + 1; break; } }
+            if (start == -1) return (-1, -1);
+            for (int i = start; i < t.Length; i++) { if (t[i] == quote) { end = i; break; } }
+            return end == -1 ? (-1, -1) : (start, end);
+        }
+
+        private (int start, int end) FindInnerBrackets(char open, char close)
+        {
+            string t = _tb.Text;
+            int p = SelectionStart;
+            int depth = 0, start = -1;
+            for (int i = p - 1; i >= 0; i--)
+            {
+                if (t[i] == close) depth++;
+                else if (t[i] == open) { if (depth == 0) { start = i + 1; break; } depth--; }
+            }
+            if (start == -1) return (-1, -1);
+            depth = 0;
+            for (int i = start; i < t.Length; i++)
+            {
+                if (t[i] == open) depth++;
+                else if (t[i] == close) { if (depth == 0) return (start, i); depth--; }
+            }
+            return (-1, -1);
+        }
+
+        public void ChangeInnerQuotes(char q) { var r = FindInnerQuotes(q); if (r.start != -1) { _tb.Select(r.start, r.end - r.start); _tb.SelectedText = ""; _lastTextObject = $"ci{q}"; EnterMode(VimMode.Insert); } }
+        public void DeleteInnerQuotes(char q) { var r = FindInnerQuotes(q); if (r.start != -1) { _tb.Select(r.start, r.end - r.start); _tb.SelectedText = ""; _lastTextObject = $"di{q}"; } }
+        public void ChangeInnerBrackets(char o, char c) { var r = FindInnerBrackets(o, c); if (r.start != -1) { _tb.Select(r.start, r.end - r.start); _tb.SelectedText = ""; _lastTextObject = $"ci{o}"; EnterMode(VimMode.Insert); } }
+        public void DeleteInnerBrackets(char o, char c) { var r = FindInnerBrackets(o, c); if (r.start != -1) { _tb.Select(r.start, r.end - r.start); _tb.SelectedText = ""; _lastTextObject = $"di{o}"; } }
+        #endregion
+
         #region Selection (Visual Mode)
         private void MoveSelection(int dx, int dy)
         {
@@ -1692,6 +1910,9 @@ namespace MyCrownJewelApp.Pfpad
             _tb.SelectionLength = len;
             _tb.SelectedText = "";
         }
+
+        // Ensure all operations use the active register
+        private void SetActiveRegister(string text) => SetRegister(CurrentRegister, IsAppendRegister, text);
         private void DeleteCharBefore()
         {
             int p = _tb.SelectionStart;
@@ -1915,6 +2136,27 @@ namespace MyCrownJewelApp.Pfpad
 
         private void RepeatLast()
         {
+            if (LastAction == null && _lastTextObject == null) return;
+
+            if (_lastTextObject != null)
+            {
+                switch (_lastTextObject)
+                {
+                    case "ci\"": ChangeInnerQuotes('"'); return;
+                    case "ci'": ChangeInnerQuotes('\''); return;
+                    case "ci`": ChangeInnerQuotes('`'); return;
+                    case "ci(": ChangeInnerBrackets('(', ')'); return;
+                    case "ci[": ChangeInnerBrackets('[', ']'); return;
+                    case "ci{": ChangeInnerBrackets('{', '}'); return;
+                    case "di\"": DeleteInnerQuotes('"'); return;
+                    case "di'": DeleteInnerQuotes('\''); return;
+                    case "di`": DeleteInnerQuotes('`'); return;
+                    case "di(": DeleteInnerBrackets('(', ')'); return;
+                    case "di[": DeleteInnerBrackets('[', ']'); return;
+                    case "di{": DeleteInnerBrackets('{', '}'); return;
+                }
+            }
+
             if (LastAction == null) return;
             var (action, data, _) = LastAction.Value;
             switch (action)
@@ -1957,6 +2199,15 @@ namespace MyCrownJewelApp.Pfpad
         {
             int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height / 2);
             for (int i = 0; i < lines; i++) MoveUp();
+        }
+
+        private void CenterCurrentLine()
+        {
+            int line = GetCurrentLine();
+            int visible = Math.Max(1, _tb.ClientSize.Height / Math.Max(1, _tb.Font.Height));
+            int target = Math.Max(0, line - visible / 2);
+            _tb.SelectionStart = GetLineStart(target);
+            _tb.ScrollToCaret();
         }
         #endregion
 
@@ -2054,6 +2305,28 @@ namespace MyCrownJewelApp.Pfpad
                 int len = _tb.TextLength;
                 if (len > 0) ExecuteSearch(len, false);
             }
+        }
+
+        private void SearchWordUnderCursor(bool forward)
+        {
+            string word = GetWordUnderCursor();
+            if (string.IsNullOrEmpty(word)) return;
+            LastSearchPattern = word;
+            LastSearchForward = forward;
+            int start = forward ? SelectionStart + SelectionLength : SelectionStart;
+            ExecuteSearch(start, forward);
+        }
+
+        private string GetWordUnderCursor()
+        {
+            int p = SelectionStart;
+            string t = _tb.Text;
+            if (p >= t.Length) return "";
+            int start = p;
+            while (start > 0 && IsWordChar(t[start - 1])) start--;
+            int end = p;
+            while (end < t.Length && IsWordChar(t[end])) end++;
+            return t.Substring(start, end - start);
         }
 
         public void PlaybackMacro(string macro)
@@ -2164,5 +2437,8 @@ namespace MyCrownJewelApp.Pfpad
         }
 
         #endregion
+
+        // Overload for test compatibility and simple macro playback
+        public bool ProcessKey(Keys key) => ProcessKey(key, false, false, false);
     }
 }

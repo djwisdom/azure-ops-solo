@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
+    <WindowsPackageType>MSIX</WindowsPackageType>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
     <ApplicationVersion>1.0.33.0</ApplicationVersion>
     <Version>1.0.33.0</Version>
