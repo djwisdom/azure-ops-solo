@@ -27,7 +27,13 @@ public sealed record SessionData
 
 public sealed class SessionManager
 {
+    public const int MaxRecentWorkspaces = 10;
+
     private readonly string _sessionPath;
+    private readonly string _recentWorkspacesPath;
+    private readonly List<string> _recentWorkspaces = new();
+
+    public IReadOnlyList<string> RecentWorkspaces => _recentWorkspaces.AsReadOnly();
 
     public SessionManager()
     {
@@ -37,6 +43,48 @@ public sealed class SessionManager
             "TextEditor");
         Directory.CreateDirectory(dir);
         _sessionPath = Path.Combine(dir, "session.json");
+        _recentWorkspacesPath = Path.Combine(dir, "recentWorkspaces.json");
+    }
+
+    public void LoadRecent()
+    {
+        try
+        {
+            if (!File.Exists(_recentWorkspacesPath)) return;
+            string json = File.ReadAllText(_recentWorkspacesPath);
+            var list = JsonSerializer.Deserialize<List<string>>(json);
+            if (list != null)
+            {
+                _recentWorkspaces.Clear();
+                _recentWorkspaces.AddRange(list);
+            }
+        }
+        catch { }
+    }
+
+    public void SaveRecent()
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(_recentWorkspaces.Take(MaxRecentWorkspaces).ToList());
+            string tmp = _recentWorkspacesPath + ".tmp";
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, _recentWorkspacesPath, overwrite: true);
+        }
+        catch { }
+    }
+
+    public void AddRecent(string path)
+    {
+        _recentWorkspaces.RemoveAll(w => string.Equals(w, path, StringComparison.OrdinalIgnoreCase));
+        _recentWorkspaces.Insert(0, path);
+        if (_recentWorkspaces.Count > MaxRecentWorkspaces)
+            _recentWorkspaces.RemoveRange(MaxRecentWorkspaces, _recentWorkspaces.Count - MaxRecentWorkspaces);
+    }
+
+    public void ClearRecent()
+    {
+        _recentWorkspaces.Clear();
     }
 
     public void SaveSession(List<EditorDocument> documents, int activeIndex, string? workspaceRoot, int nextUntitledNumber)

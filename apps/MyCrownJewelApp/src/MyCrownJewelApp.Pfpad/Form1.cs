@@ -284,10 +284,6 @@ using Microsoft.Extensions.DependencyInjection;
         private const int MaxRecentFiles = 10;
         private List<string> recentFiles = new List<string>();
 
-        // Recent workspaces
-        private const int MaxRecentWorkspaces = 10;
-        private List<string> _recentWorkspaces = new List<string>();
-
         // Designer fields (accessible via Controls collection)
         public HashSet<int> Bookmarks => bookmarks;
         public HashSet<int> ModifiedLines => modifiedLines;
@@ -661,7 +657,7 @@ using Microsoft.Extensions.DependencyInjection;
             LoadRecentFiles();
             UpdateRecentMenu();
 
-            LoadRecentWorkspaces();
+            _sessionManager.LoadRecent();
             UpdateRecentWorkspacesMenu();
             
             // Load persisted settings (overrides defaults below)
@@ -3661,57 +3657,17 @@ internal void ToggleGutter()
         }
 
         // Recent workspaces
-        private void LoadRecentWorkspaces()
-        {
-            try
-            {
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string appFolder = Path.Combine(appData, "MyCrownJewelApp", "TextEditor");
-                string path = Path.Combine(appFolder, "recentWorkspaces.json");
-                if (File.Exists(path))
-                {
-                    string json = File.ReadAllText(path);
-                    var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(json);
-                    if (list != null)
-                    {
-                        _recentWorkspaces.Clear();
-                        _recentWorkspaces.AddRange(list);
-                    }
-                }
-            }
-            catch { }
-        }
-
-        private void SaveRecentWorkspaces()
-        {
-            try
-            {
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string appFolder = Path.Combine(appData, "MyCrownJewelApp", "TextEditor");
-                Directory.CreateDirectory(appFolder);
-                string path = Path.Combine(appFolder, "recentWorkspaces.json");
-                string json = System.Text.Json.JsonSerializer.Serialize(_recentWorkspaces.Take(MaxRecentWorkspaces).ToList());
-                string tmp = path + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Move(tmp, path, overwrite: true);
-            }
-            catch { }
-        }
-
         private void AddToRecentWorkspaces(string path)
         {
-            _recentWorkspaces.RemoveAll(w => string.Equals(w, path, StringComparison.OrdinalIgnoreCase));
-            _recentWorkspaces.Insert(0, path);
-            if (_recentWorkspaces.Count > MaxRecentWorkspaces)
-                _recentWorkspaces.RemoveRange(MaxRecentWorkspaces, _recentWorkspaces.Count - MaxRecentWorkspaces);
+            _sessionManager.AddRecent(path);
             UpdateRecentWorkspacesMenu();
-            SaveRecentWorkspaces();
+            _sessionManager.SaveRecent();
         }
 
         private void UpdateRecentWorkspacesMenu()
         {
             recentWorkspacesMenuItem.DropDownItems.Clear();
-            if (_recentWorkspaces.Count == 0)
+            if (_sessionManager.RecentWorkspaces.Count == 0)
             {
                 recentWorkspacesMenuItem.Enabled = false;
                 recentWorkspacesMenuItem.DropDownItems.Add("(No recent workspaces)").Enabled = false;
@@ -3719,16 +3675,16 @@ internal void ToggleGutter()
             else
             {
                 recentWorkspacesMenuItem.Enabled = true;
-                for (int i = 0; i < _recentWorkspaces.Count; i++)
+                for (int i = 0; i < _sessionManager.RecentWorkspaces.Count; i++)
                 {
-                    string wsPath = _recentWorkspaces[i];
+                    string wsPath = _sessionManager.RecentWorkspaces[i];
                     string display = $"{(i + 1)} {Path.GetFileName(wsPath)}";
                     var item = new ToolStripMenuItem(display, null, (s, e) => OpenWorkspaceFolder(wsPath));
                     item.ToolTipText = wsPath;
                     recentWorkspacesMenuItem.DropDownItems.Add(item);
                 }
                 recentWorkspacesMenuItem.DropDownItems.Add(new ToolStripSeparator());
-                var clearItem = new ToolStripMenuItem("Clear Recent Workspaces", null, (s, e) => { _recentWorkspaces.Clear(); UpdateRecentWorkspacesMenu(); SaveRecentWorkspaces(); });
+                var clearItem = new ToolStripMenuItem("Clear Recent Workspaces", null, (s, e) => { _sessionManager.ClearRecent(); UpdateRecentWorkspacesMenu(); _sessionManager.SaveRecent(); });
                 recentWorkspacesMenuItem.DropDownItems.Add(clearItem);
             }
         }
