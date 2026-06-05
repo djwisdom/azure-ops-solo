@@ -16,11 +16,6 @@
     <Company>Personal Flip Pad</Company>
     <Description>A comprehensive code editor with advanced features: syntax highlighting, minimap, vim mode, git integration, code folding, Roslyn IntelliSense, performance profiling, command palette, file associations (Terraform/Bicep/Ansible), DeepWiki-style repository analytics, visual Git status indicators, and more.</Description>
     <Copyright>Copyright (c) 2026</Copyright>
-    <!-- WFO1000: suppress designer-serialization errors on custom Control properties.
-         These custom controls (GutterPanel, HighlightRichTextBox, etc.) are not used
-         in the WinForms designer, so serialization is not required.
-         Long-term fix: add [DesignerSerializationVisibility(Hidden)] to each property. -->
-    <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">

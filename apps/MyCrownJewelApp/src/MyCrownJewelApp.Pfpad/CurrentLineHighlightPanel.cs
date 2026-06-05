@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using WinFormsTimer = System.Windows.Forms.Timer;
@@ -34,6 +35,7 @@ public sealed class CurrentLineHighlightPanel : Panel
     /// <summary>
     /// The RichTextBox editor to track.
     /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public RichTextBox? LinkedEditor
     {
         get => linkedEditor;
@@ -68,6 +70,7 @@ public sealed class CurrentLineHighlightPanel : Panel
     /// <summary>
     /// Color of the highlight line.
     /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color HighlightColor
     {
         get => highlightColor;
@@ -77,6 +80,7 @@ public sealed class CurrentLineHighlightPanel : Panel
     /// <summary>
     /// Whether the highlight is shown.
     /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowHighlight
     {
         get => showHighlight;

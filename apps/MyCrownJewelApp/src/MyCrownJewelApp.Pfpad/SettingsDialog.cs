@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -2482,6 +2483,7 @@ internal sealed class CustomSplitter : Control
         UpdateLayout();
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int SplitterPosition
     {
         get => _splitterPosition;
@@ -2667,6 +2669,7 @@ internal sealed class AddWorkspaceSettingDialog : Form
     private Button _cancelButton = null!;
 
     public string SettingKey => _keyTextBox.Text;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public object SettingValue { get; private set; } = "";
 
     public AddWorkspaceSettingDialog(Theme theme)
@@ -2832,6 +2835,7 @@ internal sealed class ToggleSwitch : Control
         Cursor = Cursors.Hand;
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Checked
     {
         get => _checked;

@@ -37,15 +37,19 @@ namespace MyCrownJewelApp.Pfpad
         private const float LineContentHeight = 1f;
         private const float LineGap = 1f;
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public int MinimapWidth { get; set; } = 100;
 
         [Category("Appearance")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color ViewportColor { get; set; } = Color.FromArgb(60, 100, 180, 255);
 
         [Category("Appearance")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color ViewportBorderColor { get; set; } = Color.FromArgb(100, 180, 255);
 
         [Category("Appearance")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public Color BorderColor { get; set; } = Color.FromArgb(60, 60, 60);
 
         private bool _mouseHovering;

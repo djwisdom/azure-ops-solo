@@ -39,6 +39,7 @@ public class GutterPanel : Panel
 
     public event Action<int>? BreakpointClicked;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int TopOffset { get; set; }
 
     public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
@@ -95,20 +96,27 @@ public class GutterPanel : Panel
     }
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowLineNumbers { get; set; } = true;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool RelativeNumbers { get; set; } = false;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int CurrentLine { get; set; } = 1;
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowBookmarks { get; set; } = false;
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowChangeHistory { get; set; } = false;
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowCodeFolds { get; set; } = true;
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowBreakpoints { get; set; } = true;
 
     [DllImport("user32.dll")]

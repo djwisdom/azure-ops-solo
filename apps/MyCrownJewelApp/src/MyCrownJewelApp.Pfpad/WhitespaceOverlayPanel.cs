@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -12,6 +13,7 @@ public sealed class WhitespaceOverlayForm : Form
     private bool showGlyphs = false;
     private Form? _ownerForm;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Form? OwnerForm
     {
         get => _ownerForm;
@@ -46,6 +48,7 @@ public sealed class WhitespaceOverlayForm : Form
         }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public RichTextBox? LinkedEditor
     {
         get => linkedEditor;
@@ -72,12 +75,14 @@ public sealed class WhitespaceOverlayForm : Form
         }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color GlyphColor
     {
         get => glyphColor;
         set { glyphColor = value; Invalidate(); }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowGlyphs
     {
         get => showGlyphs;

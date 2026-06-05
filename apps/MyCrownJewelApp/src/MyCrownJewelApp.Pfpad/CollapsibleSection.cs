@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -18,6 +19,7 @@ internal sealed class CollapsibleSection : Panel
     private readonly int _collapsedHeight = 26;
     private Theme _theme;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Expanded
     {
         get => _expanded;
@@ -34,12 +36,14 @@ internal sealed class CollapsibleSection : Panel
 
     public event EventHandler? ExpandedChanged;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string Title
     {
         get => _headerLabel.Text;
         set => _headerLabel.Text = value;
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Control[] ContentControls
     {
         set

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
@@ -301,6 +302,7 @@ internal sealed class GlobalSearchDialog : Form
             _workspaceRoot = root;
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string WorkspaceRoot
     {
         get => _workspaceRoot;

@@ -1,5 +1,6 @@
  using System;
  using System.Collections.Generic;
+ using System.ComponentModel;
  using System.Drawing;
  using System.IO;
  using System.Runtime.InteropServices;
@@ -179,6 +180,7 @@ using Microsoft.Extensions.DependencyInjection;
         // EditorDocument management (tabs) — collection delegated to DocumentManager
         internal readonly DocumentManager _docManager = new();
         internal List<EditorDocument> documents => _docManager.Documents;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         internal int activeDocIndex { get => _docManager.ActiveIndex; set => _docManager.ActiveIndex = value; }
         private int nextUntitledNumber { get => _docManager.NextUntitledNumber; set => _docManager.NextUntitledNumber = value; }
         private int? hoveredTabIndex = null;

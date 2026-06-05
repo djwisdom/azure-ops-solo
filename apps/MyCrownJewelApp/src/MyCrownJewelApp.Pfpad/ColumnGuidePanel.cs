@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -46,6 +47,7 @@ public sealed class ColumnGuidePanel : Control
 
     protected override void OnPaintBackground(PaintEventArgs e) { }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public RichTextBox? LinkedEditor
     {
         get => _editor;
@@ -62,14 +64,17 @@ public sealed class ColumnGuidePanel : Control
 
     private void OnEditorScroll(object? sender, EventArgs e) => Invalidate();
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int GuideColumn
     {
         get => _guideColumn;
         set { if (value < 1) value = 1; _guideColumn = value; Invalidate(); }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color GuideColor { get; set; } = Color.FromArgb(100, 120, 120, 120);
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowGuide
     {
         get => _showGuide;

@@ -147,6 +147,7 @@ namespace MyCrownJewelApp.Pfpad
 
     [Category("Appearance")]
     [Description("Current line highlight mode.")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public CurrentLineHighlightMode CurrentLineHighlightMode
     {
         get => _highlightMode;
@@ -163,6 +164,7 @@ namespace MyCrownJewelApp.Pfpad
 
     [Category("Appearance")]
     [Description("Color of the current line highlight (supports alpha).")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color HighlightColor
     {
         get => _highlightColor;
@@ -758,6 +760,7 @@ namespace MyCrownJewelApp.Pfpad
     }
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int GuideColumn
     {
         get => _guideColumn;
@@ -765,6 +768,7 @@ namespace MyCrownJewelApp.Pfpad
     }
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowGuide
     {
         get => _showGuide;
@@ -772,6 +776,7 @@ namespace MyCrownJewelApp.Pfpad
     }
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color GuideColor
     {
         get => _guideColor;
@@ -779,6 +784,7 @@ namespace MyCrownJewelApp.Pfpad
     }
 
     [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public FoldingManager? FoldingManager
     {
         get => _foldingManager;
@@ -786,6 +792,7 @@ namespace MyCrownJewelApp.Pfpad
     }
 
     [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Color FoldLineColor
     {
         get => _foldLineColor;

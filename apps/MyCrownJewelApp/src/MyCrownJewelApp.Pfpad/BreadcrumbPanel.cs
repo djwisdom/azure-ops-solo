@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -10,12 +11,14 @@ public sealed class BreadcrumbPanel : Panel
     private string _currentScope = "";
     private const int PanelHeight = 24;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string FilePath
     {
         get => _filePath;
         set { _filePath = value ?? ""; Invalidate(); }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string CurrentScope
     {
         get => _currentScope;
