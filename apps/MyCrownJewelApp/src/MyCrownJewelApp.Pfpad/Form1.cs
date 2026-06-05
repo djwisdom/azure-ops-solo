@@ -16,6 +16,7 @@
  using System.Runtime.CompilerServices;
  using MyCrownJewelApp.Pfpad.Debugger;
 using MyCrownJewelApp.Pfpad.Features.RoslynControl;
+using Microsoft.Extensions.DependencyInjection;
 
  [assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]
 
@@ -296,7 +297,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private string? savedContentHash = null;
 
         // Session restore
-        private readonly SessionManager _sessionManager = new();
+        private readonly SessionManager _sessionManager = null!;
         private bool _cliArgsProvided;
         private bool _workspaceRootFromCli;
 
@@ -385,8 +386,8 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         private readonly List<(string Title, string Summary)> _delayedNotifications = new();
 
         // Notification feed
-        private readonly NotificationFeedService _notificationFeed = new();
-        private readonly UserProfileManager _profileManager = new();
+        private readonly NotificationFeedService _notificationFeed = null!;
+        private readonly UserProfileManager _profileManager = null!;
         private UserProfile _currentProfile = UserProfileManager.DefaultProfile;
         private NotificationCenterForm? _notificationCenter;
         private ToolStripStatusLabel _notificationStatusLabel = null!;
@@ -518,7 +519,7 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
         public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
 
     public Form1()
-        : this(skipInitialDocument: false)
+        : this(skipInitialDocument: false, services: null)
     {
     }
 
@@ -526,7 +527,30 @@ using MyCrownJewelApp.Pfpad.Features.RoslynControl;
     /// Internal constructor used by tear-away to avoid creating an extra untitled document.
     /// </summary>
     internal Form1(bool skipInitialDocument)
+        : this(skipInitialDocument, services: null)
     {
+    }
+
+    /// <summary>
+    /// Primary constructor. Accepts an optional IServiceProvider for app-wide singleton
+    /// services (NotificationFeedService, UserProfileManager, SessionManager).
+    /// All form-scoped services (GitService, LintEngine, DebugSession, etc.) are
+    /// created via new() because they carry per-window mutable state.
+    /// </summary>
+    internal Form1(bool skipInitialDocument, IServiceProvider? services)
+    {
+        // Initialize app-wide services from DI, or fall back to new() for designer
+        // and tear-away paths that don't have a service provider.
+        _notificationFeed = services is null
+            ? new NotificationFeedService()
+            : services.GetRequiredService<NotificationFeedService>();
+        _profileManager = services is null
+            ? new UserProfileManager()
+            : services.GetRequiredService<UserProfileManager>();
+        _sessionManager = services is null
+            ? new SessionManager()
+            : services.GetRequiredService<SessionManager>();
+
         InitializeComponent();
 
         this.KeyDown += Form1_KeyDown;

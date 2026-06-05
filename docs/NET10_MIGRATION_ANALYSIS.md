@@ -497,12 +497,21 @@ Every new feature added to Form1 makes the God Class worse. The P1 DI + Document
 - [ ] Update `README.md` references from `.NET 8` to `.NET 10`
 - [ ] Update `MEMORY.md` target framework entry
 
-### Phase 2 — DI Introduction (1 day)
-- [ ] Add `Microsoft.Extensions.DependencyInjection` + Logging packages
-- [ ] Refactor `Program.cs` to build `IServiceProvider`
-- [ ] Inject services into `Form1` constructor
-- [ ] Remove inline `new()` field initializers for injected services
-- [ ] Add `ILogger<Form1>` and replace `File.AppendAllText` log calls in Program.cs
+### Phase 2 — DI + Logging ✅ (2026-06-06)
+
+**What was implemented:**
+- `Program.cs` rebuilt with `IServiceCollection` / `IServiceProvider`
+- Three app-wide singletons registered: `NotificationFeedService`, `UserProfileManager`, `SessionManager`
+- `StartupFileLoggerProvider.cs` — minimal `ILoggerProvider` writing to `%LocalAppData%\MyCrownJewelApp\Pfpad\startup.log`, replacing scattered `File.AppendAllText` calls
+- `ILoggerFactory` + `ILogger` wired via `AddLogging(b => b.AddDebug().AddProvider(StartupFileLoggerProvider))`
+- `Form1(bool skipInitialDocument, IServiceProvider? services)` — new primary constructor. Initializes the 3 singletons from DI when `services != null`, falls back to `new T()` for designer and tear-away windows
+- `Form1(bool)` → `Form1(bool, services: null)` (chained)
+- `Form1()` → `Form1(false, null)` (chained, designer-safe)
+- `ServiceProvider` disposed via `using` after `Application.Run(form)` exits
+- Form-scoped services (`GitService`, `LintEngine`, `SymbolIndexService`, `DebugSession`, `BreakpointManager`) kept as `new()` field initializers — they carry per-window mutable state and are not safe as singletons
+
+**Why only 3 singletons (not all services):**
+The rubber-duck review identified that `GitService`, `LintEngine`, `SymbolIndexService`, and `DebugSession` track per-window state (active repo, Roslyn workspace, debug process). Making them singletons would cause one window to overwrite another window's workspace. Only the 3 services with no per-window state were promoted to DI singletons.
 
 ### Phase 3 — DocumentManager Extraction (3 days)
 - [ ] Create `DocumentManager.cs` with full document/tab lifecycle

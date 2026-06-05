@@ -167,7 +167,15 @@ Form1.cs (~6900 lines)   ← God-class shell: all UI layout, state, and coordina
 - Files >20MB trigger async load; >50MB show warning; >500MB are rejected.
 - `Document.DisableSyntaxHighlighting`, `DisableMinimap`, `DisableWordWrap` flags are set by `ApplyLargeFileDegradation()`. Always check these before starting expensive operations.
 
-### Git / Infra Conventions
+### DI / Logging Pattern (added Phase 2)
+
+- `Program.cs` builds an `IServiceProvider` (Microsoft.Extensions.DependencyInjection 9.x). Dispose it via `using` — it owns the 3 singletons.
+- Three app-wide singletons are registered: `NotificationFeedService`, `UserProfileManager`, `SessionManager`.
+- Form-scoped services (`GitService`, `LintEngine`, `SymbolIndexService`, `DebugSession`, `BreakpointManager`) are **not** in DI — they are `new()`-ed as field initializers and carry per-window mutable state.
+- `Form1(bool skipInitialDocument, IServiceProvider? services)` is the primary constructor. Pass `services: null` when creating tear-away windows (no shared state needed).
+- `StartupFileLoggerProvider` writes `ILogger` output to `%LocalAppData%\MyCrownJewelApp\Pfpad\startup.log`.
+
+
 
 - Feature branches off `master`; squash-style commits.
 - Terraform backend is **local-only** (backend config is commented out in `infra/` — do not uncomment without setting up the remote backend first).
@@ -183,11 +191,8 @@ Form1.cs (~6900 lines)   ← God-class shell: all UI layout, state, and coordina
 
 ## Active Known Issues / TODOs
 
-- `stash@{0}` — "Fix Tab pushing view down": wrap single-caret insert with `BeginUpdate`/`EndUpdate`. Not yet committed.
-- `WindowsPackageType = MSIX` in the .csproj conflicts with the Inno Setup installer (`installer.iss`). This property should be removed.
-- `NETSDK1057` warning suppressed — caused by using .NET 10 preview SDK while targeting `net8.0`. Will clear when TFM is updated.
-- `patch_form.py`, `patch_form2.py`, `patch_form3.py` in the source directory are leftover migration scripts and should be deleted.
-- Terraform `infra/modules/` has only a README — actual modules are stubs.
+- `WFO1000` suppressed — 38 custom Control properties lack `[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]`. Long-term fix: add the attribute to each property in `GutterPanel`, `HighlightRichTextBox`, `ColumnGuidePanel`, `CollapsibleSection`, `WhitespaceOverlayPanel`, `SettingsDialog`.
+- `WindowsPackageType=MSIX` removed (was conflicting with Inno Setup).
 
 ---
 
