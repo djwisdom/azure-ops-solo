@@ -28,12 +28,16 @@ public sealed record SessionData
 public sealed class SessionManager
 {
     public const int MaxRecentWorkspaces = 10;
+    public const int MaxRecentFiles = 10;
 
     private readonly string _sessionPath;
     private readonly string _recentWorkspacesPath;
+    private readonly string _recentFilesPath;
     private readonly List<string> _recentWorkspaces = new();
+    private readonly List<string> _recentFiles = new();
 
     public IReadOnlyList<string> RecentWorkspaces => _recentWorkspaces.AsReadOnly();
+    public IReadOnlyList<string> RecentFiles => _recentFiles.AsReadOnly();
 
     public SessionManager()
     {
@@ -44,6 +48,7 @@ public sealed class SessionManager
         Directory.CreateDirectory(dir);
         _sessionPath = Path.Combine(dir, "session.json");
         _recentWorkspacesPath = Path.Combine(dir, "recentWorkspaces.json");
+        _recentFilesPath = Path.Combine(dir, "recent.txt");
     }
 
     public void LoadRecent()
@@ -85,6 +90,42 @@ public sealed class SessionManager
     public void ClearRecent()
     {
         _recentWorkspaces.Clear();
+    }
+
+    public void LoadRecentFiles()
+    {
+        try
+        {
+            if (!File.Exists(_recentFilesPath)) return;
+            var lines = File.ReadAllLines(_recentFilesPath);
+            _recentFiles.Clear();
+            _recentFiles.AddRange(lines.Where(l => !string.IsNullOrWhiteSpace(l)));
+        }
+        catch { }
+    }
+
+    public void SaveRecentFiles()
+    {
+        try
+        {
+            string tmp = _recentFilesPath + ".tmp";
+            File.WriteAllLines(tmp, _recentFiles.Take(MaxRecentFiles));
+            File.Move(tmp, _recentFilesPath, overwrite: true);
+        }
+        catch { }
+    }
+
+    public void AddRecentFile(string path)
+    {
+        _recentFiles.RemoveAll(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase));
+        _recentFiles.Insert(0, path);
+        if (_recentFiles.Count > MaxRecentFiles)
+            _recentFiles.RemoveRange(MaxRecentFiles, _recentFiles.Count - MaxRecentFiles);
+    }
+
+    public void ClearRecentFiles()
+    {
+        _recentFiles.Clear();
     }
 
     public void SaveSession(List<EditorDocument> documents, int activeIndex, string? workspaceRoot, int nextUntitledNumber)

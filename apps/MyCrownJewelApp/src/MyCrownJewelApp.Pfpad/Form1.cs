@@ -281,9 +281,6 @@ using Microsoft.Extensions.DependencyInjection;
         private int _lastGCCollections;
 
         // Recent files
-        private const int MaxRecentFiles = 10;
-        private List<string> recentFiles = new List<string>();
-
         // Designer fields (accessible via Controls collection)
         public HashSet<int> Bookmarks => bookmarks;
         public HashSet<int> ModifiedLines => modifiedLines;
@@ -654,7 +651,7 @@ using Microsoft.Extensions.DependencyInjection;
         gutterVisible = false;
         showGuide = false;
             
-            LoadRecentFiles();
+            _sessionManager.LoadRecentFiles();
             UpdateRecentMenu();
 
             _sessionManager.LoadRecent();
@@ -3591,51 +3588,17 @@ internal void ToggleGutter()
 
         #region Recent Files
 
-        private void LoadRecentFiles()
-        {
-            try
-            {
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string appFolder = Path.Combine(appData, "MyCrownJewelApp", "TextEditor");
-                string recentFile = Path.Combine(appFolder, "recent.txt");
-                if (File.Exists(recentFile))
-                {
-                    var lines = File.ReadAllLines(recentFile);
-                    recentFiles = new List<string>(lines);
-                }
-            }
-            catch { }
-        }
-
-        private void SaveRecentFiles()
-        {
-            try
-            {
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string appFolder = Path.Combine(appData, "MyCrownJewelApp", "TextEditor");
-                Directory.CreateDirectory(appFolder);
-                string recentFile = Path.Combine(appFolder, "recent.txt");
-                File.WriteAllLines(recentFile, recentFiles.Take(MaxRecentFiles));
-            }
-            catch { }
-        }
-
         private void AddToRecentFiles(string path)
         {
-            // Remove if already exists
-            recentFiles.RemoveAll(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase));
-            recentFiles.Insert(0, path);
-            if (recentFiles.Count > MaxRecentFiles)
-                recentFiles.RemoveRange(MaxRecentFiles, recentFiles.Count - MaxRecentFiles);
+            _sessionManager.AddRecentFile(path);
             UpdateRecentMenu();
-            SaveRecentFiles();
+            _sessionManager.SaveRecentFiles();
         }
 
         private void UpdateRecentMenu()
         {
-            // Clear old items (except the "Recent >" placeholder, but we'll rebuild)
             recentMenuItem.DropDownItems.Clear();
-            if (recentFiles.Count == 0)
+            if (_sessionManager.RecentFiles.Count == 0)
             {
                 recentMenuItem.Enabled = false;
                 recentMenuItem.DropDownItems.Add("(No recent files)").Enabled = false;
@@ -3643,15 +3606,15 @@ internal void ToggleGutter()
             else
             {
                 recentMenuItem.Enabled = true;
-                for (int i = 0; i < recentFiles.Count; i++)
+                for (int i = 0; i < _sessionManager.RecentFiles.Count; i++)
                 {
-                    string filePath = recentFiles[i];
+                    string filePath = _sessionManager.RecentFiles[i];
                     string display = $"{(i + 1)} {Path.GetFileName(filePath)}";
                     var item = new ToolStripMenuItem(display, null, (s, e) => OpenFileInNewTab(filePath));
                     recentMenuItem.DropDownItems.Add(item);
                 }
                 recentMenuItem.DropDownItems.Add(new ToolStripSeparator());
-                var clearItem = new ToolStripMenuItem("Clear Recent", null, (s, e) => { recentFiles.Clear(); UpdateRecentMenu(); SaveRecentFiles(); });
+                var clearItem = new ToolStripMenuItem("Clear Recent", null, (s, e) => { _sessionManager.ClearRecentFiles(); UpdateRecentMenu(); _sessionManager.SaveRecentFiles(); });
                 recentMenuItem.DropDownItems.Add(clearItem);
             }
         }
