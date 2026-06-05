@@ -431,17 +431,17 @@ public sealed class RoslynWorkspaceService : IRoslynWorkspace
         return null;
     }
 
-    public async Task<Document?> GetCurrentDocumentAsync()
+    public Task<Document?> GetCurrentDocumentAsync()
     {
-        if (_disposed || !IsReady) return null;
+        if (_disposed || !IsReady) return Task.FromResult<Document?>(null);
         try
         {
             var solution = CurrentSolution;
             var doc = solution.GetDocument(CurrentDocumentId);
-            if (doc is null) return null;
-            return doc.WithText(SourceText.From(_currentText));
+            if (doc is null) return Task.FromResult<Document?>(null);
+            return Task.FromResult<Document?>(doc.WithText(SourceText.From(_currentText)));
         }
-        catch { return null; }
+        catch { return Task.FromResult<Document?>(null); }
     }
 
     public void Dispose()

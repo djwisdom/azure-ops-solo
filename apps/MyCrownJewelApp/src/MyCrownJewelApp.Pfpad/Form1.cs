@@ -91,9 +91,8 @@ using Microsoft.Extensions.DependencyInjection;
         private CurrentLineHighlightMode currentLineHighlightMode = CurrentLineHighlightMode.Off;
         internal int tabSize = 4;
         private bool insertSpaces = true;
-        private Theme _currentTheme = Theme.Dark;
-        internal bool isDarkTheme => !_currentTheme.IsLight;
-        public bool IsDarkTheme => !_currentTheme.IsLight;
+        internal bool isDarkTheme => !_themeManager.CurrentTheme.IsLight;
+        public bool IsDarkTheme => !_themeManager.CurrentTheme.IsLight;
         internal float zoomFactor = 1.0f;
         private bool isHighlighting = false;
         private int lastHighlightedLine = -1;
@@ -404,7 +403,7 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentWordWrap => wordWrapEnabled;
         public bool CurrentShowGuide => showGuide;
         public int CurrentGuideColumn => guideColumn;
-        public string CurrentThemeName => _currentTheme.Name;
+        public string CurrentThemeName => _themeManager.CurrentTheme.Name;
         public bool CurrentGutterVisible => gutterVisible;
         public bool CurrentStatusBarVisible => statusBarVisible;
         public bool CurrentMinimapVisible => minimapMenuItem?.Checked ?? false;
@@ -702,7 +701,7 @@ using Microsoft.Extensions.DependencyInjection;
                 incrementalHighlighter = null;
             };
             
-            UpdateThemeColors(_currentTheme);
+            UpdateThemeColors(_themeManager.CurrentTheme);
 
             // Add Catppuccin themes to View > Theme menu
             themeMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -1090,7 +1089,7 @@ using Microsoft.Extensions.DependencyInjection;
                  HotTrack = true,
                  DrawMode = TabDrawMode.OwnerDrawFixed,
                  Alignment = TabAlignment.Top,
-                 BackColor = _currentTheme.MenuBackground
+                 BackColor = _themeManager.CurrentTheme.MenuBackground
              };
              _terminalTabControl.HandleCreated += (s, e) =>
              {
@@ -1110,7 +1109,7 @@ using Microsoft.Extensions.DependencyInjection;
                  const uint SWP_NOZORDER = 0x0004;
                  SetWindowPos(_terminalTabControl.Handle, IntPtr.Zero, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
-                 var theme = _currentTheme;
+                 var theme = _themeManager.CurrentTheme;
                  SendMessage(_terminalTabControl.Handle, TCM_SETBKCOLOR, IntPtr.Zero,
                      ColorTranslator.ToWin32(theme.MenuBackground));
                  const int WM_UPDATEUISTATE = 0x0128;
@@ -1145,8 +1144,8 @@ using Microsoft.Extensions.DependencyInjection;
                  Cursor = Cursors.Hand,
                  TabStop = false,
                  UseVisualStyleBackColor = false,
-                 BackColor = _currentTheme.MenuBackground,
-                 ForeColor = _currentTheme.Text
+                 BackColor = _themeManager.CurrentTheme.MenuBackground,
+                 ForeColor = _themeManager.CurrentTheme.Text
              };
              _terminalNewTabButton.FlatAppearance.BorderSize = 0;
              _terminalNewTabButton.Click += (s, e) => AddTerminalTab(defaultShell);
@@ -1175,10 +1174,10 @@ using Microsoft.Extensions.DependencyInjection;
              mainLayout.Controls.Remove(mainTable);
              _terminalSplitContainer.Panel1.Controls.Add(mainTable);
              mainTable.Dock = DockStyle.Fill;
-             _terminalSplitContainer.Panel1.BackColor = _currentTheme.EditorBackground;
+             _terminalSplitContainer.Panel1.BackColor = _themeManager.CurrentTheme.EditorBackground;
 
              // Panel2: tab control + new-tab button
-             _terminalSplitContainer.Panel2.BackColor = _currentTheme.MenuBackground;
+             _terminalSplitContainer.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
              _terminalSplitContainer.Panel2.Controls.Add(_terminalTabControl);
              _terminalSplitContainer.Panel2.Controls.Add(_terminalNewTabButton);
 
@@ -1257,8 +1256,8 @@ using Microsoft.Extensions.DependencyInjection;
                   _symbolPanel.Dock = DockStyle.Fill;
                   _problemsSplit.Panel2.Controls.Add(_problemsPanel);
                   _problemsPanel.Dock = DockStyle.Fill;
-                  _problemsSplit.Panel1.BackColor = _currentTheme.MenuBackground;
-                  _problemsSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+                  _problemsSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
+                  _problemsSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
 
                   _botSidebarSplit = new SplitContainer
                   {
@@ -1274,8 +1273,8 @@ using Microsoft.Extensions.DependencyInjection;
                   _botSidebarSplit.Panel1.Controls.Add(_gitPanel);
                   _gitPanel.Dock = DockStyle.Fill;
                   _botSidebarSplit.Panel2.Controls.Add(_problemsSplit);
-                  _botSidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
-                  _botSidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+                  _botSidebarSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
+                  _botSidebarSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
 
                   _sidebarSplit = new SplitContainer
                   {
@@ -1291,8 +1290,8 @@ using Microsoft.Extensions.DependencyInjection;
                   _sidebarSplit.Panel1.Controls.Add(_workspacePanel);
                   _workspacePanel.Dock = DockStyle.Fill;
                   _sidebarSplit.Panel2.Controls.Add(_botSidebarSplit);
-                  _sidebarSplit.Panel1.BackColor = _currentTheme.MenuBackground;
-                  _sidebarSplit.Panel2.BackColor = _currentTheme.MenuBackground;
+                  _sidebarSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
+                  _sidebarSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
 
                   _workspaceSplitContainer = new SplitContainer
                   {
@@ -1312,7 +1311,7 @@ using Microsoft.Extensions.DependencyInjection;
 
                   mainLayout.Controls.Remove(_terminalSplitContainer);
                   _workspaceSplitContainer.Panel1.Controls.Add(_sidebarSplit);
-                  _workspaceSplitContainer.Panel1.BackColor = _currentTheme.MenuBackground;
+                  _workspaceSplitContainer.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
 
                   // Editor split: editor+terminal on left, markdown preview on right (collapsed by default)
                   _editorSplitContainer = new SplitContainer
@@ -1327,13 +1326,13 @@ using Microsoft.Extensions.DependencyInjection;
                       BorderStyle = BorderStyle.None
                   };
                   _editorSplitContainer.Panel1.Controls.Add(_terminalSplitContainer);
-                  _editorSplitContainer.Panel1.BackColor = _currentTheme.EditorBackground;
+                  _editorSplitContainer.Panel1.BackColor = _themeManager.CurrentTheme.EditorBackground;
 
                   _markdownPreviewPanel = new MarkdownPreviewPanel();
                   _markdownPreviewPanel.CloseRequested += () => ToggleMarkdownPreview();
-                  _markdownPreviewPanel.SetTheme(_currentTheme);
+                  _markdownPreviewPanel.SetTheme(_themeManager.CurrentTheme);
                   _editorSplitContainer.Panel2.Controls.Add(_markdownPreviewPanel);
-                  _editorSplitContainer.Panel2.BackColor = _currentTheme.EditorBackground;
+                  _editorSplitContainer.Panel2.BackColor = _themeManager.CurrentTheme.EditorBackground;
 
                   _workspaceSplitContainer.Panel2.Controls.Add(_editorSplitContainer);
 
@@ -1828,7 +1827,6 @@ using Microsoft.Extensions.DependencyInjection;
 
         private void UpdateThemeColors(Theme theme)
         {
-            _currentTheme = theme;
             _themeManager.SetTheme(theme.Name);
             
             this.BackColor = theme.Background;
@@ -1950,7 +1948,7 @@ using Microsoft.Extensions.DependencyInjection;
         // menus, status bar, dropdowns, notification center, etc. on every switch).
         private void ApplyEditorColors()
         {
-            var theme = _currentTheme;
+            var theme = _themeManager.CurrentTheme;
             textEditor!.BackColor = theme.EditorBackground;
             textEditor.ForeColor = theme.Text;
             gutterPanel.BackColor = theme.EditorBackground;
@@ -1981,12 +1979,11 @@ using Microsoft.Extensions.DependencyInjection;
         private void ToggleTheme()
         {
             var names = ThemeManager.ThemeNames;
-            int idx = Array.IndexOf(names, _currentTheme.Name);
+            int idx = Array.IndexOf(names, _themeManager.CurrentTheme.Name);
             idx = (idx + 1) % names.Length;
             string next = names[idx];
-            _currentTheme = ThemeManager.Themes[next];
             _themeManager.SetTheme(next);
-            UpdateThemeColors(_currentTheme);
+            UpdateThemeColors(_themeManager.CurrentTheme);
             UpdateTerminalTheme();
             UpdateThemeDropDown();
         }
@@ -1997,8 +1994,7 @@ using Microsoft.Extensions.DependencyInjection;
                 this.Invoke(new Action(() => OnThemeChanged(theme)));
             else
             {
-                _currentTheme = theme;
-                UpdateThemeColors(_currentTheme);
+                UpdateThemeColors(theme);
                 UpdateTerminalTheme();
                 UpdateThemeDropDown();
             }
@@ -2014,7 +2010,7 @@ using Microsoft.Extensions.DependencyInjection;
                 string themeName = settings.ThemeName;
                 if (string.IsNullOrEmpty(themeName) || !ThemeManager.Themes.ContainsKey(themeName))
                     themeName = "Dark";
-                _currentTheme = ThemeManager.Themes.TryGetValue(themeName, out var t) ? t : Theme.Dark;
+                _themeManager.SetTheme(themeName);
                 wordWrapEnabled = settings.WordWrapEnabled;
                 gutterVisible = settings.GutterVisible;
                 statusBarVisible = settings.StatusBarVisible;
@@ -2115,7 +2111,7 @@ using Microsoft.Extensions.DependencyInjection;
         private void SaveSettings()
         {
             var settings = new AppSettings(
-                ThemeName: _currentTheme.Name,
+                ThemeName: _themeManager.CurrentTheme.Name,
                 WordWrapEnabled: wordWrapEnabled,
                 GutterVisible: gutterVisible,
                 StatusBarVisible: statusBarVisible,
@@ -2174,7 +2170,6 @@ using Microsoft.Extensions.DependencyInjection;
             // Apply theme first (affects colors of everything)
             if (!string.IsNullOrEmpty(themeName) && ThemeManager.Themes.TryGetValue(themeName, out var theme))
             {
-                _currentTheme = theme;
                 UpdateThemeColors(theme);
             }
 
@@ -2313,9 +2308,8 @@ using Microsoft.Extensions.DependencyInjection;
             }
             if (!string.IsNullOrEmpty(profile.OverrideThemeName))
             {
-                if (profile.OverrideThemeName != _currentTheme.Name && ThemeManager.Themes.TryGetValue(profile.OverrideThemeName, out var theme))
+                if (profile.OverrideThemeName != _themeManager.CurrentTheme.Name && ThemeManager.Themes.TryGetValue(profile.OverrideThemeName, out var theme))
                 {
-                    _currentTheme = theme;
                     UpdateThemeColors(theme);
                     changed = true;
                 }
@@ -2556,8 +2550,8 @@ internal void ToggleGutter()
         private void UpdateTerminalTheme()
         {
             foreach (var t in _terminalTabs)
-                t.SetTheme(_currentTheme);
-            var theme = _currentTheme;
+                t.SetTheme(_themeManager.CurrentTheme);
+            var theme = _themeManager.CurrentTheme;
             if (_terminalSplitContainer != null)
             {
                 _terminalSplitContainer.BackColor = theme.MenuBackground;
@@ -2605,12 +2599,12 @@ internal void ToggleGutter()
         private TerminalPanel AddTerminalTab(string? shellPath)
         {
             var terminal = new TerminalPanel(shellPath);
-            terminal.SetTheme(_currentTheme);
+            terminal.SetTheme(_themeManager.CurrentTheme);
 
             int tabNumber = _terminalTabs.Count + 1;
             var page = new TabPage($"Terminal {tabNumber}")
             {
-                BackColor = _currentTheme.EditorBackground,
+                BackColor = _themeManager.CurrentTheme.EditorBackground,
                 ToolTipText = shellPath ?? "Default shell"
             };
             terminal.Dock = DockStyle.Fill;
@@ -2653,7 +2647,7 @@ internal void ToggleGutter()
             var bounds = tc.GetTabRect(e.Index);
             bounds.Height = tc.ItemSize.Height;
 
-            var theme = _currentTheme;
+            var theme = _themeManager.CurrentTheme;
             bool isSelected = (e.Index == tc.SelectedIndex);
 
             Color backColor = isSelected
@@ -2733,7 +2727,7 @@ internal void ToggleGutter()
             {
                 incrementalHighlighter?.Dispose();
                 incrementalHighlighter = null;
-                var baseColor = _currentTheme.Text;
+                var baseColor = _themeManager.CurrentTheme.Text;
                 ResetVisibleRangeToBase(baseColor);
             }
             SaveSettings();
@@ -4181,9 +4175,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
             scanProgressBar.Value = 0;
             scanProgressBar.Maximum = 100;
             _originalStatusBarColor = statusStrip.BackColor;
-            statusStrip.BackColor = _currentTheme.Accent.IsEmpty
+            statusStrip.BackColor = _themeManager.CurrentTheme.Accent.IsEmpty
                 ? Color.DodgerBlue
-                : Color.FromArgb(_currentTheme.Accent.R, _currentTheme.Accent.G, _currentTheme.Accent.B);
+                : Color.FromArgb(_themeManager.CurrentTheme.Accent.R, _themeManager.CurrentTheme.Accent.G, _themeManager.CurrentTheme.Accent.B);
         }
 
         private void OnWorkspaceScanCompleted()
@@ -5329,12 +5323,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (unread > 0)
             {
                 _notificationStatusLabel.Text = $"N {unread}";
-                _notificationStatusLabel.ForeColor = _currentTheme.Accent;
+                _notificationStatusLabel.ForeColor = _themeManager.CurrentTheme.Accent;
             }
             else
             {
                 _notificationStatusLabel.Text = "N";
-                _notificationStatusLabel.ForeColor = _currentTheme.Muted;
+                _notificationStatusLabel.ForeColor = _themeManager.CurrentTheme.Muted;
             }
         }
 
@@ -5371,7 +5365,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
 
             _notificationCenter = new NotificationCenterForm(_notificationFeed);
-            _notificationCenter.UpdateTheme(_currentTheme);
+            _notificationCenter.UpdateTheme(_themeManager.CurrentTheme);
             _notificationCenter.FormClosed += (s, args) =>
             {
                 _notificationCenter = null;
@@ -5399,10 +5393,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void ApplyThemeByName(string name)
         {
-            if (!ThemeManager.Themes.TryGetValue(name, out var theme)) return;
-            _currentTheme = theme;
+            if (!ThemeManager.Themes.ContainsKey(name)) return;
             _themeManager.SetTheme(name);
-            UpdateThemeColors(_currentTheme);
+            UpdateThemeColors(_themeManager.CurrentTheme);
             UpdateTerminalTheme();
             UpdateThemeDropDown();
             SaveSettings();
@@ -5438,14 +5431,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (themeDropDown != null)
             {
-                themeDropDown.Text = _currentTheme.Name;
+                themeDropDown.Text = _themeManager.CurrentTheme.Name;
                 // Rebuild theme items from the registry
                 themeDropDown.DropDownItems.Clear();
                 foreach (var name in ThemeManager.ThemeNames)
                 {
                     var item = new ToolStripMenuItem(name);
                     item.Click += (s, e) => ApplyThemeByName(name);
-                    if (name == _currentTheme.Name)
+                    if (name == _themeManager.CurrentTheme.Name)
                         item.Text = "\u25CF " + name;
                     themeDropDown.DropDownItems.Add(item);
                 }
@@ -5676,7 +5669,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                                 }
                                 UpdateStatusBar();
                                 UpdateTabTitle(activeDocIndex);
-                                UpdateThemeColors(_currentTheme);
+                                UpdateThemeColors(_themeManager.CurrentTheme);
                                 UpdateBreadcrumbs();
                             }
                         }
@@ -6032,7 +6025,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         private void TabDropdownButton_Click(object? sender, EventArgs e)
         {
             if (tabControl == null || tabControl.TabCount == 0 || _tabDropdownButton == null) return;
-            var theme = _currentTheme;
+            var theme = _themeManager.CurrentTheme;
             var cm = new ContextMenuStrip();
             cm.Font = new Font("Segoe UI", 10);
             cm.BackColor = theme.MenuBackground;
@@ -6243,7 +6236,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 _splitDocument = doc;
                 _splitDocumentTitle = doc.DisplayName;
 
-                var theme = _currentTheme;
+                var theme = _themeManager.CurrentTheme;
                 _splitEditor = new RichTextBox
                 {
                     Dock = DockStyle.Fill,
@@ -6501,7 +6494,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
             if (e.Index < 0 || e.Index >= documents.Count) return;
 
-            var theme = _currentTheme;
+            var theme = _themeManager.CurrentTheme;
             var tabRect = e.Bounds;
 
             bool isSelected = (e.Index == tabControl.SelectedIndex);
@@ -7215,7 +7208,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         private void UpdateTabControlTheme()
         {
             if (tabControl == null) return;
-            var theme = _currentTheme;
+            var theme = _themeManager.CurrentTheme;
             tabControl.BackColor = theme.MenuBackground;
             tabControl.ForeColor = theme.Text;
             // Force redraw to apply themed background in owner-drawn tabs
@@ -7349,7 +7342,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void TabControl_Paint(object? sender, PaintEventArgs e)
         {
-            var theme = _currentTheme;
+            var theme = _themeManager.CurrentTheme;
             e.Graphics.Clear(theme.MenuBackground);
         }
 
@@ -7425,7 +7418,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 switch (m.Msg)
                 {
                     case WM_ERASEBKGND:
-                        var theme = _owner._currentTheme;
+                        var theme = _owner._themeManager.CurrentTheme;
                         using (var g = Graphics.FromHdc(m.WParam))
                         using (var brush = new SolidBrush(theme.MenuBackground))
                         {
@@ -7459,12 +7452,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
         #endregion
         #region Syntax Highlighting (async, incremental, visible-range)
 
-        private Color GetKeywordColor() => _currentTheme.KeywordColor;
-        private Color GetStringColor() => _currentTheme.StringColor;
-        private Color GetCommentColor() => _currentTheme.CommentColor;
-        private Color GetNumberColor() => _currentTheme.NumberColor;
-        private Color GetPreprocessorColor() => _currentTheme.PreprocessorColor;
-        private Color GetTypeColor() => _currentTheme.TypeColor;
+        private Color GetKeywordColor() => _themeManager.CurrentTheme.KeywordColor;
+        private Color GetStringColor() => _themeManager.CurrentTheme.StringColor;
+        private Color GetCommentColor() => _themeManager.CurrentTheme.CommentColor;
+        private Color GetNumberColor() => _themeManager.CurrentTheme.NumberColor;
+        private Color GetPreprocessorColor() => _themeManager.CurrentTheme.PreprocessorColor;
+        private Color GetTypeColor() => _themeManager.CurrentTheme.TypeColor;
 
         private void CreateIncrementalHighlighter()
         {
@@ -7480,7 +7473,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             if (!syntaxHighlightingEnabled || currentSyntax == null)
             {
-                ResetVisibleRangeToBase(_currentTheme.Text);
+                ResetVisibleRangeToBase(_themeManager.CurrentTheme.Text);
                 return;
             }
 
@@ -7608,7 +7601,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             SyntaxTokenType.Number => GetNumberColor(),
             SyntaxTokenType.Preprocessor => GetPreprocessorColor(),
             SyntaxTokenType.Type => GetTypeColor(),
-            _ => (_currentTheme.Text)
+            _ => (_themeManager.CurrentTheme.Text)
         };
 
         // Get visible line range in the editor (no buffer — only truly visible lines)
@@ -8613,7 +8606,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             ShowNotification("Debug", $"Debug session started: {Path.GetFileName(outputDll)}");
         }
 
-        private async void StopDebug_Click(object? sender, EventArgs e)
+        private void StopDebug_Click(object? sender, EventArgs e)
         {
             _debugSession.Dispose();
             OnDebugStateChanged(DebugState.Terminated);
@@ -8647,7 +8640,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             _breakpointManager.ToggleBreakpoint(currentFilePath, line);
         }
 
-        private async void RunWithoutDebug_Click(object? sender, EventArgs e)
+        private void RunWithoutDebug_Click(object? sender, EventArgs e)
         {
             if (string.IsNullOrEmpty(currentFilePath))
             {

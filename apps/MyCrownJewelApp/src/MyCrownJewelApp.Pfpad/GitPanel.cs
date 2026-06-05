@@ -68,7 +68,7 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(76, 44),
             Cursor = Cursors.Hand
         };
-        _pullBtn.Click += async (s, e) =>
+        _pullBtn.Click += (s, e) =>
         {
             var (ok, msg) = _git.Pull();
             if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -84,7 +84,7 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(152, 44),
             Cursor = Cursors.Hand
         };
-        _pushBtn.Click += async (s, e) =>
+        _pushBtn.Click += (s, e) =>
         {
             var (ok, msg) = _git.Push();
             if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -1070,7 +1070,7 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(4, y),
             Cursor = Cursors.Hand
         };
-        _fetchBtn.Click += async (s, e) => { SetSyncEnabled(false); _git.Fetch(); RefreshStatus(); SetSyncEnabled(true); };
+        _fetchBtn.Click += (s, e) => { SetSyncEnabled(false); _git.Fetch(); RefreshStatus(); SetSyncEnabled(true); };
 
         _pullBtn = new Button
         {
@@ -1081,7 +1081,7 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(70, y),
             Cursor = Cursors.Hand
         };
-        _pullBtn.Click += async (s, e) =>
+        _pullBtn.Click += (s, e) =>
         {
             SetSyncEnabled(false);
             var (ok, msg) = _git.Pull();
@@ -1099,7 +1099,7 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(136, y),
             Cursor = Cursors.Hand
         };
-        _pushBtn.Click += async (s, e) =>
+        _pushBtn.Click += (s, e) =>
         {
             SetSyncEnabled(false);
             var (ok, msg) = _git.Push();
@@ -1275,13 +1275,13 @@ internal sealed class GitOperationsPanel : Panel
         // Show sync options context menu
         var menu = new ContextMenuStrip();
         var fetchItem = new ToolStripMenuItem("Fetch", null, (s, e) => { _git.Fetch(); RefreshStatus(); });
-        var pullItem = new ToolStripMenuItem("Pull", null, async (s, e) =>
+        var pullItem = new ToolStripMenuItem("Pull", null, (s, e) =>
         {
             var (ok, msg) = _git.Pull();
             if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             RefreshStatus();
         });
-        var pushItem = new ToolStripMenuItem("Push", null, async (s, e) =>
+        var pushItem = new ToolStripMenuItem("Push", null, (s, e) =>
         {
             var (ok, msg) = _git.Push();
             if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);

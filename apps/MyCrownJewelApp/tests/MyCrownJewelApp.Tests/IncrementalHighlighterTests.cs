@@ -383,7 +383,7 @@ public class VimEngineTests
 }
 
 [Collection("Sequential")]
-public class ThemeManagerTests
+public class ThemePaletteTests
 {
     [Fact]
     public void ToggleTheme_SwitchesMode()

@@ -160,7 +160,7 @@ namespace MyCrownJewelApp.Pfpad
             if (ch.HasValue)
             {
                 string potential = CommandBuffer.ToString() + ch.Value;
-                if (e.KeyMappings.TryGetValue(potential, out string mapped))
+                if (e.KeyMappings.TryGetValue(potential, out string? mapped))
                 {
                     var keys = e.ParseKeys(mapped);
                     foreach (var k in keys)

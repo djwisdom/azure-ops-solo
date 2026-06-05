@@ -31,7 +31,7 @@ internal sealed class DebugVariablesPanel : Form
         };
         _tree.NodeMouseDoubleClick += async (s, e) =>
         {
-            if (e.Node.Tag is int varRef && varRef > 0)
+            if (e.Node?.Tag is int varRef && varRef > 0)
                 await ExpandVariableNode(e.Node, varRef);
         };
 

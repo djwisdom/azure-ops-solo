@@ -495,7 +495,7 @@ internal sealed class GlobalSearchDialog : Form
 
     private void ResultsTree_NodeMouseDoubleClick(object? sender, TreeNodeMouseClickEventArgs e)
     {
-        OpenResultNode(e.Node);
+        if (e.Node != null) OpenResultNode(e.Node);
     }
 
     private void OpenResultNode(TreeNode node)
@@ -577,7 +577,9 @@ internal sealed class GlobalSearchDialog : Form
 
     private void UpdateFileNodeResults(TreeNode fileNode, string findText, StringComparison comparison)
     {
-        string filePath = (string)fileNode.Tag;
+        string? filePath = fileNode.Tag as string;
+        if (string.IsNullOrEmpty(filePath)) return;
+
         string fullPath = Path.Combine(_workspaceRoot, filePath);
         if (!File.Exists(fullPath)) return;
 

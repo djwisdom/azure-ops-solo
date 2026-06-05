@@ -105,7 +105,7 @@ public sealed class AnalyzerController : IDisposable
 
         try
         {
-            return await Task.Run(async () =>
+            return await Task.Run(() =>
             {
                 if (generators.IsDefaultOrEmpty || generators.Length == 0)
                     return new GeneratorOutput([], compilation, version);

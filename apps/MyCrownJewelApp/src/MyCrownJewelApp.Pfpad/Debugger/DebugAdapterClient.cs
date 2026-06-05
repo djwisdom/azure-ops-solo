@@ -18,7 +18,7 @@ public sealed class DebugAdapterClient : IDisposable
     public event Action<Dap.Event>? EventReceived;
     public event Action<string>? ErrorReceived;
 
-    public async Task StartAsync(string adapterPath, string[] args)
+    public Task StartAsync(string adapterPath, string[] args)
     {
         var psi = new ProcessStartInfo(adapterPath, string.Join(" ", args))
         {
@@ -48,6 +48,7 @@ public sealed class DebugAdapterClient : IDisposable
             catch { }
         }) { IsBackground = true };
         errThread.Start();
+        return Task.CompletedTask;
     }
 
     public Task<JsonElement?> SendRequest(string command, object? args = null)

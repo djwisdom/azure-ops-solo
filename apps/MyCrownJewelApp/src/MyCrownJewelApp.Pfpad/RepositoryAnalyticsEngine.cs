@@ -70,7 +70,7 @@ namespace MyCrownJewelApp.Pfpad
             return analysis;
         }
 
-        private async Task AnalyzeFileStructureAsync(RepositoryAnalysis analysis)
+        private Task AnalyzeFileStructureAsync(RepositoryAnalysis analysis)
         {
             var allFiles = Directory.EnumerateFiles(_workspaceRoot, "*.*", SearchOption.AllDirectories)
                 .Where(f => !IsIgnoredPath(f))
@@ -97,9 +97,11 @@ namespace MyCrownJewelApp.Pfpad
                 .GroupBy(d => d.Split(Path.DirectorySeparatorChar).FirstOrDefault() ?? "")
                 .OrderByDescending(g => g.Count())
                 .ToDictionary(g => g.Key, g => g.Count());
+
+            return Task.CompletedTask;
         }
 
-        private async Task DetectProjectTypeAsync(RepositoryAnalysis analysis)
+        private Task DetectProjectTypeAsync(RepositoryAnalysis analysis)
         {
             var indicators = new Dictionary<string, (string Type, string Language, int Weight)>();
 
@@ -175,6 +177,8 @@ namespace MyCrownJewelApp.Pfpad
                 analysis.ProjectType = "Unknown";
                 analysis.PrimaryLanguage = "Mixed/Other";
             }
+
+            return Task.CompletedTask;
         }
 
         private async Task ParseDocumentationAsync(RepositoryAnalysis analysis)
@@ -214,7 +218,7 @@ namespace MyCrownJewelApp.Pfpad
                                    File.Exists(Path.Combine(_workspaceRoot, "HISTORY.md"));
         }
 
-        private async Task AnalyzeNamingConventionsAsync(RepositoryAnalysis analysis)
+        private Task AnalyzeNamingConventionsAsync(RepositoryAnalysis analysis)
         {
             var namingConventions = new Dictionary<string, int>();
 
@@ -242,6 +246,8 @@ namespace MyCrownJewelApp.Pfpad
             analysis.NamingConventions = namingConventions
                 .OrderByDescending(x => x.Value)
                 .ToDictionary(x => x.Key, x => x.Value);
+
+            return Task.CompletedTask;
         }
 
         private async Task AnalyzeDependenciesAsync(RepositoryAnalysis analysis)
@@ -370,7 +376,7 @@ namespace MyCrownJewelApp.Pfpad
             analysis.CodeQualityMetrics = qualityMetrics;
         }
 
-        private async Task AnalyzeArchitectureAsync(RepositoryAnalysis analysis)
+        private Task AnalyzeArchitectureAsync(RepositoryAnalysis analysis)
         {
             var architecture = new Dictionary<string, object>();
 
@@ -432,9 +438,11 @@ namespace MyCrownJewelApp.Pfpad
 
             architecture["ArchitecturalPatterns"] = patterns;
             analysis.Architecture = architecture;
+
+            return Task.CompletedTask;
         }
 
-        private async Task AnalyzeDevelopmentActivityAsync(RepositoryAnalysis analysis)
+        private Task AnalyzeDevelopmentActivityAsync(RepositoryAnalysis analysis)
         {
             var activity = new Dictionary<string, object>();
 
@@ -463,6 +471,7 @@ namespace MyCrownJewelApp.Pfpad
             activity["ActivityLevel"] = activityLevel;
 
             analysis.DevelopmentActivity = activity;
+            return Task.CompletedTask;
         }
 
         private async Task AnalyzeCodeComplexityAsync(RepositoryAnalysis analysis)
@@ -586,7 +595,7 @@ namespace MyCrownJewelApp.Pfpad
             analysis.SecurityAnalysis = security;
         }
 
-        private async Task AnalyzePerformanceAsync(RepositoryAnalysis analysis)
+        private Task AnalyzePerformanceAsync(RepositoryAnalysis analysis)
         {
             var performance = new Dictionary<string, object>();
 
@@ -621,9 +630,10 @@ namespace MyCrownJewelApp.Pfpad
             performance["OptimizationSuggestions"] = suggestions;
 
             analysis.PerformanceAnalysis = performance;
+            return Task.CompletedTask;
         }
 
-        private async Task AnalyzeProjectMaturityAsync(RepositoryAnalysis analysis)
+        private Task AnalyzeProjectMaturityAsync(RepositoryAnalysis analysis)
         {
             var maturity = new Dictionary<string, object>();
 
@@ -676,6 +686,7 @@ namespace MyCrownJewelApp.Pfpad
             maturity["MaturityLevel"] = maturityLevel;
 
             analysis.ProjectMaturity = maturity;
+            return Task.CompletedTask;
         }
 
         private void GenerateDeepWikiSummary(RepositoryAnalysis analysis)

@@ -1064,7 +1064,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void Tree_NodeMouseDoubleClick(object? sender, TreeNodeMouseClickEventArgs e)
     {
-        OpenNode(e.Node);
+        if (e.Node != null) OpenNode(e.Node);
     }
 
     private void Tree_KeyDown(object? sender, KeyEventArgs e)

@@ -129,7 +129,7 @@ public sealed class RoslynVisualizerForm : Form
         ApplyTheme();
     }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync()
     {
         _statusLabel.Text = "Refreshing...";
         _refreshButton.Enabled = false;
@@ -141,6 +141,8 @@ public sealed class RoslynVisualizerForm : Form
         {
             _refreshButton.Enabled = true;
         }
+
+        return Task.CompletedTask;
     }
 
     public void UpdateSnapshot(RoslynVisualizerSnapshot? snapshot)
