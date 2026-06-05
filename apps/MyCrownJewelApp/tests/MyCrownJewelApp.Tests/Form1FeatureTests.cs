@@ -381,7 +381,7 @@ public class Form1FeatureTests : IDisposable
     {
         RunInSta(form =>
         {
-            var doc = new Form1.Document { FilePath = null, UntitledNumber = 5 };
+            var doc = new EditorDocument { FilePath = null, UntitledNumber = 5 };
             Assert.Equal("Untitled5", doc.DisplayName);
         });
     }
@@ -391,7 +391,7 @@ public class Form1FeatureTests : IDisposable
     {
         RunInSta(form =>
         {
-            var doc = new Form1.Document { FilePath = @"C:\test\myfile.txt" };
+            var doc = new EditorDocument { FilePath = @"C:\test\myfile.txt" };
             Assert.Equal("myfile.txt", doc.DisplayName);
         });
     }
@@ -401,7 +401,7 @@ public class Form1FeatureTests : IDisposable
     {
         RunInSta(form =>
         {
-            var doc = new Form1.Document { FilePath = @"C:\test\f.txt", IsDirty = true };
+            var doc = new EditorDocument { FilePath = @"C:\test\f.txt", IsDirty = true };
             Assert.Equal("f.txt", doc.DisplayName); // DisplayName itself doesn't include *
         });
     }

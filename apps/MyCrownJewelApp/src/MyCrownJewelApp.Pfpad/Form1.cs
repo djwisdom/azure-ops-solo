@@ -176,41 +176,11 @@ using Microsoft.Extensions.DependencyInjection;
         private bool elasticTabsEnabled = true;
         private string _activeConfiguration = "Debug";
 
-        // Document management (tabs)
-        public class Document
-        {
-            public string? FilePath { get; set; }
-            public string Content { get; set; } = "";
-            public bool IsDirty { get; set; }
-            public HashSet<int> ModifiedLines { get; set; } = new();
-            public HashSet<int> Bookmarks { get; set; } = new();
-            public HashSet<int> CollapsedRegions { get; set; } = new();
-            public string? SavedHash { get; set; }
-            public DateTime? LastWriteTime { get; set; }
-            public int SelectionStart { get; set; }
-            public int SelectionLength { get; set; }
-            public int FirstVisibleLine { get; set; }
-            public SyntaxDefinition? Syntax { get; set; }
-            public int? UntitledNumber { get; set; }  // null for non-untitled docs
-
-            // File encoding information
-            public System.Text.Encoding? FileEncoding { get; set; }
-            public bool ContainsRtlText { get; set; } = false;
-
-            // Large file degradation flags
-            public bool DisableSyntaxHighlighting { get; set; } = false;
-            public bool DisableMinimap { get; set; } = false;
-            public bool DisableWordWrap { get; set; } = false;
-
-            public string DisplayName =>
-                string.IsNullOrEmpty(FilePath) && UntitledNumber.HasValue ? $"Untitled{UntitledNumber}" :
-                string.IsNullOrEmpty(FilePath) ? "Untitled" :
-                Path.GetFileName(FilePath);
-        }
-
-        internal List<Document> documents = new();
-        internal int activeDocIndex = -1;
-        private int nextUntitledNumber = 1;
+        // EditorDocument management (tabs) — collection delegated to DocumentManager
+        internal readonly DocumentManager _docManager = new();
+        internal List<EditorDocument> documents => _docManager.Documents;
+        internal int activeDocIndex { get => _docManager.ActiveIndex; set => _docManager.ActiveIndex = value; }
+        private int nextUntitledNumber { get => _docManager.NextUntitledNumber; set => _docManager.NextUntitledNumber = value; }
         private int? hoveredTabIndex = null;
         private Rectangle? closeButtonBounds = null;
         private bool _closeButtonHovered = false;
@@ -223,12 +193,12 @@ using Microsoft.Extensions.DependencyInjection;
 
         // Split view state
         private RichTextBox? _splitEditor = null;
-        private Document? _splitDocument = null;
+        private EditorDocument? _splitDocument = null;
         private string? _splitDocumentTitle = null;
         private bool _splitIsHorizontal; // true = uses _terminalSplitContainer.Panel2
 
-        // Helper to get active document
-        internal Document ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
+        // Helper to get active EditorDocument
+        internal EditorDocument ActiveDoc => activeDocIndex >= 0 && activeDocIndex < documents.Count ? documents[activeDocIndex] : null!;
 
         // Suspend selection changed events during internal updates
         private bool _suspendSelectionChanged = false;
@@ -428,7 +398,7 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentInsertSpaces => insertSpaces;
 
         /// <summary>
-        /// Updates the encoding label in the status bar based on current document.
+        /// Updates the encoding label in the status bar based on current EditorDocument.
         /// </summary>
         private void UpdateEncodingLabel()
         {
@@ -448,7 +418,7 @@ using Microsoft.Extensions.DependencyInjection;
         /// <summary>
         /// Apply feature degradation for large files to maintain performance.
         /// </summary>
-        private void ApplyLargeFileDegradation(Document doc, long fileSize)
+        private void ApplyLargeFileDegradation(EditorDocument doc, long fileSize)
         {
             long fileSizeMB = fileSize / (1024 * 1024);
 
@@ -524,7 +494,7 @@ using Microsoft.Extensions.DependencyInjection;
     }
 
     /// <summary>
-    /// Internal constructor used by tear-away to avoid creating an extra untitled document.
+    /// Internal constructor used by tear-away to avoid creating an extra untitled EditorDocument.
     /// </summary>
     internal Form1(bool skipInitialDocument)
         : this(skipInitialDocument, services: null)
@@ -622,9 +592,8 @@ using Microsoft.Extensions.DependencyInjection;
         // Enable file drop support (client area + non-client area)
         EnableFileDrop();
 
-        // Initialize document list and process command line args
-        documents = new List<Document>();
-        activeDocIndex = -1;
+        // Initialize EditorDocument list and process command line args
+        // _docManager starts empty (List<EditorDocument> = new(), ActiveIndex = -1)
 
         if (!skipInitialDocument)
         {
@@ -661,7 +630,7 @@ using Microsoft.Extensions.DependencyInjection;
                         }
 
                         var syntax = SyntaxDefinition.GetDefinitionForFile(arg);
-                        var doc = new Document
+                        var doc = new EditorDocument
                         {
                             FilePath = arg,
                             Content = "",
@@ -721,7 +690,7 @@ using Microsoft.Extensions.DependencyInjection;
                 _cliArgsProvided = hasFileArgs || !string.IsNullOrEmpty(_workspaceRoot) || newWindow;
             }
 
-            // If no documents were opened, create a new untitled document
+            // If no documents were opened, create a new untitled EditorDocument
             if (documents.Count == 0)
             {
                 NewFile(isInitial: true);
@@ -3588,7 +3557,7 @@ internal void ToggleGutter()
 
         private void SaveAllFiles()
         {
-            // Single document - same as SaveFile
+            // Single EditorDocument - same as SaveFile
             SaveFile();
         }
 
@@ -4510,7 +4479,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 new("Go to Line", "Ctrl+G", () => { using var dlg = new GoToDialog(this); dlg.ShowDialog(this); }),
                 new("Go to Definition", "F12", () => GoToDefinition()),
                 new("Rename Symbol", "F2", () => RenameSymbol()),
-                new("Format Document", "Ctrl+Shift+I", () => FormatDocumentAsync()),
+                new("Format EditorDocument", "Ctrl+Shift+I", () => FormatDocumentAsync()),
 
                 // View operations
                 new("Toggle Terminal", "Ctrl+`", () => ToggleTerminal()),
@@ -4554,7 +4523,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             for (int i = 0; i < tabControl.TabPages.Count; i++)
             {
                 var page = tabControl.TabPages[i];
-                if (page.Tag is Document doc)
+                if (page.Tag is EditorDocument doc)
                 {
                     tabs.Add(new OpenTabInfo(page.Text, doc.FilePath ?? "", () => tabControl.SelectedIndex = i));
                 }
@@ -4562,9 +4531,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
             return tabs;
         }
 
-        internal Document? GetCurrentDocument()
+        internal EditorDocument? GetCurrentDocument()
         {
-            return textEditor?.Tag as Document;
+            return textEditor?.Tag as EditorDocument;
         }
 
         private string? GetProjectDirectory()
@@ -5019,7 +4988,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             var frames = StackTraceParser.Parse(source);
             if (frames.Count == 0)
             {
-                ThemedMessageBox.Show("No stack trace frames detected in the current selection or document.\n\nSupported formats:\n.NET: at Method() in File.cs:line 42\nJS:   at func (file.js:42:10)\nPython: File \"file.py\", line 42",
+                ThemedMessageBox.Show("No stack trace frames detected in the current selection or EditorDocument.\n\nSupported formats:\n.NET: at Method() in File.cs:line 42\nJS:   at func (file.js:42:10)\nPython: File \"file.py\", line 42",
                     "Parse Stack Trace", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -5076,7 +5045,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void GoToSymbolInEditor_Click(object? sender, EventArgs e)
         {
-            ShowNotification("Go", "Symbol in editor — use Document Outline panel");
+            ShowNotification("Go", "Symbol in editor — use EditorDocument Outline panel");
         }
 
         private void GoToDeclaration_Click(object? sender, EventArgs e)
@@ -5546,7 +5515,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         #endregion
 
-        #region Document Management (Tabs)
+        #region EditorDocument Management (Tabs)
 
         // Get first visible line in editor
         private int GetFirstVisibleLine()
@@ -5564,7 +5533,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             return Convert.ToHexString(hash);
         }
 
-        // Save current editor state into the active document
+        // Save current editor state into the active EditorDocument
         private void SaveCurrentDocument()
         {
             if (activeDocIndex < 0) return;
@@ -5581,26 +5550,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
             doc.FirstVisibleLine = GetFirstVisibleLine();
         }
 
-        // Create a new empty document
-        private Document CreateNewDocument()
-        {
-            return new Document
-            {
-                FilePath = null,
-                Content = "",
-                IsDirty = false,
-                ModifiedLines = new HashSet<int>(),
-                Bookmarks = new HashSet<int>(),
-                CollapsedRegions = new HashSet<int>(),
-                SavedHash = null,
-                LastWriteTime = null,
-                SelectionStart = 0,
-                SelectionLength = 0,
-                FirstVisibleLine = 0,
-                Syntax = null,
-                UntitledNumber = nextUntitledNumber++
-            };
-        }
+        // Create a new empty EditorDocument
+        private EditorDocument CreateNewDocument() => _docManager.CreateNew();
 
         // New file (untitled) - creates a new tab
         private void NewFile(bool isInitial = false)
@@ -5611,7 +5562,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 if (result == DialogResult.Cancel) return;
             }
 
-            // Save state of current document before switching
+            // Save state of current EditorDocument before switching
             if (activeDocIndex >= 0)
             {
                 SaveCurrentDocument();
@@ -5653,7 +5604,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 var syntax = SyntaxDefinition.GetDefinitionForFile(path);
                 bool containsRtl = UnicodeFileHelper.ContainsRtlText(content);
                 _profilerDialog?.Log($"Opened file: {path} ({content.Length} chars, {UnicodeFileHelper.GetEncodingDisplayName(encoding)}{(containsRtl ? ", RTL" : "")})");
-                var doc = new Document
+                var doc = new EditorDocument
                 {
                     FilePath = path,
                     Content = content,
@@ -5711,7 +5662,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     return;
             }
             var syntax = SyntaxDefinition.GetDefinitionForFile(path);
-            var doc = new Document
+            var doc = new EditorDocument
             {
                 FilePath = path,
                 Content = "",
@@ -5810,7 +5761,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             var result = PromptSaveChanges();
             if (result == DialogResult.Cancel) return;
 
-            // Remove current document and its tab
+            // Remove current EditorDocument and its tab
             int closeIndex = activeDocIndex;
             if (closeIndex >= documents.Count || closeIndex >= tabControl.TabPages.Count) return;
 
@@ -5865,7 +5816,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             try
             {
-                // Remove document and tab
+                // Remove EditorDocument and tab
                 documents.RemoveAt(index);
 
                 // Adjust activeDocIndex BEFORE removing the tab page, because
@@ -5884,7 +5835,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
         }
 
-        // Switch to document at given index (0-based)
+        // Switch to EditorDocument at given index (0-based)
         internal void SwitchToTab(int index)
         {
             if (index < 0 || index >= documents.Count) return;
@@ -5904,10 +5855,10 @@ private void NewWindow_Click(object? sender, EventArgs e)
             _workspacePanel?.SetActiveFile(doc.FilePath);
         }
 
-        // Load document state into editor and UI
-        private void LoadDocument(Document doc)
+        // Load EditorDocument state into editor and UI
+        private void LoadDocument(EditorDocument doc)
         {
-            // Update core fields from document
+            // Update core fields from EditorDocument
             currentFilePath = doc.FilePath;
             isModified = doc.IsDirty;
             modifiedLines = doc.ModifiedLines;
@@ -5955,7 +5906,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             ApplyEditorColors();
         }
 
-        // Update tab title for document at index
+        // Update tab title for EditorDocument at index
         private void UpdateTabTitle(int docIndex)
         {
             if (docIndex < 0 || docIndex >= documents.Count) return;
@@ -6202,10 +6153,10 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 var targetForm = FindForm1AtPoint(dragScreenPos);
                 if (targetForm != null)
                 {
-                    // Transfer document to the target window
+                    // Transfer EditorDocument to the target window
                     targetForm.ReceiveDroppedTab(doc);
 
-                    // Remove the document from the original window
+                    // Remove the EditorDocument from the original window
                     if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
                     {
                         documents.RemoveAt(tabIndex);
@@ -6225,12 +6176,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 }
                 else
                 {
-                    // Create a new Form1 instance for the detached document (skip default untitled doc)
+                    // Create a new Form1 instance for the detached EditorDocument (skip default untitled doc)
                     var detachedForm = new Form1(skipInitialDocument: true);
                     detachedForm.tabControl.TabPages.Clear();
                     detachedForm.activeDocIndex = -1;
 
-                    // Add the dragged document to the new form
+                    // Add the dragged EditorDocument to the new form
                     detachedForm.documents.Add(doc);
                     var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
                     detachedForm.tabControl.TabPages.Add(tabPage);
@@ -6248,7 +6199,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     detachedForm._savedWindowBounds = "";
                     detachedForm._savedWindowState = "";
 
-                    // Remove the document from the original window
+                    // Remove the EditorDocument from the original window
                     if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
                     {
                         documents.RemoveAt(tabIndex);
@@ -6296,9 +6247,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
         }
 
         /// <summary>
-        /// Receives a dropped tab document from another Pfpad window into this instance.
+        /// Receives a dropped tab EditorDocument from another Pfpad window into this instance.
         /// </summary>
-        private void ReceiveDroppedTab(Document doc)
+        private void ReceiveDroppedTab(EditorDocument doc)
         {
             documents.Add(doc);
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
@@ -6349,7 +6300,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 // If a split is already active, close it first
                 CloseSplit();
 
-                // Store document reference for close/restore
+                // Store EditorDocument reference for close/restore
                 _splitDocument = doc;
                 _splitDocumentTitle = doc.DisplayName;
 
@@ -6437,7 +6388,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     });
                 }
 
-                // Remove the tab page from the tab control (document stays in memory)
+                // Remove the tab page from the tab control (EditorDocument stays in memory)
                 if (tabIndex >= 0 && tabIndex < tabControl.TabPages.Count)
                     tabControl.TabPages.RemoveAt(tabIndex);
                 if (tabIndex >= 0 && tabIndex < documents.Count)
@@ -6467,7 +6418,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (_splitEditor == null) return;
 
-            // Save content back to document
+            // Save content back to EditorDocument
             if (_splitDocument != null)
             {
                 _splitDocument.Content = _splitEditor.Text;
@@ -6517,7 +6468,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             _splitIsHorizontal = false;
 
-            // Re-add the document and tab page to the main window
+            // Re-add the EditorDocument and tab page to the main window
             if (_splitDocument != null)
             {
                 documents.Add(_splitDocument);
@@ -7345,7 +7296,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (minimapControl == null || editorPanel == null || textEditor == null) return;
             if (!textEditor.IsHandleCreated) return;
 
-            // Check if minimap is disabled for this document (large file degradation)
+            // Check if minimap is disabled for this EditorDocument (large file degradation)
             if (GetCurrentDocument()?.DisableMinimap == true)
             {
                 minimapControl.Visible = false;
@@ -7404,7 +7355,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (textEditor != null)
             {
-                // Respect document-level word wrap degradation for large files
+                // Respect EditorDocument-level word wrap degradation for large files
                 bool effectiveWordWrap = wordWrapEnabled && (GetCurrentDocument()?.DisableWordWrap != true);
                 textEditor.WordWrap = effectiveWordWrap;
             }

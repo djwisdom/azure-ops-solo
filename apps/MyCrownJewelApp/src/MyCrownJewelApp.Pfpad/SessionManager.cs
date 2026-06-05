@@ -39,7 +39,7 @@ public sealed class SessionManager
         _sessionPath = Path.Combine(dir, "session.json");
     }
 
-    public void SaveSession(List<Form1.Document> documents, int activeIndex, string? workspaceRoot, int nextUntitledNumber)
+    public void SaveSession(List<EditorDocument> documents, int activeIndex, string? workspaceRoot, int nextUntitledNumber)
     {
         try
         {
