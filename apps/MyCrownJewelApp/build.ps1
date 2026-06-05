@@ -25,8 +25,7 @@ if ($LASTEXITCODE -eq 0) {
 
     if ($Test) {
         Write-Host "Running tests..." -ForegroundColor Cyan
-        # Add test commands when tests are implemented
-        Write-Host "No tests configured yet" -ForegroundColor Yellow
+        dotnet test "tests\MyCrownJewelApp.Tests\MyCrownJewelApp.Tests.csproj" -c $Configuration --no-build
     }
 } else {
     Write-Host "Build failed!" -ForegroundColor Red

@@ -17,7 +17,7 @@ company-owned Azure resources. Managed by a single developer with AI assistance.
 
 ### Prerequisites
 - Company-managed Windows laptop with Visual Studio Professional
-- Azure CLI, PowerShell 7+, .NET 8 SDK, Terraform, Bicep CLI
+- Azure CLI, PowerShell 7+, .NET 9 SDK, Terraform, Bicep CLI
 - 2FA, VPN, company AV/EDR/Umbrella configured
 - Access to company Azure DevOps or GitHub Enterprise
 
@@ -56,12 +56,12 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad, a professional C# code editor built with .NET 8 and WinForms:
+The repository includes Pfpad, a professional C# code editor built with .NET 9 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
 dotnet build --configuration Release
-# Run: bin\Release\net8.0-windows\MyCrownJewelApp.Pfpad.exe
+# Run: bin\Release\net9.0-windows\MyCrownJewelApp.Pfpad.exe
 ```
 
 **Key Features:**

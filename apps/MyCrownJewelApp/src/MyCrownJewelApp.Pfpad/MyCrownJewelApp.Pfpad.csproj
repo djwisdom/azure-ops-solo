@@ -2,22 +2,25 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
-    <WindowsPackageType>MSIX</WindowsPackageType>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
-    <ApplicationVersion>1.0.33.0</ApplicationVersion>
-    <Version>1.0.33.0</Version>
-    <AssemblyVersion>1.0.33.0</AssemblyVersion>
-    <FileVersion>1.0.33.0</FileVersion>
+    <ApplicationVersion>1.0.34.0</ApplicationVersion>
+    <Version>1.0.34.0</Version>
+    <AssemblyVersion>1.0.34.0</AssemblyVersion>
+    <FileVersion>1.0.34.0</FileVersion>
     <Company>Personal Flip Pad</Company>
     <Description>A comprehensive code editor with advanced features: syntax highlighting, minimap, vim mode, git integration, code folding, Roslyn IntelliSense, performance profiling, command palette, file associations (Terraform/Bicep/Ansible), DeepWiki-style repository analytics, visual Git status indicators, and more.</Description>
     <Copyright>Copyright (c) 2026</Copyright>
-    <NoWarn>$(NoWarn);NETSDK1057</NoWarn>
+    <!-- WFO1000: suppress designer-serialization errors on custom Control properties.
+         These custom controls (GutterPanel, HighlightRichTextBox, etc.) are not used
+         in the WinForms designer, so serialization is not required.
+         Long-term fix: add [DesignerSerializationVisibility(Hidden)] to each property. -->
+    <NoWarn>$(NoWarn);WFO1000</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Debug'">
@@ -36,6 +39,9 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.8.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.8.0" />
     <PackageReference Include="TreeSitter.DotNet" Version="1.3.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.*" />
   </ItemGroup>
 
   <Target Name="GenerateBuildMetadata" BeforeTargets="CoreCompile">

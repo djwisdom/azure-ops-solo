@@ -1,17 +1,16 @@
 # Project Memory — Azure Ops Solo
 
 ## Current State
-- **Last session:** 2026-05-08
+- **Last session:** 2026-06-06
 - **Last commit:** `0d8bdd8` — add session restore, CLI workspace folder, and clone repository dialog
 - **Branch:** master (~205 commits), up to date with origin/master
-- **Active work:** Session restore (auto-save/restore tabs + cursor), CLI workspace folder arg, clone repository dialog (Ctrl+Shift+C), dirty-flag line-ending normalization fix, 6 new dark themes (GitHub Dark, One Monokai, Noctis Luxurious, Panda Dark, 2077 Cyberpunk, Moonlight)
-- **Stashed work:** `stash@{0}` — "Fix Tab pushing view down" (wrap single-caret insert with BeginUpdate/EndUpdate)
+- **Active work:** .NET 9 migration complete (net9.0-windows, v1.0.34.0). DI/Logging packages added (Microsoft.Extensions.* 9.*). WFO1000 suppressed pending attribute fixes. Cleanup: patch_form.py x3, temp files, MSIX flag all removed.
 
 ## Toolchain
 | Tool | Version |
 |---|---|
-| .NET SDK | 10.0.300-preview.0.26177.108 |
-| Target framework (apps) | net8.0-windows (MyCrownJewelApp) |
+| .NET SDK | 9.0.314 |
+| Target framework (apps) | net9.0-windows (MyCrownJewelApp v1.0.34.0) |
 | PowerShell | 7.5.5 |
 | Azure CLI | 2.85.0 |
 | Terraform | 1.15.1 |
@@ -46,7 +45,7 @@
 ## Test Health
 - **Test framework:** xUnit (.NET 8.0-windows)
 - **Test files:** TerminalTests, DirtyFlagTests, Form1FeatureTests, IncrementalHighlighterTests, IndentationTests, SyntaxHighlightRegressionTests
-- **Last run:** 2026-05-06 — **81 passed, 1 skipped, 0 failed** (20s duration)
+- **Last run:** 2026-06-06 — **125 passed, 1 skipped, 0 failed** (38s duration, net9.0-windows)
 - **Skipped:** `Highlighter_MarksDirty_AndTokenizes` (pre-existing, requires STA thread setup)
 
 ## Environment Quirks & Windows-Specific Notes
