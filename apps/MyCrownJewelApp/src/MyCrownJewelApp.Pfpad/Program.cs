@@ -18,6 +18,7 @@ static class Program
         services.AddSingleton<NotificationFeedService>();
         services.AddSingleton<UserProfileManager>();
         services.AddSingleton<SessionManager>();
+        services.AddSingleton<SettingsService>();
         services.AddLogging(builder =>
         {
             builder.SetMinimumLevel(LogLevel.Debug);

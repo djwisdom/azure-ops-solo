@@ -287,62 +287,6 @@ using Microsoft.Extensions.DependencyInjection;
         private const int MaxRecentWorkspaces = 10;
         private List<string> _recentWorkspaces = new List<string>();
 
-        // Settings persistence
-        private record AppSettings(
-            bool WordWrapEnabled,
-            bool GutterVisible,
-            bool StatusBarVisible,
-            bool ShowGuide,
-            int GuideColumn,
-            int TabSize,
-            string FontName,
-            float FontSize,
-            bool InsertSpaces,
-            bool AutoIndentEnabled,
-            bool SmartTabsEnabled,
-            bool ElasticTabsEnabled,
-            CurrentLineHighlightMode CurrentLineHighlightMode,
-            bool SyntaxHighlightingEnabled,
-            bool MinimapVisible,
-            bool TerminalVisible = false,
-            int TerminalHeight = 200,
-            string TerminalShellPath = "",
-            string ThemeName = "Dark",
-            List<ExternalTool>? ExternalTools = null,
-            bool WorkspaceVisible = false,
-            int WorkspaceWidth = 200,
-            string WorkspaceRoot = "",
-            bool ShowWhitespace = true,
-            bool SymbolPanelVisible = false,
-            bool ProblemsPanelVisible = false,
-            bool RainbowBracketsEnabled = false,
-            bool BreadcrumbsEnabled = false,
-            bool AnalyzersEnabled = true,
-            bool AutoSaveEnabled = false,
-            bool HoverLineHighlightEnabled = false,
-            List<string>? RecentWorkspaces = null,
-            string WindowBounds = "",
-            string WindowState = "",
-            string ActiveConfiguration = "Debug",
-            // File size limits (in MB)
-            int MaxFileSizeMB = 500,
-            int LargeFileWarningMB = 50,
-            int AsyncFileWarningMB = 20,
-            // Feature degradation settings
-            bool DisableSyntaxHighlightingForLargeFiles = true,
-            bool DisableMinimapForLargeFiles = true,
-            bool DisableWordWrapForLargeFiles = false,
-            long SyntaxHighlightingThresholdBytes = 200 * 1024 // 200KB
-        );
-
-        private string SettingsFilePath =>
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MyCrownJewelApp",
-                "TextEditor",
-                "settings.json"
-            );
-
         // Designer fields (accessible via Controls collection)
         public HashSet<int> Bookmarks => bookmarks;
         public HashSet<int> ModifiedLines => modifiedLines;
@@ -354,6 +298,9 @@ using Microsoft.Extensions.DependencyInjection;
         private readonly DateTime _startTime = DateTime.UtcNow;
         private const int NotificationDelaySeconds = 15;
         private readonly List<(string Title, string Summary)> _delayedNotifications = new();
+
+        // App-wide services (DI-injected or fallback new())
+        private readonly SettingsService _settingsService = null!;
 
         // Notification feed
         private readonly NotificationFeedService _notificationFeed = null!;
@@ -511,6 +458,9 @@ using Microsoft.Extensions.DependencyInjection;
     {
         // Initialize app-wide services from DI, or fall back to new() for designer
         // and tear-away paths that don't have a service provider.
+        _settingsService = services is null
+            ? new SettingsService()
+            : services.GetRequiredService<SettingsService>();
         _notificationFeed = services is null
             ? new NotificationFeedService()
             : services.GetRequiredService<NotificationFeedService>();
@@ -2056,70 +2006,64 @@ using Microsoft.Extensions.DependencyInjection;
         {
             try
             {
-                string path = SettingsFilePath;
-                if (File.Exists(path))
-                {
-                    string json = File.ReadAllText(path);
-                    var settings = JsonSerializer.Deserialize<AppSettings>(json);
-                    if (settings != null)
-                    {
-                        string themeName = settings.ThemeName;
-                        if (string.IsNullOrEmpty(themeName) || !ThemeManager.Themes.ContainsKey(themeName))
-                            themeName = "Dark";
-                        _currentTheme = ThemeManager.Themes.TryGetValue(themeName, out var t) ? t : Theme.Dark;
-                        wordWrapEnabled = settings.WordWrapEnabled;
-                        gutterVisible = settings.GutterVisible;
-                        statusBarVisible = settings.StatusBarVisible;
-                        if (statusBarMenuItem != null) statusBarMenuItem.Checked = statusBarVisible;
-                        showGuide = settings.ShowGuide;
-                        guideColumn = settings.GuideColumn;
-                        tabSize = settings.TabSize;
-                        fontName = settings.FontName;
-                        fontSize = settings.FontSize;
-                        insertSpaces = settings.InsertSpaces;
-                        autoIndentEnabled = settings.AutoIndentEnabled;
-                        smartTabsEnabled = settings.SmartTabsEnabled;
-                        elasticTabsEnabled = settings.ElasticTabsEnabled;
-                        currentLineHighlightMode = settings.CurrentLineHighlightMode;
-                        syntaxHighlightingEnabled = settings.SyntaxHighlightingEnabled;
-                        _pendingMinimapVisible = settings.MinimapVisible;
-                        _terminalVisible = settings.TerminalVisible;
-                        _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
-                        _terminalShell = settings.TerminalShellPath ?? "";
-                        if (settings.ExternalTools != null)
-                            _externalTools = settings.ExternalTools;
-                        _workspaceVisible = settings.WorkspaceVisible;
-                         _workspaceWidth = Math.Max(80, Math.Min(600, settings.WorkspaceWidth));
-                        if (!_workspaceRootFromCli)
-                            _workspaceRoot = settings.WorkspaceRoot ?? "";
-                        _symbolPanelVisible = settings.SymbolPanelVisible;
-                        _problemsPanelVisible = settings.ProblemsPanelVisible;
-                         _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
-                         _hoverLineHighlightEnabled = settings.HoverLineHighlightEnabled;
-                         _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
-                        _analyzersEnabled = settings.AnalyzersEnabled;
-                        _autoSaveEnabled = settings.AutoSaveEnabled;
-                        if (_autoSaveEnabled) _autoSaveTimer.Start();
-                        bool showWhitespace = settings.ShowWhitespace;
-                        if (whitespaceMenuItem != null)
-                        {
-                            whitespaceMenuItem.Checked = showWhitespace;
-                            whitespaceOverlay.ShowGlyphs = showWhitespace;
-                        }
-                        _savedWindowBounds = settings.WindowBounds;
-                        _savedWindowState = settings.WindowState;
-                        _activeConfiguration = settings.ActiveConfiguration ?? "Debug";
+                var settings = _settingsService.Load();
+                if (settings is null) return;
 
-                        // Load file size limits
-                        MaxFileSizeMB = Math.Max(10, settings.MaxFileSizeMB);
-                        LargeFileWarningMB = Math.Max(1, settings.LargeFileWarningMB);
-                        AsyncFileWarningMB = Math.Max(1, settings.AsyncFileWarningMB);
-                        DisableSyntaxHighlightingForLargeFiles = settings.DisableSyntaxHighlightingForLargeFiles;
-                        DisableMinimapForLargeFiles = settings.DisableMinimapForLargeFiles;
-                        DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
-                        SyntaxHighlightingThresholdBytes = Math.Max(1024, settings.SyntaxHighlightingThresholdBytes);
-                    }
+                string themeName = settings.ThemeName;
+                if (string.IsNullOrEmpty(themeName) || !ThemeManager.Themes.ContainsKey(themeName))
+                    themeName = "Dark";
+                _currentTheme = ThemeManager.Themes.TryGetValue(themeName, out var t) ? t : Theme.Dark;
+                wordWrapEnabled = settings.WordWrapEnabled;
+                gutterVisible = settings.GutterVisible;
+                statusBarVisible = settings.StatusBarVisible;
+                if (statusBarMenuItem != null) statusBarMenuItem.Checked = statusBarVisible;
+                showGuide = settings.ShowGuide;
+                guideColumn = settings.GuideColumn;
+                tabSize = settings.TabSize;
+                fontName = settings.FontName;
+                fontSize = settings.FontSize;
+                insertSpaces = settings.InsertSpaces;
+                autoIndentEnabled = settings.AutoIndentEnabled;
+                smartTabsEnabled = settings.SmartTabsEnabled;
+                elasticTabsEnabled = settings.ElasticTabsEnabled;
+                currentLineHighlightMode = settings.CurrentLineHighlightMode;
+                syntaxHighlightingEnabled = settings.SyntaxHighlightingEnabled;
+                _pendingMinimapVisible = settings.MinimapVisible;
+                _terminalVisible = settings.TerminalVisible;
+                _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
+                _terminalShell = settings.TerminalShellPath ?? "";
+                if (settings.ExternalTools != null)
+                    _externalTools = settings.ExternalTools;
+                _workspaceVisible = settings.WorkspaceVisible;
+                _workspaceWidth = Math.Max(80, Math.Min(600, settings.WorkspaceWidth));
+                if (!_workspaceRootFromCli)
+                    _workspaceRoot = settings.WorkspaceRoot ?? "";
+                _symbolPanelVisible = settings.SymbolPanelVisible;
+                _problemsPanelVisible = settings.ProblemsPanelVisible;
+                _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
+                _hoverLineHighlightEnabled = settings.HoverLineHighlightEnabled;
+                _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
+                _analyzersEnabled = settings.AnalyzersEnabled;
+                _autoSaveEnabled = settings.AutoSaveEnabled;
+                if (_autoSaveEnabled) _autoSaveTimer.Start();
+                bool showWhitespace = settings.ShowWhitespace;
+                if (whitespaceMenuItem != null)
+                {
+                    whitespaceMenuItem.Checked = showWhitespace;
+                    whitespaceOverlay.ShowGlyphs = showWhitespace;
                 }
+                _savedWindowBounds = settings.WindowBounds;
+                _savedWindowState = settings.WindowState;
+                _activeConfiguration = settings.ActiveConfiguration ?? "Debug";
+
+                // Load file size limits
+                MaxFileSizeMB = Math.Max(10, settings.MaxFileSizeMB);
+                LargeFileWarningMB = Math.Max(1, settings.LargeFileWarningMB);
+                AsyncFileWarningMB = Math.Max(1, settings.AsyncFileWarningMB);
+                DisableSyntaxHighlightingForLargeFiles = settings.DisableSyntaxHighlightingForLargeFiles;
+                DisableMinimapForLargeFiles = settings.DisableMinimapForLargeFiles;
+                DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
+                SyntaxHighlightingThresholdBytes = Math.Max(1024, settings.SyntaxHighlightingThresholdBytes);
             }
             catch { /* ignore settings load errors */ }
         }
@@ -2168,57 +2112,50 @@ using Microsoft.Extensions.DependencyInjection;
 
         private void SaveSettings()
         {
-            try
-            {
-                string path = SettingsFilePath;
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                 var settings = new AppSettings(
-                     ThemeName: _currentTheme.Name,
-                     WordWrapEnabled: wordWrapEnabled,
-                     GutterVisible: gutterVisible,
-                     StatusBarVisible: statusBarVisible,
-                     ShowGuide: showGuide,
-                     GuideColumn: guideColumn,
-                     TabSize: tabSize,
-                     FontName: fontName,
-                     FontSize: fontSize,
-                     InsertSpaces: insertSpaces,
-                     AutoIndentEnabled: autoIndentEnabled,
-                     SmartTabsEnabled: smartTabsEnabled,
-                     ElasticTabsEnabled: elasticTabsEnabled,
-                     CurrentLineHighlightMode: currentLineHighlightMode,
-                     SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
-                     MinimapVisible: minimapMenuItem?.Checked ?? false,
-                     TerminalVisible: _terminalVisible,
-                     TerminalHeight: _terminalHeight,
-                     TerminalShellPath: _terminalShell,
-                      ExternalTools: _externalTools,
-                      WorkspaceVisible: _workspaceVisible,
-                      WorkspaceWidth: _workspaceWidth,
-                       WorkspaceRoot: _workspaceRoot,
-                        ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
-                        SymbolPanelVisible: _symbolPanelVisible,
-                        ProblemsPanelVisible: _problemsPanelVisible,
-                         RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
-                         BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
-                           AnalyzersEnabled: _analyzersEnabled,
-                           AutoSaveEnabled: _autoSaveEnabled,
- WindowBounds: $"{Left},{Top},{Width},{Height}",
-                             WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
-                             ActiveConfiguration: _activeConfiguration,
-                             MaxFileSizeMB: MaxFileSizeMB,
-                             LargeFileWarningMB: LargeFileWarningMB,
-                             AsyncFileWarningMB: AsyncFileWarningMB,
-                             DisableSyntaxHighlightingForLargeFiles: DisableSyntaxHighlightingForLargeFiles,
-                             DisableMinimapForLargeFiles: DisableMinimapForLargeFiles,
-                             DisableWordWrapForLargeFiles: DisableWordWrapForLargeFiles,
-                             SyntaxHighlightingThresholdBytes: SyntaxHighlightingThresholdBytes
-                 );
-                string json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(path, json);
-            }
-             catch { /* ignore settings save errors */ }
-         }
+            var settings = new AppSettings(
+                ThemeName: _currentTheme.Name,
+                WordWrapEnabled: wordWrapEnabled,
+                GutterVisible: gutterVisible,
+                StatusBarVisible: statusBarVisible,
+                ShowGuide: showGuide,
+                GuideColumn: guideColumn,
+                TabSize: tabSize,
+                FontName: fontName,
+                FontSize: fontSize,
+                InsertSpaces: insertSpaces,
+                AutoIndentEnabled: autoIndentEnabled,
+                SmartTabsEnabled: smartTabsEnabled,
+                ElasticTabsEnabled: elasticTabsEnabled,
+                CurrentLineHighlightMode: currentLineHighlightMode,
+                SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
+                MinimapVisible: minimapMenuItem?.Checked ?? false,
+                TerminalVisible: _terminalVisible,
+                TerminalHeight: _terminalHeight,
+                TerminalShellPath: _terminalShell,
+                ExternalTools: _externalTools,
+                WorkspaceVisible: _workspaceVisible,
+                WorkspaceWidth: _workspaceWidth,
+                WorkspaceRoot: _workspaceRoot,
+                ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
+                SymbolPanelVisible: _symbolPanelVisible,
+                ProblemsPanelVisible: _problemsPanelVisible,
+                RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
+                BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
+                AnalyzersEnabled: _analyzersEnabled,
+                AutoSaveEnabled: _autoSaveEnabled,
+                WindowBounds: $"{Left},{Top},{Width},{Height}",
+                WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
+                ActiveConfiguration: _activeConfiguration,
+                MaxFileSizeMB: MaxFileSizeMB,
+                LargeFileWarningMB: LargeFileWarningMB,
+                AsyncFileWarningMB: AsyncFileWarningMB,
+                DisableSyntaxHighlightingForLargeFiles: DisableSyntaxHighlightingForLargeFiles,
+                DisableMinimapForLargeFiles: DisableMinimapForLargeFiles,
+                DisableWordWrapForLargeFiles: DisableWordWrapForLargeFiles,
+                SyntaxHighlightingThresholdBytes: SyntaxHighlightingThresholdBytes
+            );
+            _settingsService.Save(settings);
+        }
 
         public void ApplySettings(
             string fontName, float fontSize, int tabSize, bool insertSpaces,
