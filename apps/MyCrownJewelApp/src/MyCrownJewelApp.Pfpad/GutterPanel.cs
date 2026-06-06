@@ -8,10 +8,6 @@ namespace MyCrownJewelApp.Pfpad;
 
 public class GutterPanel : Panel
 {
-    private static readonly Font _foldFont = new Font("Segoe UI", 8, FontStyle.Regular);
-
-    private const string ChevronDown = "\u25BC"; // ▼ expanded (open fold)
-    private const string ChevronRight = "\u25B6"; // ▶ collapsed (folded fold)
 
     private Form1 mainForm;
     private int LineNumberMarginWidth = 60;
@@ -31,11 +27,13 @@ public class GutterPanel : Panel
     private Dictionary<int, int>? _coverageHits; // line → hit count
     private Dictionary<int, byte> _lineDiffs = new(); // 1=added, 2=modified
 
-    // Dirty-region tracking
+    // Dirty-region tracking (written by callers; read-suppressed since OnPaint always redraws)
     private int _lastFirstLine = -1;
     private int _lastVisibleCount = -1;
+#pragma warning disable CS0414
     private bool _gutterDataDirty = true;
     private bool _breakpointsDirty = false;
+#pragma warning restore CS0414
 
     public event Action<int>? BreakpointClicked;
 
@@ -298,24 +296,24 @@ public class GutterPanel : Panel
 
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        if (!_breakpointsDirty)
-            base.OnPaintBackground(e);
+        // Suppress: DrawGutter calls g.Clear(BackColor) at the top of every paint,
+        // so a separate background erase here would produce a blank intermediate
+        // frame whenever WM_ERASEBKGND fires before WM_PAINT (= the flicker source).
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
+        // Never return early.  The previous code returned without painting when
+        // the visible range hadn't changed, but OnPaintBackground had already
+        // cleared the buffer → the control went blank for one frame (flicker).
+        // Always draw; DrawGutter is cheap (narrow panel, double-buffered).
         GetVisibleLineRange(out int firstLine, out int visibleCount);
-
-        if (firstLine == _lastFirstLine && visibleCount == _lastVisibleCount && !_gutterDataDirty)
-            return;
-
         _lastFirstLine = firstLine;
         _lastVisibleCount = visibleCount;
         _gutterDataDirty = false;
-
+        _breakpointsDirty = false;
         base.OnPaint(e);
         DrawGutter(e.Graphics);
-        _breakpointsDirty = false;
     }
 
     private void DrawGutter(Graphics g)
@@ -334,6 +332,12 @@ public class GutterPanel : Panel
 
         int totalLines = GetTotalLineCount();
 
+        // ── Pass 1: 1px vertical fold-scope guide lines (drawn first so per-line
+        //            markers render on top and the box covers the line at intersections).
+        if (ShowCodeFolds)
+            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineHeight);
+
+        // ── Pass 2: per-line gutter elements ──────────────────────────────────────
         for (int i = 0; i < visibleLines; i++)
         {
             int lineIndex = firstVisibleLine + i;
@@ -558,44 +562,103 @@ public class GutterPanel : Panel
         g.FillRectangle(brush, barX, y + 2, barWidth, 10);
     }
 
+    /// <summary>
+    /// Pass 1 — draws 1px vertical guide lines for all fold regions visible on screen.
+    /// Drawn before per-line elements so the box markers (Pass 2) paint on top.
+    /// </summary>
+    private void DrawFoldScopeLines(Graphics g, RichTextBox editor,
+                                    int firstLine, int lastLine, int lineH)
+    {
+        if (mainForm?.FoldingManager == null) return;
+
+        int foldLineX = Width - FoldMarginWidth + FoldMarginWidth / 2; // centre of fold margin
+        int areaTop   = TopOffset;
+        int areaBot   = editor.ClientSize.Height + TopOffset;
+
+        Color lineCol = mainForm.IsDarkTheme
+            ? Color.FromArgb(80, 160, 160, 160)
+            : Color.FromArgb(80, 90, 90, 90);
+
+        using var pen = new Pen(lineCol, 1f);
+
+        foreach (var region in mainForm.FoldingManager.GetAllRegions())
+        {
+            if (region.IsCollapsed) continue;
+            if (region.CloseLine <= region.OpenLine + 1) continue; // no content to mark
+            if (region.OpenLine  > lastLine)  continue; // below visible
+            if (region.CloseLine < firstLine) continue; // above visible
+
+            // Y start: bottom of open-brace line (clamp to area top if off-screen above)
+            int yStart;
+            if (region.OpenLine >= firstLine)
+            {
+                int oy = GetLineY(editor, region.OpenLine);
+                yStart = oy >= 0 ? oy + lineH : areaTop;
+            }
+            else
+            {
+                yStart = areaTop;
+            }
+
+            // Y end: top of close-brace line (clamp to area bottom if off-screen below)
+            int yEnd;
+            if (region.CloseLine <= lastLine)
+            {
+                int cy = GetLineY(editor, region.CloseLine);
+                yEnd = cy >= 0 ? cy : areaBot;
+            }
+            else
+            {
+                yEnd = areaBot;
+            }
+
+            yStart = Math.Max(areaTop, yStart);
+            yEnd   = Math.Min(areaBot, yEnd);
+            if (yEnd <= yStart + 1) continue;
+
+            g.DrawLine(pen, foldLineX, yStart, foldLineX, yEnd);
+        }
+    }
+
     private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
+        if (mainForm?.FoldingManager == null) return;
+        if (!mainForm.FoldingManager.IsFoldStart(lineIndex)) return;
 
-        bool isFoldStart;
-        bool folded;
+        bool folded = mainForm.FoldingManager.IsCollapsed(lineIndex);
+        RichTextBox editor = mainForm.textEditor;
+        int lineH = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
 
-        if (mainForm.FoldingManager != null)
-        {
-            isFoldStart = mainForm.FoldingManager.IsFoldStart(lineIndex);
-            folded = mainForm.FoldingManager.IsCollapsed(lineIndex);
-        }
-        else
-        {
-            if (lineIndex >= mainForm.textEditor.Lines.Length) return;
-            string line = mainForm.textEditor.Lines[lineIndex];
-            string trimmed = line.TrimStart();
-            isFoldStart = trimmed.StartsWith("#region") || trimmed.EndsWith("{") || line.Contains("{");
-            if (isFoldStart && lineIndex + 1 < mainForm.textEditor.Lines.Length)
-            {
-                string nextLine = mainForm.textEditor.Lines[lineIndex + 1];
-                isFoldStart = !string.IsNullOrWhiteSpace(nextLine);
-            }
-            folded = false;
-        }
+        // Box: 8–12 px, vertically centred in the line height
+        int boxSize = Math.Max(8, Math.Min(12, lineH - 4));
+        int bx = x + (FoldMarginWidth - boxSize) / 2;
+        int by = y + (lineH - boxSize) / 2;
 
-        if (!isFoldStart) return;
-
-        string symbol = folded ? ChevronRight : ChevronDown;
-        Size sz = Size.Ceiling(g.MeasureString(symbol, _foldFont));
-        int tx = x + (FoldMarginWidth - sz.Width) / 2;
-        int ty = y + 2;
-        int alpha = folded || _showFoldMarkers ? 220 : 80;
-        Color col = mainForm.IsDarkTheme
-            ? Color.FromArgb(alpha, 180, 180, 180)
+        // Visibility: fully opaque when hovering fold margin, subtle otherwise
+        int alpha = _showFoldMarkers ? 220 : 150;
+        Color border = mainForm.IsDarkTheme
+            ? Color.FromArgb(alpha, 160, 160, 160)
             : Color.FromArgb(alpha, 80, 80, 80);
-        using var brush = new SolidBrush(col);
-        g.DrawString(symbol, _foldFont, brush, tx, ty);
+
+        // Fill box with gutter background so it covers the scope guide line
+        using (var fill = new SolidBrush(BackColor))
+            g.FillRectangle(fill, bx, by, boxSize, boxSize);
+
+        // 1px border rectangle
+        using (var bp = new Pen(border, 1f))
+            g.DrawRectangle(bp, bx, by, boxSize - 1, boxSize - 1);
+
+        // +/− symbol: 1px lines inside the box
+        int cx  = bx + boxSize / 2;
+        int cy  = by + boxSize / 2;
+        int arm = boxSize / 2 - 2;
+        using (var sp = new Pen(border, 1f))
+        {
+            g.DrawLine(sp, cx - arm, cy, cx + arm, cy);       // horizontal (always)
+            if (folded)
+                g.DrawLine(sp, cx, cy - arm, cx, cy + arm);   // vertical (+) when collapsed
+        }
     }
 
     private void DrawQuickAction(Graphics g, int lineNumber, int x, int y)
