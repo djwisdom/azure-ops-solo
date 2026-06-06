@@ -18,11 +18,16 @@ namespace MyCrownJewelApp.Pfpad
         private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
         [DllImport("user32.dll")]
         private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+        [DllImport("user32.dll")]
+        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll")]
+        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
         private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
         private const int EM_LINESCROLL = 0x00B6;
         private const int EM_GETLINE = 0x00C4;
+        private const int GWL_EXSTYLE = -20;
         private const int WS_EX_LAYERED = 0x00080000;
         private const uint LWA_ALPHA = 0x00000002;
 
@@ -74,21 +79,15 @@ namespace MyCrownJewelApp.Pfpad
             }
         }
 
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                var cp = base.CreateParams;
-                cp.ExStyle |= WS_EX_LAYERED;
-                return cp;
-            }
-        }
-
         private void ApplyOpacity()
         {
             if (IsHandleCreated)
                 SetLayeredWindowAttributes(Handle, 0, (byte)Math.Round(_opacity * 255f), LWA_ALPHA);
         }
+
+        // No CreateParams override — adding WS_EX_LAYERED at creation time conflicts
+        // with OptimizedDoubleBuffer and causes "Error creating window handle".
+        // Instead we stamp the extended style via SetWindowLong after the handle exists.
 
         public MinimapControl()
         {
@@ -470,6 +469,11 @@ namespace MyCrownJewelApp.Pfpad
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            // Stamp WS_EX_LAYERED onto the existing handle — safe to do post-creation
+            // and avoids the CreateWindowEx failure that occurs when the style is set
+            // in CreateParams alongside OptimizedDoubleBuffer.
+            int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
+            SetWindowLong(Handle, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
             ApplyOpacity();
         }
 
