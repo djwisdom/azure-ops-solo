@@ -283,6 +283,7 @@ using Microsoft.Extensions.DependencyInjection;
 
         private Button _tabDropdownButton = null!;
         private bool _applyingHighlight;
+        private bool _applyingElasticTabs;  // prevents elastic-tab timer restart during SelectionTabs apply
 
         private readonly DateTime _startTime = DateTime.UtcNow;
         private const int NotificationDelaySeconds = 15;
@@ -1773,25 +1774,50 @@ using Microsoft.Extensions.DependencyInjection;
                         {
                             if (textEditor.IsDisposed || textEditor.Disposing || stops.Length == 0) return;
 
-                            // RichTextBox.SelectionTabs is PER-PARAGRAPH: it only affects
-                            // whichever paragraph the cursor sits in at the moment this runs.
-                            // If we leave different paragraphs with different tab-stop arrays,
-                            // cursor movement causes lines to jump as each paragraph's stored
-                            // tab stops become "active".  Fix: select the entire document so all
-                            // paragraphs receive the same computed stops in one atomic call,
-                            // then restore the original cursor position.
+                            // Three problems with naive SelectionTabs assignment:
+                            //  1. Setting it on the current paragraph only (old code) leaves other
+                            //     paragraphs with different stop arrays → cursor-movement visual shift.
+                            //  2. Setting it via Select(0,TextLength) (previous fix) applies stops
+                            //     from the VISIBLE range to the entire document, compressing off-screen
+                            //     lines that have deeper indentation.  Also causes visible selection
+                            //     flash (blinking) on every 250ms elastic-tab recompute.
+                            //  3. SelectionTabs fires TextChanged → elastic timer restart → infinite loop.
+                            //
+                            // Correct fix:
+                            //  • Apply to the VISIBLE RANGE ONLY — all visible paragraphs get the
+                            //    same stops (preventing cursor-movement shifts) without touching
+                            //    off-screen content (preventing compression).
+                            //  • Wrap in BeginUpdate/EndUpdate to suppress all intermediate paints
+                            //    (no blinking).
+                            //  • Set _applyingElasticTabs before so TextChanged guard blocks the
+                            //    timer restart when SelectionTabs changes fire TextChanged.
+
                             int savedStart  = textEditor.SelectionStart;
                             int savedLength = textEditor.SelectionLength;
                             _suspendSelectionChanged = true;
+                            _applyingElasticTabs = true;
+                            BeginUpdate(textEditor);
                             try
                             {
-                                textEditor.Select(0, textEditor.TextLength);
+                                int startChar = Math.Max(0, textEditor.GetFirstCharIndexFromLine(firstVisible));
+                                int endChar;
+                                int nextLine = lastIndex + 1;
+                                if (nextLine < textEditor.Lines.Length)
+                                    endChar = textEditor.GetFirstCharIndexFromLine(nextLine);
+                                else
+                                    endChar = textEditor.TextLength;
+                                if (endChar <= startChar) endChar = textEditor.TextLength;
+
+                                textEditor.Select(startChar, Math.Max(0, endChar - startChar));
                                 textEditor.SelectionTabs = stops;
                             }
                             finally
                             {
                                 textEditor.Select(savedStart, savedLength);
+                                _applyingElasticTabs = false;
                                 _suspendSelectionChanged = false;
+                                EndUpdate(textEditor);
+                                textEditor.Invalidate();
                             }
                         }));
                     }
@@ -6755,6 +6781,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         private void TextEditor_TextChanged(object? sender, EventArgs e)
         {
             if (_applyingHighlight) return;
+            if (_applyingElasticTabs) return;  // SelectionTabs change fires TextChanged — don't restart timer
             // Hash comparison catches spurious TextChanged from RichTextBox internals
             // (line ending normalization, deferred messages, etc.) when content hasn't changed
             if (!isModified && ComputeContentHash() == savedContentHash) return;
