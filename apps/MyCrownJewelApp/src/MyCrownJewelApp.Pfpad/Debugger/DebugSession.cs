@@ -27,24 +27,48 @@ public sealed class DebugSession : IDisposable
     public event Action<int>? ThreadContinued;
     public event Action<int>? ProcessExited;
 
-    public async Task<string?> StartAsync(string programPath, string? cwd = null, string[]? args = null)
+    public async Task<string?> StartAsync(string programPath, string? cwd = null, string[]? args = null,
+        AppSettings? settings = null)
     {
         _programPath = programPath;
         _cwd = cwd;
-        string? adapterPath = FindNetCoreDbg();
+
+        var adapterType = settings?.DebugAdapterType ?? DebugAdapterType.NetCoreDbg;
+        string? configuredPath = settings?.DebugAdapterPath;
+
+        string? adapterPath = FindAdapter(adapterType, configuredPath);
         if (adapterPath == null)
-            return "netcoredbg not found. Install it and ensure it's on PATH or at %LOCALAPPDATA%\\netcoredbg\\netcoredbg.exe";
+        {
+            string hint = adapterType switch
+            {
+                DebugAdapterType.CppVsDbg =>
+                    "cppvsdbg not found. Install Visual Studio Build Tools (C++ workload) or set the path in Settings → Debug Adapter.",
+                DebugAdapterType.Gdb =>
+                    "gdb not found. Install MinGW/MSYS2 and add gdb.exe to PATH, or set the path in Settings → Debug Adapter.",
+                _ =>
+                    "netcoredbg not found. Download from https://github.com/Samsung/netcoredbg and add to PATH, or set the path in Settings → Debug Adapter."
+            };
+            return hint;
+        }
 
         _client.EventReceived += OnEvent;
         _client.ErrorReceived += msg => DebugOutput?.Invoke($"[ERR] {msg}");
 
+        // cppvsdbg expects --connection=stdio; netcoredbg expects --interpreter=vscode
+        string[] adapterArgs = adapterType switch
+        {
+            DebugAdapterType.CppVsDbg => ["--connection=stdio"],
+            DebugAdapterType.Gdb      => Array.Empty<string>(),
+            _                         => Array.Empty<string>()
+        };
+
         try
         {
-            await _client.StartAsync(adapterPath, Array.Empty<string>());
+            await _client.StartAsync(adapterPath, adapterArgs);
         }
         catch (Exception ex)
         {
-            return $"Failed to start netcoredbg: {ex.Message}";
+            return $"Failed to start debug adapter: {ex.Message}";
         }
 
         SetState(DebugState.Initializing);
@@ -61,12 +85,19 @@ public sealed class DebugSession : IDisposable
             catch { }
         }
 
+        string launchType = adapterType switch
+        {
+            DebugAdapterType.CppVsDbg => "cppvsdbg",
+            DebugAdapterType.Gdb      => "cppdbg",
+            _                         => "coreclr"
+        };
+
         var launchArgs = new Dap.LaunchRequestArguments
         {
             Program = programPath,
             Cwd = cwd ?? Path.GetDirectoryName(programPath),
             Args = args,
-            Type = "coreclr"
+            Type = launchType
         };
         var launchResp = await _client.SendRequest("launch", launchArgs);
         if (launchResp == null)
@@ -273,27 +304,65 @@ public sealed class DebugSession : IDisposable
         return JsonSerializer.Deserialize<T>(element.Value.GetRawText(), Dap.JsonOpts);
     }
 
-    private static string? FindNetCoreDbg()
+    /// <summary>
+    /// Resolves the full path to the debug adapter executable.
+    /// Checks <paramref name="configuredPath"/> first, then well-known install locations, then PATH.
+    /// </summary>
+    private static string? FindAdapter(DebugAdapterType adapterType, string? configuredPath)
     {
+        // Honour an explicit user-configured path first.
+        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
+            return configuredPath;
+
         string appDir = AppDomain.CurrentDomain.BaseDirectory;
-        string[] candidates =
+        string localApp = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        string progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+        string[] candidates = adapterType switch
         {
-            "netcoredbg.exe",
-            Path.Combine(appDir, "netcoredbg", "netcoredbg.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "netcoredbg", "netcoredbg.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "netcoredbg", "netcoredbg.exe"),
+            DebugAdapterType.CppVsDbg => [
+                "cppvsdbg.exe",
+                Path.Combine(appDir, "cppvsdbg", "cppvsdbg.exe"),
+                // VS 2022 / 2019 default locations
+                Path.Combine(progFiles, "Microsoft Visual Studio", "2022", "Community", "Common7", "Packages", "Debugger", "cppvsdbg.exe"),
+                Path.Combine(progFiles, "Microsoft Visual Studio", "2022", "Professional", "Common7", "Packages", "Debugger", "cppvsdbg.exe"),
+                Path.Combine(progFiles, "Microsoft Visual Studio", "2022", "Enterprise", "Common7", "Packages", "Debugger", "cppvsdbg.exe"),
+                Path.Combine(progFiles, "Microsoft Visual Studio", "2019", "Community", "Common7", "Packages", "Debugger", "cppvsdbg.exe"),
+                Path.Combine(progFilesX86, "Microsoft Visual Studio", "2022", "BuildTools", "Common7", "Packages", "Debugger", "cppvsdbg.exe"),
+            ],
+            DebugAdapterType.Gdb => [
+                "gdb.exe",
+                Path.Combine(appDir, "gdb", "gdb.exe"),
+                @"C:\msys64\ucrt64\bin\gdb.exe",
+                @"C:\msys64\mingw64\bin\gdb.exe",
+                @"C:\MinGW\bin\gdb.exe",
+            ],
+            _ => [
+                "netcoredbg.exe",
+                Path.Combine(appDir, "netcoredbg", "netcoredbg.exe"),
+                Path.Combine(localApp, "netcoredbg", "netcoredbg.exe"),
+                Path.Combine(progFiles, "netcoredbg", "netcoredbg.exe"),
+            ]
         };
 
         foreach (var c in candidates)
-            if (File.Exists(c))
-                return c;
+            if (File.Exists(c)) return c;
+
+        // Last resort: search PATH
+        string exeName = adapterType switch
+        {
+            DebugAdapterType.CppVsDbg => "cppvsdbg.exe",
+            DebugAdapterType.Gdb      => "gdb.exe",
+            _                         => "netcoredbg.exe"
+        };
 
         string? pathEnv = Environment.GetEnvironmentVariable("PATH");
         if (pathEnv != null)
         {
             foreach (var dir in pathEnv.Split(Path.PathSeparator))
             {
-                string full = Path.Combine(dir.Trim(), "netcoredbg.exe");
+                string full = Path.Combine(dir.Trim(), exeName);
                 if (File.Exists(full)) return full;
             }
         }

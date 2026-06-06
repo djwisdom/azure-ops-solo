@@ -54,4 +54,28 @@ public record AppSettings
     public bool RulerEnabled { get; init; } = true;
     public bool ShowGutterBreakpoints { get; init; } = true;
     public bool ShowGutterBookmarks { get; init; } = true;
+
+    // ── Debug adapter configuration ────────────────────────────────────────────
+    /// <summary>
+    /// Which debug adapter to use. Defaults to NetCoreDbg (C#/.NET).
+    /// Set to CppVsDbg or Gdb for C/C++ projects.
+    /// </summary>
+    public DebugAdapterType DebugAdapterType { get; init; } = DebugAdapterType.NetCoreDbg;
+
+    /// <summary>
+    /// Optional full path to the debug adapter executable.
+    /// Leave empty to auto-discover from PATH or well-known install locations.
+    /// </summary>
+    public string DebugAdapterPath { get; init; } = "";
+}
+
+/// <summary>Identifies which DAP adapter binary pfpad should launch for debugging.</summary>
+public enum DebugAdapterType
+{
+    /// <summary>netcoredbg — for C#/.NET projects. Auto-discovered if not set.</summary>
+    NetCoreDbg,
+    /// <summary>cppvsdbg — Visual Studio C/C++ debugger. Requires VS Build Tools or VS 2019+.</summary>
+    CppVsDbg,
+    /// <summary>gdb — GNU debugger via MI/DAP bridge (MinGW, MSYS2, or WSL).</summary>
+    Gdb,
 }

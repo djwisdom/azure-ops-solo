@@ -57,30 +57,27 @@ public sealed class FoldingManager
         _roslynWorkspace = roslynWorkspace;
     }
 
-    public void ScanRegions()
+    public void ScanRegions(string? fileExtension = null)
     {
         _regions.Clear();
         string text = _editor.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        // Try Roslyn-based folding for C# files
-        if (_roslynWorkspace?.IsReady == true && IsCSharpFile())
+        // Use Roslyn-backed folding only for confirmed C# files.
+        if (_roslynWorkspace?.IsReady == true && IsCSharpFile(fileExtension))
         {
             ScanRegionsWithRoslyn(text);
         }
         else
         {
-            // Fall back to text-based folding
+            // Text-based brace-stack folding — works for C, C++, JS, and all brace languages.
             ScanRegionsWithText(text);
         }
     }
 
-    private bool IsCSharpFile()
-    {
-        // Simple check - could be enhanced to check file extension or syntax
-        return _editor.Text.Contains("using ") || _editor.Text.Contains("namespace ") ||
-               _editor.Text.Contains("class ") || _editor.Text.Contains("void ");
-    }
+    /// <summary>Returns true only for .cs / .csx files — never misidentifies C or C++.</summary>
+    private static bool IsCSharpFile(string? ext) =>
+        ext is ".cs" or ".csx";
 
     private void ScanRegionsWithRoslyn(string text)
     {

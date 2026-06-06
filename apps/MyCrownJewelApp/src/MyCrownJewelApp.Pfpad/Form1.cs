@@ -318,6 +318,15 @@ using Microsoft.Extensions.DependencyInjection;
 
         // Debugger integration
         private readonly DebugSession _debugSession = new();
+        private DebugAdapterType _debugAdapterType = DebugAdapterType.NetCoreDbg;
+        private string _debugAdapterPath = "";
+
+        /// <summary>Builds an AppSettings snapshot used when launching the debug adapter.</summary>
+        private AppSettings CurrentDebugSettings() => new AppSettings
+        {
+            DebugAdapterType = _debugAdapterType,
+            DebugAdapterPath = _debugAdapterPath
+        };
         private readonly BreakpointManager _breakpointManager = new();
         private DebugVariablesPanel? _debugVariablesPanel;
         private DebugCallStackPanel? _debugCallStackPanel;
@@ -327,6 +336,10 @@ using Microsoft.Extensions.DependencyInjection;
         public BreakpointManager DebugBreakpointManager => _breakpointManager;
         public int DebugActiveLine => _debugActiveLine;
         public string? CurrentFilePath => currentFilePath;
+        /// <summary>Lowercase extension of the currently open file, e.g. ".cs" or ".cpp". Null when no file is open.</summary>
+        private string? CurrentFileExtension =>
+            currentFilePath is not null ? Path.GetExtension(currentFilePath).ToLowerInvariant() : null;
+
 
         // Public property accessors for SettingsDialog
         public string CurrentFontName => textEditor.Font.Name;
@@ -804,12 +817,12 @@ using Microsoft.Extensions.DependencyInjection;
             _stickyScroll = new StickyScrollService();
             textEditor!.TextChanged += (s, e) =>
             {
-                if (!_suppressFoldRescan) _foldingManager?.ScanRegions();
+                if (!_suppressFoldRescan) _foldingManager?.ScanRegions(CurrentFileExtension);
                 gutterPanel?.RefreshGutter();
                 ScheduleLint();
                 RebuildStickyScopes();
             };
-            _foldingManager.ScanRegions();
+            _foldingManager.ScanRegions(CurrentFileExtension);
             RebuildStickyScopes();
 
             // Initialize sticky scroll panel position and font
@@ -2198,6 +2211,8 @@ using Microsoft.Extensions.DependencyInjection;
                 RulerEnabled = _rulerEnabled,
                 ShowGutterBreakpoints = showGutterBreakpointsMenuItem?.Checked ?? true,
                 ShowGutterBookmarks   = showGutterBookmarksMenuItem?.Checked ?? true,
+                DebugAdapterType = _debugAdapterType,
+                DebugAdapterPath = _debugAdapterPath,
             };
             _settingsService.Save(settings);
         }
@@ -2293,6 +2308,10 @@ using Microsoft.Extensions.DependencyInjection;
             gutterPanel.ShowBreakpoints = settings.ShowGutterBreakpoints;
             gutterPanel.ShowBookmarks   = settings.ShowGutterBookmarks;
             SyncGutterColumnWidth();
+
+            // Debug adapter
+            _debugAdapterType = settings.DebugAdapterType;
+            _debugAdapterPath = settings.DebugAdapterPath;
 
             // Refresh UI
             UpdateStatusBar();
@@ -4319,6 +4338,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
                 new("Close Split", "Ctrl+Shift+W", () => CloseSplit()),
                 new("Close All Tabs", "", () => CloseAllTabs()),
+                new("Toggle Header/Source", "Alt+O", () => ToggleHeaderSource()),
                 new("Exit", "Alt+F4", () => Close()),
 
                 // Edit operations
@@ -5023,7 +5043,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             finally
             {
                 _suppressFoldRescan = false;
-                _foldingManager.ScanRegions();
+                _foldingManager.ScanRegions(CurrentFileExtension);
             }
             gutterPanel?.RefreshGutter();
         }
@@ -5777,6 +5797,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
             UpdateTabTitle(activeDocIndex);
             UpdateBreadcrumbs();
             ApplyEditorColors();
+            // Notify snippet engine so language-specific snippets activate correctly.
+            _snippetEngine?.SetFileExtension(CurrentFileExtension);
         }
 
         // Update tab title for EditorDocument at index
@@ -6361,6 +6383,58 @@ private void NewWindow_Click(object? sender, EventArgs e)
         }
 
         private void CloseSplit_Click(object? sender, EventArgs e) => CloseSplit();
+
+        /// <summary>
+        /// Switches between a C/C++ source file and its corresponding header (or vice versa).
+        /// Checks the same directory first, then the sibling include/ or src/ subdirectory.
+        /// Bound to Alt+O.
+        /// </summary>
+        private void ToggleHeaderSource()
+        {
+            if (string.IsNullOrEmpty(currentFilePath)) return;
+
+            string ext = Path.GetExtension(currentFilePath).ToLowerInvariant();
+            string dir = Path.GetDirectoryName(currentFilePath) ?? "";
+            string baseName = Path.GetFileNameWithoutExtension(currentFilePath);
+
+            string[] candidateExts;
+            string[] siblingDirs;
+
+            if (ext is ".cpp" or ".cc" or ".cxx" or ".c++" or ".c")
+            {
+                candidateExts = [".hpp", ".h", ".hxx", ".h++"];
+                // source → header: also check ../include
+                siblingDirs = [dir, Path.Combine(dir, "..", "include"), Path.Combine(dir, "include")];
+            }
+            else if (ext is ".hpp" or ".h" or ".hxx" or ".h++")
+            {
+                candidateExts = [".cpp", ".cxx", ".cc", ".c++", ".c"];
+                // header → source: also check ../src
+                siblingDirs = [dir, Path.Combine(dir, "..", "src"), Path.Combine(dir, "src")];
+            }
+            else
+            {
+                ShowNotification("Toggle", "No header/source counterpart for this file type.");
+                return;
+            }
+
+            foreach (string searchDir in siblingDirs)
+            {
+                string resolvedDir = Path.GetFullPath(searchDir);
+                if (!Directory.Exists(resolvedDir)) continue;
+                foreach (string candidateExt in candidateExts)
+                {
+                    string candidate = Path.Combine(resolvedDir, baseName + candidateExt);
+                    if (File.Exists(candidate))
+                    {
+                        OpenFileInNewTabAsync(candidate);
+                        return;
+                    }
+                }
+            }
+
+            ShowNotification("Toggle", $"No counterpart found for '{Path.GetFileName(currentFilePath)}'.");
+        }
 
         private void TabControl_MouseMove(object? sender, MouseEventArgs e)
         {
@@ -8493,7 +8567,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 }
             }
 
-            string? error = await _debugSession.StartAsync(outputDll!, projectDir);
+            string? error = await _debugSession.StartAsync(outputDll!, projectDir, settings: CurrentDebugSettings());
             if (error != null)
             {
                 ThemedMessageBox.Show(error, "Debugger Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -8725,6 +8799,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             if (keyData == (Keys.Alt | Keys.Shift | Keys.F)) { FormatDocumentAsync(); return true; }
             if (keyData == (Keys.Control | Keys.P)) { ShowQuickOpen(); return true; }
+            // Header/Source toggle: Alt+O (C/C++ only, harmless on other file types)
+            if (keyData == (Keys.Alt | Keys.O)) { ToggleHeaderSource(); return true; }
 
             return base.ProcessCmdKey(ref msg, keyData);
         }

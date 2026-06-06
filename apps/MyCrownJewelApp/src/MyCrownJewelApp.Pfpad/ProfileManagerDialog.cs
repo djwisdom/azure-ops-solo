@@ -1133,13 +1133,14 @@ internal sealed class ProfileManagerDialog : Form
     {
         string baseName = "New Profile"; string name = baseName; int count = 1;
         while (_manager.ProfileNames.Any(n => n == name)) name = $"{baseName} {count++}";
+        var (build, run, test) = ResolveBuildCommandsForType(null); // blank profile → dotnet defaults
         var profile = new UserProfile
         {
             Name = name,
             Workspaces = new List<WorkspaceInfo>(),
-            BuildCommand = "dotnet build",
-            RunCommand = "dotnet run",
-            TestCommand = "dotnet test",
+            BuildCommand = build,
+            RunCommand = run,
+            TestCommand = test,
             IconId = 0,
             ColorHex = "#0078D4",
             CreatedAt = DateTime.UtcNow,
@@ -1171,13 +1172,15 @@ internal sealed class ProfileManagerDialog : Form
             };
         }
 
+        var detectedType = primaryWorkspace?.ProjectType;
+        var (build, run, test) = ResolveBuildCommandsForType(detectedType);
         var profile = new UserProfile
         {
             Name = name,
             Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
-            BuildCommand = "dotnet build",
-            RunCommand = "dotnet run",
-            TestCommand = "dotnet test",
+            BuildCommand = build,
+            RunCommand = run,
+            TestCommand = test,
             OverrideTabSize = _mainForm.CurrentTabSize,
             OverrideInsertSpaces = _mainForm.CurrentInsertSpaces,
             OverrideFontSize = _mainForm.CurrentFontSize,
@@ -1218,13 +1221,15 @@ internal sealed class ProfileManagerDialog : Form
             };
         }
 
+        var detectedType2 = primaryWorkspace?.ProjectType;
+        var (build2, run2, test2) = ResolveBuildCommandsForType(detectedType2);
         var profile = new UserProfile
         {
             Name = name,
             Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
-            BuildCommand = "dotnet build",
-            RunCommand = "dotnet run",
-            TestCommand = "dotnet test",
+            BuildCommand = build2,
+            RunCommand = run2,
+            TestCommand = test2,
             ColorHex = "#0078D4",
             CreatedAt = DateTime.UtcNow,
             LastUsed = DateTime.MinValue,
@@ -1663,8 +1668,12 @@ private void LayoutRightPanel()
             if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
             if (fileNames.Contains("go.mod")) return "go";
             if (fileNames.Contains("cargo.toml")) return "rust";
-            if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".h"))) return "cpp";
+            if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".cc") || f.EndsWith(".cxx"))) return "cpp";
+            // Makefile-only C projects (no CMakeLists.txt, no .cpp)
+            if (fileNames.Contains("makefile") || fileNames.Contains("GNUmakefile") || fileNames.Any(f => f == "makefile")) return "make";
+            if (fileNames.Any(f => f.EndsWith(".c") || f.EndsWith(".h"))) return "c";
             if (fileNames.Contains(".csproj") || fileNames.Contains(".sln") || fileNames.Contains("project.json")) return "dotnet";
+            if (fileNames.Any(f => f.EndsWith(".csproj") || f.EndsWith(".sln"))) return "dotnet";
             if (fileNames.Contains("index.html") || fileNames.Contains("index.htm")) return "web";
 
             // Check for common directories
@@ -1682,6 +1691,25 @@ private void LayoutRightPanel()
             return null;
         }
     }
+
+    /// <summary>
+    /// Returns (build, run, test) commands appropriate for the given project type string.
+    /// Detects Makefile-only C projects (type "make") as well as cmake-based C/C++ projects.
+    /// </summary>
+    private static (string Build, string Run, string Test) ResolveBuildCommandsForType(string? projectType)
+        => projectType switch
+        {
+            "cpp"    => ("cmake --build build", "./build/app", "ctest --test-dir build"),
+            "make"   => ("make", "./app", "make test"),
+            "c"      => ("make", "./app", "make test"),
+            "node"   => ("npm run build", "npm start", "npm test"),
+            "python" => ("python -m compileall .", "python main.py", "python -m pytest"),
+            "rust"   => ("cargo build", "cargo run", "cargo test"),
+            "java"   => ("mvn package", "java -jar target/*.jar", "mvn test"),
+            "go"     => ("go build ./...", "go run .", "go test ./..."),
+            _        => ("dotnet build", "dotnet run", "dotnet test")   // dotnet or unknown
+        };
+
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
