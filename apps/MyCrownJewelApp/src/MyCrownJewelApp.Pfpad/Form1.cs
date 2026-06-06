@@ -81,9 +81,7 @@ using Microsoft.Extensions.DependencyInjection;
         }
 
         // State
-        private HashSet<int> bookmarks = new();
-        private HashSet<int> modifiedLines = new();
-        private HashSet<int> collapsedRegions = new();
+        private static readonly HashSet<int> _emptySet = new();
         internal bool gutterVisible = true;
         private bool statusBarVisible = true;
         internal bool wordWrapEnabled = false;
@@ -282,9 +280,9 @@ using Microsoft.Extensions.DependencyInjection;
 
         // Recent files
         // Designer fields (accessible via Controls collection)
-        public HashSet<int> Bookmarks => bookmarks;
-        public HashSet<int> ModifiedLines => modifiedLines;
-        public HashSet<int> CollapsedRegions => collapsedRegions;
+        public HashSet<int> Bookmarks => _docManager.GetActive()?.Bookmarks ?? _emptySet;
+        public HashSet<int> ModifiedLines => _docManager.GetActive()?.ModifiedLines ?? _emptySet;
+        public HashSet<int> CollapsedRegions => _docManager.GetActive()?.CollapsedRegions ?? _emptySet;
 
         private Button _tabDropdownButton = null!;
         private bool _applyingHighlight;
@@ -993,7 +991,7 @@ using Microsoft.Extensions.DependencyInjection;
                       lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                       currentSyntax = SyntaxDefinition.GetDefinitionForFile(currentFilePath);
                       ClearDirtyAfterSave();
-                      modifiedLines.Clear();
+                      _docManager.GetActive()?.ModifiedLines.Clear();
                       AddToRecentFiles(currentFilePath);
                       UpdateStatusBar();
                       if (syntaxHighlightingEnabled)
@@ -3447,7 +3445,7 @@ internal void ToggleGutter()
                     _profilerDialog?.Log($"Saved file: {currentFilePath} ({textEditor.Text.Length} chars)");
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
-                    modifiedLines.Clear();
+                    _docManager.GetActive()?.ModifiedLines.Clear();
                 }
                 catch (Exception ex)
                 {
@@ -3471,7 +3469,7 @@ internal void ToggleGutter()
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
                     AddToRecentFiles(currentFilePath);
-                    modifiedLines.Clear();
+                    _docManager.GetActive()?.ModifiedLines.Clear();
                     UpdateStatusBar();
                 }
                 catch (Exception ex)
@@ -3517,12 +3515,11 @@ internal void ToggleGutter()
         {
             isModified = false;
             savedContentHash = ComputeContentHash();
-            modifiedLines.Clear();
+            _docManager.GetActive()?.ModifiedLines.Clear();
             if (activeDocIndex >= 0)
             {
                 ActiveDoc.IsDirty = false;
                 ActiveDoc.SavedHash = savedContentHash;
-                ActiveDoc.ModifiedLines = modifiedLines;
                 ActiveDoc.LastWriteTime = lastFileWriteTime;
                 ActiveDoc.FilePath = currentFilePath;
                 ActiveDoc.Content = textEditor.Text;
@@ -3579,7 +3576,7 @@ internal void ToggleGutter()
             if (currentHash == savedContentHash)
             {
                 isModified = false;
-                modifiedLines.Clear();
+                _docManager.GetActive()?.ModifiedLines.Clear();
                 UpdateWindowTitle();
             }
         }
@@ -4959,7 +4956,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             int? next = null;
-            foreach (int bm in bookmarks)
+            foreach (int bm in _docManager.GetActive()?.Bookmarks ?? [])
             {
                 if (bm > currentLine)
                 {
@@ -4974,7 +4971,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             int currentLine = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
             int? prev = null;
-            foreach (int bm in bookmarks)
+            foreach (int bm in _docManager.GetActive()?.Bookmarks ?? [])
             {
                 if (bm < currentLine) prev = bm;
                 else break;
@@ -4984,7 +4981,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void ClearAllBookmarks_Click(object? sender, EventArgs e)
         {
-            bookmarks.Clear();
+            _docManager.GetActive()?.Bookmarks.Clear();
             if (gutterPanel != null) gutterPanel.RefreshGutter();
         }
 
@@ -5033,10 +5030,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         internal void ToggleBookmark(int line)
         {
-            if (bookmarks.Contains(line))
-                bookmarks.Remove(line);
+            var bms = _docManager.GetActive()?.Bookmarks;
+            if (bms == null) return;
+            if (bms.Contains(line))
+                bms.Remove(line);
             else
-                bookmarks.Add(line);
+                bms.Add(line);
             if (gutterPanel != null) gutterPanel.RefreshGutter();
         }
 
@@ -5391,7 +5390,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             var doc = documents[activeDocIndex];
             doc.Content = textEditor.Text;
             doc.IsDirty = isModified;
-            // modifiedLines, bookmarks, collapsedRegions are already references to doc's collections
+            // bookmarks, modifiedLines, collapsedRegions are owned by doc directly
             doc.FilePath = currentFilePath;
             doc.SavedHash = savedContentHash;
             doc.LastWriteTime = lastFileWriteTime;
@@ -5712,9 +5711,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
             // Update core fields from EditorDocument
             currentFilePath = doc.FilePath;
             isModified = doc.IsDirty;
-            modifiedLines = doc.ModifiedLines;
-            bookmarks = doc.Bookmarks;
-            collapsedRegions = doc.CollapsedRegions;
             savedContentHash = doc.SavedHash;
             lastFileWriteTime = doc.LastWriteTime ?? DateTime.MinValue;
 
@@ -6878,7 +6874,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             // Track which line changed for gutter display
             int lineIndex = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);
-            modifiedLines.Add(lineIndex);
+            _docManager.GetActive()?.ModifiedLines.Add(lineIndex);
 
             // Adaptive debounce: detect typing bursts, scale interval dynamically
             DateTime now = DateTime.UtcNow;
