@@ -53,10 +53,20 @@ public class GutterPanel : Panel
 
     [Category("Appearance")]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowLineNumbers  { get; set; } = true;
+    public bool ShowLineNumbers
+    {
+        get => _showLineNumbers;
+        set { if (_showLineNumbers == value) return; _showLineNumbers = value; _gutterDataDirty = true; Invalidate(); }
+    }
+    private bool _showLineNumbers = true;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool RelativeNumbers  { get; set; } = false;
+    public bool RelativeNumbers
+    {
+        get => _relativeNumbers;
+        set { if (_relativeNumbers == value) return; _relativeNumbers = value; _gutterDataDirty = true; Invalidate(); }
+    }
+    private bool _relativeNumbers = false;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int  CurrentLine      { get; set; } = 1;
