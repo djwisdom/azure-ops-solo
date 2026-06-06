@@ -1,36 +1,56 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
 internal sealed class NewProjectDialog : Form
 {
+    // ── Template model ────────────────────────────────────────────────────────
+    private sealed record ProjectTemplate(
+        string Name,
+        string ShortName,
+        string Language,        // "C#", "C", "C++"
+        string Tags,
+        string? DotnetShortName,                              // non-null → use dotnet new
+        IReadOnlyList<(string RelPath, string Content)> Files // for C/C++
+    );
+
+    // ── Controls ──────────────────────────────────────────────────────────────
     private readonly Form1 _mainForm;
+    private ComboBox _langFilter = null!;
     private ListView _templateList = null!;
     private TextBox _nameTextBox = null!;
     private TextBox _locationTextBox = null!;
     private Button _browseButton = null!;
+    // dotnet-specific
     private CheckBox _solutionCheckBox = null!;
+    private Label _frameworkLabel = null!;
     private ComboBox _frameworkCombo = null!;
+    // C/C++-specific
+    private CheckBox _gitCheckBox = null!;
+    private Label _standardLabel = null!;
+    private ComboBox _standardCombo = null!;
+
     private Button _createButton = null!;
     private Button _cancelButton = null!;
     private Label _statusLabel = null!;
     private bool _creating;
 
+    private List<ProjectTemplate> _allTemplates = new();
+
     public NewProjectDialog(Form1 mainForm)
     {
         _mainForm = mainForm;
         Text = "New Project";
-        Size = new Size(640, 520);
-        MinimumSize = new Size(640, 520);
+        Size = new Size(700, 560);
+        MinimumSize = new Size(700, 560);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -39,135 +59,526 @@ internal sealed class NewProjectDialog : Form
 
         InitializeForm();
         ApplyTheme();
-        LoadTemplates();
-        LoadFrameworks();
+        BuildBuiltInTemplates();
+        LoadDotnetTemplates();
+        PopulateTemplateList("All");
+        LoadDotnetFrameworks();
     }
 
     private void InitializeForm()
     {
-        var templateLabel = new Label
-        {
-            Text = "&Template:",
-            Location = new Point(12, 12),
-            AutoSize = true
-        };
+        int y = 12;
 
+        // ── Language filter row ───────────────────────────────────────────────
+        var filterLabel = new Label { Text = "&Language:", Location = new Point(12, y + 3), AutoSize = true };
+        _langFilter = new ComboBox
+        {
+            Location = new Point(80, y),
+            Width = 120,
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        _langFilter.Items.AddRange(new object[] { "All", "C#", "C", "C++" });
+        _langFilter.SelectedIndex = 0;
+        _langFilter.SelectedIndexChanged += (s, e) => PopulateTemplateList(_langFilter.SelectedItem as string ?? "All");
+        y += 34;
+
+        // ── Template list ─────────────────────────────────────────────────────
+        var templateLabel = new Label { Text = "&Template:", Location = new Point(12, y), AutoSize = true };
+        y += 16;
         _templateList = new ListView
         {
-            Location = new Point(12, 28),
-            Size = new Size(600, 200),
+            Location = new Point(12, y),
+            Size = new Size(662, 180),
             View = View.Details,
             FullRowSelect = true,
             HideSelection = false,
             HeaderStyle = ColumnHeaderStyle.Clickable
         };
-        _templateList.Columns.Add("Name", 180);
-        _templateList.Columns.Add("Description", 300);
-        _templateList.Columns.Add("Tags", 100);
+        _templateList.Columns.Add("Short Name", 140);
+        _templateList.Columns.Add("Template Name", 280);
+        _templateList.Columns.Add("Language", 70);
+        _templateList.Columns.Add("Tags", 140);
+        _templateList.SelectedIndexChanged += TemplateList_SelectedIndexChanged;
+        y += 188;
 
-        var nameLabel = new Label
-        {
-            Text = "Project &name:",
-            Location = new Point(12, 240),
-            AutoSize = true
-        };
+        // ── Project name ──────────────────────────────────────────────────────
+        var nameLabel = new Label { Text = "Project &name:", Location = new Point(12, y), AutoSize = true };
+        y += 16;
+        _nameTextBox = new TextBox { Text = "MyApp", Location = new Point(12, y), Width = 330 };
+        y += 32;
 
-        _nameTextBox = new TextBox
-        {
-            Text = "MyApp",
-            Location = new Point(12, 256),
-            Width = 300
-        };
-
-        var locationLabel = new Label
-        {
-            Text = "&Location:",
-            Location = new Point(12, 286),
-            AutoSize = true
-        };
-
-        _locationTextBox = new TextBox
-        {
-            Location = new Point(12, 302),
-            Width = 500
-        };
-        // Default to Documents or last workspace parent
-        string? wsRoot = _mainForm.WorkspaceRoot;
-        if (!string.IsNullOrEmpty(wsRoot))
-        {
-            var parent = Directory.GetParent(wsRoot);
-            if (parent != null)
-                _locationTextBox.Text = parent.FullName;
-        }
-        if (string.IsNullOrEmpty(_locationTextBox.Text))
-            _locationTextBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-
-        _browseButton = new Button
-        {
-            Text = "&Browse...",
-            Location = new Point(518, 300),
-            Width = 94,
-            Height = 26
-        };
+        // ── Location ──────────────────────────────────────────────────────────
+        var locationLabel = new Label { Text = "&Location:", Location = new Point(12, y), AutoSize = true };
+        y += 16;
+        _locationTextBox = new TextBox { Location = new Point(12, y), Width = 560 };
+        _browseButton = new Button { Text = "&Browse...", Location = new Point(580, y - 1), Width = 94, Height = 26 };
         _browseButton.Click += BrowseButton_Click;
 
-        _solutionCheckBox = new CheckBox
-        {
-            Text = "Create &solution file (.sln)",
-            Location = new Point(12, 334),
-            AutoSize = true,
-            Checked = true
-        };
+        string? wsRoot = _mainForm.WorkspaceRoot;
+        if (!string.IsNullOrEmpty(wsRoot)) { var p = Directory.GetParent(wsRoot); if (p != null) _locationTextBox.Text = p.FullName; }
+        if (string.IsNullOrEmpty(_locationTextBox.Text))
+            _locationTextBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        y += 32;
 
-        var frameworkLabel = new Label
-        {
-            Text = "&Framework:",
-            Location = new Point(12, 362),
-            AutoSize = true
-        };
+        // ── dotnet-specific options ────────────────────────────────────────────
+        _solutionCheckBox = new CheckBox { Text = "Create &solution file (.sln)", Location = new Point(12, y), AutoSize = true, Checked = true };
+        _frameworkLabel = new Label { Text = "&Framework:", Location = new Point(340, y + 3), AutoSize = true };
+        _frameworkCombo = new ComboBox { Location = new Point(420, y), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
 
-        _frameworkCombo = new ComboBox
-        {
-            Location = new Point(12, 378),
-            Width = 120,
-            DropDownStyle = ComboBoxStyle.DropDownList
-        };
+        // ── C/C++ specific options ────────────────────────────────────────────
+        _gitCheckBox = new CheckBox { Text = "Initialize &Git repository", Location = new Point(12, y), AutoSize = true, Checked = true, Visible = false };
+        _standardLabel = new Label { Text = "&Standard:", Location = new Point(340, y + 3), AutoSize = true, Visible = false };
+        _standardCombo = new ComboBox { Location = new Point(420, y), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
+        y += 34;
 
-        _statusLabel = new Label
-        {
-            Text = "",
-            Location = new Point(12, 410),
-            Size = new Size(600, 30),
-            ForeColor = Color.Gray
-        };
+        // ── Status label ──────────────────────────────────────────────────────
+        _statusLabel = new Label { Text = "", Location = new Point(12, y), Size = new Size(662, 30), ForeColor = Color.Gray };
+        y += 34;
 
-        _createButton = new Button
-        {
-            Text = "&Create",
-            Location = new Point(440, 445),
-            Width = 80,
-            Height = 28
-        };
+        // ── Buttons ───────────────────────────────────────────────────────────
+        _createButton = new Button { Text = "&Create", Location = new Point(510, y), Width = 80, Height = 28 };
         _createButton.Click += CreateButton_Click;
-
-        _cancelButton = new Button
-        {
-            Text = "Cancel",
-            Location = new Point(530, 445),
-            Width = 80,
-            Height = 28,
-            DialogResult = DialogResult.Cancel
-        };
+        _cancelButton = new Button { Text = "Cancel", Location = new Point(600, y), Width = 80, Height = 28, DialogResult = DialogResult.Cancel };
 
         Controls.AddRange(new Control[] {
+            filterLabel, _langFilter,
             templateLabel, _templateList,
             nameLabel, _nameTextBox,
             locationLabel, _locationTextBox, _browseButton,
-            _solutionCheckBox,
-            frameworkLabel, _frameworkCombo,
+            _solutionCheckBox, _frameworkLabel, _frameworkCombo,
+            _gitCheckBox, _standardLabel, _standardCombo,
             _statusLabel,
             _createButton, _cancelButton
         });
+
+        AcceptButton = _createButton;
+        CancelButton = _cancelButton;
+    }
+
+    private void TemplateList_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_templateList.SelectedItems.Count == 0) return;
+        var tpl = _templateList.SelectedItems[0].Tag as ProjectTemplate;
+        bool isCsOrDotnet = tpl == null || tpl.Language == "C#";
+        bool isCOrCpp = tpl?.Language is "C" or "C++";
+
+        _solutionCheckBox.Visible = isCsOrDotnet;
+        _frameworkLabel.Visible   = isCsOrDotnet;
+        _frameworkCombo.Visible   = isCsOrDotnet;
+
+        _gitCheckBox.Visible    = isCOrCpp;
+        _standardLabel.Visible  = isCOrCpp;
+        _standardCombo.Visible  = isCOrCpp;
+
+        if (isCOrCpp)
+        {
+            _standardCombo.Items.Clear();
+            if (tpl!.Language == "C")
+                _standardCombo.Items.AddRange(new object[] { "c17", "c11", "c99", "c89" });
+            else
+                _standardCombo.Items.AddRange(new object[] { "c++20", "c++17", "c++14", "c++11" });
+            if (_standardCombo.Items.Count > 0) _standardCombo.SelectedIndex = 0;
+        }
+    }
+
+    // ── Built-in templates ────────────────────────────────────────────────────
+
+    private void BuildBuiltInTemplates()
+    {
+        // ── C templates ───────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Console App (C)", ShortName: "c-console", Language: "C",
+            Tags: "Console", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/main.c", @"#include <stdio.h>
+
+int main(int argc, char *argv[]) {
+    printf(""Hello, World!\n"");
+    return 0;
+}
+"),
+                ("Makefile", @"CC      = gcc
+CFLAGS  = -Wall -Wextra -g -std=$(STD)
+STD     = c17
+TARGET  = app
+SRCS    = $(wildcard src/*.c)
+OBJS    = $(SRCS:.c=.o)
+
+.PHONY: all clean run
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+run: all
+	./$(TARGET)
+
+clean:
+	rm -f $(OBJS) $(TARGET)
+"),
+                (".gitignore", "app\n*.o\n*.d\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Static Library (C)", ShortName: "c-staticlib", Language: "C",
+            Tags: "Library", DotnetShortName: null,
+            Files: new[]
+            {
+                ("include/{name}.h", @"#ifndef {UNAME}_H
+#define {UNAME}_H
+
+int {name}_add(int a, int b);
+
+#endif /* {UNAME}_H */
+"),
+                ("src/{name}.c", @"#include ""{name}.h""
+
+int {name}_add(int a, int b) {
+    return a + b;
+}
+"),
+                ("examples/main.c", @"#include <stdio.h>
+#include ""{name}.h""
+
+int main(void) {
+    printf(""%d\n"", {name}_add(2, 3));
+    return 0;
+}
+"),
+                ("Makefile", @"CC      = gcc
+CFLAGS  = -Wall -Wextra -g -std=c17
+AR      = ar
+LIB     = lib{name}.a
+SRCS    = $(wildcard src/*.c)
+OBJS    = $(SRCS:.c=.o)
+
+.PHONY: all clean
+
+all: $(LIB)
+
+$(LIB): $(OBJS)
+	$(AR) rcs $@ $^
+
+%.o: %.c
+	$(CC) $(CFLAGS) -Iinclude -c -o $@ $<
+
+clean:
+	rm -f $(OBJS) $(LIB)
+"),
+                (".gitignore", "*.o\n*.a\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Makefile Project (C)", ShortName: "c-makefile", Language: "C",
+            Tags: "Build", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.c", @"#include <stdio.h>
+
+int main(void) {
+    printf(""Hello from {name}!\n"");
+    return 0;
+}
+"),
+                ("Makefile", @"CC     = gcc
+CFLAGS = -Wall -Wextra -g
+TARGET = {name}
+
+all: $(TARGET)
+
+$(TARGET): main.c
+	$(CC) $(CFLAGS) -o $@ $<
+
+clean:
+	rm -f $(TARGET)
+"),
+                (".gitignore", "{name}\n*.o\n")
+            }
+        ));
+
+        // ── C++ templates ─────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Console App (C++)", ShortName: "cpp-console", Language: "C++",
+            Tags: "Console", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/main.cpp", @"#include <iostream>
+
+int main(int argc, char* argv[]) {
+    std::cout << ""Hello, World!\n"";
+    return 0;
+}
+"),
+                ("Makefile", @"CXX     = g++
+CXXFLAGS = -Wall -Wextra -g -std=$(STD)
+STD      = c++17
+TARGET   = app
+SRCS     = $(wildcard src/*.cpp)
+OBJS     = $(SRCS:.cpp=.o)
+
+.PHONY: all clean run
+
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+run: all
+	./$(TARGET)
+
+clean:
+	rm -f $(OBJS) $(TARGET)
+"),
+                (".gitignore", "app\n*.o\nbuild/\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "CMake App (C++)", ShortName: "cpp-cmake", Language: "C++",
+            Tags: "CMake/Console", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/main.cpp", @"#include <iostream>
+
+int main() {
+    std::cout << ""Hello from {name}!\n"";
+    return 0;
+}
+"),
+                ("CMakeLists.txt", @"cmake_minimum_required(VERSION 3.20)
+project({name} VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_executable({name} src/main.cpp)
+
+target_compile_options({name} PRIVATE -Wall -Wextra)
+"),
+                (".gitignore", "build/\nCMakeFiles/\ncmake_install.cmake\nCMakeCache.txt\n"),
+                ("README.md", @"# {name}
+
+## Build
+
+```bash
+cmake -B build
+cmake --build build
+./build/{name}
+```
+")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "CMake Library (C++)", ShortName: "cpp-cmakelib", Language: "C++",
+            Tags: "CMake/Library", DotnetShortName: null,
+            Files: new[]
+            {
+                ("include/{name}.hpp", @"#pragma once
+
+namespace {name} {{
+
+int add(int a, int b);
+
+}} // namespace {name}
+"),
+                ("src/{name}.cpp", @"#include ""{name}.hpp""
+
+namespace {name} {{
+
+int add(int a, int b) {{
+    return a + b;
+}}
+
+}} // namespace {name}
+"),
+                ("examples/main.cpp", @"#include <iostream>
+#include ""{name}.hpp""
+
+int main() {{
+    std::cout << {name}::add(2, 3) << '\n';
+    return 0;
+}}
+"),
+                ("CMakeLists.txt", @"cmake_minimum_required(VERSION 3.20)
+project({name} VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_library({name} src/{name}.cpp)
+target_include_directories({name} PUBLIC include)
+
+add_executable({name}_example examples/main.cpp)
+target_link_libraries({name}_example PRIVATE {name})
+"),
+                (".gitignore", "build/\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Header-Only Library (C++)", ShortName: "cpp-header-only", Language: "C++",
+            Tags: "Library/Header-Only", DotnetShortName: null,
+            Files: new[]
+            {
+                ("include/{name}.hpp", @"#pragma once
+#include <type_traits>
+
+namespace {name} {{
+
+template<typename T>
+T clamp(T value, T lo, T hi) {{
+    static_assert(std::is_arithmetic_v<T>, ""clamp requires arithmetic type"");
+    return value < lo ? lo : value > hi ? hi : value;
+}}
+
+}} // namespace {name}
+"),
+                ("examples/main.cpp", @"#include <iostream>
+#include ""{name}.hpp""
+
+int main() {{
+    std::cout << {name}::clamp(15, 0, 10) << '\n'; // 10
+    return 0;
+}}
+"),
+                ("CMakeLists.txt", @"cmake_minimum_required(VERSION 3.20)
+project({name} VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_library({name} INTERFACE)
+target_include_directories({name} INTERFACE include)
+
+add_executable({name}_example examples/main.cpp)
+target_link_libraries({name}_example PRIVATE {name})
+"),
+                (".gitignore", "build/\n")
+            }
+        ));
+    }
+
+    // ── Template list population ──────────────────────────────────────────────
+
+    private void PopulateTemplateList(string langFilter)
+    {
+        _templateList.Items.Clear();
+        var filtered = langFilter == "All"
+            ? _allTemplates
+            : _allTemplates.Where(t => t.Language == langFilter).ToList();
+
+        foreach (var tpl in filtered)
+        {
+            var item = new ListViewItem(tpl.ShortName);
+            item.SubItems.Add(tpl.Name);
+            item.SubItems.Add(tpl.Language);
+            item.SubItems.Add(tpl.Tags);
+            item.Tag = tpl;
+            _templateList.Items.Add(item);
+        }
+
+        if (_templateList.Items.Count > 0)
+            _templateList.Items[0].Selected = true;
+    }
+
+    private void LoadDotnetTemplates()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("dotnet", "new list")
+            {
+                RedirectStandardOutput = true, RedirectStandardError = true,
+                UseShellExecute = false, CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi);
+            if (proc == null) return;
+            string stdout = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(20000);
+            if (proc.ExitCode != 0) return;
+            ParseDotnetTemplateList(stdout);
+        }
+        catch { /* fallback: built-in .NET templates already in list */ }
+
+        // Ensure at least common C# fallbacks
+        if (!_allTemplates.Any(t => t.Language == "C#"))
+        {
+            foreach (var (shortName, name, tags) in new[]
+            {
+                ("console",  "Console App",          "Common/Console"),
+                ("classlib", "Class Library",         "Common/Library"),
+                ("webapi",   "ASP.NET Core Web API",  "Web/API"),
+                ("mstest",   "MSTest Test Project",   "Test/MSTest"),
+            })
+            {
+                _allTemplates.Add(new ProjectTemplate(name, shortName, "C#", tags, shortName,
+                    Array.Empty<(string, string)>()));
+            }
+        }
+    }
+
+    private void ParseDotnetTemplateList(string output)
+    {
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        bool inData = false;
+        foreach (var rawLine in lines)
+        {
+            string line = rawLine.Trim();
+            if (line.StartsWith("---")) { inData = true; continue; }
+            if (!inData || string.IsNullOrEmpty(line)) continue;
+
+            var parts = Regex.Split(line, @"\s{2,}");
+            if (parts.Length < 2) continue;
+
+            string tplName  = parts[0].Trim();
+            string shortName = parts.Length > 1 ? parts[1].Trim() : "";
+            string language  = parts.Length > 2 ? parts[2].Trim().Trim('[', ']') : "C#";
+            string tags      = parts.Length > 3 ? parts[3].Trim() : "";
+
+            if (!language.Equals("C#", StringComparison.OrdinalIgnoreCase)) continue;
+
+            _allTemplates.Add(new ProjectTemplate(tplName, shortName, "C#", tags, shortName,
+                Array.Empty<(string, string)>()));
+        }
+    }
+
+    private void LoadDotnetFrameworks()
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("dotnet", "--list-sdks")
+            {
+                RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true
+            };
+            using var proc = Process.Start(psi);
+            if (proc == null) return;
+            string stdout = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit(10000);
+
+            var versions = new SortedSet<string>(Comparer<string>.Create((a, b) => string.Compare(b, a, StringComparison.OrdinalIgnoreCase)));
+            foreach (Match m in Regex.Matches(stdout, @"(\d+\.\d+)\.\d+"))
+                versions.Add($"net{m.Groups[1].Value}");
+
+            foreach (var v in versions) _frameworkCombo.Items.Add(v);
+        }
+        catch { }
+
+        if (_frameworkCombo.Items.Count == 0)
+        {
+            _frameworkCombo.Items.Add("net9.0");
+            _frameworkCombo.Items.Add("net8.0");
+        }
+        if (_frameworkCombo.Items.Count > 0) _frameworkCombo.SelectedIndex = 0;
     }
 
     private void ApplyTheme()
@@ -176,266 +587,58 @@ internal sealed class NewProjectDialog : Form
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
+        foreach (Control c in Controls)
+        {
+            if (c is TextBox tb) { tb.BackColor = theme.EditorBackground; tb.ForeColor = theme.Text; }
+            else if (c is ComboBox cb) { cb.BackColor = theme.EditorBackground; cb.ForeColor = theme.Text; }
+            else if (c is Button btn) { btn.BackColor = theme.PanelBackground; btn.ForeColor = theme.Text; }
+            else if (c is CheckBox chk) { chk.ForeColor = theme.Text; }
+            else if (c is Label lbl) { lbl.ForeColor = theme.Text; }
+        }
         _templateList.BackColor = theme.EditorBackground;
         _templateList.ForeColor = theme.Text;
-
-        _nameTextBox.BackColor = theme.EditorBackground;
-        _nameTextBox.ForeColor = theme.Text;
-
-        _locationTextBox.BackColor = theme.EditorBackground;
-        _locationTextBox.ForeColor = theme.Text;
-
-        _frameworkCombo.BackColor = theme.EditorBackground;
-        _frameworkCombo.ForeColor = theme.Text;
-
-        _createButton.BackColor = theme.PanelBackground;
-        _createButton.ForeColor = theme.Text;
-
-        _cancelButton.BackColor = theme.PanelBackground;
-        _cancelButton.ForeColor = theme.Text;
-
-        _solutionCheckBox.ForeColor = theme.Text;
-    }
-
-    private void LoadTemplates()
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("dotnet", "new list")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var proc = Process.Start(psi);
-            if (proc == null) return;
-
-            string stdout = proc.StandardOutput.ReadToEnd();
-            proc.WaitForExit(20000);
-
-            if (proc.ExitCode != 0) return;
-
-            ParseTemplateList(stdout);
-        }
-        catch
-        {
-            // fallback: let user type template name manually
-        }
-
-        if (_templateList.Items.Count == 0)
-        {
-            // Fallback: show a textbox hint and allow manual entry
-            _statusLabel.Text = "Could not load templates from SDK. Type template name manually.";
-        }
-    }
-
-    private void ParseTemplateList(string output)
-    {
-        // dotnet new list output format (pipe-delimited columns):
-        // Template Name                       Short Name     Language    Tags
-        // ----------------------------------- -------------- ----------- --------------------------
-        // ASP.NET Core Empty                  webapi          [C#]        Web/API
-        // Console App                         console         [C#]        Common/Console
-        // Class Library                       classlib        [C#]        Common/Library
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        bool inData = false;
-        foreach (var rawLine in lines)
-        {
-            string line = rawLine.Trim();
-            if (line.StartsWith("---"))
-            {
-                inData = true;
-                continue;
-            }
-            if (!inData || string.IsNullOrEmpty(line)) continue;
-
-            // Split on 2+ spaces to handle pipe-delimited columns
-            var parts = Regex.Split(line, @"\s{2,}");
-            if (parts.Length < 2) continue;
-
-            string tplName = parts[0].Trim();
-            string shortName = parts.Length > 1 ? parts[1].Trim() : "";
-            string language = parts.Length > 2 ? parts[2].Trim().Trim('[', ']') : "";
-            string tags = parts.Length > 3 ? parts[3].Trim() : "";
-
-            // Filter to C# templates by default
-            if (!string.IsNullOrEmpty(language) && !language.Equals("C#", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var item = new ListViewItem(shortName);
-            item.SubItems.Add(tplName);
-            item.SubItems.Add(tags);
-            item.Tag = shortName;
-            _templateList.Items.Add(item);
-        }
-
-        // Auto-select first item
-        if (_templateList.Items.Count > 0)
-            _templateList.Items[0].Selected = true;
-    }
-
-    private void LoadFrameworks()
-    {
-        try
-        {
-            var psi = new ProcessStartInfo("dotnet", "--list-sdks")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var proc = Process.Start(psi);
-            if (proc == null) return;
-
-            string stdout = proc.StandardOutput.ReadToEnd();
-            proc.WaitForExit(10000);
-
-            // Parse SDK versions like "8.0.403" or "9.0.102" → extract major.minor
-            var versions = new HashSet<string>();
-            foreach (Match m in Regex.Matches(stdout, @"(\d+\.\d+)\.\d+"))
-            {
-                versions.Add(m.Groups[1].Value);
-            }
-
-            foreach (var v in versions.OrderByDescending(x => x))
-                _frameworkCombo.Items.Add(v);
-
-            if (_frameworkCombo.Items.Count > 0)
-                _frameworkCombo.SelectedIndex = 0;
-        }
-        catch { }
-
-        if (_frameworkCombo.Items.Count == 0)
-        {
-            _frameworkCombo.Items.Add("net8.0");
-            _frameworkCombo.Items.Add("net9.0");
-            _frameworkCombo.SelectedIndex = 0;
-        }
     }
 
     private void BrowseButton_Click(object? sender, EventArgs e)
     {
-        using var dlg = new FolderBrowserDialog();
-        dlg.SelectedPath = _locationTextBox.Text;
+        using var dlg = new FolderBrowserDialog { SelectedPath = _locationTextBox.Text };
         if (dlg.ShowDialog(this) == DialogResult.OK)
             _locationTextBox.Text = dlg.SelectedPath;
     }
+
+    // ── Project creation ──────────────────────────────────────────────────────
 
     private async void CreateButton_Click(object? sender, EventArgs e)
     {
         if (_creating) return;
 
-        string template = _templateList.SelectedItems.Count > 0
-            ? (_templateList.SelectedItems[0].Tag as string) ?? ""
-            : "";
+        var tpl = _templateList.SelectedItems.Count > 0
+            ? _templateList.SelectedItems[0].Tag as ProjectTemplate : null;
         string projectName = _nameTextBox.Text.Trim();
-        string location = _locationTextBox.Text.Trim();
-        bool createSolution = _solutionCheckBox.Checked;
-        string? framework = _frameworkCombo.SelectedItem as string;
+        string location    = _locationTextBox.Text.Trim();
 
-        if (string.IsNullOrEmpty(template))
-        {
-            _statusLabel.Text = "Please select a template.";
-            return;
-        }
-        if (string.IsNullOrEmpty(projectName))
-        {
-            _statusLabel.Text = "Please enter a project name.";
-            return;
-        }
-        if (string.IsNullOrEmpty(location) || !Directory.Exists(location))
-        {
-            _statusLabel.Text = "Please select a valid location.";
-            return;
-        }
+        if (tpl == null)       { _statusLabel.Text = "Please select a template."; return; }
+        if (string.IsNullOrEmpty(projectName)) { _statusLabel.Text = "Please enter a project name."; return; }
+        if (!Directory.Exists(location))       { _statusLabel.Text = "Please select a valid location."; return; }
 
         _creating = true;
         _createButton.Enabled = false;
         _cancelButton.Enabled = false;
-        _statusLabel.ForeColor = Color.DarkBlue;
+        _statusLabel.ForeColor = Color.DimGray;
 
         string projectDir = Path.Combine(location, projectName);
 
         try
         {
-            // Step 1: dotnet new
-            _statusLabel.Text = $"Creating project '{projectName}'...";
-            string newArgs = $"new \"{template}\" -n \"{projectName}\" -o \"{projectDir}\"";
-            if (!string.IsNullOrEmpty(framework))
-                newArgs += $" --framework {framework}";
-
-            var newPsi = new ProcessStartInfo("dotnet", newArgs)
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var newProc = Process.Start(newPsi);
-            if (newProc == null) throw new Exception("Failed to start dotnet new process.");
-
-            string newOut = await newProc.StandardOutput.ReadToEndAsync();
-            string newErr = await newProc.StandardError.ReadToEndAsync();
-            newProc.WaitForExit(120000);
-
-            if (newProc.ExitCode != 0)
-            {
-                _statusLabel.ForeColor = Color.DarkRed;
-                _statusLabel.Text = $"Error: {newErr.Trim()}";
-                _creating = false;
-                _createButton.Enabled = true;
-                _cancelButton.Enabled = true;
-                return;
-            }
-
-            // Step 2: create .sln and add project if checked
-            if (createSolution)
-            {
-                _statusLabel.Text = "Creating solution file...";
-                var slnPsi = new ProcessStartInfo("dotnet", $"new sln -o \"{location}\"")
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var slnProc = Process.Start(slnPsi);
-                if (slnProc != null)
-                {
-                    await slnProc.StandardOutput.ReadToEndAsync();
-                    slnProc.WaitForExit(30000);
-                }
-
-                // Find the .csproj in the project directory
-                string? csproj = Directory.EnumerateFiles(projectDir, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
-
-                _statusLabel.Text = "Adding project to solution...";
-                var addPsi = new ProcessStartInfo("dotnet", $"sln \"{location}\" add \"{csproj}\"")
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var addProc = Process.Start(addPsi);
-                if (addProc != null)
-                {
-                    await addProc.StandardOutput.ReadToEndAsync();
-                    addProc.WaitForExit(30000);
-                }
-            }
+            if (tpl.DotnetShortName != null)
+                await CreateDotnetProjectAsync(tpl, projectName, projectDir, location);
+            else
+                await CreateNativeProjectAsync(tpl, projectName, projectDir);
 
             _statusLabel.Text = "Project created successfully!";
             _statusLabel.ForeColor = Color.DarkGreen;
 
-            // Auto-open the project folder as workspace
-            _mainForm.BeginInvoke(() =>
-            {
-                _mainForm.OpenWorkspaceFolder(projectDir);
-            });
-
-            // Close dialog after brief delay
+            _mainForm.BeginInvoke(() => _mainForm.OpenWorkspaceFolder(projectDir));
             await Task.Delay(500);
             DialogResult = DialogResult.OK;
             Close();
@@ -448,5 +651,85 @@ internal sealed class NewProjectDialog : Form
             _createButton.Enabled = true;
             _cancelButton.Enabled = true;
         }
+    }
+
+    private async Task CreateDotnetProjectAsync(ProjectTemplate tpl, string projectName, string projectDir, string location)
+    {
+        _statusLabel.Text = $"Creating {tpl.Language} project '{projectName}'...";
+        string? framework = _frameworkCombo.SelectedItem as string;
+
+        string newArgs = $"new \"{tpl.DotnetShortName}\" -n \"{projectName}\" -o \"{projectDir}\"";
+        if (!string.IsNullOrEmpty(framework))
+            newArgs += $" --framework {framework}";
+
+        await RunProcessAsync("dotnet", newArgs);
+
+        if (_solutionCheckBox.Checked)
+        {
+            _statusLabel.Text = "Creating solution file...";
+            await RunProcessAsync("dotnet", $"new sln -o \"{location}\"");
+            string? csproj = Directory.EnumerateFiles(projectDir, "*.csproj", SearchOption.TopDirectoryOnly).FirstOrDefault();
+            if (csproj != null)
+            {
+                _statusLabel.Text = "Adding project to solution...";
+                await RunProcessAsync("dotnet", $"sln \"{location}\" add \"{csproj}\"");
+            }
+        }
+    }
+
+    private async Task CreateNativeProjectAsync(ProjectTemplate tpl, string projectName, string projectDir)
+    {
+        _statusLabel.Text = $"Creating {tpl.Language} project '{projectName}'...";
+
+        Directory.CreateDirectory(projectDir);
+
+        string uname = projectName.ToUpperInvariant();
+        string std   = _standardCombo.SelectedItem as string ?? (tpl.Language == "C" ? "c17" : "c++17");
+
+        foreach (var (relPath, rawContent) in tpl.Files)
+        {
+            // Expand template variables
+            string content = rawContent
+                .Replace("{name}", projectName)
+                .Replace("{UNAME}", uname)
+                .Replace("{std}", std);
+
+            // Expand relPath too (e.g. include/{name}.h)
+            string expandedPath = relPath
+                .Replace("{name}", projectName)
+                .Replace("{UNAME}", uname);
+
+            string fullPath = Path.Combine(projectDir, expandedPath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            await File.WriteAllTextAsync(fullPath, content);
+        }
+
+        if (_gitCheckBox.Checked)
+        {
+            _statusLabel.Text = "Initializing git repository...";
+            try { await RunProcessAsync("git", "init", projectDir); } catch { /* git not on PATH, skip */ }
+        }
+    }
+
+    private static async Task<string> RunProcessAsync(string exe, string args, string? workDir = null)
+    {
+        var psi = new ProcessStartInfo(exe, args)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError  = true,
+            UseShellExecute = false,
+            CreateNoWindow  = true,
+        };
+        if (workDir != null) psi.WorkingDirectory = workDir;
+
+        using var proc = Process.Start(psi) ?? throw new Exception($"Failed to start {exe}");
+        string stdout = await proc.StandardOutput.ReadToEndAsync();
+        string stderr = await proc.StandardError.ReadToEndAsync();
+        await proc.WaitForExitAsync();
+
+        if (proc.ExitCode != 0)
+            throw new Exception(string.IsNullOrWhiteSpace(stderr) ? $"{exe} exited with code {proc.ExitCode}" : stderr.Trim());
+
+        return stdout;
     }
 }
