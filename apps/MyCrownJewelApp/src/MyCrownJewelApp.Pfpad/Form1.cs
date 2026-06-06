@@ -1737,6 +1737,7 @@ using Microsoft.Extensions.DependencyInjection;
                     string? fontName = null;
                     float fontSize = 0;
                     FontStyle fontStyle = FontStyle.Regular;
+                    int minTabWidth = 32; // fallback; overwritten by UI-thread capture
 
                     var ar = textEditor.BeginInvoke(new Action(() =>
                     {
@@ -1749,6 +1750,12 @@ using Microsoft.Extensions.DependencyInjection;
                         fontName = textEditor.Font.Name;
                         fontSize = textEditor.Font.Size;
                         fontStyle = textEditor.Font.Style;
+                        // Measure one character width so elastic stops are never narrower than
+                        // a normal fixed-width tab (charWidth × tabSize).  This prevents leading-
+                        // indentation tabs (empty cells) from collapsing to 2 px after a paste.
+                        var charSz = TextRenderer.MeasureText("0", textEditor.Font,
+                            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
+                        minTabWidth = Math.Max(8, charSz.Width * tabSize);
                     }));
                     ar.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(1));
 
@@ -1763,7 +1770,8 @@ using Microsoft.Extensions.DependencyInjection;
                     int[] stops = ElasticTabService.ComputeTabStops(
                         lines, firstVisible, lastIndex,
                         s => TabMeasurementCache.GetStringWidth(s, font),
-                        token);
+                        token,
+                        minTabWidth);
 
                     if (token.IsCancellationRequested) return;
 

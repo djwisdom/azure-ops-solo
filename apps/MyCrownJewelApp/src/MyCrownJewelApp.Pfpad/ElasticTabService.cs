@@ -34,7 +34,8 @@ internal static class ElasticTabService
         int firstLine,
         int lastLine,
         Func<string, int> measureWidth,
-        CancellationToken token)
+        CancellationToken token,
+        int minTabWidth = 32)
     {
         var maxWidths = new Dictionary<int, int>();
 
@@ -59,7 +60,10 @@ internal static class ElasticTabService
         for (int i = 0; ; i++)
         {
             if (!maxWidths.TryGetValue(i, out int w)) break;
-            cumulative += w + 2; // 2 px padding between columns
+            // Each column is at least minTabWidth wide so leading-indentation tabs
+            // (where the cell content is empty, giving w=0) render at the full
+            // configured tab width instead of collapsing to 2px.
+            cumulative += Math.Max(minTabWidth, w + 2);
             stops.Add(cumulative);
         }
 
