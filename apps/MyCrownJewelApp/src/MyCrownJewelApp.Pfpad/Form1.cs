@@ -119,6 +119,19 @@ using Microsoft.Extensions.DependencyInjection;
         private int _workspaceWidth = 200;
         private string _workspaceRoot = "";
 
+        // AIOps
+        private MyCrownJewelApp.Pfpad.AIOps.AIOpsEngine? _aiopsEngine;
+        private MyCrownJewelApp.Pfpad.AIOps.AIOpsPanel? _aiopsPanel;
+        private MyCrownJewelApp.Pfpad.AIOps.SecurityPanel? _aiopsSecurityPanel;
+        private MyCrownJewelApp.Pfpad.AIOps.DeploymentPanel? _aiopsDeploymentPanel;
+        private MyCrownJewelApp.Pfpad.AIOps.TelemetryPanel? _aiopsTelemetryPanel;
+        private MyCrownJewelApp.Pfpad.AIOps.InsightsPanel? _aiopsInsightsPanel;
+        private bool _aiopsHubVisible;
+        private bool _aiopsSecurityVisible;
+        private bool _aiopsDeploymentVisible;
+        private bool _aiopsTelemetryVisible;
+        private bool _aiopsInsightsVisible;
+
         // Git panel state
         private readonly GitService _gitService = new();
         private GitPanel? _gitPanel;
@@ -1394,6 +1407,8 @@ using Microsoft.Extensions.DependencyInjection;
 
               mainLayout.ResumeLayout(true);
 
+              InitAIOps();
+
               if (!string.IsNullOrEmpty(_workspaceRoot))
                         Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
               UpdateWorkspaceProjectLabel();
@@ -2252,6 +2267,7 @@ using Microsoft.Extensions.DependencyInjection;
                 RulerEnabled = _rulerEnabled,
                 ShowGutterBreakpoints = showGutterBreakpointsMenuItem?.Checked ?? true,
                 ShowGutterBookmarks   = showGutterBookmarksMenuItem?.Checked ?? true,
+                AIOpsConfig = _aiopsEngine?.CurrentSettings ?? _settingsService.Load()?.AIOpsConfig,
                 DebugAdapterType = _debugAdapterType,
                 DebugAdapterPath = _debugAdapterPath,
             };
@@ -2697,6 +2713,16 @@ internal void ToggleGutter()
                 _botSidebarSplit.BackColor = theme.MenuBackground;
             if (_markdownPreviewPanel != null)
                 _markdownPreviewPanel.SetTheme(theme);
+            if (_aiopsPanel != null)
+                _aiopsPanel.SetTheme(theme);
+            if (_aiopsSecurityPanel != null)
+                _aiopsSecurityPanel.SetTheme(theme);
+            if (_aiopsDeploymentPanel != null)
+                _aiopsDeploymentPanel.SetTheme(theme);
+            if (_aiopsTelemetryPanel != null)
+                _aiopsTelemetryPanel.SetTheme(theme);
+            if (_aiopsInsightsPanel != null)
+                _aiopsInsightsPanel.SetTheme(theme);
             if (_editorSplitContainer != null)
                 _editorSplitContainer.BackColor = theme.EditorBackground;
         }
@@ -3558,6 +3584,9 @@ internal void ToggleGutter()
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
                     _docManager.GetActive()?.ModifiedLines.Clear();
+
+                    if (_aiopsEngine?.CurrentSettings.AutoScanOnSave == true)
+                        _ = ScanActiveFileForAIOpsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -3583,6 +3612,9 @@ internal void ToggleGutter()
                     AddToRecentFiles(currentFilePath);
                     _docManager.GetActive()?.ModifiedLines.Clear();
                     UpdateStatusBar();
+
+                    if (_aiopsEngine?.CurrentSettings.AutoScanOnSave == true)
+                        _ = ScanActiveFileForAIOpsAsync();
                 }
                 catch (Exception ex)
                 {
@@ -7907,6 +7939,272 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         #endregion
 
+        private bool AnyAIOpsPanelVisible => _aiopsHubVisible || _aiopsSecurityVisible || _aiopsDeploymentVisible || _aiopsTelemetryVisible || _aiopsInsightsVisible;
+
+        private void InitAIOps()
+        {
+            if (_aiopsEngine != null)
+                return;
+
+            var settings = _settingsService.Load()?.AIOpsConfig ?? new MyCrownJewelApp.Pfpad.AIOps.AIOpsSettings();
+            _aiopsEngine = new MyCrownJewelApp.Pfpad.AIOps.AIOpsEngine(settings);
+
+            _aiopsPanel = new MyCrownJewelApp.Pfpad.AIOps.AIOpsPanel { Visible = false };
+            _aiopsPanel.SetEngine(_aiopsEngine);
+            _aiopsPanel.CloseRequested += () => { _aiopsHubVisible = false; _aiopsPanel.Visible = false; UpdateSidebarLayout(); };
+            _aiopsPanel.SettingsRequested += ShowAIOpsSettings;
+            _aiopsPanel.ScanRequested += async () => await ScanActiveFileForAIOpsAsync();
+
+            _aiopsSecurityPanel = new MyCrownJewelApp.Pfpad.AIOps.SecurityPanel { Visible = false };
+            _aiopsSecurityPanel.CloseRequested += () => { _aiopsSecurityVisible = false; _aiopsSecurityPanel.Visible = false; UpdateSidebarLayout(); };
+            _aiopsSecurityPanel.FindingNavigateRequested += (path, line) =>
+            {
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    OpenFileInNewTab(path);
+                    GoToLine(line);
+                }
+            };
+
+            _aiopsDeploymentPanel = new MyCrownJewelApp.Pfpad.AIOps.DeploymentPanel { Visible = false };
+            _aiopsDeploymentPanel.CloseRequested += () => { _aiopsDeploymentVisible = false; _aiopsDeploymentPanel.Visible = false; UpdateSidebarLayout(); };
+
+            _aiopsTelemetryPanel = new MyCrownJewelApp.Pfpad.AIOps.TelemetryPanel { Visible = false };
+            _aiopsTelemetryPanel.CloseRequested += () => { _aiopsTelemetryVisible = false; _aiopsTelemetryPanel.Visible = false; UpdateSidebarLayout(); };
+
+            _aiopsInsightsPanel = new MyCrownJewelApp.Pfpad.AIOps.InsightsPanel { Visible = false };
+            _aiopsInsightsPanel.CloseRequested += () => { _aiopsInsightsVisible = false; _aiopsInsightsPanel.Visible = false; UpdateSidebarLayout(); };
+
+            if (_botSidebarSplit != null)
+            {
+                _botSidebarSplit.Panel2.Controls.Add(_aiopsPanel);
+                _botSidebarSplit.Panel2.Controls.Add(_aiopsSecurityPanel);
+                _botSidebarSplit.Panel2.Controls.Add(_aiopsDeploymentPanel);
+                _botSidebarSplit.Panel2.Controls.Add(_aiopsTelemetryPanel);
+                _botSidebarSplit.Panel2.Controls.Add(_aiopsInsightsPanel);
+
+                _aiopsPanel.Dock = DockStyle.Fill;
+                _aiopsSecurityPanel.Dock = DockStyle.Fill;
+                _aiopsDeploymentPanel.Dock = DockStyle.Fill;
+                _aiopsTelemetryPanel.Dock = DockStyle.Fill;
+                _aiopsInsightsPanel.Dock = DockStyle.Fill;
+            }
+
+            _aiopsEngine.SecurityFindingsFound += findings =>
+                BeginInvoke(() => _aiopsSecurityPanel?.SetFindings(findings, Array.Empty<MyCrownJewelApp.Pfpad.AIOps.PolicyViolation>()));
+            _aiopsEngine.PolicyViolationsFound += violations =>
+                BeginInvoke(() => _aiopsSecurityPanel?.SetFindings(Array.Empty<MyCrownJewelApp.Pfpad.AIOps.SecurityFinding>(), violations));
+            _aiopsEngine.DeploymentsRefreshed += deps =>
+                BeginInvoke(() => _aiopsDeploymentPanel?.SetDeployments(deps));
+            _aiopsEngine.PipelinesRefreshed += pipes =>
+                BeginInvoke(() => _aiopsDeploymentPanel?.SetPipelines(pipes));
+            _aiopsEngine.ObservabilityGapsFound += gaps =>
+                BeginInvoke(() => _aiopsInsightsPanel?.SetInsights(gaps, Array.Empty<MyCrownJewelApp.Pfpad.AIOps.RemediationSuggestion>(), null));
+
+            var theme = _themeManager.CurrentTheme;
+            _aiopsPanel.SetTheme(theme);
+            _aiopsSecurityPanel.SetTheme(theme);
+            _aiopsDeploymentPanel.SetTheme(theme);
+            _aiopsTelemetryPanel.SetTheme(theme);
+            _aiopsInsightsPanel.SetTheme(theme);
+
+            _aiopsEngine.Start();
+            UpdateAIOpsTelemetryConnector();
+        }
+
+        private void UpdateAIOpsTelemetryConnector()
+        {
+            if (_aiopsEngine == null || _aiopsTelemetryPanel == null)
+                return;
+
+            var connector = _aiopsEngine.Connectors.FirstOrDefault(c => c.Status == MyCrownJewelApp.Pfpad.AIOps.ConnectorStatus.Connected)
+                ?? _aiopsEngine.Connectors.FirstOrDefault();
+            _aiopsTelemetryPanel.SetConnector(connector);
+
+            string? serviceName = Path.GetFileNameWithoutExtension(currentFilePath);
+            if (!string.IsNullOrWhiteSpace(serviceName))
+                _aiopsTelemetryPanel.SetServiceName(serviceName);
+        }
+
+        private void HideAIOpsPanels(Control? except = null)
+        {
+            if (_aiopsPanel != except)
+            {
+                _aiopsHubVisible = false;
+                if (_aiopsPanel != null) _aiopsPanel.Visible = false;
+            }
+
+            if (_aiopsSecurityPanel != except)
+            {
+                _aiopsSecurityVisible = false;
+                if (_aiopsSecurityPanel != null) _aiopsSecurityPanel.Visible = false;
+            }
+
+            if (_aiopsDeploymentPanel != except)
+            {
+                _aiopsDeploymentVisible = false;
+                if (_aiopsDeploymentPanel != null) _aiopsDeploymentPanel.Visible = false;
+            }
+
+            if (_aiopsTelemetryPanel != except)
+            {
+                _aiopsTelemetryVisible = false;
+                if (_aiopsTelemetryPanel != null) _aiopsTelemetryPanel.Visible = false;
+            }
+
+            if (_aiopsInsightsPanel != except)
+            {
+                _aiopsInsightsVisible = false;
+                if (_aiopsInsightsPanel != null) _aiopsInsightsPanel.Visible = false;
+            }
+        }
+
+        private void ShowAIOpsPanel(Control? panel, ref bool visible)
+        {
+            if (panel == null)
+                return;
+
+            HideAIOpsPanels(panel);
+            visible = true;
+            panel.Visible = true;
+            panel.BringToFront();
+            UpdateAIOpsTelemetryConnector();
+            UpdateSidebarLayout();
+        }
+
+        private void AIOpsHub_Click(object? sender, EventArgs e) => ToggleAIOpsPanel(_aiopsPanel, ref _aiopsHubVisible);
+        private void AIOpsSecurityPanel_Click(object? sender, EventArgs e) => ToggleAIOpsPanel(_aiopsSecurityPanel, ref _aiopsSecurityVisible);
+        private void AIOpsDeploymentPanel_Click(object? sender, EventArgs e) => ToggleAIOpsPanel(_aiopsDeploymentPanel, ref _aiopsDeploymentVisible);
+        private void AiopsTelemetryPanel_Click(object? sender, EventArgs e) => ToggleAIOpsPanel(_aiopsTelemetryPanel, ref _aiopsTelemetryVisible);
+        private void AIOpsInsightsPanel_Click(object? sender, EventArgs e) => ToggleAIOpsPanel(_aiopsInsightsPanel, ref _aiopsInsightsVisible);
+
+        private void ToggleAIOpsPanel(Control? panel, ref bool visible)
+        {
+            if (panel == null)
+                return;
+
+            bool show = !visible;
+            HideAIOpsPanels(show ? panel : null);
+            visible = show;
+            panel.Visible = show;
+            if (show)
+            {
+                panel.BringToFront();
+                UpdateAIOpsTelemetryConnector();
+            }
+
+            UpdateSidebarLayout();
+        }
+
+        private void AiopsScanFile_Click(object? sender, EventArgs e) => _ = ScanActiveFileForAIOpsAsync();
+        private void AiopsRiskScore_Click(object? sender, EventArgs e) => _ = ScoreDeploymentRiskAsync();
+        private void AiopsObservability_Click(object? sender, EventArgs e) => _ = AnalyzeObservabilityAsync();
+        private void AiopsSettings_Click(object? sender, EventArgs e) => ShowAIOpsSettings();
+
+        private async Task ScanActiveFileForAIOpsAsync()
+        {
+            if (_aiopsEngine == null)
+                return;
+
+            string? filePath = GetCurrentDocument()?.FilePath ?? currentFilePath;
+            if (string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            UpdateAIOpsTelemetryConnector();
+            string content = textEditor?.Text ?? string.Empty;
+            var result = await _aiopsEngine.ScanFileAsync(filePath, content);
+            if (result.findings.Count > 0 || result.policies.Count > 0)
+                ShowAIOpsPanel(_aiopsSecurityPanel, ref _aiopsSecurityVisible);
+        }
+
+        private async Task ScoreDeploymentRiskAsync()
+        {
+            if (_aiopsEngine == null)
+                return;
+
+            try
+            {
+                var changedFiles = new List<string>();
+                string gitDiff = string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(_workspaceRoot))
+                    _gitService.TryOpenRepo(_workspaceRoot);
+
+                var repo = _gitService.GetRepo();
+                if (repo != null)
+                {
+                    var status = repo.RetrieveStatus(new LibGit2Sharp.StatusOptions
+                    {
+                        IncludeUnaltered = false,
+                        RecurseUntrackedDirs = true,
+                        DetectRenamesInIndex = true,
+                        DetectRenamesInWorkDir = true
+                    });
+
+                    changedFiles = status
+                        .Select(entry => Path.Combine(repo.Info.WorkingDirectory, entry.FilePath.Replace('/', Path.DirectorySeparatorChar)))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    try
+                    {
+                        var patch = repo.Diff.Compare<LibGit2Sharp.Patch>(repo.Head.Tip?.Tree, LibGit2Sharp.DiffTargets.WorkingDirectory);
+                        gitDiff = patch?.Content ?? string.Empty;
+                    }
+                    catch
+                    {
+                        gitDiff = string.Empty;
+                    }
+                }
+
+                if (changedFiles.Count == 0 && !string.IsNullOrWhiteSpace(currentFilePath))
+                    changedFiles.Add(currentFilePath);
+
+                await _aiopsEngine.ScoreDeploymentRiskAsync(changedFiles, gitDiff);
+                ShowAIOpsPanel(_aiopsPanel, ref _aiopsHubVisible);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[AIOps] Risk score error: {ex.Message}");
+            }
+        }
+
+        private async Task AnalyzeObservabilityAsync()
+        {
+            if (_aiopsEngine == null)
+                return;
+
+            string? filePath = GetCurrentDocument()?.FilePath ?? currentFilePath;
+            if (string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            string content = textEditor?.Text ?? string.Empty;
+            var gaps = await _aiopsEngine.AnalyzeObservabilityAsync(filePath, content);
+            _aiopsInsightsPanel?.SetInsights(gaps, Array.Empty<MyCrownJewelApp.Pfpad.AIOps.RemediationSuggestion>(), _aiopsEngine.LastRiskReport);
+            ShowAIOpsPanel(_aiopsInsightsPanel, ref _aiopsInsightsVisible);
+        }
+
+        private void ShowAIOpsSettings()
+        {
+            if (_aiopsEngine == null)
+                return;
+
+            var settings = _aiopsEngine.CurrentSettings;
+            using var dlg = new MyCrownJewelApp.Pfpad.AIOps.AIOpsSettingsDialog(settings)
+            {
+                AzureMonitorConnector = new MyCrownJewelApp.Pfpad.AIOps.AzureMonitorConnector(settings.AzureMonitor),
+                AzureDevOpsConnector = new MyCrownJewelApp.Pfpad.AIOps.AzureDevOpsConnector(settings.AzureDevOps),
+                KubernetesConnector = new MyCrownJewelApp.Pfpad.AIOps.KubernetesConnector(settings.Kubernetes)
+            };
+            dlg.SettingsSaved += newSettings =>
+            {
+                _aiopsEngine.Configure(newSettings);
+                UpdateAIOpsTelemetryConnector();
+                SaveSettings();
+            };
+            dlg.ShowDialog(this);
+        }
+
         #region Git Integration
 
         private void RefreshGitRepo()
@@ -8121,11 +8419,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void ToggleProblemsPanel()
         {
-            if (_problemsPanel != null)
-            {
-                _problemsPanel.Visible = !_problemsPanel.Visible;
-                problemsMenuItem.Checked = _problemsPanel.Visible;
-            }
+            if (_problemsPanel == null) return;
+
+            _problemsPanelVisible = !_problemsPanelVisible;
+            _problemsPanel.Visible = _problemsPanelVisible;
+            problemsMenuItem.Checked = _problemsPanelVisible;
+            UpdateSidebarLayout();
         }
 
         private void ToggleProblemsPanel(object? sender, EventArgs e)
@@ -8231,8 +8530,10 @@ private void NewWindow_Click(object? sender, EventArgs e)
         {
             if (_botSidebarSplit is null || _sidebarSplit is null || _workspaceSplitContainer is null
                 || _problemsSplit is null) return;
-            bool botAny = _gitPanelVisible || _symbolPanelVisible || _problemsPanelVisible;
-            bool innerAny = _symbolPanelVisible || _problemsPanelVisible;
+
+            bool aiopsAny = _aiopsHubVisible || _aiopsSecurityVisible || _aiopsDeploymentVisible || _aiopsTelemetryVisible || _aiopsInsightsVisible;
+            bool botAny = _gitPanelVisible || _symbolPanelVisible || _problemsPanelVisible || aiopsAny;
+            bool innerAny = _symbolPanelVisible || _problemsPanelVisible || aiopsAny;
             _botSidebarSplit.Panel2Collapsed = !innerAny;
             _problemsSplit.Panel2Collapsed = !_problemsPanelVisible;
             _sidebarSplit.Panel2Collapsed = !botAny;
@@ -8240,10 +8541,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (innerAny)
             {
                 int totalH = _botSidebarSplit.Height - _botSidebarSplit.SplitterWidth;
-                if (_symbolPanelVisible && _problemsPanelVisible)
+                if (_gitPanelVisible && (_symbolPanelVisible || _problemsPanelVisible || aiopsAny))
                     _botSidebarSplit.SplitterDistance = Math.Max(60, totalH / 2);
-                else
+                else if (_gitPanelVisible)
                     _botSidebarSplit.SplitterDistance = Math.Max(60, totalH - 60);
+                else
+                    _botSidebarSplit.SplitterDistance = 60;
             }
 
             if (botAny)
@@ -8408,6 +8711,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             incrementalHighlighter?.Dispose();
             _roslynWorkspace.Dispose();
             _roslynService?.Dispose();
+            _aiopsEngine?.Dispose();
             _gitService.Dispose();
             _gitPanel?.Dispose();
             _notificationFeed.Dispose();

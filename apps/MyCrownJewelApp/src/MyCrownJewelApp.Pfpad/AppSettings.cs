@@ -55,6 +55,13 @@ public record AppSettings
     public bool ShowGutterBreakpoints { get; init; } = true;
     public bool ShowGutterBookmarks { get; init; } = true;
 
+    // ── AIOps configuration ────────────────────────────────────────────────────
+    /// <summary>
+    /// AIOps engine settings: connector endpoints, auth, polling intervals.
+    /// Stored as a mutable class (not record) because connectors are configured at runtime.
+    /// </summary>
+    public AIOps.AIOpsSettings? AIOpsConfig { get; init; } = null;
+
     // ── Debug adapter configuration ────────────────────────────────────────────
     /// <summary>
     /// Which debug adapter to use. Defaults to NetCoreDbg (C#/.NET).

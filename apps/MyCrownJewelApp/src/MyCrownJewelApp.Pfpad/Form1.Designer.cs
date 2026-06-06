@@ -109,6 +109,16 @@ partial class Form1
     private ToolStripMenuItem lightThemeMenuItem;
 
     private ToolStripMenuItem toolsMenu;
+    private ToolStripMenuItem aiopsMenu;
+    private ToolStripMenuItem aiopsHubMenuItem;
+    private ToolStripMenuItem aiopsSecurityMenuItem;
+    private ToolStripMenuItem aiopsDeploymentMenuItem;
+    private ToolStripMenuItem aiopsTelemetryMenuItem;
+    private ToolStripMenuItem aiopsInsightsMenuItem;
+    private ToolStripMenuItem aiopsScanFileMenuItem;
+    private ToolStripMenuItem aiopsRiskScoreMenuItem;
+    private ToolStripMenuItem aiopsObservabilityMenuItem;
+    private ToolStripMenuItem aiopsSettingsMenuItem;
     internal ToolStripMenuItem configureToolsMenuItem;
     internal ToolStripMenuItem settingsMenuItem;
     private ToolStripMenuItem runMenu;
@@ -542,6 +552,30 @@ partial class Form1
         var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
         helpMenu.DropDownItems.Add(aboutMenuItem);
         menuStrip.Items.Add(helpMenu);
+
+        // AIOps menu
+        aiopsMenu = new ToolStripMenuItem("&AIOps");
+        aiopsHubMenuItem = new ToolStripMenuItem("AIOps &Hub", null, AIOpsHub_Click, Keys.Control | Keys.Alt | Keys.A);
+        aiopsSecurityMenuItem = new ToolStripMenuItem("&Security Panel", null, AIOpsSecurityPanel_Click, Keys.Control | Keys.Alt | Keys.E);
+        aiopsDeploymentMenuItem = new ToolStripMenuItem("&Deployment Panel", null, AIOpsDeploymentPanel_Click, Keys.Control | Keys.Alt | Keys.D);
+        aiopsTelemetryMenuItem = new ToolStripMenuItem("&Telemetry Panel", null, AiopsTelemetryPanel_Click, Keys.Control | Keys.Alt | Keys.T);
+        aiopsInsightsMenuItem = new ToolStripMenuItem("&Insights Panel", null, AIOpsInsightsPanel_Click, Keys.Control | Keys.Alt | Keys.I);
+        aiopsMenu.DropDownItems.Add(aiopsHubMenuItem);
+        aiopsMenu.DropDownItems.Add(aiopsSecurityMenuItem);
+        aiopsMenu.DropDownItems.Add(aiopsDeploymentMenuItem);
+        aiopsMenu.DropDownItems.Add(aiopsTelemetryMenuItem);
+        aiopsMenu.DropDownItems.Add(aiopsInsightsMenuItem);
+        aiopsMenu.DropDownItems.Add(new ToolStripSeparator());
+        aiopsScanFileMenuItem = new ToolStripMenuItem("Scan Active &File", null, AiopsScanFile_Click, Keys.Control | Keys.Alt | Keys.S);
+        aiopsRiskScoreMenuItem = new ToolStripMenuItem("Score Deployment &Risk", null, AiopsRiskScore_Click, Keys.Control | Keys.Alt | Keys.R);
+        aiopsObservabilityMenuItem = new ToolStripMenuItem("Analyze &Observability Gaps", null, AiopsObservability_Click, Keys.Control | Keys.Alt | Keys.O);
+        aiopsMenu.DropDownItems.Add(aiopsScanFileMenuItem);
+        aiopsMenu.DropDownItems.Add(aiopsRiskScoreMenuItem);
+        aiopsMenu.DropDownItems.Add(aiopsObservabilityMenuItem);
+        aiopsMenu.DropDownItems.Add(new ToolStripSeparator());
+        aiopsSettingsMenuItem = new ToolStripMenuItem("AIOps &Settings...", null, AiopsSettings_Click, Keys.Control | Keys.Alt | Keys.Oemcomma);
+        aiopsMenu.DropDownItems.Add(aiopsSettingsMenuItem);
+        menuStrip.Items.Add(aiopsMenu);
         menuStrip.Dock = DockStyle.Fill;
 
         // Tab Control for multi-file editing
