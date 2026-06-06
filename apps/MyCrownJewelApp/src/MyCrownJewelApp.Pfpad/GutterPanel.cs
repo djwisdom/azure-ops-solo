@@ -141,11 +141,13 @@ public class GutterPanel : Panel
     {
         if (mainForm?.textEditor == null) return;
         var editor = mainForm.textEditor;
-        // Get the exact line at the clicked Y position
-        Point pt = new Point(0, e.Y);
+        // Subtract TopOffset so the click Y is in editor-client coordinates.
+        // GetLineY() draws at charPos.Y + TopOffset; passing raw e.Y to the
+        // editor maps to the wrong (lower) line when ruler/breadcrumbs add offset.
+        int adjustedY = Math.Max(0, e.Y - TopOffset);
+        Point pt = new Point(0, adjustedY);
         int charIndex = editor.GetCharIndexFromPosition(pt);
-        int line = editor.GetLineFromCharIndex(charIndex);
-        int lineIndex = line;
+        int lineIndex = editor.GetLineFromCharIndex(charIndex);
 
         if (e.Button == MouseButtons.Right)
         {
