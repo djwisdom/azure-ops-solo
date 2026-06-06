@@ -138,8 +138,9 @@ internal sealed class SolutionExplorerPanel : UserControl
             return;
 
         CurrentSolutionPath = slnPath;
+        // Cancel but do NOT dispose immediately — the running task still holds the token.
+        // The old CTS will be GC'd; only Dispose() disposes the current one on shutdown.
         _loadCts?.Cancel();
-        _loadCts?.Dispose();
         _loadCts = new CancellationTokenSource();
         _ = LoadSolutionAsync(slnPath, _loadCts.Token);
     }
@@ -191,7 +192,7 @@ internal sealed class SolutionExplorerPanel : UserControl
                 return (solution, projects);
             }, ct);
 
-            if (ct.IsCancellationRequested || IsDisposed)
+            if (ct.IsCancellationRequested || IsDisposed || !IsHandleCreated)
                 return;
 
             BeginInvoke(new Action(() =>
@@ -208,7 +209,7 @@ internal sealed class SolutionExplorerPanel : UserControl
         }
         catch (Exception ex)
         {
-            if (!IsDisposed)
+            if (!IsDisposed && IsHandleCreated)
             {
                 BeginInvoke(new Action(() =>
                     ThemedMessageBox.Show(this, $"Failed to load solution: {ex.Message}", "Solution Explorer", MessageBoxButtons.OK, MessageBoxIcon.Error)));
