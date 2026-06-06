@@ -574,7 +574,7 @@ partial class Form1
         rulerPanel = new RulerPanel();
         rulerPanel.Dock = DockStyle.Top;
         rulerPanel.Margin = new Padding(0);
-        rulerPanel.Visible = false;
+        rulerPanel.Visible = true;
 
         // Gutter Panel
         gutterPanel = new GutterPanel(this);

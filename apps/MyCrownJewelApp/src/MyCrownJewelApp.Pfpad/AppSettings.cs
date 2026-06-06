@@ -51,4 +51,5 @@ public record AppSettings
     public long SyntaxHighlightingThresholdBytes { get; init; } = 200 * 1024;
     public bool VimModeEnabled { get; init; } = false;
     public bool StickyScrollEnabled { get; init; } = true;
+    public bool RulerEnabled { get; init; } = true;
 }

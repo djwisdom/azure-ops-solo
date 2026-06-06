@@ -2000,6 +2000,9 @@ using Microsoft.Extensions.DependencyInjection;
                 if (_autoSaveEnabled) _autoSaveTimer.Start();
                 vimModeEnabled = settings.VimModeEnabled;
                 _stickyScrollEnabled = settings.StickyScrollEnabled;
+                _rulerEnabled = settings.RulerEnabled;
+                rulerPanel.Visible = _rulerEnabled;
+                if (rulerMenuItem != null) rulerMenuItem.Checked = _rulerEnabled;
                 bool showWhitespace = settings.ShowWhitespace;
                 if (whitespaceMenuItem != null)
                 {
@@ -2110,6 +2113,7 @@ using Microsoft.Extensions.DependencyInjection;
                 SyntaxHighlightingThresholdBytes = SyntaxHighlightingThresholdBytes,
                 VimModeEnabled = vimModeEnabled,
                 StickyScrollEnabled = _stickyScrollEnabled,
+                RulerEnabled = _rulerEnabled,
             };
             _settingsService.Save(settings);
         }
@@ -2185,6 +2189,13 @@ using Microsoft.Extensions.DependencyInjection;
             _stickyScrollEnabled = settings.StickyScrollEnabled;
             if (stickyScrollMenuItem != null) stickyScrollMenuItem.Checked = settings.StickyScrollEnabled;
             stickyScrollPanel.Visible = settings.StickyScrollEnabled;
+
+            // Ruler
+            _rulerEnabled = settings.RulerEnabled;
+            rulerPanel.Visible = _rulerEnabled;
+            if (rulerMenuItem != null) rulerMenuItem.Checked = _rulerEnabled;
+            gutterPanel.TopOffset = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (_rulerEnabled ? rulerPanel.Height : 0);
+            RepositionStickyScrollPanel();
 
             // Sync menu item states
             if (gutterMenuItem != null) gutterMenuItem.Checked = settings.GutterVisible;
@@ -2373,14 +2384,14 @@ internal void ToggleGutter()
         {
             _breadcrumbsEnabled = breadcrumbMenuItem.Checked;
             breadcrumbPanel.Visible = _breadcrumbsEnabled;
-            gutterPanel.TopOffset = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (rulerMenuItem.Checked ? rulerPanel.Height : 0);
+            gutterPanel.TopOffset = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (_rulerEnabled ? rulerPanel.Height : 0);
             gutterPanel.Invalidate();
             RepositionStickyScrollPanel();
             UpdateBreadcrumbs();
             SaveSettings();
         }
 
-        private bool _rulerEnabled = false;
+        private bool _rulerEnabled = true;
 
         private void ToggleRuler_Click(object? sender, EventArgs e)
         {
