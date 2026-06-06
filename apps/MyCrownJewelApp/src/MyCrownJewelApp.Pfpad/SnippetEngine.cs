@@ -25,11 +25,13 @@ public sealed class SnippetEngine
     {
         _currentLang = ext?.ToLowerInvariant() switch
         {
-            ".cs" or ".csx" => "cs",
-            ".c" => "c",
+            ".cs" or ".csx"                    => "cs",
+            ".c"                               => "c",
             ".cpp" or ".cc" or ".cxx" or ".c++" => "cpp",
-            ".h" or ".hpp" or ".hxx" => "cpp",
-            _ => "any"
+            ".h" or ".hpp" or ".hxx"            => "cpp",
+            ".bicep"                            => "bicep",
+            ".tf" or ".tfvars" or ".hcl"        => "tf",
+            _                                  => "any"
         };
     }
 
@@ -100,6 +102,38 @@ public sealed class SnippetEngine
         Add("todo",  "TODO comment",  "// TODO: $0");
         Add("hack",  "HACK comment",  "// HACK: $0");
         Add("note",  "NOTE comment",  "// NOTE: $0");
+
+        // ── Bicep snippets ────────────────────────────────────────────────────────
+        Add("param",       "parameter declaration",       "param $0 $1",                                                                                                         "bicep");
+        Add("parms",       "parameter with decorators",   "@description('$1')\r\n@minLength(1)\r\nparam $0 string",                                                               "bicep");
+        Add("var",         "variable declaration",        "var $0 = $1",                                                                                                         "bicep");
+        Add("out",         "output declaration",          "output $0 string = $1",                                                                                               "bicep");
+        Add("res",         "resource block",              "resource $0 '$1@$2' = {\r\n  name: '$3'\r\n  location: resourceGroup().location\r\n  properties: {\r\n    $4\r\n  }\r\n}","bicep");
+        Add("mod",         "module reference",            "module $0 './$1.bicep' = {\r\n  name: '$2'\r\n  params: {\r\n    $3\r\n  }\r\n}",                                      "bicep");
+        Add("existing",    "existing resource reference", "resource $0 '$1@$2' existing = {\r\n  name: '$3'\r\n}",                                                                "bicep");
+        Add("loop",        "resource loop (for)",         "resource $0 '$1@$2' = [for item in $3: {\r\n  name: '${item.name}'\r\n  location: resourceGroup().location\r\n  properties: {\r\n    $4\r\n  }\r\n}]","bicep");
+        Add("conditional", "conditional resource",        "resource $0 '$1@$2' = if ($3) {\r\n  name: '$4'\r\n  location: resourceGroup().location\r\n  properties: {\r\n    $5\r\n  }\r\n}","bicep");
+        Add("scope",       "targetScope declaration",     "targetScope = '$0'",                                                                                                   "bicep");
+        Add("decorators",  "common param decorators",     "@description('$1')\r\n@allowed([$2])\r\n@minLength(1)\r\n@maxLength(64)\r\nparam $0 string",                            "bicep");
+        Add("rg",          "resourceGroup() location",    "resourceGroup().location",                                                                                             "bicep");
+        Add("concat",      "string interpolation",        "'${$0}'",                                                                                                              "bicep");
+
+        // ── Terraform / HCL snippets ──────────────────────────────────────────────
+        Add("tfblock",   "terraform {} block",         "terraform {\r\n  required_version = \">= $0\"\r\n  required_providers {\r\n    $1 = {\r\n      source  = \"$2\"\r\n      version = \"~> $3\"\r\n    }\r\n  }\r\n}",                "tf");
+        Add("prov",      "provider block",             "provider \"$0\" {\r\n  $1\r\n}",                                                                                          "tf");
+        Add("res",       "resource block",             "resource \"$0\" \"$1\" {\r\n  $2\r\n}",                                                                                   "tf");
+        Add("data",      "data source block",          "data \"$0\" \"$1\" {\r\n  $2\r\n}",                                                                                       "tf");
+        Add("var",       "variable block",             "variable \"$0\" {\r\n  type        = $1\r\n  description = \"$2\"\r\n  default     = $3\r\n}",                             "tf");
+        Add("out",       "output block",               "output \"$0\" {\r\n  description = \"$1\"\r\n  value       = $2\r\n}",                                                    "tf");
+        Add("mod",       "module block",               "module \"$0\" {\r\n  source  = \"$1\"\r\n  version = \"$2\"\r\n\r\n  $3\r\n}",                                            "tf");
+        Add("locals",    "locals block",               "locals {\r\n  $0 = $1\r\n}",                                                                                             "tf");
+        Add("backend",   "backend block",              "backend \"$0\" {\r\n  $1\r\n}",                                                                                           "tf");
+        Add("lifecycle", "lifecycle block",            "lifecycle {\r\n  prevent_destroy       = $0\r\n  ignore_changes        = [$1]\r\n  replace_triggered_by  = [$2]\r\n}",   "tf");
+        Add("dynblock",  "dynamic block",              "dynamic \"$0\" {\r\n  for_each = $1\r\n  content {\r\n    $2\r\n  }\r\n}",                                                "tf");
+        Add("foreach",   "for_each meta-argument",     "for_each = { for $0 in $1 : $0.key => $0 }",                                                                             "tf");
+        Add("tags",      "common tags map",            "tags = {\r\n  environment = var.environment\r\n  project     = var.project_name\r\n  managed_by  = \"terraform\"\r\n}", "tf");
+        Add("tftag",     "single tag attribute",       "$0 = var.$1",                                                                                                            "tf");
+        Add("depends",   "depends_on block",           "depends_on = [$0]",                                                                                                      "tf");
     }
 
     public void Add(string prefix, string description, string body, string language = "any")

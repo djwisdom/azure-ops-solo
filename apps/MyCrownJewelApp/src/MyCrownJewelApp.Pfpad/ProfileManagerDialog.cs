@@ -1668,6 +1668,9 @@ private void LayoutRightPanel()
             if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
             if (fileNames.Contains("go.mod")) return "go";
             if (fileNames.Contains("cargo.toml")) return "rust";
+            // IaC: check before generic C/C++ so main.bicep is not confused with C headers
+            if (fileNames.Any(f => f.EndsWith(".bicep"))) return "bicep";
+            if (fileNames.Any(f => f.EndsWith(".tf") || f.EndsWith(".tfvars"))) return "terraform";
             if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".cc") || f.EndsWith(".cxx"))) return "cpp";
             // Makefile-only C projects (no CMakeLists.txt, no .cpp)
             if (fileNames.Contains("makefile") || fileNames.Contains("GNUmakefile") || fileNames.Any(f => f == "makefile")) return "make";
@@ -1682,6 +1685,10 @@ private void LayoutRightPanel()
 
             if (dirNames.Contains("node_modules")) return "node";
             if (dirNames.Contains("venv") || dirNames.Contains("__pycache__")) return "python";
+            // Terraform modules dir or .terraform cache dir
+            if (dirNames.Contains(".terraform") || dirNames.Contains("modules")) {
+                if (files.Any(f => f.EndsWith(".tf"))) return "terraform";
+            }
 
             return null; // Unknown
         }
@@ -1699,15 +1706,17 @@ private void LayoutRightPanel()
     private static (string Build, string Run, string Test) ResolveBuildCommandsForType(string? projectType)
         => projectType switch
         {
-            "cpp"    => ("cmake --build build", "./build/app", "ctest --test-dir build"),
-            "make"   => ("make", "./app", "make test"),
-            "c"      => ("make", "./app", "make test"),
-            "node"   => ("npm run build", "npm start", "npm test"),
-            "python" => ("python -m compileall .", "python main.py", "python -m pytest"),
-            "rust"   => ("cargo build", "cargo run", "cargo test"),
-            "java"   => ("mvn package", "java -jar target/*.jar", "mvn test"),
-            "go"     => ("go build ./...", "go run .", "go test ./..."),
-            _        => ("dotnet build", "dotnet run", "dotnet test")   // dotnet or unknown
+            "cpp"       => ("cmake --build build", "./build/app", "ctest --test-dir build"),
+            "make"      => ("make", "./app", "make test"),
+            "c"         => ("make", "./app", "make test"),
+            "node"      => ("npm run build", "npm start", "npm test"),
+            "python"    => ("python -m compileall .", "python main.py", "python -m pytest"),
+            "rust"      => ("cargo build", "cargo run", "cargo test"),
+            "java"      => ("mvn package", "java -jar target/*.jar", "mvn test"),
+            "go"        => ("go build ./...", "go run .", "go test ./..."),
+            "bicep"     => ("az bicep build --file main.bicep", "az deployment group create --template-file main.bicep --parameters @parameters.json", "az bicep lint --file main.bicep"),
+            "terraform" => ("terraform validate", "terraform plan", "terraform validate && tflint"),
+            _           => ("dotnet build", "dotnet run", "dotnet test")   // dotnet or unknown
         };
 
 

@@ -77,7 +77,7 @@ internal sealed class NewProjectDialog : Form
             Width = 120,
             DropDownStyle = ComboBoxStyle.DropDownList
         };
-        _langFilter.Items.AddRange(new object[] { "All", "C#", "C", "C++" });
+        _langFilter.Items.AddRange(new object[] { "All", "C#", "C", "C++", "Bicep", "Terraform" });
         _langFilter.SelectedIndex = 0;
         _langFilter.SelectedIndexChanged += (s, e) => PopulateTemplateList(_langFilter.SelectedItem as string ?? "All");
         y += 34;
@@ -160,15 +160,17 @@ internal sealed class NewProjectDialog : Form
         if (_templateList.SelectedItems.Count == 0) return;
         var tpl = _templateList.SelectedItems[0].Tag as ProjectTemplate;
         bool isCsOrDotnet = tpl == null || tpl.Language == "C#";
-        bool isCOrCpp = tpl?.Language is "C" or "C++";
+        bool isCOrCpp     = tpl?.Language is "C" or "C++";
+        bool isIaC        = tpl?.Language is "Bicep" or "Terraform";
 
         _solutionCheckBox.Visible = isCsOrDotnet;
         _frameworkLabel.Visible   = isCsOrDotnet;
         _frameworkCombo.Visible   = isCsOrDotnet;
 
-        _gitCheckBox.Visible    = isCOrCpp;
-        _standardLabel.Visible  = isCOrCpp;
-        _standardCombo.Visible  = isCOrCpp;
+        // C/C++ and IaC both show git init; C/C++ also shows language standard
+        _gitCheckBox.Visible   = isCOrCpp || isIaC;
+        _standardLabel.Visible = isCOrCpp;
+        _standardCombo.Visible = isCOrCpp;
 
         if (isCOrCpp)
         {
@@ -467,6 +469,455 @@ target_link_libraries({name}_example PRIVATE {name})
                 (".gitignore", "build/\n")
             }
         ));
+
+        // ── Bicep templates ───────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Resource Group Deployment", ShortName: "bicep-rg-deploy", Language: "Bicep",
+            Tags: "Azure/IaC", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.bicep", @"@description('Azure region for all resources')
+param location string = resourceGroup().location
+
+@description('Environment name (dev, staging, prod)')
+@allowed(['dev', 'staging', 'prod'])
+param environment string = 'dev'
+
+@description('Project name used as prefix for resource names')
+param projectName string = '{name}'
+
+// Storage account example
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: '${projectName}${environment}sa'
+  location: location
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    supportsHttpsTrafficOnly: true
+    minimumTlsVersion: 'TLS1_2'
+  }
+  tags: {
+    environment: environment
+    project: projectName
+    managedBy: 'bicep'
+  }
+}
+
+output storageAccountName string = storageAccount.name
+output storageAccountId string = storageAccount.id
+"),
+                ("parameters.dev.json", @"{
+  ""$schema"": ""https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"",
+  ""contentVersion"": ""1.0.0.0"",
+  ""parameters"": {
+    ""environment"": { ""value"": ""dev"" },
+    ""projectName"": { ""value"": ""{name}"" }
+  }
+}
+"),
+                ("parameters.prod.json", @"{
+  ""$schema"": ""https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#"",
+  ""contentVersion"": ""1.0.0.0"",
+  ""parameters"": {
+    ""environment"": { ""value"": ""prod"" },
+    ""projectName"": { ""value"": ""{name}"" }
+  }
+}
+"),
+                (".gitignore", "*.json.local\n.azure/\n"),
+                ("README.md", @"# {name}
+
+Azure Bicep infrastructure deployment.
+
+## Prerequisites
+- Azure CLI: `winget install Microsoft.AzureCLI`
+- Bicep CLI: `az bicep install`
+
+## Deploy
+
+```bash
+# Login
+az login
+
+# Create resource group (first time)
+az group create --name {name}-dev-rg --location eastus
+
+# Build (compile to ARM)
+az bicep build --file main.bicep
+
+# Deploy
+az deployment group create \
+  --resource-group {name}-dev-rg \
+  --template-file main.bicep \
+  --parameters @parameters.dev.json
+
+# Validate (lint)
+az bicep lint --file main.bicep
+```
+")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Bicep Module Library", ShortName: "bicep-modules", Language: "Bicep",
+            Tags: "Azure/Modules/IaC", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.bicep", @"@description('Azure region for all resources')
+param location string = resourceGroup().location
+
+@description('Environment name')
+param environment string = 'dev'
+
+module storage 'modules/storage.bicep' = {
+  name: 'storageDeployment'
+  params: {
+    location: location
+    environment: environment
+  }
+}
+
+module network 'modules/network.bicep' = {
+  name: 'networkDeployment'
+  params: {
+    location: location
+    environment: environment
+  }
+}
+
+output storageAccountName string = storage.outputs.storageAccountName
+"),
+                ("modules/storage.bicep", @"@description('Azure region')
+param location string
+
+@description('Environment')
+param environment string
+
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: 'st${environment}${uniqueString(resourceGroup().id)}'
+  location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: {
+    supportsHttpsTrafficOnly: true
+  }
+}
+
+output storageAccountName string = storageAccount.name
+"),
+                ("modules/network.bicep", @"@description('Azure region')
+param location string
+
+@description('Environment')
+param environment string
+
+resource vnet 'Microsoft.Network/virtualNetworks@2023-05-01' = {
+  name: 'vnet-${environment}'
+  location: location
+  properties: {
+    addressSpace: {
+      addressPrefixes: ['10.0.0.0/16']
+    }
+    subnets: [
+      {
+        name: 'default'
+        properties: {
+          addressPrefix: '10.0.0.0/24'
+        }
+      }
+    ]
+  }
+}
+
+output vnetId string = vnet.id
+"),
+                (".gitignore", "*.json.local\n.azure/\n"),
+                ("README.md", "# {name}\n\nBicep module library.\n\n```bash\naz bicep build --file main.bicep\naz bicep lint --file main.bicep\n```\n")
+            }
+        ));
+
+        // ── Terraform templates ───────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Azure Infrastructure (Terraform)", ShortName: "tf-azure", Language: "Terraform",
+            Tags: "Azure/IaC", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.tf", @"resource ""azurerm_resource_group"" ""main"" {
+  name     = ""${var.project_name}-${var.environment}-rg""
+  location = var.location
+
+  tags = local.common_tags
+}
+
+resource ""azurerm_storage_account"" ""main"" {
+  name                     = ""${var.project_name}${var.environment}sa""
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = azurerm_resource_group.main.location
+  account_tier             = ""Standard""
+  account_replication_type = ""LRS""
+  min_tls_version          = ""TLS1_2""
+
+  tags = local.common_tags
+}
+"),
+                ("providers.tf", @"terraform {
+  required_version = "">= 1.5""
+
+  required_providers {
+    azurerm = {
+      source  = ""hashicorp/azurerm""
+      version = ""~> 3.0""
+    }
+  }
+}
+
+provider ""azurerm"" {
+  features {}
+}
+"),
+                ("variables.tf", @"variable ""project_name"" {
+  type        = string
+  description = ""Project name used as prefix for resource names""
+  default     = ""{name}""
+}
+
+variable ""environment"" {
+  type        = string
+  description = ""Deployment environment (dev, staging, prod)""
+  default     = ""dev""
+
+  validation {
+    condition     = contains([""dev"", ""staging"", ""prod""], var.environment)
+    error_message = ""Environment must be dev, staging, or prod.""
+  }
+}
+
+variable ""location"" {
+  type        = string
+  description = ""Azure region""
+  default     = ""eastus""
+}
+"),
+                ("outputs.tf", @"output ""resource_group_name"" {
+  description = ""Name of the created resource group""
+  value       = azurerm_resource_group.main.name
+}
+
+output ""storage_account_name"" {
+  description = ""Name of the storage account""
+  value       = azurerm_storage_account.main.name
+}
+"),
+                ("locals.tf", @"locals {
+  common_tags = {
+    environment = var.environment
+    project     = var.project_name
+    managed_by  = ""terraform""
+  }
+}
+"),
+                (".gitignore", "# Terraform state and secrets\n.terraform/\n*.tfstate\n*.tfstate.backup\n*.tfstate.*.backup\n.terraform.lock.hcl\nterraform.tfvars\n*.auto.tfvars\ncrash.log\n"),
+                ("terraform.tfvars.example", "project_name = \"{name}\"\nenvironment  = \"dev\"\nlocation     = \"eastus\"\n"),
+                ("README.md", @"# {name}
+
+Azure infrastructure managed with Terraform.
+
+## Prerequisites
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
+- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
+
+## Usage
+
+```bash
+# Login
+az login
+
+# Copy and edit variables
+cp terraform.tfvars.example terraform.tfvars
+
+# Initialize
+terraform init
+
+# Plan
+terraform plan
+
+# Apply
+terraform apply
+
+# Destroy
+terraform destroy
+```
+")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "AWS Infrastructure (Terraform)", ShortName: "tf-aws", Language: "Terraform",
+            Tags: "AWS/IaC", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.tf", @"resource ""aws_s3_bucket"" ""main"" {
+  bucket = ""${var.project_name}-${var.environment}-${random_id.suffix.hex}""
+
+  tags = local.common_tags
+}
+
+resource ""aws_s3_bucket_versioning"" ""main"" {
+  bucket = aws_s3_bucket.main.id
+  versioning_configuration {
+    status = ""Enabled""
+  }
+}
+
+resource ""random_id"" ""suffix"" {
+  byte_length = 4
+}
+"),
+                ("providers.tf", @"terraform {
+  required_version = "">= 1.5""
+
+  required_providers {
+    aws = {
+      source  = ""hashicorp/aws""
+      version = ""~> 5.0""
+    }
+    random = {
+      source  = ""hashicorp/random""
+      version = ""~> 3.0""
+    }
+  }
+}
+
+provider ""aws"" {
+  region = var.aws_region
+}
+"),
+                ("variables.tf", @"variable ""project_name"" {
+  type        = string
+  description = ""Project name""
+  default     = ""{name}""
+}
+
+variable ""environment"" {
+  type        = string
+  description = ""Deployment environment""
+  default     = ""dev""
+}
+
+variable ""aws_region"" {
+  type        = string
+  description = ""AWS region""
+  default     = ""us-east-1""
+}
+"),
+                ("outputs.tf", @"output ""bucket_name"" {
+  description = ""S3 bucket name""
+  value       = aws_s3_bucket.main.bucket
+}
+
+output ""bucket_arn"" {
+  description = ""S3 bucket ARN""
+  value       = aws_s3_bucket.main.arn
+}
+"),
+                ("locals.tf", @"locals {
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    ManagedBy   = ""terraform""
+  }
+}
+"),
+                (".gitignore", "# Terraform\n.terraform/\n*.tfstate\n*.tfstate.backup\n.terraform.lock.hcl\nterraform.tfvars\n*.auto.tfvars\ncrash.log\n"),
+                ("terraform.tfvars.example", "project_name = \"{name}\"\nenvironment  = \"dev\"\naws_region   = \"us-east-1\"\n"),
+                ("README.md", "# {name}\n\nAWS infrastructure managed with Terraform.\n\n```bash\nterraform init\nterraform plan\nterraform apply\n```\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Reusable Module (Terraform)", ShortName: "tf-module", Language: "Terraform",
+            Tags: "Module/IaC", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.tf", @"# Module: {name}
+# Place your resource definitions here.
+# Example:
+# resource ""azurerm_resource_group"" ""this"" {
+#   name     = var.resource_group_name
+#   location = var.location
+# }
+"),
+                ("variables.tf", @"variable ""name"" {
+  type        = string
+  description = ""Resource name""
+}
+
+variable ""location"" {
+  type        = string
+  description = ""Azure region / AWS region""
+  default     = ""eastus""
+}
+
+variable ""tags"" {
+  type        = map(string)
+  description = ""Tags to apply to all resources""
+  default     = {}
+}
+"),
+                ("outputs.tf", @"# output ""resource_id"" {
+#   description = ""ID of the created resource""
+#   value       = azurerm_xxx.this.id
+# }
+"),
+                ("versions.tf", @"terraform {
+  required_version = "">= 1.5""
+  required_providers {
+    # Add your providers here
+  }
+}
+"),
+                ("examples/main.tf", @"module ""{name}"" {
+  source = ""..""
+
+  name     = ""example""
+  location = ""eastus""
+  tags = {
+    environment = ""dev""
+    managedBy   = ""terraform""
+  }
+}
+"),
+                ("README.md", @"# {name} Terraform Module
+
+## Usage
+
+```hcl
+module ""{name}"" {{
+  source = ""path/to/{name}""
+
+  name     = ""my-resource""
+  location = ""eastus""
+}}
+```
+
+## Inputs
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| name | string | — | Resource name |
+| location | string | eastus | Region |
+| tags | map(string) | {} | Resource tags |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+"),
+                (".gitignore", ".terraform/\n*.tfstate\n*.tfstate.backup\n.terraform.lock.hcl\n")
+            }
+        ));
     }
 
     // ── Template list population ──────────────────────────────────────────────
@@ -684,7 +1135,10 @@ target_link_libraries({name}_example PRIVATE {name})
         Directory.CreateDirectory(projectDir);
 
         string uname = projectName.ToUpperInvariant();
-        string std   = _standardCombo.SelectedItem as string ?? (tpl.Language == "C" ? "c17" : "c++17");
+        // _standardCombo is only visible/relevant for C/C++ — IaC templates don't use {std}
+        string std = _standardCombo.Visible
+            ? (_standardCombo.SelectedItem as string ?? (tpl.Language == "C" ? "c17" : "c++17"))
+            : "";
 
         foreach (var (relPath, rawContent) in tpl.Files)
         {
