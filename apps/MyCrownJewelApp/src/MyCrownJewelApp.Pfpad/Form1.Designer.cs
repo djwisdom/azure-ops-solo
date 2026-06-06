@@ -85,6 +85,8 @@ partial class Form1
     private ToolStripMenuItem col150MenuItem;
     private ToolStripMenuItem colCustomMenuItem;
     private ToolStripMenuItem gutterMenuItem;
+    private ToolStripMenuItem showGutterBreakpointsMenuItem;
+    private ToolStripMenuItem showGutterBookmarksMenuItem;
     internal ToolStripMenuItem whitespaceMenuItem;
     private ToolStripMenuItem vimModeMenuItem;
     private ToolStripMenuItem stickyScrollMenuItem;
@@ -343,6 +345,12 @@ partial class Form1
         columnGuideMenuItem.DropDownItems.Add(colCustomMenuItem);
         gutterMenuItem = new ToolStripMenuItem("&Gutter", null, GutterMenuItem_Click);
         gutterMenuItem.CheckOnClick = true;
+        showGutterBreakpointsMenuItem = new ToolStripMenuItem("Show &Breakpoints Margin", null, ShowGutterBreakpoints_Click);
+        showGutterBreakpointsMenuItem.CheckOnClick = true;
+        showGutterBreakpointsMenuItem.Checked = true;
+        showGutterBookmarksMenuItem = new ToolStripMenuItem("Show Book&marks Margin", null, ShowGutterBookmarks_Click);
+        showGutterBookmarksMenuItem.CheckOnClick = true;
+        showGutterBookmarksMenuItem.Checked = true;
         whitespaceMenuItem = new ToolStripMenuItem("&Show Whitespace", null, ToggleWhitespace_Click);
         whitespaceMenuItem.CheckOnClick = true;
         whitespaceMenuItem.Checked = true;
@@ -804,7 +812,9 @@ partial class Form1
         displaySubmenu.DropDownItems.AddRange(new ToolStripItem[] {
             wordWrapMenuItem, syntaxHighlightingMenuItem, currentLineHighlightMenu,
             insertSpacesMenuItem, tabSizeMenu, autoIndentMenuItem, smartTabsMenuItem,
-            elasticTabsMenuItem, columnGuideMenuItem, gutterMenuItem, whitespaceMenuItem,
+            elasticTabsMenuItem, columnGuideMenuItem, gutterMenuItem,
+            showGutterBreakpointsMenuItem, showGutterBookmarksMenuItem,
+            whitespaceMenuItem,
             minimapMenuItem, stickyScrollMenuItem, rainbowBracketsMenuItem,
             breadcrumbMenuItem, rulerMenuItem
         });

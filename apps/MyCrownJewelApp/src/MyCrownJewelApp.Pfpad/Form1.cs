@@ -397,6 +397,8 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentStatusBarVisible => statusBarVisible;
         public bool CurrentMinimapVisible => minimapMenuItem?.Checked ?? false;
         public bool CurrentShowWhitespace => whitespaceMenuItem?.Checked ?? false;
+        public bool CurrentShowGutterBreakpoints => showGutterBreakpointsMenuItem?.Checked ?? true;
+        public bool CurrentShowGutterBookmarks   => showGutterBookmarksMenuItem?.Checked ?? true;
         public string CurrentLineHighlightName
         {
             get
@@ -1379,6 +1381,7 @@ using Microsoft.Extensions.DependencyInjection;
                     if (currentFilePath != null)
                         _breakpointManager.ToggleBreakpoint(currentFilePath, line + 1);
                 };
+                gutterPanel!.BookmarkClicked += (line) => ToggleBookmark(line);
 
                 // Debug toast method
                _debugSession.StateChanged += OnDebugStateChanged;
@@ -2072,6 +2075,15 @@ using Microsoft.Extensions.DependencyInjection;
                     whitespaceMenuItem.Checked = showWhitespace;
                     textEditor.ShowWhitespace = showWhitespace;
                 }
+                if (showGutterBreakpointsMenuItem != null)
+                    showGutterBreakpointsMenuItem.Checked = settings.ShowGutterBreakpoints;
+                if (showGutterBookmarksMenuItem != null)
+                    showGutterBookmarksMenuItem.Checked = settings.ShowGutterBookmarks;
+                if (gutterPanel != null)
+                {
+                    gutterPanel.ShowBreakpoints = settings.ShowGutterBreakpoints;
+                    gutterPanel.ShowBookmarks   = settings.ShowGutterBookmarks;
+                }
                 _savedWindowBounds = settings.WindowBounds;
                 _savedWindowState = settings.WindowState;
                 _activeConfiguration = settings.ActiveConfiguration ?? "Debug";
@@ -2177,6 +2189,8 @@ using Microsoft.Extensions.DependencyInjection;
                 VimModeEnabled = vimModeEnabled,
                 StickyScrollEnabled = _stickyScrollEnabled,
                 RulerEnabled = _rulerEnabled,
+                ShowGutterBreakpoints = showGutterBreakpointsMenuItem?.Checked ?? true,
+                ShowGutterBookmarks   = showGutterBookmarksMenuItem?.Checked ?? true,
             };
             _settingsService.Save(settings);
         }
@@ -2265,6 +2279,13 @@ using Microsoft.Extensions.DependencyInjection;
             if (wordWrapMenuItem != null) wordWrapMenuItem.Checked = settings.WordWrapEnabled;
             if (autoIndentMenuItem != null) autoIndentMenuItem.Checked = settings.AutoIndentEnabled;
             if (insertSpacesMenuItem != null) insertSpacesMenuItem.Checked = settings.InsertSpaces;
+            if (showGutterBreakpointsMenuItem != null)
+                showGutterBreakpointsMenuItem.Checked = settings.ShowGutterBreakpoints;
+            if (showGutterBookmarksMenuItem != null)
+                showGutterBookmarksMenuItem.Checked = settings.ShowGutterBookmarks;
+            gutterPanel.ShowBreakpoints = settings.ShowGutterBreakpoints;
+            gutterPanel.ShowBookmarks   = settings.ShowGutterBookmarks;
+            SyncGutterColumnWidth();
 
             // Refresh UI
             UpdateStatusBar();
@@ -5055,8 +5076,15 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void SyncGutterColumnWidth()
         {
-            if (gutterPanel != null)
-                gutterPanel.UpdateLineNumberWidth();
+            if (gutterPanel == null || mainTable == null) return;
+            gutterPanel.UpdateLineNumberWidth();
+            // If the column is Absolute (set by Vim engine for hide/show), keep Width in sync.
+            if (mainTable.ColumnStyles.Count > 0 &&
+                mainTable.ColumnStyles[0].SizeType == SizeType.Absolute)
+            {
+                mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                mainTable.PerformLayout();
+            }
         }
 
         private void StatusBar_Click(object? sender, EventArgs e) => ToggleStatusBar();
@@ -5094,6 +5122,30 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void WordWrap_Click(object? sender, EventArgs e) => ToggleWordWrap();
         private void GutterMenuItem_Click(object? sender, EventArgs e) => ToggleGutter();
+
+        private void ShowGutterBreakpoints_Click(object? sender, EventArgs e)
+        {
+            bool show = showGutterBreakpointsMenuItem?.Checked ?? true;
+            if (gutterPanel != null)
+            {
+                gutterPanel.ShowBreakpoints = show;
+                SyncGutterColumnWidth();
+                gutterPanel.MarkDataDirty();
+            }
+            SaveSettings();
+        }
+
+        private void ShowGutterBookmarks_Click(object? sender, EventArgs e)
+        {
+            bool show = showGutterBookmarksMenuItem?.Checked ?? true;
+            if (gutterPanel != null)
+            {
+                gutterPanel.ShowBookmarks = show;
+                SyncGutterColumnWidth();
+                gutterPanel.MarkDataDirty();
+            }
+            SaveSettings();
+        }
 
         private void ToggleWhitespace_Click(object? sender, EventArgs e)
         {

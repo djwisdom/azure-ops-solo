@@ -52,4 +52,6 @@ public record AppSettings
     public bool VimModeEnabled { get; init; } = false;
     public bool StickyScrollEnabled { get; init; } = true;
     public bool RulerEnabled { get; init; } = true;
+    public bool ShowGutterBreakpoints { get; init; } = true;
+    public bool ShowGutterBookmarks { get; init; } = true;
 }

@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -32,7 +33,9 @@ public class GutterPanel : Panel
 
     // ── State ────────────────────────────────────────────────────────────────
     private bool _showFoldMarkers;
-    private int  _hoveredGlyphLine = -1;        // 1-based line with hovered QA icon
+    private int  _hoveredGlyphLine    = -1;    // 1-based: line with hovered QA icon
+    private int  _hoveredBpLine       = -1;    // 1-based: line hovered in BP column (no QA)
+    private int  _hoveredBookmarkLine = -1;    // 1-based: line hovered in bookmark column
 
     private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
     private Dictionary<int, int>?  _coverageHits;
@@ -47,6 +50,7 @@ public class GutterPanel : Panel
 
     // ── Public surface ───────────────────────────────────────────────────────
     public event Action<int>? BreakpointClicked;
+    public event Action<int>? BookmarkClicked;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int TopOffset { get; set; }
@@ -73,7 +77,12 @@ public class GutterPanel : Panel
 
     [Category("Appearance")]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowBookmarks    { get; set; } = false;
+    public bool ShowBookmarks
+    {
+        get => _showBookmarks;
+        set { if (_showBookmarks == value) return; _showBookmarks = value; UpdateLineNumberWidth(); }
+    }
+    private bool _showBookmarks = true;
 
     [Category("Appearance")]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -85,7 +94,12 @@ public class GutterPanel : Panel
 
     [Category("Appearance")]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowBreakpoints  { get; set; } = true;
+    public bool ShowBreakpoints
+    {
+        get => _showBreakpoints;
+        set { if (_showBreakpoints == value) return; _showBreakpoints = value; UpdateLineNumberWidth(); }
+    }
+    private bool _showBreakpoints = true;
 
     // ── P/Invoke ─────────────────────────────────────────────────────────────
     [DllImport("user32.dll")]
@@ -190,7 +204,8 @@ public class GutterPanel : Panel
 
     private int GetTotalMarginWidth()
     {
-        int w = GlyphColWidth;
+        int w = 0;
+        if (ShowBreakpoints)        w += GlyphColWidth;
         if (ShowLineNumbers)        w += LineNumberColWidth;
         if (ShowBookmarks)          w += BookmarkColWidth;
         if (ShowChangeHistory)      w += ChangeColWidth;
@@ -206,6 +221,23 @@ public class GutterPanel : Panel
         return Math.Max(1, SendMessage(ed.Handle, EM_GETLINECOUNT, 0, 0));
     }
 
+    // ── Column layout helper ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the x-bounds of the Glyph (BP) and Bookmark columns.
+    /// Any column that is hidden has start == end (zero width).
+    /// </summary>
+    private (int glyphStart, int glyphEnd, int bookmarkStart, int bookmarkEnd) GetColumnBounds()
+    {
+        int x = 0;
+        int glyphStart = x, glyphEnd = x;
+        if (ShowBreakpoints)   { glyphEnd = x + GlyphColWidth; x += GlyphColWidth; }
+        if (ShowLineNumbers)   x += LineNumberColWidth;
+        int bookmarkStart = x, bookmarkEnd = x;
+        if (ShowBookmarks)     { bookmarkEnd = x + BookmarkColWidth; }
+        return (glyphStart, glyphEnd, bookmarkStart, bookmarkEnd);
+    }
+
     // ── Mouse events ─────────────────────────────────────────────────────────
     private int LineIndexFromClick(MouseEventArgs e)
     {
@@ -219,21 +251,21 @@ public class GutterPanel : Panel
     {
         if (mainForm?.textEditor == null) return;
         int lineIndex = LineIndexFromClick(e);
+        var (glyphStart, glyphEnd, bookmarkStart, bookmarkEnd) = GetColumnBounds();
 
         if (e.Button == MouseButtons.Right)
         {
-            ShowDebugMenu(e.Location, lineIndex);
+            if (ShowBreakpoints) ShowDebugMenu(e.Location, lineIndex);
             return;
         }
 
         // ── Glyph column (BP / QA) ────────────────────────────────────────
-        if (e.X < GlyphColWidth)
+        if (ShowBreakpoints && e.X >= glyphStart && e.X < glyphEnd)
         {
             int fileLine = lineIndex + 1;
             var actions  = _quickActions.Where(a => a.line == fileLine).ToList();
             if (actions.Count > 0)
             {
-                // Quick-action lightbulb: show action menu
                 var menu = new ContextMenuStrip();
                 foreach (var act in actions)
                 {
@@ -259,6 +291,13 @@ public class GutterPanel : Panel
             return;
         }
 
+        // ── Bookmark column ──────────────────────────────────────────────
+        if (ShowBookmarks && e.X >= bookmarkStart && e.X < bookmarkEnd)
+        {
+            BookmarkClicked?.Invoke(lineIndex);
+            return;
+        }
+
         // ── Fold column (rightmost) ────────────────────────────────────────
         int foldHitX = Width - FoldColWidth - FoldClickExtra;
         if (e.X >= foldHitX && mainForm?.FoldingManager != null)
@@ -278,11 +317,14 @@ public class GutterPanel : Panel
     {
         if (mainForm?.textEditor == null) return;
         var editor = mainForm.textEditor;
+        var (glyphStart, glyphEnd, bookmarkStart, bookmarkEnd) = GetColumnBounds();
 
-        bool inFoldMargin   = e.X >= Width - FoldColWidth - FoldClickExtra;
-        int  newHoverGlyph  = -1;
+        bool inFoldMargin     = e.X >= Width - FoldColWidth - FoldClickExtra;
+        int  newHoverGlyph    = -1;
+        int  newHoverBp       = -1;
+        int  newHoverBookmark = -1;
 
-        if (e.X < GlyphColWidth)
+        if (ShowBreakpoints && e.X >= glyphStart && e.X < glyphEnd)
         {
             int adjustedY = Math.Max(0, e.Y - TopOffset);
             int charIndex = editor.GetCharIndexFromPosition(new Point(0, adjustedY));
@@ -290,24 +332,39 @@ public class GutterPanel : Panel
             int fileLine  = lineIndex + 1;
             if (_quickActions.Any(a => a.line == fileLine))
                 newHoverGlyph = fileLine;
+            else
+                newHoverBp = fileLine;
         }
 
-        if (inFoldMargin != _showFoldMarkers || newHoverGlyph != _hoveredGlyphLine)
+        if (ShowBookmarks && e.X >= bookmarkStart && e.X < bookmarkEnd)
         {
-            _showFoldMarkers  = inFoldMargin;
-            _hoveredGlyphLine = newHoverGlyph;
-            _gutterDataDirty  = true;
+            int adjustedY = Math.Max(0, e.Y - TopOffset);
+            int charIndex = editor.GetCharIndexFromPosition(new Point(0, adjustedY));
+            int lineIndex = editor.GetLineFromCharIndex(charIndex);
+            newHoverBookmark = lineIndex + 1;
+        }
+
+        if (inFoldMargin != _showFoldMarkers || newHoverGlyph != _hoveredGlyphLine
+            || newHoverBp != _hoveredBpLine || newHoverBookmark != _hoveredBookmarkLine)
+        {
+            _showFoldMarkers     = inFoldMargin;
+            _hoveredGlyphLine    = newHoverGlyph;
+            _hoveredBpLine       = newHoverBp;
+            _hoveredBookmarkLine = newHoverBookmark;
+            _gutterDataDirty     = true;
             Invalidate();
         }
     }
 
     private void GutterPanel_MouseLeave(object? sender, EventArgs e)
     {
-        if (_showFoldMarkers || _hoveredGlyphLine >= 0)
+        if (_showFoldMarkers || _hoveredGlyphLine >= 0 || _hoveredBpLine >= 0 || _hoveredBookmarkLine >= 0)
         {
-            _showFoldMarkers  = false;
-            _hoveredGlyphLine = -1;
-            _gutterDataDirty  = true;
+            _showFoldMarkers     = false;
+            _hoveredGlyphLine    = -1;
+            _hoveredBpLine       = -1;
+            _hoveredBookmarkLine = -1;
+            _gutterDataDirty     = true;
             Invalidate();
         }
     }
@@ -397,8 +454,11 @@ public class GutterPanel : Panel
             int colX = 0;
 
             // Glyph column: BP / debug active / QA
-            DrawGlyphColumn(g, lineIndex, colX, lineY, lineH);
-            colX += GlyphColWidth;
+            if (ShowBreakpoints)
+            {
+                DrawGlyphColumn(g, lineIndex, colX, lineY, lineH);
+                colX += GlyphColWidth;
+            }
 
             // Line numbers
             if (ShowLineNumbers)
@@ -483,10 +543,11 @@ public class GutterPanel : Panel
         int r  = Math.Max(4, Math.Min(6, lineH / 3));
 
         bool isActive = mainForm.DebugActiveLine == fileLine;
-        bool hasBp    = ShowBreakpoints
-                     && mainForm.DebugBreakpointManager != null
+        bool hasBp    = mainForm.DebugBreakpointManager != null
                      && mainForm.CurrentFilePath != null
                      && mainForm.DebugBreakpointManager.HasBreakpoint(mainForm.CurrentFilePath, fileLine);
+        bool hasQa    = _quickActions.Any(a => a.line == fileLine);
+        bool bpHover  = _hoveredBpLine == fileLine;
 
         if (isActive)
         {
@@ -500,7 +561,7 @@ public class GutterPanel : Panel
             using var brush = new SolidBrush(Color.FromArgb(220, 40, 40));
             g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
         }
-        else if (_quickActions.Any(a => a.line == fileLine))
+        else if (hasQa)
         {
             bool hovered = _hoveredGlyphLine == fileLine;
             Color qc = hovered ? Color.Gold : Color.FromArgb(180, 180, 100);
@@ -508,6 +569,14 @@ public class GutterPanel : Panel
             g.FillEllipse(outer, cx - r, cy - r, r * 2, r * 2);
             using var dot = new SolidBrush(BackColor);
             g.FillEllipse(dot, cx - 2, cy - 2, 4, 4);
+        }
+        else if (bpHover)
+        {
+            // Faint BP hover hint: outline circle
+            using var pen = new Pen(Color.FromArgb(120, 200, 60, 60), 1.5f);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.DrawEllipse(pen, cx - r, cy - r, r * 2, r * 2);
+            g.SmoothingMode = SmoothingMode.Default;
         }
     }
 
@@ -548,13 +617,37 @@ public class GutterPanel : Panel
     private void DrawBookmark(Graphics g, int lineIndex, int x, int y, int lineH)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
-        if (!mainForm.Bookmarks.Contains(lineIndex)) return;
+        bool hasBookmark = mainForm.Bookmarks.Contains(lineIndex);
+        bool hovered     = _hoveredBookmarkLine == lineIndex + 1;
 
-        int cx = x + BookmarkColWidth / 2;
-        int cy = y + lineH / 2;
-        int r  = 4;
-        using var brush = new SolidBrush(Color.Orange);
-        g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
+        if (!hasBookmark && !hovered) return;
+
+        int colCenter = x + BookmarkColWidth / 2;
+        int size  = Math.Max(7, Math.Min(11, lineH - 3));
+        int bx    = colCenter - size / 2;
+        int by    = y + (lineH - size) / 2;
+        int notch = Math.Max(2, size / 3);
+
+        Color fillColor = hasBookmark
+            ? Color.FromArgb(80, 130, 230)        // cornflower blue
+            : Color.FromArgb(60, 80, 130, 230);   // faint when just hovering
+
+        // Bookmark ribbon: rectangle with V-notch cut into the bottom
+        using var path = new GraphicsPath();
+        path.AddPolygon(new Point[]
+        {
+            new(bx,             by),
+            new(bx + size,      by),
+            new(bx + size,      by + size),
+            new(bx + size / 2,  by + size - notch),
+            new(bx,             by + size),
+        });
+
+        var prevSm = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var brush = new SolidBrush(fillColor))
+            g.FillPath(brush, path);
+        g.SmoothingMode = prevSm;
     }
 
     private void DrawChangeIndicator(Graphics g, int lineIndex, int x, int y, int lineH)
