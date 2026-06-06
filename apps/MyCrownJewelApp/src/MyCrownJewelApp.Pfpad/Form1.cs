@@ -886,6 +886,13 @@ using Microsoft.Extensions.DependencyInjection;
             _lockKeysTimer.Tick += (s, e) => UpdateLockKeysLabel();
             _lockKeysTimer.Start();
 
+            // Auto-save: every 30 s, save file if it has unsaved changes and a known path
+            _autoSaveTimer.Tick += (s, e) =>
+            {
+                if (_autoSaveEnabled && isModified && currentFilePath != null)
+                    SaveFile();
+            };
+
               // Git service: wire to current file location
               _gitService.OnRepoChanged += () => BeginInvoke(UpdateGitStatusBar);
               RefreshGitRepo();
@@ -3475,12 +3482,7 @@ internal void ToggleGutter()
         }
 
         private string ComputeContentHash()
-        {
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            var bytes = System.Text.Encoding.UTF8.GetBytes(textEditor.Text);
-            var hash = sha.ComputeHash(bytes);
-            return Convert.ToHexString(hash);
-        }
+            => ComputeContentHash(textEditor.Text);
 
         internal void SetDirty()
         {
@@ -5321,12 +5323,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         // Compute hash of string content
         private string ComputeContentHash(string content)
-        {
-            using var sha = System.Security.Cryptography.SHA256.Create();
-            var bytes = System.Text.Encoding.UTF8.GetBytes(content);
-            var hash = sha.ComputeHash(bytes);
-            return Convert.ToHexString(hash);
-        }
+            => WorkspaceHelper.ComputeContentHash(content);
 
         // Save current editor state into the active EditorDocument
         private void SaveCurrentDocument()

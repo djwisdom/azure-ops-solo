@@ -193,3 +193,48 @@ public class ProjectLocatorTests : IDisposable
         Assert.Equal(dll, ProjectLocator.FindOutputAssembly(_tmp));
     }
 }
+
+public class ContentHashTests
+{
+    [Fact] public void ComputeContentHash_EmptyString_ReturnsKnownSha256()
+    {
+        // SHA-256 of "" is e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        string hash = WorkspaceHelper.ComputeContentHash(string.Empty);
+        Assert.Equal("E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855", hash);
+    }
+
+    [Fact] public void ComputeContentHash_SameInputs_ReturnsSameHash()
+    {
+        string h1 = WorkspaceHelper.ComputeContentHash("hello world");
+        string h2 = WorkspaceHelper.ComputeContentHash("hello world");
+        Assert.Equal(h1, h2);
+    }
+
+    [Fact] public void ComputeContentHash_DifferentInputs_ReturnsDifferentHashes()
+    {
+        string h1 = WorkspaceHelper.ComputeContentHash("hello world");
+        string h2 = WorkspaceHelper.ComputeContentHash("Hello World");
+        Assert.NotEqual(h1, h2);
+    }
+
+    [Fact] public void ComputeContentHash_WhitespaceMatters()
+    {
+        string h1 = WorkspaceHelper.ComputeContentHash("a b");
+        string h2 = WorkspaceHelper.ComputeContentHash("ab");
+        Assert.NotEqual(h1, h2);
+    }
+
+    [Fact] public void ComputeContentHash_ReturnsUpperHex()
+    {
+        string hash = WorkspaceHelper.ComputeContentHash("test");
+        Assert.Matches("^[0-9A-F]{64}$", hash);
+    }
+
+    [Fact] public void ComputeContentHash_MultiLineContent_IsStable()
+    {
+        string content = "line1\nline2\nline3";
+        string h1 = WorkspaceHelper.ComputeContentHash(content);
+        string h2 = WorkspaceHelper.ComputeContentHash(content);
+        Assert.Equal(h1, h2);
+    }
+}

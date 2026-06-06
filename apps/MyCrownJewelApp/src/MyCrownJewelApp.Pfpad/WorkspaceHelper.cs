@@ -1,16 +1,30 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
-/// Static helpers for workspace-level file operations: language detection and text search.
-/// Contains no WinForms dependencies and is fully unit-testable.
+/// Static helpers for workspace-level file operations: language detection, text search,
+/// and content hashing. Contains no WinForms dependencies and is fully unit-testable.
 /// </summary>
 internal static class WorkspaceHelper
 {
+    /// <summary>
+    /// Computes a SHA-256 hex digest of <paramref name="content"/> using UTF-8 encoding.
+    /// Used to detect whether a file has been modified since last save.
+    /// </summary>
+    public static string ComputeContentHash(string content)
+    {
+        using var sha = SHA256.Create();
+        var bytes = Encoding.UTF8.GetBytes(content);
+        var hash = sha.ComputeHash(bytes);
+        return Convert.ToHexString(hash);
+    }
+
     /// <summary>
     /// Heuristically detects the primary programming language used in a workspace
     /// by scanning top-level project/config files. Returns null when undetermined.
