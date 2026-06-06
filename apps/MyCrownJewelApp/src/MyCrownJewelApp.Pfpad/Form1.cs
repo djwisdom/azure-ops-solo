@@ -2278,7 +2278,7 @@ using Microsoft.Extensions.DependencyInjection;
                 RulerEnabled = _rulerEnabled,
                 ShowGutterBreakpoints = showGutterBreakpointsMenuItem?.Checked ?? true,
                 ShowGutterBookmarks   = showGutterBookmarksMenuItem?.Checked ?? true,
-                AIOpsConfig = _aiopsEngine?.CurrentSettings ?? _settingsService.Load()?.AIOpsConfig,
+                AIOpsConfig = _aiopsEngine?.CurrentSettings?.CreateEncryptedCopy() ?? _settingsService.Load()?.AIOpsConfig,
                 DebugAdapterType = _debugAdapterType,
                 DebugAdapterPath = _debugAdapterPath,
             };
@@ -7969,6 +7969,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 return;
 
             var settings = _settingsService.Load()?.AIOpsConfig ?? new MyCrownJewelApp.Pfpad.AIOps.AIOpsSettings();
+            settings.LoadSecretsFromEncrypted();
             _aiopsEngine = new MyCrownJewelApp.Pfpad.AIOps.AIOpsEngine(settings);
 
             _aiopsPanel = new MyCrownJewelApp.Pfpad.AIOps.AIOpsPanel { Visible = false };

@@ -45,6 +45,25 @@ public sealed class AIOpsSettingsDialog : Form
     private readonly Button _kubernetesTestButton;
     private readonly Label _kubernetesStatusLabel;
 
+    // Prometheus
+    private readonly CheckBox _prometheusEnabledCheckBox;
+    private readonly TextBox _prometheusBaseUrlTextBox;
+    private readonly TextBox _prometheusUsernameTextBox;
+    private readonly TextBox _prometheusPasswordTextBox;
+    private readonly TextBox _prometheusBearerTokenTextBox;
+
+    // PagerDuty
+    private readonly CheckBox _pagerDutyEnabledCheckBox;
+    private readonly TextBox _pagerDutyApiTokenTextBox;
+    private readonly TextBox _pagerDutyServiceIdTextBox;
+
+    // GitHub Actions
+    private readonly CheckBox _githubEnabledCheckBox;
+    private readonly TextBox _githubOwnerTextBox;
+    private readonly TextBox _githubRepositoryTextBox;
+    private readonly TextBox _githubPatTextBox;
+
+    private readonly ToolTip _secretToolTip = new();
     private Theme _theme;
 
     /// <summary>Gets or sets the Azure Monitor connector used by the Test Connection action.</summary>
@@ -84,6 +103,16 @@ public sealed class AIOpsSettingsDialog : Form
         (_azureMonitorEnabledCheckBox, _azureTenantIdTextBox, _azureClientIdTextBox, _azureClientSecretTextBox, _azureSubscriptionIdTextBox, _azureResourceGroupTextBox, _azureWorkspaceIdTextBox, _azureTestButton, _azureStatusLabel) = BuildAzureMonitorTab();
         (_azureDevOpsEnabledCheckBox, _azureDevOpsOrganizationTextBox, _azureDevOpsProjectTextBox, _azureDevOpsPatTextBox, _azureDevOpsTestButton, _azureDevOpsStatusLabel) = BuildAzureDevOpsTab();
         (_kubernetesEnabledCheckBox, _kubernetesApiServerTextBox, _kubernetesBearerTokenTextBox, _kubernetesNamespaceTextBox, _kubernetesSkipTlsCheckBox, _kubernetesTestButton, _kubernetesStatusLabel) = BuildKubernetesTab();
+        (_prometheusEnabledCheckBox, _prometheusBaseUrlTextBox, _prometheusUsernameTextBox, _prometheusPasswordTextBox, _prometheusBearerTokenTextBox) = BuildPrometheusTab();
+        (_pagerDutyEnabledCheckBox, _pagerDutyApiTokenTextBox, _pagerDutyServiceIdTextBox) = BuildPagerDutyTab();
+        (_githubEnabledCheckBox, _githubOwnerTextBox, _githubRepositoryTextBox, _githubPatTextBox) = BuildGitHubActionsTab();
+
+        // DPAPI tooltips on all secret fields
+        string dpapiTip = "🔒 DPAPI-protected — value is encrypted with your Windows user account and stored as EncryptedAuthKey in settings.json";
+        foreach (var tb in new[] { _azureClientSecretTextBox, _azureDevOpsPatTextBox, _kubernetesBearerTokenTextBox,
+                                   _prometheusPasswordTextBox, _prometheusBearerTokenTextBox,
+                                   _pagerDutyApiTokenTextBox, _githubPatTextBox })
+            _secretToolTip.SetToolTip(tb, dpapiTip);
 
         Panel buttonsPanel = new() { Dock = DockStyle.Bottom, Height = 42, Padding = new Padding(8) };
         _saveButton = new Button { Text = "Save", Width = 88, Height = 26, Anchor = AnchorStyles.Right | AnchorStyles.Bottom, FlatStyle = FlatStyle.Flat };
@@ -243,6 +272,72 @@ public sealed class AIOpsSettingsDialog : Form
         return (enabled, apiServer, bearerToken, namespaceText, skipTls, testButton, statusLabel);
     }
 
+    private (CheckBox enabled, TextBox baseUrl, TextBox username, TextBox password, TextBox bearerToken) BuildPrometheusTab()
+    {
+        TabPage page = new("Prometheus");
+        TableLayoutPanel layout = CreateFormLayout();
+
+        CheckBox enabled = new() { Text = "Enable Prometheus", AutoSize = true };
+        TextBox baseUrl = new() { Text = "http://localhost:9090" };
+        TextBox username = new();
+        TextBox password = new() { UseSystemPasswordChar = true };
+        TextBox bearerToken = new() { UseSystemPasswordChar = true };
+
+        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 1, new Label { Text = "Base URL", AutoSize = true }, baseUrl);
+        AddRow(layout, 2, new Label { Text = "Username", AutoSize = true }, username);
+        AddRow(layout, 3, new Label { Text = "Password 🔒", AutoSize = true }, password);
+        AddRow(layout, 4, new Label { Text = "Bearer Token 🔒", AutoSize = true }, bearerToken);
+        AddRow(layout, 5, new Label { Text = "Auth note", AutoSize = true },
+            new Label { Text = "Use Bearer Token OR Username/Password, not both.", AutoSize = true, ForeColor = Color.DimGray });
+
+        page.Controls.Add(layout);
+        _tabs.TabPages.Add(page);
+        return (enabled, baseUrl, username, password, bearerToken);
+    }
+
+    private (CheckBox enabled, TextBox apiToken, TextBox serviceId) BuildPagerDutyTab()
+    {
+        TabPage page = new("PagerDuty");
+        TableLayoutPanel layout = CreateFormLayout();
+
+        CheckBox enabled = new() { Text = "Enable PagerDuty", AutoSize = true };
+        TextBox apiToken = new() { UseSystemPasswordChar = true };
+        TextBox serviceId = new();
+
+        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 1, new Label { Text = "API Token 🔒", AutoSize = true }, apiToken);
+        AddRow(layout, 2, new Label { Text = "Service ID (optional)", AutoSize = true }, serviceId);
+        AddRow(layout, 3, new Label { Text = "Get token", AutoSize = true },
+            new Label { Text = "User Icon → My Profile → User Settings → Create API Key", AutoSize = true, ForeColor = Color.DimGray });
+
+        page.Controls.Add(layout);
+        _tabs.TabPages.Add(page);
+        return (enabled, apiToken, serviceId);
+    }
+
+    private (CheckBox enabled, TextBox owner, TextBox repository, TextBox pat) BuildGitHubActionsTab()
+    {
+        TabPage page = new("GitHub Actions");
+        TableLayoutPanel layout = CreateFormLayout();
+
+        CheckBox enabled = new() { Text = "Enable GitHub Actions", AutoSize = true };
+        TextBox owner = new();
+        TextBox repository = new();
+        TextBox pat = new() { UseSystemPasswordChar = true };
+
+        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 1, new Label { Text = "Owner (org or user)", AutoSize = true }, owner);
+        AddRow(layout, 2, new Label { Text = "Repository", AutoSize = true }, repository);
+        AddRow(layout, 3, new Label { Text = "Personal Access Token 🔒", AutoSize = true }, pat);
+        AddRow(layout, 4, new Label { Text = "Required scopes", AutoSize = true },
+            new Label { Text = "repo, workflow, read:org", AutoSize = true, ForeColor = Color.DimGray });
+
+        page.Controls.Add(layout);
+        _tabs.TabPages.Add(page);
+        return (enabled, owner, repository, pat);
+    }
+
     private static TableLayoutPanel CreateFormLayout()
     {
         TableLayoutPanel layout = new()
@@ -298,6 +393,21 @@ public sealed class AIOpsSettingsDialog : Form
         _kubernetesBearerTokenTextBox.Text = _settings.Kubernetes.BearerToken;
         _kubernetesNamespaceTextBox.Text = _settings.Kubernetes.Namespace;
         _kubernetesSkipTlsCheckBox.Checked = _settings.Kubernetes.SkipTlsVerify;
+
+        _prometheusEnabledCheckBox.Checked = _settings.Prometheus.Enabled;
+        _prometheusBaseUrlTextBox.Text = _settings.Prometheus.BaseUrl;
+        _prometheusUsernameTextBox.Text = _settings.Prometheus.Username ?? "";
+        _prometheusPasswordTextBox.Text = _settings.Prometheus.Password ?? "";
+        _prometheusBearerTokenTextBox.Text = _settings.Prometheus.BearerToken ?? "";
+
+        _pagerDutyEnabledCheckBox.Checked = _settings.PagerDuty.Enabled;
+        _pagerDutyApiTokenTextBox.Text = _settings.PagerDuty.ApiToken;
+        _pagerDutyServiceIdTextBox.Text = _settings.PagerDuty.ServiceId ?? "";
+
+        _githubEnabledCheckBox.Checked = _settings.GitHubActions.Enabled;
+        _githubOwnerTextBox.Text = _settings.GitHubActions.Owner;
+        _githubRepositoryTextBox.Text = _settings.GitHubActions.Repository;
+        _githubPatTextBox.Text = _settings.GitHubActions.PersonalAccessToken;
     }
 
     private void ApplySettings()
@@ -326,6 +436,21 @@ public sealed class AIOpsSettingsDialog : Form
         _settings.Kubernetes.BearerToken = _kubernetesBearerTokenTextBox.Text;
         _settings.Kubernetes.Namespace = _kubernetesNamespaceTextBox.Text.Trim();
         _settings.Kubernetes.SkipTlsVerify = _kubernetesSkipTlsCheckBox.Checked;
+
+        _settings.Prometheus.Enabled = _prometheusEnabledCheckBox.Checked;
+        _settings.Prometheus.BaseUrl = _prometheusBaseUrlTextBox.Text.Trim();
+        _settings.Prometheus.Username = string.IsNullOrWhiteSpace(_prometheusUsernameTextBox.Text) ? null : _prometheusUsernameTextBox.Text.Trim();
+        _settings.Prometheus.Password = string.IsNullOrWhiteSpace(_prometheusPasswordTextBox.Text) ? null : _prometheusPasswordTextBox.Text;
+        _settings.Prometheus.BearerToken = string.IsNullOrWhiteSpace(_prometheusBearerTokenTextBox.Text) ? null : _prometheusBearerTokenTextBox.Text;
+
+        _settings.PagerDuty.Enabled = _pagerDutyEnabledCheckBox.Checked;
+        _settings.PagerDuty.ApiToken = _pagerDutyApiTokenTextBox.Text;
+        _settings.PagerDuty.ServiceId = string.IsNullOrWhiteSpace(_pagerDutyServiceIdTextBox.Text) ? null : _pagerDutyServiceIdTextBox.Text.Trim();
+
+        _settings.GitHubActions.Enabled = _githubEnabledCheckBox.Checked;
+        _settings.GitHubActions.Owner = _githubOwnerTextBox.Text.Trim();
+        _settings.GitHubActions.Repository = _githubRepositoryTextBox.Text.Trim();
+        _settings.GitHubActions.PersonalAccessToken = _githubPatTextBox.Text;
 
         SettingsSaved?.Invoke(_settings);
     }
