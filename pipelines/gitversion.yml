@@ -1,0 +1,90 @@
+# GitVersion Pipeline
+#
+# Problem: Ubuntu 22.04 LTS ships Git 2.34.1 (max available via official
+# apt repositories and Foreman/Satellite mirror). GitVersion ≥5.x requires
+# Git ≥2.38 for the --object-format and partial-clone extensions used during
+# shallow checkout steps. On Ubuntu 22.04 agents this causes GitVersion to
+# fail with:
+#
+#   fatal: unknown option '--object-format=sha1'
+#   GitVersion could not determine the version.
+#
+# Root cause: Git 2.38 added native support for the object-format negotiation
+# that GitVersion relies on. Git 2.47 is available for Ubuntu 22.04 via the
+# upstream PPA ppa:git-core/ppa — install it BEFORE the checkout/GitVersion
+# steps to resolve the issue without upgrading the base OS image.
+#
+# Workaround (until Ubuntu 24.04 becomes the default azure-pipelines image):
+#   1. Add ppa:git-core/ppa
+#   2. apt-get install --only-upgrade git
+#   3. Proceed with normal checkout + GitVersion steps
+#
+# This pipeline can be triggered standalone or called as a template from
+# other pipelines to stamp build numbers.
+
+trigger:
+  branches:
+    include:
+      - main
+      - release/*
+      - hotfix/*
+
+pr: none
+
+variables:
+  - name: gitVersionConfigFile
+    value: GitVersion.yml
+
+jobs:
+  - job: VersionStamp
+    displayName: Compute semantic version (GitVersion)
+    pool:
+      vmImage: ubuntu-22.04  # Explicit: 22.04 is where the Git 2.34.1 issue manifests
+
+    steps:
+      # ── Step 1: Upgrade Git ───────────────────────────────────────────────
+      # ppa:git-core/ppa provides Git 2.47+ for Ubuntu 20.04/22.04.
+      # This must run BEFORE checkout so the agent uses the new git binary
+      # when fetching the full history GitVersion needs.
+      - bash: |
+          echo "::group::Upgrade Git via ppa:git-core/ppa"
+          sudo add-apt-repository ppa:git-core/ppa -y
+          sudo apt-get update -qq
+          sudo apt-get install --only-upgrade -y git
+          git --version
+          echo "::endgroup::"
+        displayName: "Upgrade Git (Ubuntu 22.04 — PPA fix for GitVersion)"
+
+      # ── Step 2: Checkout with full history ───────────────────────────────
+      # GitVersion needs the complete commit graph to determine SemVer.
+      # fetchDepth: 0 disables the shallow clone that triggers the
+      # --object-format error on older Git versions.
+      - checkout: self
+        fetchDepth: 0
+        displayName: Checkout (full history)
+
+      # ── Step 3: Install GitVersion tool ──────────────────────────────────
+      # Requires the "GitVersion" extension from the Azure DevOps Marketplace:
+      #   https://marketplace.visualstudio.com/items?itemName=gittools.gitversion
+      - task: gitversion/setup@3
+        displayName: Install GitVersion
+        inputs:
+          versionSpec: "6.x"
+          includePrerelease: false
+
+      # ── Step 4: Execute GitVersion ────────────────────────────────────────
+      - task: gitversion/execute@3
+        displayName: Execute GitVersion
+        inputs:
+          useConfigFile: true
+          configFilePath: $(gitVersionConfigFile)
+          additionalArguments: /nofetch
+
+      # ── Step 5: Emit computed version variables ───────────────────────────
+      - bash: |
+          echo "SemVer:        $(GitVersion.SemVer)"
+          echo "NuGetVersion:  $(GitVersion.NuGetVersion)"
+          echo "AssemblySemVer:$(GitVersion.AssemblySemVer)"
+          echo "InformationalVersion: $(GitVersion.InformationalVersion)"
+          echo "##vso[build.updatebuildnumber]$(GitVersion.SemVer)"
+        displayName: Report version variables

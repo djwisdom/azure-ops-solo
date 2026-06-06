@@ -1,0 +1,48 @@
+# GitVersion configuration
+# https://gitversion.net/docs/reference/configuration
+
+assembly-versioning-scheme: MajorMinorPatch
+assembly-file-versioning-scheme: MajorMinorPatchTag
+tag-prefix: v
+version-in-branch-pattern: .+
+major-version-bump-message: '\+semver:\s?(breaking|major)'
+minor-version-bump-message: '\+semver:\s?(feature|minor)'
+patch-version-bump-message: '\+semver:\s?(fix|patch)'
+no-bump-message: '\+semver:\s?(none|skip)'
+commit-message-incrementing: Enabled
+
+branches:
+  main:
+    regex: ^main$
+    increment: Patch
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    is-mainline: true
+
+  release:
+    regex: ^release[/-]
+    increment: Patch
+    tag: rc
+    prevent-increment-of-merged-branch-version: true
+
+  feature:
+    regex: ^(feature|feat)[/-]
+    increment: Minor
+    tag: alpha
+
+  hotfix:
+    regex: ^hotfix[/-]
+    increment: Patch
+    tag: beta
+
+  pull-request:
+    regex: ^(pull|pull\-requests|pr)[/-]
+    increment: Inherit
+    tag: PullRequest
+    tag-number-pattern: '[/-](?<number>\d+)[-/]'
+
+  develop:
+    regex: ^develop
+    increment: Minor
+    tag: alpha
+    is-develop: true

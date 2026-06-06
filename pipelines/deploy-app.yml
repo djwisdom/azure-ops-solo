@@ -94,6 +94,16 @@ stages:
         pool:
           vmImage: ubuntu-latest
         steps:
+          # Ubuntu 22.04 LTS ships Git 2.34.1 — too old for GitVersion (requires ≥2.38)
+          # and for some shallow-clone checkout extensions. Upgrade via the official PPA
+          # to get Git 2.47+ without changing the base OS image.
+          - bash: |
+              sudo add-apt-repository ppa:git-core/ppa -y
+              sudo apt-get update -qq
+              sudo apt-get install --only-upgrade -y git
+              git --version
+            displayName: Upgrade Git via ppa:git-core/ppa (Ubuntu 22.04 compat fix)
+
           - task: PowerShell@2
             displayName: Run Wiz scan
             inputs:
