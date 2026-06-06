@@ -7031,32 +7031,19 @@ private void NewWindow_Click(object? sender, EventArgs e)
             minimapControl.BringToFront();
             minimapControl.AttachEditor(textEditor);
 
-            // Detect horizontal scrollbar visibility – when visible,
-            // reduce minimap height so it doesn't overlap the scrollbar.
-            bool hasHScroll = false;
-            try
-            {
-                int style = GetWindowLong(textEditor.Handle, GWL_STYLE);
-                hasHScroll = (style & WS_HSCROLL) != 0;
-            }
-            catch { }
+            // Always use the full declared minimap width — no artificial shrinkage
+            // on narrow windows. Anchor to the right edge of editorPanel so the
+            // minimap stays flush with the panel regardless of scrollbar state.
+            int mw = minimapControl.MinimapWidth;
+            int panelW = editorPanel.ClientSize.Width;
+            int x = Math.Max(0, panelW - mw);
 
-            // Keep at least 20px of text area visible.  Shrink minimap
-            // proportionally when narrow, but never below 20px so it stays
-            // usable even at extreme widths.
-            int mw = Math.Min(
-                minimapControl.MinimapWidth,
-                Math.Max(20, textEditor.ClientSize.Width - 20));
-
-            int x = Math.Max(0, textEditor.ClientSize.Width - mw);
-
-            // Height: account for horizontal scrollbar
+            // ClientSize.Height already excludes the horizontal scrollbar, so no
+            // additional adjustment is required when the HScroll bar is visible.
             int h = textEditor.ClientSize.Height;
-            if (hasHScroll)
-                h -= SystemInformation.HorizontalScrollBarHeight;
 
             minimapControl.Location = new Point(x, textEditor.Top);
-            minimapControl.Size = new Size(Math.Max(1, mw), Math.Max(1, h));
+            minimapControl.Size = new Size(Math.Max(1, Math.Min(mw, panelW)), Math.Max(1, h));
         }
 
         #endregion

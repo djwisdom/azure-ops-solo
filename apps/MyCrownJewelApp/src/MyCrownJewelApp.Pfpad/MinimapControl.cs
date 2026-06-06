@@ -229,10 +229,20 @@ namespace MyCrownJewelApp.Pfpad
             var g = e.Graphics;
             g.Clear(BackColor);
 
-            if (_attachedEditor == null || _totalLines == 0) return;
+            if (_attachedEditor == null) return;
 
             int mapW = Width - 4;
             if (mapW <= 0) return;
+
+            // Empty editor: still draw the viewport indicator spanning the full
+            // minimap height (the entire file is "visible" when there's nothing).
+            if (_totalLines == 0)
+            {
+                _viewportRect = new Rectangle(2, 0, mapW, Math.Max(4, Height));
+                if (_mouseHovering || _isDragging)
+                    DrawViewportOverlay(g);
+                return;
+            }
 
             int lineH = Math.Max(1, _attachedEditor.Font.Height);
             int visHeight = _attachedEditor.ClientSize.Height;
@@ -250,12 +260,15 @@ namespace MyCrownJewelApp.Pfpad
             _viewportRect = new Rectangle(2, Math.Max(0, vpY), mapW, Math.Min(vpH, Height - Math.Max(0, vpY)));
 
             if (_mouseHovering || _isDragging)
-            {
-                using var vpBrush = new SolidBrush(ViewportColor);
-                g.FillRectangle(vpBrush, _viewportRect);
-                using var vpPen = new Pen(ViewportColor, 1);
-                g.DrawRectangle(vpPen, _viewportRect.X, _viewportRect.Y, _viewportRect.Width - 1, _viewportRect.Height - 1);
-            }
+                DrawViewportOverlay(g);
+        }
+
+        private void DrawViewportOverlay(Graphics g)
+        {
+            using var vpBrush = new SolidBrush(ViewportColor);
+            g.FillRectangle(vpBrush, _viewportRect);
+            using var vpPen = new Pen(ViewportBorderColor, 1);
+            g.DrawRectangle(vpPen, _viewportRect.X, _viewportRect.Y, _viewportRect.Width - 1, _viewportRect.Height - 1);
         }
 
         private void RebuildFullMap(int mapW, int mapH)
