@@ -1003,7 +1003,14 @@ using Microsoft.Extensions.DependencyInjection;
                       ShowNotification("Vim", $"Save error: {ex.Message}");
                   }
               };
-              vimEngine.CloseRequested += () => this.Close();
+              vimEngine.CloseRequested += () =>
+              {
+                  // In vim, :q closes the active split if one exists; otherwise close the app.
+                  if (_splitEditor != null)
+                  { CloseSplit(); ShowNotification("Vim", "Split closed"); }
+                  else
+                      this.Close();
+              };
               vimEngine.VerticalSplitRequested += () =>
               {
                   if (documents.Count > 0)
@@ -4310,6 +4317,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 new("Save", "Ctrl+S", () => SaveCurrentDocument()),
                 new("Save All", "Ctrl+Shift+S", () => SaveAllFiles()),
                 new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
+                new("Close Split", "Ctrl+Shift+W", () => CloseSplit()),
                 new("Close All Tabs", "", () => CloseAllTabs()),
                 new("Exit", "Alt+F4", () => Close()),
 
@@ -6272,6 +6280,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 _isDragging = false;
                 _dragStartPoint = null;
                 _pendingDragZone = DragZone.None;
+                closeSplitMenuItem.Enabled = true;
             }
             catch (Exception ex)
             {
@@ -6345,10 +6354,13 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             _splitDocument = null;
             _splitDocumentTitle = null;
+            closeSplitMenuItem.Enabled = false;
 
             if (textEditor.CanFocus)
                 textEditor.Focus();
         }
+
+        private void CloseSplit_Click(object? sender, EventArgs e) => CloseSplit();
 
         private void TabControl_MouseMove(object? sender, MouseEventArgs e)
         {

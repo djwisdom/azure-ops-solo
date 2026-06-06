@@ -95,6 +95,7 @@ partial class Form1
     private ToolStripMenuItem rulerMenuItem;
     private ToolStripMenuItem splitVMenuItem;
     private ToolStripMenuItem splitHMenuItem;
+    private ToolStripMenuItem closeSplitMenuItem;
     internal ToolStripMenuItem terminalMenuItem;
     internal ToolStripMenuItem workspaceMenuItem;
     internal ToolStripMenuItem openFolderMenuItem;
@@ -197,7 +198,7 @@ partial class Form1
         autoSaveMenuItem = new ToolStripMenuItem("Auto Sa&ve", null, ToggleAutoSave_Click);
         autoSaveMenuItem.CheckOnClick = true;
         closeTabMenuItem = new ToolStripMenuItem("Close Tab", null, CloseTab_Click, Keys.Control | Keys.W);
-        closeWindowMenuItem = new ToolStripMenuItem("Close Window", null, CloseWindow_Click, Keys.Control | Keys.Shift | Keys.W);
+        closeWindowMenuItem = new ToolStripMenuItem("Close Window", null, CloseWindow_Click);  // Ctrl+Shift+W reserved for Close Split
         closeAllMenuItem = new ToolStripMenuItem("Close All", null, CloseAll_Click, Keys.Control | Keys.Alt | Keys.W);
         exitMenuItem = new ToolStripMenuItem("E&xit", null, Exit_Click);
         // Build File menu
@@ -396,6 +397,8 @@ partial class Form1
         viewMenu.DropDownItems.Add(new ToolStripSeparator());
         splitVMenuItem = new ToolStripMenuItem("Split &Vertical", null, SplitVertical_Click, Keys.Control | Keys.Shift | Keys.V);
         splitHMenuItem = new ToolStripMenuItem("Split &Horizontal", null, SplitHorizontal_Click, Keys.Control | Keys.Alt | Keys.H);
+        closeSplitMenuItem = new ToolStripMenuItem("Close S&plit", null, CloseSplit_Click, Keys.Control | Keys.Shift | Keys.W);
+        closeSplitMenuItem.Enabled = false; // enabled only when a split is active
         viewMenu.DropDownItems.Add(splitVMenuItem);
         viewMenu.DropDownItems.Add(splitHMenuItem);
 
@@ -805,7 +808,7 @@ partial class Form1
 
         var layoutSubmenu = new ToolStripMenuItem("&Layout");
         layoutSubmenu.DropDownItems.AddRange(new ToolStripItem[] {
-            splitVMenuItem, splitHMenuItem, zoomMenu
+            splitVMenuItem, splitHMenuItem, closeSplitMenuItem, zoomMenu
         });
 
         var displaySubmenu = new ToolStripMenuItem("&Display");
