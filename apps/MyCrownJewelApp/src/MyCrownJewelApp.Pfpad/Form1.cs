@@ -4115,7 +4115,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 if (_currentProfile.Name != "Default") return;
                 if (string.IsNullOrEmpty(_workspaceRoot) || !Directory.Exists(_workspaceRoot)) return;
 
-                string? detected = DetectLanguageFromWorkspace(_workspaceRoot);
+                string? detected = WorkspaceHelper.DetectLanguage(_workspaceRoot);
                 if (detected == null) return;
 
                 // Try to find an existing profile whose name contains the detected language
@@ -4139,44 +4139,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 ShowNotification("Profile", $"Detected {detected} project — create a profile from File > Preferences > Profile");
             }
             catch { }
-        }
-
-        private static string? DetectLanguageFromWorkspace(string root)
-        {
-            try
-            {
-                // Check for common project files (top-level only for speed)
-                foreach (string f in Directory.EnumerateFiles(root, "*.*", SearchOption.TopDirectoryOnly))
-                {
-                    string name = Path.GetFileName(f).ToLowerInvariant();
-
-                    if (name.EndsWith(".csproj") || name == "*.sln")
-                        return "C#";
-
-                    if (name.EndsWith(".py") || name == "requirements.txt" || name == "setup.py")
-                        return "Python";
-
-                    if (name == "cmakelists.txt" || name.EndsWith(".cpp") || name.EndsWith(".c") || name.EndsWith(".h"))
-                        return "C++";
-
-                    if (name == "cargo.toml")
-                        return "Rust";
-
-                    if (name == "package.json")
-                        return "JavaScript";
-
-                    if (name.EndsWith(".go"))
-                        return "Go";
-
-                    if (name.EndsWith(".rs"))
-                        return "Rust";
-
-                    if (name.EndsWith(".java") || name == "pom.xml" || name == "build.gradle")
-                        return "Java";
-                }
-            }
-            catch { }
-            return null;
         }
 
         private void UpdateWorkspaceProjectLabel()
@@ -6785,7 +6747,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             try
             {
-                SearchDirectory(root, root, results, textExtensions, ignoredDirs, findText, regex, comparison);
+                WorkspaceHelper.SearchDirectory(root, root, results, textExtensions, ignoredDirs, findText, regex, comparison);
             }
             catch (Exception ex)
             {
@@ -6806,42 +6768,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
             using var dlg = new FindInFilesResultsDialog(results, root);
             dlg.ShowDialog(this);
-        }
-
-        private static void SearchDirectory(string rootDir, string dir, List<(string File, int Line, string Text)> results,
-            HashSet<string> textExtensions, HashSet<string> ignoredDirs, string findText,
-            Regex? regex, StringComparison comparison)
-        {
-            foreach (var d in Directory.EnumerateDirectories(dir))
-            {
-                string name = Path.GetFileName(d);
-                if (!ignoredDirs.Contains(name))
-                    SearchDirectory(rootDir, d, results, textExtensions, ignoredDirs, findText, regex, comparison);
-            }
-
-            foreach (var file in Directory.EnumerateFiles(dir))
-            {
-                string ext = Path.GetExtension(file);
-                if (!textExtensions.Contains(ext)) continue;
-
-                try
-                {
-                    string[] lines = File.ReadAllLines(file);
-                    string relativePath = Path.GetRelativePath(rootDir, file);
-                    for (int i = 0; i < lines.Length; i++)
-                    {
-                        bool match = false;
-                        if (regex != null)
-                            match = regex.IsMatch(lines[i]);
-                        else
-                            match = lines[i].Contains(findText, comparison);
-
-                        if (match)
-                            results.Add((relativePath, i + 1, lines[i].Trim()));
-                    }
-                }
-                catch { }
-            }
         }
 
         #endregion
@@ -8479,14 +8405,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 return;
             }
 
-            string? projectDir = FindProjectDirectory(currentFilePath);
+            string? projectDir = ProjectLocator.FindProjectDirectory(currentFilePath);
             if (projectDir == null)
             {
                 ThemedMessageBox.Show("Could not find a .csproj file. Open a file that is part of a .NET project.", "Debugger", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            string? outputDll = FindOutputAssembly(projectDir);
+            string? outputDll = ProjectLocator.FindOutputAssembly(projectDir);
             if (outputDll == null)
             {
                 var result = ThemedMessageBox.Show("No build output found. Build the project first?",
@@ -8494,7 +8420,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 if (result == DialogResult.Yes)
                 {
                     RunDotnetBuild(projectDir);
-                    outputDll = FindOutputAssembly(projectDir);
+                    outputDll = ProjectLocator.FindOutputAssembly(projectDir);
                 }
                 if (outputDll == null)
                 {
@@ -8563,14 +8489,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 return;
             }
 
-            string? projectDir = FindProjectDirectory(currentFilePath);
+            string? projectDir = ProjectLocator.FindProjectDirectory(currentFilePath);
             if (projectDir == null)
             {
                 ThemedMessageBox.Show("Could not find a .csproj file.", "Run", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            string? outputDll = FindOutputAssembly(projectDir);
+            string? outputDll = ProjectLocator.FindOutputAssembly(projectDir);
             if (outputDll == null)
             {
                 var result = ThemedMessageBox.Show("No build output found. Build the project first?",
@@ -8578,7 +8504,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 if (result == DialogResult.Yes)
                 {
                     RunDotnetBuild(projectDir);
-                    outputDll = FindOutputAssembly(projectDir);
+                    outputDll = ProjectLocator.FindOutputAssembly(projectDir);
                 }
                 if (outputDll == null) return;
             }
@@ -8641,40 +8567,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
             _breakpointManager.ClearAll();
             gutterPanel?.Invalidate();
             ShowNotification("Breakpoints", "All breakpoints removed.");
-        }
-
-        private static string? FindProjectDirectory(string filePath)
-        {
-            var dir = Path.GetDirectoryName(filePath);
-            while (dir != null)
-            {
-                if (Directory.EnumerateFiles(dir, "*.csproj").Any())
-                    return dir;
-                var parent = Path.GetDirectoryName(dir);
-                if (parent == dir) break;
-                dir = parent;
-            }
-            return null;
-        }
-
-        private static string? FindOutputAssembly(string projectDir)
-        {
-            var csproj = Directory.EnumerateFiles(projectDir, "*.csproj").FirstOrDefault();
-            if (csproj == null) return null;
-
-            string name = Path.GetFileNameWithoutExtension(csproj);
-            string[] candidates =
-            {
-                Path.Combine(projectDir, "bin", "Debug", "net8.0", $"{name}.dll"),
-                Path.Combine(projectDir, "bin", "Debug", "net9.0", $"{name}.dll"),
-                Path.Combine(projectDir, "bin", "Debug", "net10.0", $"{name}.dll"),
-            };
-
-            foreach (var c in candidates)
-                if (File.Exists(c))
-                    return c;
-
-            return null;
         }
 
         private void RunDotnetBuild(string projectDir)
