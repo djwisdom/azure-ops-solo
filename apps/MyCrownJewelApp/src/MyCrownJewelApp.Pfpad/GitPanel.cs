@@ -53,9 +53,12 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(0, 44),
             Cursor = Cursors.Hand
         };
-        _fetchBtn.Click += (s, e) =>
+        _fetchBtn.Click += async (s, e) =>
         {
-            _git.Fetch();
+            _fetchBtn.Enabled = false;
+            try { await _git.FetchAsync().ConfigureAwait(true); }
+            catch (OperationCanceledException) { }
+            finally { _fetchBtn.Enabled = true; }
             UpdateStatus();
         };
 
@@ -68,10 +71,16 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(76, 44),
             Cursor = Cursors.Hand
         };
-        _pullBtn.Click += (s, e) =>
+        _pullBtn.Click += async (s, e) =>
         {
-            var (ok, msg) = _git.Pull();
-            if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _pullBtn.Enabled = false;
+            try
+            {
+                var (ok, msg) = await _git.PullAsync().ConfigureAwait(true);
+                if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (OperationCanceledException) { }
+            finally { _pullBtn.Enabled = true; }
             UpdateStatus();
         };
 
@@ -84,10 +93,16 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(152, 44),
             Cursor = Cursors.Hand
         };
-        _pushBtn.Click += (s, e) =>
+        _pushBtn.Click += async (s, e) =>
         {
-            var (ok, msg) = _git.Push();
-            if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _pushBtn.Enabled = false;
+            try
+            {
+                var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
+                if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (OperationCanceledException) { }
+            finally { _pushBtn.Enabled = true; }
             UpdateStatus();
         };
 
@@ -1070,7 +1085,14 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(4, y),
             Cursor = Cursors.Hand
         };
-        _fetchBtn.Click += (s, e) => { SetSyncEnabled(false); _git.Fetch(); RefreshStatus(); SetSyncEnabled(true); };
+        _fetchBtn.Click += async (s, e) =>
+        {
+            SetSyncEnabled(false);
+            try { await _git.FetchAsync().ConfigureAwait(true); }
+            catch (OperationCanceledException) { }
+            finally { SetSyncEnabled(true); }
+            RefreshStatus();
+        };
 
         _pullBtn = new Button
         {
@@ -1081,13 +1103,17 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(70, y),
             Cursor = Cursors.Hand
         };
-        _pullBtn.Click += (s, e) =>
+        _pullBtn.Click += async (s, e) =>
         {
             SetSyncEnabled(false);
-            var (ok, msg) = _git.Pull();
-            if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            try
+            {
+                var (ok, msg) = await _git.PullAsync().ConfigureAwait(true);
+                if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (OperationCanceledException) { }
+            finally { SetSyncEnabled(true); }
             RefreshStatus();
-            SetSyncEnabled(true);
         };
 
         _pushBtn = new Button
@@ -1099,13 +1125,17 @@ internal sealed class GitOperationsPanel : Panel
             Location = new Point(136, y),
             Cursor = Cursors.Hand
         };
-        _pushBtn.Click += (s, e) =>
+        _pushBtn.Click += async (s, e) =>
         {
             SetSyncEnabled(false);
-            var (ok, msg) = _git.Push();
-            if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            try
+            {
+                var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
+                if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (OperationCanceledException) { }
+            finally { SetSyncEnabled(true); }
             RefreshStatus();
-            SetSyncEnabled(true);
         };
 
         _topPanel.Controls.AddRange(new Control[] {
@@ -1274,17 +1304,30 @@ internal sealed class GitOperationsPanel : Panel
     {
         // Show sync options context menu
         var menu = new ContextMenuStrip();
-        var fetchItem = new ToolStripMenuItem("Fetch", null, (s, e) => { _git.Fetch(); RefreshStatus(); });
-        var pullItem = new ToolStripMenuItem("Pull", null, (s, e) =>
+        var fetchItem = new ToolStripMenuItem("Fetch", null, async (s, e) =>
         {
-            var (ok, msg) = _git.Pull();
-            if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            try { await _git.FetchAsync().ConfigureAwait(true); }
+            catch (OperationCanceledException) { }
             RefreshStatus();
         });
-        var pushItem = new ToolStripMenuItem("Push", null, (s, e) =>
+        var pullItem = new ToolStripMenuItem("Pull", null, async (s, e) =>
         {
-            var (ok, msg) = _git.Push();
-            if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            try
+            {
+                var (ok, msg) = await _git.PullAsync().ConfigureAwait(true);
+                if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (OperationCanceledException) { }
+            RefreshStatus();
+        });
+        var pushItem = new ToolStripMenuItem("Push", null, async (s, e) =>
+        {
+            try
+            {
+                var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
+                if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (OperationCanceledException) { }
             RefreshStatus();
         });
 
@@ -1859,7 +1902,7 @@ internal sealed class GitOperationsPanel : Panel
         }
     }
 
-    private void CommitPush_Click(object? sender, EventArgs e)
+    private async void CommitPush_Click(object? sender, EventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_commitMessage.Text))
         { ThemedMessageBox.Show("Enter a commit message.", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
@@ -1873,12 +1916,14 @@ internal sealed class GitOperationsPanel : Panel
             _bodySplit.Panel2Collapsed = true;
             _selectedDiffIndex = -1;
 
-            // Try to push after commit
-            var (ok, msg) = _git.Push();
-            if (!ok)
+            // Try to push after commit (off the UI thread)
+            try
             {
-                ThemedMessageBox.Show($"Commit successful, but push failed: {msg}", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
+                if (!ok)
+                    ThemedMessageBox.Show($"Commit successful, but push failed: {msg}", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+            catch (OperationCanceledException) { }
             RefreshStatus();
         }
     }

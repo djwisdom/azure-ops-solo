@@ -63,6 +63,8 @@ internal sealed class WorkspacePanel : UserControl
     private Dictionary<string, GitStatusType>? _gitStatusCache;
     private readonly HashSet<TreeNode> _multiSelectedNodes = new();
     private readonly HashSet<string> _favorites = new(StringComparer.OrdinalIgnoreCase);
+    // .gitignore patterns loaded for the current root — raw pattern strings.
+    private List<string> _gitignorePatterns = [];
     private TreeNode? _favoritesRoot;
 
     public event Action<string>? FileOpenRequested;
@@ -435,7 +437,9 @@ internal sealed class WorkspacePanel : UserControl
     {
         CancelScan();
         _fileWatcher?.Dispose();
-        _fileWatcher = null;
+        _fileWatcher    = null;
+        _gitStatusCache = null;   // invalidate stale git status for previous root
+        _gitignorePatterns = LoadGitignorePatterns(path);
         _rootPath = path;
         RootChanged?.Invoke(path);
         _workspaceTitle.Text = !string.IsNullOrEmpty(path) ? Path.GetFileName(path) ?? "Workspace" : "Explorer";
@@ -506,7 +510,8 @@ internal sealed class WorkspacePanel : UserControl
     private void OnWatcherChange(object sender, FileSystemEventArgs e)
     {
         if (!IsHandleCreated) return;
-        // The debounce timer already rate-limits; no need for _pendingRefresh gating.
+        // Invalidate the git status cache so the next draw picks up the correct status.
+        _gitStatusCache = null;
         try { BeginInvoke(() => RefreshTree()); }
         catch { }
     }
@@ -594,14 +599,14 @@ internal sealed class WorkspacePanel : UserControl
             foreach (var d in Directory.EnumerateDirectories(dirPath))
             {
                 string name = Path.GetFileName(d);
-                if (!name.StartsWith('.') && !IsIgnoredDirectory(name))
+                if (!name.StartsWith('.') && !IsIgnoredDirectory(name) && !ShouldIgnoreByGitignore(d))
                     actualDirs.Add(d);
             }
 
             foreach (var f in Directory.EnumerateFiles(dirPath))
             {
                 string ext = Path.GetExtension(f);
-                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f))
+                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f) && !ShouldIgnoreByGitignore(f))
                     actualFiles.Add(f);
             }
 
@@ -754,14 +759,14 @@ private TreeNode CreateDirectoryNode(string dirPath)
             foreach (var d in Directory.EnumerateDirectories(dirPath))
             {
                 string name = Path.GetFileName(d);
-                if (!name.StartsWith('.') && !IsIgnoredDirectory(name))
+                if (!name.StartsWith('.') && !IsIgnoredDirectory(name) && !ShouldIgnoreByGitignore(d))
                     dirs.Add(d);
             }
 
             foreach (var f in Directory.EnumerateFiles(dirPath))
             {
                 string ext = Path.GetExtension(f);
-                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f))
+                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f) && !ShouldIgnoreByGitignore(f))
                     files.Add(f);
             }
 
@@ -861,7 +866,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             {
                 if (token.IsCancellationRequested) return;
                 string name = Path.GetFileName(d);
-                if (!name.StartsWith('.') && !IsIgnoredDirectory(name))
+                if (!name.StartsWith('.') && !IsIgnoredDirectory(name) && !ShouldIgnoreByGitignore(d))
                     dirs.Add(d);
             }
 
@@ -869,7 +874,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             {
                 if (token.IsCancellationRequested) return;
                 string ext = Path.GetExtension(f);
-                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f))
+                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f) && !ShouldIgnoreByGitignore(f))
                     files.Add(f);
             }
 
@@ -921,6 +926,99 @@ private TreeNode CreateDirectoryNode(string dirPath)
             || name.Equals("obj", StringComparison.OrdinalIgnoreCase)
             || name.Equals(".vs", StringComparison.OrdinalIgnoreCase)
             || name.Equals("packages", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Reads the top-level .gitignore and returns the pattern lines.</summary>
+    private static List<string> LoadGitignorePatterns(string rootPath)
+    {
+        var patterns = new List<string>();
+        if (string.IsNullOrEmpty(rootPath)) return patterns;
+        var gitignorePath = Path.Combine(rootPath, ".gitignore");
+        if (!File.Exists(gitignorePath)) return patterns;
+        try
+        {
+            foreach (var raw in File.ReadAllLines(gitignorePath))
+            {
+                var line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith('#')) continue;
+                patterns.Add(line);
+            }
+        }
+        catch { }
+        return patterns;
+    }
+
+    /// <summary>
+    /// Returns true when a file or directory path (relative to the workspace root)
+    /// matches one of the loaded .gitignore patterns. Supports * wildcards.
+    /// </summary>
+    private bool ShouldIgnoreByGitignore(string fullPath)
+    {
+        if (_gitignorePatterns.Count == 0 || string.IsNullOrEmpty(_rootPath)) return false;
+
+        // Build a forward-slash-normalised relative path for matching.
+        string rel;
+        try
+        {
+            rel = Path.GetRelativePath(_rootPath, fullPath).Replace('\\', '/');
+        }
+        catch { return false; }
+
+        var name = Path.GetFileName(fullPath);
+
+        foreach (var pattern in _gitignorePatterns)
+        {
+            // Negation patterns (!) are not supported — we skip them.
+            if (pattern.StartsWith('!')) continue;
+
+            var p = pattern.TrimStart('/');
+            bool dirOnly = p.EndsWith('/');
+            if (dirOnly) p = p.TrimEnd('/');
+
+            // Match against the bare name first, then the full relative path.
+            if (GitignoreGlobMatch(p, name) || GitignoreGlobMatch(p, rel))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Minimal glob matching: * matches within a path segment; ** matches across segments.</summary>
+    private static bool GitignoreGlobMatch(string pattern, string input)
+    {
+        return GlobMatch(pattern, input, 0, 0);
+    }
+
+    private static bool GlobMatch(string pattern, string input, int pi, int ii)
+    {
+        while (pi < pattern.Length && ii < input.Length)
+        {
+            char pc = pattern[pi];
+            if (pc == '*' && pi + 1 < pattern.Length && pattern[pi + 1] == '*')
+            {
+                // ** — match any number of characters including '/'
+                if (GlobMatch(pattern, input, pi + 2, ii)) return true;
+                ii++;
+                continue;
+            }
+            if (pc == '*')
+            {
+                // Single * — match any characters except '/'
+                while (ii <= input.Length)
+                {
+                    if (GlobMatch(pattern, input, pi + 1, ii)) return true;
+                    if (ii < input.Length && input[ii] == '/') break;
+                    ii++;
+                }
+                return false;
+            }
+            if (pc == '?' && input[ii] != '/') { pi++; ii++; continue; }
+            if (!pc.Equals(char.ToLowerInvariant(input[ii])) &&
+                !pc.Equals(input[ii])) return false;
+            pi++; ii++;
+        }
+        // Consume trailing stars
+        while (pi < pattern.Length && pattern[pi] == '*') pi++;
+        return pi == pattern.Length && ii == input.Length;
     }
 
     private void UpdateProjectFilterVisual()

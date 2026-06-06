@@ -13,11 +13,13 @@ public sealed class DebugSession : IDisposable
     private string? _stoppedReason;
     private string _programPath = "";
     private string? _cwd;
+    private Dap.Capabilities? _capabilities;
 
-    public DebugState State => _state;
-    public int ActiveThreadId => _activeThreadId;
-    public string? StoppedReason => _stoppedReason;
-    public DebugAdapterClient Client => _client;
+    public DebugState     State          => _state;
+    public int            ActiveThreadId => _activeThreadId;
+    public string?        StoppedReason  => _stoppedReason;
+    public DebugAdapterClient Client     => _client;
+    public Dap.Capabilities?  Capabilities => _capabilities;
 
     public event Action<DebugState>? StateChanged;
     public event Action<string>? DebugOutput;
@@ -52,6 +54,13 @@ public sealed class DebugSession : IDisposable
         if (initResp == null)
             return "initialize request failed";
 
+        // Cache capabilities advertised by the debug adapter
+        if (initResp.HasValue)
+        {
+            try { _capabilities = JsonSerializer.Deserialize<Dap.Capabilities>(initResp.Value.GetRawText(), Dap.JsonOpts); }
+            catch { }
+        }
+
         var launchArgs = new Dap.LaunchRequestArguments
         {
             Program = programPath,
@@ -70,10 +79,39 @@ public sealed class DebugSession : IDisposable
     {
         var args = new Dap.SetBreakpointsArguments
         {
-            Source = new Dap.Source { Path = filePath },
+            Source      = new Dap.Source { Path = filePath },
             Breakpoints = bps.ToArray()
         };
         await _client.SendRequest("setBreakpoints", args);
+    }
+
+    /// <summary>
+    /// Configures which exception categories break the debugger.
+    /// Pass an empty <paramref name="filters"/> array to clear all exception breakpoints.
+    /// </summary>
+    public async Task SetExceptionBreakpointsAsync(
+        string[] filters,
+        Dap.ExceptionFilterOptions[]? filterOptions = null)
+    {
+        var args = new Dap.SetExceptionBreakpointsArguments
+        {
+            Filters       = filters,
+            FilterOptions = filterOptions
+        };
+        await _client.SendRequest("setExceptionBreakpoints", args);
+    }
+
+    /// <summary>
+    /// Sets breakpoints on named functions/methods (requires adapter support).
+    /// </summary>
+    public async Task SetFunctionBreakpointsAsync(IEnumerable<Dap.FunctionBreakpoint> breakpoints)
+    {
+        if (_capabilities?.SupportsFunctionBreakpoints != true) return;
+        var args = new Dap.SetFunctionBreakpointsArguments
+        {
+            Breakpoints = breakpoints.ToArray()
+        };
+        await _client.SendRequest("setFunctionBreakpoints", args);
     }
 
     public async Task ConfigurationDoneAsync()

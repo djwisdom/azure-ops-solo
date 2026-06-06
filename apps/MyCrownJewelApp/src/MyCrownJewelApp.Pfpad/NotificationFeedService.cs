@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -13,9 +14,20 @@ namespace MyCrownJewelApp.Pfpad;
 
 public sealed class NotificationFeedService : IDisposable
 {
+    // Static options — one allocation for the lifetime of the app.
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented          = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly HttpClient _http;
-    private readonly ConcurrentDictionary<FeedSource, List<FeedItem>> _items = new();
-    private readonly ConcurrentDictionary<string, bool> _seenIds = new();
+    private readonly ConcurrentDictionary<FeedSource, List<FeedItem>> _items  = new();
+    private readonly ConcurrentDictionary<string, bool>               _seenIds = new();
+
+    // Per-source error tracking (last error message, or null if OK)
+    private readonly ConcurrentDictionary<FeedSource, string?> _sourceErrors = new();
+
     private readonly string _statePath;
     private readonly string _configPath;
     private CancellationTokenSource? _pollCts;
@@ -23,23 +35,23 @@ public sealed class NotificationFeedService : IDisposable
 
     private List<FeedSourceConfig> _sources = DefaultFeedSources.GetDefaults();
 
+    /// <summary>Raised on the thread pool after each source finishes loading (or fails).</summary>
     public event Action? OnItemsUpdated;
 
     public void AddNotification(string title, string summary)
     {
-        var id = $"app-{Guid.NewGuid():N}";
+        var id   = $"app-{Guid.NewGuid():N}";
         var item = new FeedItem
         {
-            Id = id,
-            Source = FeedSource.Custom,
-            Title = title,
-            Summary = summary,
+            Id        = id,
+            Source    = FeedSource.Custom,
+            Title     = title,
+            Summary   = summary,
             Published = DateTime.UtcNow,
-            IsRead = false
+            IsRead    = false
         };
         _seenIds.TryAdd(id, false);
-        var list = _items.GetOrAdd(FeedSource.Custom, _ => new List<FeedItem>());
-        list.Add(item);
+        _items.GetOrAdd(FeedSource.Custom, _ => new List<FeedItem>()).Add(item);
         OnItemsUpdated?.Invoke();
     }
 
@@ -50,6 +62,13 @@ public sealed class NotificationFeedService : IDisposable
 
     public IReadOnlyList<FeedSourceConfig> Sources => _sources.AsReadOnly();
 
+    /// <summary>Returns the last error for a given source, or null if the last fetch succeeded.</summary>
+    public string? GetSourceError(FeedSource source) =>
+        _sourceErrors.TryGetValue(source, out var err) ? err : null;
+
+    /// <summary>True if any source has a recorded error.</summary>
+    public bool HasErrors => _sourceErrors.Values.Any(e => e is not null);
+
     public NotificationFeedService()
     {
         _http = new HttpClient();
@@ -58,10 +77,9 @@ public sealed class NotificationFeedService : IDisposable
 
         var baseDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "MyCrownJewelApp",
-            "Notifications");
+            "MyCrownJewelApp", "Notifications");
 
-        _statePath = Path.Combine(baseDir, "feed_state.json");
+        _statePath  = Path.Combine(baseDir, "feed_state.json");
         _configPath = Path.Combine(baseDir, "feed_config.json");
 
         LoadConfig();
@@ -93,19 +111,37 @@ public sealed class NotificationFeedService : IDisposable
     {
         while (!ct.IsCancellationRequested)
         {
-            await FetchAllAsync(ct);
-            var minInterval = _sources.Where(s => s.Enabled).Select(s => s.PollIntervalMinutes).DefaultIfEmpty(15).Min();
-            try { await Task.Delay(TimeSpan.FromMinutes(minInterval), ct); } catch { break; }
+            await FetchAllAsync(ct).ConfigureAwait(false);
+            int minInterval = _sources
+                .Where(s => s.Enabled)
+                .Select(s => s.PollIntervalMinutes)
+                .DefaultIfEmpty(15)
+                .Min();
+            try { await Task.Delay(TimeSpan.FromMinutes(minInterval), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
         }
     }
 
+    /// <summary>
+    /// Fetches all enabled sources. Uses <c>Task.WhenEach</c> (.NET 9) so the UI
+    /// receives an <see cref="OnItemsUpdated"/> notification as each source resolves
+    /// rather than waiting for the slowest feed.
+    /// </summary>
     public async Task FetchAllAsync(CancellationToken ct = default)
     {
         var enabled = _sources.Where(s => s.Enabled).ToList();
-        var tasks = enabled.Select(cfg => FetchSourceAsync(cfg, ct));
-        await Task.WhenAll(tasks);
+        var tasks   = enabled.Select(cfg => FetchSourceAsync(cfg, ct)).ToList();
+
+        // .NET 9: Task.WhenEach yields each completed task as it finishes — progressive updates.
+        await foreach (var completedTask in Task.WhenEach(tasks).ConfigureAwait(false))
+        {
+            try { await completedTask.ConfigureAwait(false); }
+            catch { /* individual errors already recorded in FetchSourceAsync */ }
+
+            OnItemsUpdated?.Invoke();
+        }
+
         SaveState();
-        OnItemsUpdated?.Invoke();
     }
 
     private async Task FetchSourceAsync(FeedSourceConfig cfg, CancellationToken ct)
@@ -113,13 +149,21 @@ public sealed class NotificationFeedService : IDisposable
         try
         {
             if (!IsValidFeedUrl(cfg.Url))
+            {
+                _sourceErrors[cfg.Source] = "Invalid or disallowed feed URL.";
                 return;
+            }
 
-            var xml = await _http.GetStringAsync(cfg.Url, ct);
+            var xml   = await _http.GetStringAsync(cfg.Url, ct).ConfigureAwait(false);
             var items = ParseFeed(cfg.Source, xml, cfg.MaxItems);
             _items[cfg.Source] = items;
+            _sourceErrors[cfg.Source] = null; // clear any previous error
         }
-        catch { }
+        catch (OperationCanceledException) { /* expected on shutdown */ }
+        catch (Exception ex)
+        {
+            _sourceErrors[cfg.Source] = ex.Message;
+        }
     }
 
     private static bool IsValidFeedUrl(string url)
@@ -278,8 +322,8 @@ public sealed class NotificationFeedService : IDisposable
         {
             if (File.Exists(_configPath))
             {
-                var json = File.ReadAllText(_configPath);
-                var loaded = JsonSerializer.Deserialize<List<FeedSourceConfig>>(json);
+                var json   = File.ReadAllText(_configPath);
+                var loaded = JsonSerializer.Deserialize<List<FeedSourceConfig>>(json, JsonOpts);
                 if (loaded is { Count: > 0 })
                 {
                     _sources = loaded;
@@ -297,8 +341,7 @@ public sealed class NotificationFeedService : IDisposable
         {
             var dir = Path.GetDirectoryName(_configPath);
             if (dir is not null) Directory.CreateDirectory(dir);
-            var json = JsonSerializer.Serialize(_sources, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_configPath, json);
+            File.WriteAllText(_configPath, JsonSerializer.Serialize(_sources, JsonOpts));
         }
         catch { }
     }

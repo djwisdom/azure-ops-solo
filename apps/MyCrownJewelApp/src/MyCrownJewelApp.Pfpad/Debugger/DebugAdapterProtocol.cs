@@ -41,6 +41,17 @@ public static class Dap
         public bool SupportsHitConditionalBreakpoints { get; init; }
         public bool SupportsFunctionBreakpoints { get; init; }
         public bool SupportsEvaluateForHovers { get; init; }
+        public bool SupportsExceptionOptions { get; init; }
+        public ExceptionBreakpointsFilter[]? ExceptionBreakpointFilters { get; init; }
+    }
+
+    public record ExceptionBreakpointsFilter
+    {
+        public string Filter { get; init; } = "";
+        public string Label { get; init; } = "";
+        public string? Description { get; init; }
+        public bool Default { get; init; }
+        public bool SupportsCondition { get; init; }
     }
 
     public record StackFrame
@@ -187,6 +198,7 @@ public static class Dap
         public bool SupportsVariableType { get; init; } = true;
         public bool SupportsVariablePaging { get; init; }
         public bool SupportsRunInTerminalRequest { get; init; }
+        public bool SupportsExceptionFilterOptions { get; init; } = true;
     }
 
     public record LaunchRequestArguments
@@ -266,7 +278,42 @@ public static class Dap
         public int ThreadId { get; init; }
     }
 
-    public static JsonSerializerOptions JsonOpts => new()
+    public record SetExceptionBreakpointsArguments
+    {
+        public string[] Filters { get; init; } = Array.Empty<string>();
+        public ExceptionFilterOptions[]? FilterOptions { get; init; }
+    }
+
+    public record ExceptionFilterOptions
+    {
+        public string FilterId { get; init; } = "";
+        public string? Condition { get; init; }
+    }
+
+    public record SetExceptionBreakpointsResponseBody
+    {
+        public Breakpoint[]? Breakpoints { get; init; }
+    }
+
+    public record FunctionBreakpoint
+    {
+        public string Name { get; init; } = "";
+        public string? Condition { get; init; }
+        public string? HitCondition { get; init; }
+    }
+
+    public record SetFunctionBreakpointsArguments
+    {
+        public FunctionBreakpoint[] Breakpoints { get; init; } = Array.Empty<FunctionBreakpoint>();
+    }
+
+    public record SetFunctionBreakpointsResponseBody
+    {
+        public Breakpoint[]? Breakpoints { get; init; }
+    }
+
+    // Static (singleton) options — avoids allocating a new instance on every serialization call.
+    public static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,

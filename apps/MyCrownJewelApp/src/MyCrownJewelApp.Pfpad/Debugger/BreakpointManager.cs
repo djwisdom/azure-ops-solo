@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Text.Json;
 
 namespace MyCrownJewelApp.Pfpad.Debugger;
@@ -15,8 +14,16 @@ public sealed record BreakpointData
 
 public sealed class BreakpointManager
 {
-    private readonly Dictionary<string, List<BreakpointData>> _breakpoints = new(StringComparer.OrdinalIgnoreCase);
-    private string _configPath;
+    // Static options — allocated once; avoids per-call overhead.
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private readonly Dictionary<string, List<BreakpointData>> _breakpoints
+        = new(StringComparer.OrdinalIgnoreCase);
+    private readonly string _configPath;
 
     public BreakpointManager()
     {
@@ -47,10 +54,7 @@ public sealed class BreakpointManager
     {
         if (!_breakpoints.TryGetValue(filePath, out var bps))
         {
-            _breakpoints[filePath] = new List<BreakpointData>
-            {
-                new() { File = filePath, Line = line }
-            };
+            _breakpoints[filePath] = [new() { File = filePath, Line = line }];
         }
         else
         {
@@ -59,9 +63,11 @@ public sealed class BreakpointManager
                 bps.Remove(existing);
             else
                 bps.Add(new BreakpointData { File = filePath, Line = line });
+
+            if (bps.Count == 0) _breakpoints.Remove(filePath);
         }
 
-        Save();
+        SaveAsync();
         BreakpointsChanged?.Invoke();
     }
 
@@ -70,40 +76,32 @@ public sealed class BreakpointManager
         if (!_breakpoints.TryGetValue(filePath, out var bps)) return;
         bps.RemoveAll(bp => bp.Line == line);
         if (bps.Count == 0) _breakpoints.Remove(filePath);
-        Save();
+        SaveAsync();
         BreakpointsChanged?.Invoke();
     }
 
     public void ClearAll()
     {
         _breakpoints.Clear();
-        Save();
+        SaveAsync();
         BreakpointsChanged?.Invoke();
     }
 
     public void EnableAll()
     {
-        var keys = _breakpoints.Keys.ToArray();
-        foreach (var file in keys)
-        {
-            var list = _breakpoints[file];
+        foreach (var (file, list) in _breakpoints)
             for (int i = 0; i < list.Count; i++)
                 list[i] = list[i] with { Enabled = true };
-        }
-        Save();
+        SaveAsync();
         BreakpointsChanged?.Invoke();
     }
 
     public void DisableAll()
     {
-        var keys = _breakpoints.Keys.ToArray();
-        foreach (var file in keys)
-        {
-            var list = _breakpoints[file];
+        foreach (var (file, list) in _breakpoints)
             for (int i = 0; i < list.Count; i++)
                 list[i] = list[i] with { Enabled = false };
-        }
-        Save();
+        SaveAsync();
         BreakpointsChanged?.Invoke();
     }
 
@@ -117,26 +115,29 @@ public sealed class BreakpointManager
         int idx = bps.IndexOf(bp);
         bps[idx] = bp with
         {
-            Enabled = enabled ?? bp.Enabled,
-            Condition = condition ?? bp.Condition,
+            Enabled      = enabled      ?? bp.Enabled,
+            Condition    = condition    ?? bp.Condition,
             HitCondition = hitCondition ?? bp.HitCondition,
-            LogMessage = logMessage ?? bp.LogMessage
+            LogMessage   = logMessage   ?? bp.LogMessage
         };
 
-        Save();
+        SaveAsync();
         BreakpointsChanged?.Invoke();
     }
 
     public List<Dap.SourceBreakpoint> GetDapBreakpoints(string filePath)
     {
-        if (!_breakpoints.TryGetValue(filePath, out var bps)) return new();
-        return bps.Where(b => b.Enabled).Select(b => new Dap.SourceBreakpoint
-        {
-            Line = b.Line,
-            Condition = b.Condition,
-            HitCondition = b.HitCondition,
-            LogMessage = b.LogMessage
-        }).ToList();
+        if (!_breakpoints.TryGetValue(filePath, out var bps)) return [];
+        return bps
+            .Where(b => b.Enabled)
+            .Select(b => new Dap.SourceBreakpoint
+            {
+                Line         = b.Line,
+                Condition    = b.Condition,
+                HitCondition = b.HitCondition,
+                LogMessage   = b.LogMessage
+            })
+            .ToList();
     }
 
     private void Load()
@@ -145,24 +146,31 @@ public sealed class BreakpointManager
         {
             if (!File.Exists(_configPath)) return;
             string json = File.ReadAllText(_configPath);
-            var data = JsonSerializer.Deserialize<Dictionary<string, List<BreakpointData>>>(json);
-            if (data != null)
-            {
-                _breakpoints.Clear();
-                foreach (var kvp in data)
-                    _breakpoints[kvp.Key] = kvp.Value;
-            }
+            var data = JsonSerializer.Deserialize<Dictionary<string, List<BreakpointData>>>(json, JsonOpts);
+            if (data is null) return;
+            _breakpoints.Clear();
+            foreach (var (k, v) in data) _breakpoints[k] = v;
         }
         catch { }
     }
 
-    private void Save()
+    /// <summary>Persists breakpoints asynchronously so callers never block on disk I/O.</summary>
+    private void SaveAsync()
     {
-        try
+        // Take a snapshot so the async work doesn't race against future mutations.
+        var snapshot = _breakpoints.ToDictionary(
+            kvp => kvp.Key,
+            kvp => kvp.Value.ToList(),
+            StringComparer.OrdinalIgnoreCase);
+
+        _ = Task.Run(async () =>
         {
-            string json = JsonSerializer.Serialize(_breakpoints, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_configPath, json);
-        }
-        catch { }
+            try
+            {
+                string json = JsonSerializer.Serialize(snapshot, JsonOpts);
+                await File.WriteAllTextAsync(_configPath, json).ConfigureAwait(false);
+            }
+            catch { }
+        });
     }
 }

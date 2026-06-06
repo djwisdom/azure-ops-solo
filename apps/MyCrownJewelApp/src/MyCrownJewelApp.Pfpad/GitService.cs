@@ -181,9 +181,26 @@ public sealed class GitService : IDisposable
 
     private Signature GetSignature(string? authorName = null, string? authorEmail = null)
     {
-        return authorName is not null
-            ? new Signature(authorName, authorEmail ?? "user@local", DateTimeOffset.Now)
-            : new Signature("Personal Flip Pad", "git@pfpad.local", DateTimeOffset.Now);
+        if (authorName is not null)
+            return new Signature(authorName, authorEmail ?? "user@local", DateTimeOffset.Now);
+
+        // Read from repo-level config first, then global config
+        if (_repo is not null)
+        {
+            try
+            {
+                string? name  = _repo.Config.Get<string>("user.name")?.Value;
+                string? email = _repo.Config.Get<string>("user.email")?.Value;
+                if (!string.IsNullOrWhiteSpace(name))
+                    return new Signature(name, email ?? $"{name.ToLowerInvariant().Replace(' ', '.')}@local", DateTimeOffset.Now);
+            }
+            catch { }
+        }
+
+        // Fall back to OS user name
+        string osUser  = Environment.UserName;
+        string osEmail = $"{osUser.ToLowerInvariant()}@local";
+        return new Signature(osUser, osEmail, DateTimeOffset.Now);
     }
 
     public bool Commit(string message, string? authorName = null, string? authorEmail = null)
@@ -618,7 +635,7 @@ public sealed class GitService : IDisposable
         if (_repo is null) return (false, "No repository open.");
         try
         {
-            var signature = new Signature("Personal Flip Pad", "git@pfpad.local", DateTimeOffset.Now);
+            var signature = GetSignature();
             _repo.Stashes.Add(signature, message, StashModifiers.Default);
             OnRepoChanged?.Invoke();
             return (true, "Changes stashed.");
@@ -835,14 +852,12 @@ public sealed class GitService : IDisposable
             var remote = _repo.Network.Remotes[remoteName];
             if (remote is null) return (false, $"Remote '{remoteName}' not found.");
 
-            var mergeResult = Commands.Pull(_repo,
-                new Signature("Personal Flip Pad", "git@pfpad.local", DateTimeOffset.Now),
-                new PullOptions());
+            var mergeResult = Commands.Pull(_repo, GetSignature(), new PullOptions());
 
             var msg = mergeResult.Status switch
             {
-                MergeStatus.UpToDate => "Already up to date.",
-                MergeStatus.FastForward => "Fast-forward merge completed.",
+                MergeStatus.UpToDate     => "Already up to date.",
+                MergeStatus.FastForward  => "Fast-forward merge completed.",
                 MergeStatus.NonFastForward => "Merge completed (non-fast-forward).",
                 _ => $"Pull completed: {mergeResult.Status}."
             };
@@ -872,6 +887,21 @@ public sealed class GitService : IDisposable
         }
         catch (Exception ex) { return (false, $"Push failed: {ex.Message}"); }
     }
+
+    // ── Async wrappers (run blocking LibGit2Sharp I/O off the UI thread) ─────
+
+    /// <summary>Fetch from a remote without blocking the UI thread.</summary>
+    public Task<bool> FetchAsync(string remoteName = "origin", CancellationToken ct = default)
+        => Task.Run(() => Fetch(remoteName), ct);
+
+    /// <summary>Pull from a remote without blocking the UI thread.</summary>
+    public Task<(bool Success, string Message)> PullAsync(string remoteName = "origin", CancellationToken ct = default)
+        => Task.Run(() => Pull(remoteName), ct);
+
+    /// <summary>Push a branch without blocking the UI thread.</summary>
+    public Task<(bool Success, string Message)> PushAsync(
+        string remoteName = "origin", string? branchName = null, bool force = false, CancellationToken ct = default)
+        => Task.Run(() => Push(remoteName, branchName, force), ct);
 
     public void CloseRepo()
     {

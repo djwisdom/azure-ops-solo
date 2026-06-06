@@ -342,7 +342,14 @@ internal sealed class GitForm : Form
             Cursor = Cursors.Hand,
             TabStop = false
         };
-        _fetchBtn.Click += (s, e) => { _git.Fetch(); RefreshStatus(); };
+        _fetchBtn.Click += async (s, e) =>
+        {
+            _fetchBtn.Enabled = false;
+            try { await _git.FetchAsync().ConfigureAwait(true); }
+            catch (OperationCanceledException) { }
+            finally { _fetchBtn.Enabled = true; }
+            RefreshStatus();
+        };
 
         _pullBtn = new Button
         {
@@ -604,7 +611,119 @@ internal sealed class GitForm : Form
         }
     }
 
-    private void Pull_Click(object? sender, EventArgs e)
+    private async void Pull_Click(object? sender, EventArgs e)
+    {
+        _pullBtn.Enabled = false;
+        try
+        {
+            if (_git.HasUncommittedChanges())
+            {
+                var result = ThemedMessageBox.Show(
+                    "You have uncommitted changes. Pull may overwrite them.\n\nStash them before pulling?",
+                    "Uncommitted Changes",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+
+                if (result == DialogResult.Cancel) return;
+                if (result == DialogResult.Yes)
+                {
+                    var (stashOk, stashMsg) = _git.Stash("before-pull");
+                    if (!stashOk)
+                    {
+                        ThemedMessageBox.Show(stashMsg, "Stash Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    var (pullOk, pullMsg) = await _git.PullAsync().ConfigureAwait(true);
+                    var (popOk, popMsg) = _git.StashPop();
+                    if (!popOk) ThemedMessageBox.Show($"Pull completed, but stash pop failed: {popMsg}", "Stash Pop", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    else if (!pullOk) ThemedMessageBox.Show(pullMsg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    RefreshStatus();
+                    return;
+                }
+            }
+
+            var (ok, msg) = await _git.PullAsync().ConfigureAwait(true);
+            if (!ok)
+                ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            RefreshStatus();
+
+            var conflicts = _git.GetConflicts();
+            if (conflicts.Count > 0)
+            {
+                var paths = string.Join("\n", conflicts.Select(c => $"  • {c.Path}"));
+                ThemedMessageBox.Show(
+                    $"Merge conflicts detected in {conflicts.Count} file(s):\n\n{paths}\n\nClick a conflicted file (shown in red) and choose Ours (local) or Theirs (incoming) to resolve, then commit.",
+                    "Merge Conflicts",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally { _pullBtn.Enabled = true; }
+    }
+
+    private async void Push_Click(object? sender, EventArgs e)
+    {
+        _pushBtn.Enabled = false;
+        try
+        {
+            await _git.FetchAsync().ConfigureAwait(true);
+            int behind = _git.GetBehindCount();
+            if (behind > 0)
+            {
+                var result = ThemedMessageBox.Show(
+                    $"Remote has {behind} commit(s) ahead of your branch.\n\nPull changes first to avoid rejection?",
+                    "Branch is Behind Remote",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+
+                if (result == DialogResult.Cancel) return;
+                if (result == DialogResult.Yes)
+                {
+                    await Pull_ClickAsync().ConfigureAwait(true);
+                    var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
+                    if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    RefreshStatus();
+                    return;
+                }
+            }
+
+            var (pushOk, pushMsg) = await _git.PushAsync().ConfigureAwait(true);
+            if (!pushOk && pushMsg.Contains("rejected"))
+            {
+                var retry = ThemedMessageBox.Show(
+                    "Push was rejected because the remote contains commits you don't have locally.\n\nForce push instead? This overwrites the remote branch.",
+                    "Push Rejected",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (retry == DialogResult.Yes)
+                {
+                    var confirm = ThemedMessageBox.Show(
+                        "Force push permanently overwrites commits on the remote.\n\nThis cannot be undone.",
+                        "Confirm Force Push",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Exclamation);
+
+                    if (confirm == DialogResult.Yes)
+                    {
+                        var (fpOk, fpMsg) = await _git.PushAsync(force: true).ConfigureAwait(true);
+                        if (!fpOk) ThemedMessageBox.Show(fpMsg, "Force Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+            else if (!pushOk)
+            {
+                ThemedMessageBox.Show(pushMsg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            RefreshStatus();
+        }
+        catch (OperationCanceledException) { }
+        finally { _pushBtn.Enabled = true; }
+    }
+
+    /// <summary>Pull logic extracted for reuse inside Push_Click (avoids chaining async void).</summary>
+    private async Task Pull_ClickAsync()
     {
         if (_git.HasUncommittedChanges())
         {
@@ -613,96 +732,20 @@ internal sealed class GitForm : Form
                 "Uncommitted Changes",
                 MessageBoxButtons.YesNoCancel,
                 MessageBoxIcon.Question);
-
             if (result == DialogResult.Cancel) return;
             if (result == DialogResult.Yes)
             {
                 var (stashOk, stashMsg) = _git.Stash("before-pull");
-                if (!stashOk)
-                {
-                    ThemedMessageBox.Show(stashMsg, "Stash Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-                var (pullOk, pullMsg) = _git.Pull();
+                if (!stashOk) { ThemedMessageBox.Show(stashMsg, "Stash Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                var (pullOk, pullMsg) = await _git.PullAsync().ConfigureAwait(true);
                 var (popOk, popMsg) = _git.StashPop();
                 if (!popOk) ThemedMessageBox.Show($"Pull completed, but stash pop failed: {popMsg}", "Stash Pop", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 else if (!pullOk) ThemedMessageBox.Show(pullMsg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                RefreshStatus();
                 return;
             }
         }
-
-        var (ok, msg) = _git.Pull();
-        if (!ok)
-        {
-            ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        RefreshStatus();
-
-        var conflicts = _git.GetConflicts();
-        if (conflicts.Count > 0)
-        {
-            var paths = string.Join("\n", conflicts.Select(c => $"  • {c.Path}"));
-            ThemedMessageBox.Show(
-                $"Merge conflicts detected in {conflicts.Count} file(s):\n\n{paths}\n\nClick a conflicted file (shown in red) and choose Ours (local) or Theirs (incoming) to resolve, then commit.",
-                "Merge Conflicts",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-        }
-    }
-
-    private void Push_Click(object? sender, EventArgs e)
-    {
-        _git.Fetch();
-        int behind = _git.GetBehindCount();
-        if (behind > 0)
-        {
-            var result = ThemedMessageBox.Show(
-                $"Remote has {behind} commit(s) ahead of your branch.\n\nPull changes first to avoid rejection?",
-                "Branch is Behind Remote",
-                MessageBoxButtons.YesNoCancel,
-                MessageBoxIcon.Question);
-
-            if (result == DialogResult.Cancel) return;
-            if (result == DialogResult.Yes)
-            {
-                Pull_Click(sender, e);
-                var (ok, msg) = _git.Push();
-                if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                RefreshStatus();
-                return;
-            }
-        }
-
-        var (pushOk, pushMsg) = _git.Push();
-        if (!pushOk && pushMsg.Contains("rejected"))
-        {
-            var retry = ThemedMessageBox.Show(
-                "Push was rejected because the remote contains commits you don't have locally.\n\nForce push instead? This overwrites the remote branch.",
-                "Push Rejected",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-
-            if (retry == DialogResult.Yes)
-            {
-                var confirm = ThemedMessageBox.Show(
-                    "Force push permanently overwrites commits on the remote.\n\nThis cannot be undone.",
-                    "Confirm Force Push",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Exclamation);
-
-                if (confirm == DialogResult.Yes)
-                {
-                    var (fpOk, fpMsg) = _git.Push(force: true);
-                    if (!fpOk) ThemedMessageBox.Show(fpMsg, "Force Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-        }
-        else if (!pushOk)
-        {
-            ThemedMessageBox.Show(pushMsg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        RefreshStatus();
+        var (ok, msg) = await _git.PullAsync().ConfigureAwait(true);
+        if (!ok) ThemedMessageBox.Show(msg, "Pull Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     private void Discard_Click(object? sender, EventArgs e)
