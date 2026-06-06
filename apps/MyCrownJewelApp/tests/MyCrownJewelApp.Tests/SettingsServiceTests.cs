@@ -177,25 +177,26 @@ public sealed class SettingsServiceTests : IDisposable
         bool autoSave = false,
         int maxFileSizeMB = 500,
         long thresholdBytes = 200 * 1024) =>
-        new AppSettings(
-            WordWrapEnabled: wordWrap,
-            GutterVisible: gutterVisible,
-            StatusBarVisible: true,
-            ShowGuide: false,
-            GuideColumn: 80,
-            TabSize: tabSize,
-            FontName: fontName,
-            FontSize: fontSize,
-            InsertSpaces: true,
-            AutoIndentEnabled: true,
-            SmartTabsEnabled: false,
-            ElasticTabsEnabled: false,
-            CurrentLineHighlightMode: CurrentLineHighlightMode.Off,
-            SyntaxHighlightingEnabled: true,
-            MinimapVisible: false,
-            ThemeName: themeName,
-            AutoSaveEnabled: autoSave,
-            MaxFileSizeMB: maxFileSizeMB,
-            SyntaxHighlightingThresholdBytes: thresholdBytes
-        );
+        new AppSettings
+        {
+            WordWrapEnabled = wordWrap,
+            GutterVisible = gutterVisible,
+            StatusBarVisible = true,
+            ShowGuide = false,
+            GuideColumn = 80,
+            TabSize = tabSize,
+            FontName = fontName,
+            FontSize = fontSize,
+            InsertSpaces = true,
+            AutoIndentEnabled = true,
+            SmartTabsEnabled = false,
+            ElasticTabsEnabled = false,
+            CurrentLineHighlightMode = MyCrownJewelApp.Pfpad.CurrentLineHighlightMode.Off,
+            SyntaxHighlightingEnabled = true,
+            MinimapVisible = false,
+            ThemeName = themeName,
+            AutoSaveEnabled = autoSave,
+            MaxFileSizeMB = maxFileSizeMB,
+            SyntaxHighlightingThresholdBytes = thresholdBytes,
+        };
 }

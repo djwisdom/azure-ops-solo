@@ -597,38 +597,46 @@ internal sealed class SettingsDialog : Form
 
     private void ApplyCurrentSettings()
     {
-        _mainForm.ApplySettings(
-            fontName: GetSettingValue<string>("editor.font.name", _mainForm.CurrentFontName),
-            fontSize: GetSettingValue<float>("editor.font.size", _mainForm.CurrentFontSize),
-            tabSize: GetSettingValue<int>("editor.formatting.tabSize", _mainForm.CurrentTabSize),
-            insertSpaces: GetSettingValue<bool>("editor.formatting.insertSpaces", _mainForm.CurrentInsertSpaces),
-            wordWrap: GetSettingValue<bool>("editor.text.wordWrap", _mainForm.CurrentWordWrap),
-            showGuide: GetSettingValue<bool>("editor.text.columnGuide", _mainForm.CurrentShowGuide),
-            guideColumn: GetSettingValue<int>("editor.text.guideColumn", _mainForm.CurrentGuideColumn),
-            themeName: GetSettingValue<string>("workbench.appearance.theme", _mainForm.CurrentThemeName),
-            gutterVisible: GetSettingValue<bool>("editor.text.gutter", _mainForm.CurrentGutterVisible),
-            statusBarVisible: GetSettingValue<bool>("workbench.appearance.statusBar", _mainForm.CurrentStatusBarVisible),
-            minimapVisible: GetSettingValue<bool>("editor.appearance.minimap", _mainForm.CurrentMinimapVisible),
-            showWhitespace: GetSettingValue<bool>("editor.appearance.showWhitespace", _mainForm.CurrentShowWhitespace),
-            lineHighlightMode: GetSettingValue<string>("editor.cursor.lineHighlight", _mainForm.CurrentLineHighlightName),
-            syntaxHighlighting: GetSettingValue<bool>("editor.text.syntaxHighlighting", _mainForm.CurrentSyntaxHighlighting),
-            autoIndent: GetSettingValue<bool>("editor.formatting.autoIndent", _mainForm.CurrentAutoIndent),
-            smartTabs: GetSettingValue<bool>("editor.formatting.smartTabs", _mainForm.CurrentSmartTabs),
-            elasticTabs: GetSettingValue<bool>("editor.formatting.elasticTabs", _mainForm.CurrentElasticTabs),
-            rainbowBrackets: GetSettingValue<bool>("editor.appearance.rainbowBrackets", _mainForm.CurrentRainbowBrackets),
-            breadcrumbs: GetSettingValue<bool>("editor.appearance.breadcrumbs", _mainForm.CurrentBreadcrumbs),
-            hoverLineHighlight: GetSettingValue<bool>("editor.cursor.hoverLineHighlight", _mainForm.CurrentHoverLineHighlight),
-            autoSave: GetSettingValue<bool>("features.behavior.autoSave", _mainForm.CurrentAutoSave),
-            workspaceVisible: true,
-            symbolPanelVisible: false,
-            problemsPanelVisible: false,
-            terminalVisible: true,
-            terminalHeight: 200,
-            analyzersEnabled: GetSettingValue<bool>("features.behavior.analyzers", _mainForm.CurrentAnalyzersEnabled),
-            terminalShell: GetSettingValue<string>("features.terminal.shell", _mainForm.CurrentTerminalShell),
-            vimMode: GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
-            stickyScroll: GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll)
-        );
+        var settings = new AppSettings
+        {
+            FontName = GetSettingValue<string>("editor.font.name", _mainForm.CurrentFontName),
+            FontSize = GetSettingValue<float>("editor.font.size", _mainForm.CurrentFontSize),
+            TabSize = GetSettingValue<int>("editor.formatting.tabSize", _mainForm.CurrentTabSize),
+            InsertSpaces = GetSettingValue<bool>("editor.formatting.insertSpaces", _mainForm.CurrentInsertSpaces),
+            WordWrapEnabled = GetSettingValue<bool>("editor.text.wordWrap", _mainForm.CurrentWordWrap),
+            ShowGuide = GetSettingValue<bool>("editor.text.columnGuide", _mainForm.CurrentShowGuide),
+            GuideColumn = GetSettingValue<int>("editor.text.guideColumn", _mainForm.CurrentGuideColumn),
+            ThemeName = GetSettingValue<string>("workbench.appearance.theme", _mainForm.CurrentThemeName),
+            GutterVisible = GetSettingValue<bool>("editor.text.gutter", _mainForm.CurrentGutterVisible),
+            StatusBarVisible = GetSettingValue<bool>("workbench.appearance.statusBar", _mainForm.CurrentStatusBarVisible),
+            MinimapVisible = GetSettingValue<bool>("editor.appearance.minimap", _mainForm.CurrentMinimapVisible),
+            ShowWhitespace = GetSettingValue<bool>("editor.appearance.showWhitespace", _mainForm.CurrentShowWhitespace),
+            CurrentLineHighlightMode = GetSettingValue<string>("editor.cursor.lineHighlight", _mainForm.CurrentLineHighlightName) switch
+            {
+                "NumberOnly" => MyCrownJewelApp.Pfpad.CurrentLineHighlightMode.NumberOnly,
+                "WholeLine" => MyCrownJewelApp.Pfpad.CurrentLineHighlightMode.WholeLine,
+                "NumberAndWholeLine" => MyCrownJewelApp.Pfpad.CurrentLineHighlightMode.NumberAndWholeLine,
+                _ => MyCrownJewelApp.Pfpad.CurrentLineHighlightMode.Off
+            },
+            SyntaxHighlightingEnabled = GetSettingValue<bool>("editor.text.syntaxHighlighting", _mainForm.CurrentSyntaxHighlighting),
+            AutoIndentEnabled = GetSettingValue<bool>("editor.formatting.autoIndent", _mainForm.CurrentAutoIndent),
+            SmartTabsEnabled = GetSettingValue<bool>("editor.formatting.smartTabs", _mainForm.CurrentSmartTabs),
+            ElasticTabsEnabled = GetSettingValue<bool>("editor.formatting.elasticTabs", _mainForm.CurrentElasticTabs),
+            RainbowBracketsEnabled = GetSettingValue<bool>("editor.appearance.rainbowBrackets", _mainForm.CurrentRainbowBrackets),
+            BreadcrumbsEnabled = GetSettingValue<bool>("editor.appearance.breadcrumbs", _mainForm.CurrentBreadcrumbs),
+            HoverLineHighlightEnabled = GetSettingValue<bool>("editor.cursor.hoverLineHighlight", _mainForm.CurrentHoverLineHighlight),
+            AutoSaveEnabled = GetSettingValue<bool>("features.behavior.autoSave", _mainForm.CurrentAutoSave),
+            WorkspaceVisible = true,
+            SymbolPanelVisible = false,
+            ProblemsPanelVisible = false,
+            TerminalVisible = true,
+            TerminalHeight = 200,
+            AnalyzersEnabled = GetSettingValue<bool>("features.behavior.analyzers", _mainForm.CurrentAnalyzersEnabled),
+            TerminalShellPath = GetSettingValue<string>("features.terminal.shell", _mainForm.CurrentTerminalShell),
+            VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
+            StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
+        };
+        _mainForm.ApplySettings(settings);
     }
 
     private T GetSettingValue<T>(string key, T defaultValue)

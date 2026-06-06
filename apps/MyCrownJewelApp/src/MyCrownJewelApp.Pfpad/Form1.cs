@@ -2035,6 +2035,8 @@ using Microsoft.Extensions.DependencyInjection;
                 _analyzersEnabled = settings.AnalyzersEnabled;
                 _autoSaveEnabled = settings.AutoSaveEnabled;
                 if (_autoSaveEnabled) _autoSaveTimer.Start();
+                vimModeEnabled = settings.VimModeEnabled;
+                _stickyScrollEnabled = settings.StickyScrollEnabled;
                 bool showWhitespace = settings.ShowWhitespace;
                 if (whitespaceMenuItem != null)
                 {
@@ -2101,153 +2103,134 @@ using Microsoft.Extensions.DependencyInjection;
 
         private void SaveSettings()
         {
-            var settings = new AppSettings(
-                ThemeName: _themeManager.CurrentTheme.Name,
-                WordWrapEnabled: wordWrapEnabled,
-                GutterVisible: gutterVisible,
-                StatusBarVisible: statusBarVisible,
-                ShowGuide: showGuide,
-                GuideColumn: guideColumn,
-                TabSize: tabSize,
-                FontName: fontName,
-                FontSize: fontSize,
-                InsertSpaces: insertSpaces,
-                AutoIndentEnabled: autoIndentEnabled,
-                SmartTabsEnabled: smartTabsEnabled,
-                ElasticTabsEnabled: elasticTabsEnabled,
-                CurrentLineHighlightMode: currentLineHighlightMode,
-                SyntaxHighlightingEnabled: syntaxHighlightingEnabled,
-                MinimapVisible: minimapMenuItem?.Checked ?? false,
-                TerminalVisible: _terminalVisible,
-                TerminalHeight: _terminalHeight,
-                TerminalShellPath: _terminalShell,
-                ExternalTools: _externalTools,
-                WorkspaceVisible: _workspaceVisible,
-                WorkspaceWidth: _workspaceWidth,
-                WorkspaceRoot: _workspaceRoot,
-                ShowWhitespace: whitespaceMenuItem?.Checked ?? true,
-                SymbolPanelVisible: _symbolPanelVisible,
-                ProblemsPanelVisible: _problemsPanelVisible,
-                RainbowBracketsEnabled: rainbowBracketsMenuItem?.Checked ?? false,
-                BreadcrumbsEnabled: breadcrumbMenuItem?.Checked ?? false,
-                AnalyzersEnabled: _analyzersEnabled,
-                AutoSaveEnabled: _autoSaveEnabled,
-                WindowBounds: $"{Left},{Top},{Width},{Height}",
-                WindowState: WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
-                ActiveConfiguration: _activeConfiguration,
-                MaxFileSizeMB: MaxFileSizeMB,
-                LargeFileWarningMB: LargeFileWarningMB,
-                AsyncFileWarningMB: AsyncFileWarningMB,
-                DisableSyntaxHighlightingForLargeFiles: DisableSyntaxHighlightingForLargeFiles,
-                DisableMinimapForLargeFiles: DisableMinimapForLargeFiles,
-                DisableWordWrapForLargeFiles: DisableWordWrapForLargeFiles,
-                SyntaxHighlightingThresholdBytes: SyntaxHighlightingThresholdBytes
-            );
+            var settings = new AppSettings
+            {
+                ThemeName = _themeManager.CurrentTheme.Name,
+                WordWrapEnabled = wordWrapEnabled,
+                GutterVisible = gutterVisible,
+                StatusBarVisible = statusBarVisible,
+                ShowGuide = showGuide,
+                GuideColumn = guideColumn,
+                TabSize = tabSize,
+                FontName = fontName,
+                FontSize = fontSize,
+                InsertSpaces = insertSpaces,
+                AutoIndentEnabled = autoIndentEnabled,
+                SmartTabsEnabled = smartTabsEnabled,
+                ElasticTabsEnabled = elasticTabsEnabled,
+                CurrentLineHighlightMode = currentLineHighlightMode,
+                SyntaxHighlightingEnabled = syntaxHighlightingEnabled,
+                MinimapVisible = minimapMenuItem?.Checked ?? false,
+                TerminalVisible = _terminalVisible,
+                TerminalHeight = _terminalHeight,
+                TerminalShellPath = _terminalShell,
+                ExternalTools = _externalTools,
+                WorkspaceVisible = _workspaceVisible,
+                WorkspaceWidth = _workspaceWidth,
+                WorkspaceRoot = _workspaceRoot,
+                ShowWhitespace = whitespaceMenuItem?.Checked ?? true,
+                SymbolPanelVisible = _symbolPanelVisible,
+                ProblemsPanelVisible = _problemsPanelVisible,
+                RainbowBracketsEnabled = rainbowBracketsMenuItem?.Checked ?? false,
+                BreadcrumbsEnabled = breadcrumbMenuItem?.Checked ?? false,
+                AnalyzersEnabled = _analyzersEnabled,
+                AutoSaveEnabled = _autoSaveEnabled,
+                WindowBounds = $"{Left},{Top},{Width},{Height}",
+                WindowState = WindowState == FormWindowState.Maximized ? "Maximized" : "Normal",
+                ActiveConfiguration = _activeConfiguration,
+                MaxFileSizeMB = MaxFileSizeMB,
+                LargeFileWarningMB = LargeFileWarningMB,
+                AsyncFileWarningMB = AsyncFileWarningMB,
+                DisableSyntaxHighlightingForLargeFiles = DisableSyntaxHighlightingForLargeFiles,
+                DisableMinimapForLargeFiles = DisableMinimapForLargeFiles,
+                DisableWordWrapForLargeFiles = DisableWordWrapForLargeFiles,
+                SyntaxHighlightingThresholdBytes = SyntaxHighlightingThresholdBytes,
+                VimModeEnabled = vimModeEnabled,
+                StickyScrollEnabled = _stickyScrollEnabled,
+            };
             _settingsService.Save(settings);
         }
 
-        public void ApplySettings(
-            string fontName, float fontSize, int tabSize, bool insertSpaces,
-            bool wordWrap, bool showGuide, int guideColumn,
-            string themeName, bool gutterVisible, bool statusBarVisible,
-            bool minimapVisible, bool showWhitespace, string lineHighlightMode,
-            bool syntaxHighlighting, bool autoIndent, bool smartTabs, bool elasticTabs,
-            bool rainbowBrackets, bool breadcrumbs, bool autoSave,
-            bool workspaceVisible, bool symbolPanelVisible, bool problemsPanelVisible,
-            bool terminalVisible, int terminalHeight,
-            bool analyzersEnabled, string terminalShell,
-            bool vimMode = false, bool stickyScroll = true, bool hoverLineHighlight = false)
+        public void ApplySettings(AppSettings settings)
         {
             // Apply theme first (affects colors of everything)
-            if (!string.IsNullOrEmpty(themeName) && ThemeManager.Themes.TryGetValue(themeName, out var theme))
-            {
+            if (!string.IsNullOrEmpty(settings.ThemeName) && ThemeManager.Themes.TryGetValue(settings.ThemeName, out var theme))
                 UpdateThemeColors(theme);
-            }
 
             // Editor
-            this.tabSize = Math.Max(2, Math.Min(12, tabSize));
+            this.tabSize = Math.Max(2, Math.Min(12, settings.TabSize));
             tabSizeDropDown.Text = $"Tab: {this.tabSize}";
-            this.insertSpaces = insertSpaces;
-            wordWrapEnabled = wordWrap;
+            this.insertSpaces = settings.InsertSpaces;
+            wordWrapEnabled = settings.WordWrapEnabled;
             textEditor.WordWrap = wordWrapEnabled;
-            this.showGuide = showGuide;
-            this.guideColumn = guideColumn;
+            this.showGuide = settings.ShowGuide;
+            this.guideColumn = settings.GuideColumn;
 
             // Font
-            if (!string.IsNullOrEmpty(fontName) && fontSize >= 6 && fontSize <= 72)
+            if (!string.IsNullOrEmpty(settings.FontName) && settings.FontSize >= 6 && settings.FontSize <= 72)
             {
-                try
-                {
-                    var font = new Font(fontName, fontSize);
-                    textEditor.Font = font;
-                }
+                try { textEditor.Font = new Font(settings.FontName, settings.FontSize); }
                 catch { }
             }
 
             // Appearance
-            this.gutterVisible = gutterVisible;
+            this.gutterVisible = settings.GutterVisible;
             gutterPanel.Visible = this.gutterVisible;
-            this.statusBarVisible = statusBarVisible;
-            statusStrip.Visible = statusBarVisible;
-            if (minimapMenuItem != null) minimapMenuItem.Checked = minimapVisible;
+            this.statusBarVisible = settings.StatusBarVisible;
+            statusStrip.Visible = settings.StatusBarVisible;
+            if (minimapMenuItem != null) minimapMenuItem.Checked = settings.MinimapVisible;
             if (whitespaceMenuItem != null)
             {
-                whitespaceMenuItem.Checked = showWhitespace;
-                whitespaceOverlay.ShowGlyphs = showWhitespace;
+                whitespaceMenuItem.Checked = settings.ShowWhitespace;
+                whitespaceOverlay.ShowGlyphs = settings.ShowWhitespace;
             }
-            currentLineHighlightMode = lineHighlightMode switch
-            {
-                "NumberOnly" => CurrentLineHighlightMode.NumberOnly,
-                "WholeLine" => CurrentLineHighlightMode.WholeLine,
-                "NumberAndWholeLine" => CurrentLineHighlightMode.NumberAndWholeLine,
-                _ => CurrentLineHighlightMode.Off
-            };
+            currentLineHighlightMode = settings.CurrentLineHighlightMode;
 
-             // Features
-             syntaxHighlightingEnabled = syntaxHighlighting;
-             autoIndentEnabled = autoIndent;
-             smartTabsEnabled = smartTabs;
-             elasticTabsEnabled = elasticTabs;
-             _rainbowBracketsEnabled = rainbowBrackets;
-             if (rainbowBracketsMenuItem != null) rainbowBracketsMenuItem.Checked = rainbowBrackets;
-             _breadcrumbsEnabled = breadcrumbs;
-             if (breadcrumbMenuItem != null) breadcrumbMenuItem.Checked = breadcrumbs;
-             _autoSaveEnabled = autoSave;
-             if (autoSaveMenuItem != null) autoSaveMenuItem.Checked = autoSave;
-             if (autoSave) _autoSaveTimer.Start(); else _autoSaveTimer.Stop();
-             _hoverLineHighlightEnabled = hoverLineHighlight;
+            // Features
+            syntaxHighlightingEnabled = settings.SyntaxHighlightingEnabled;
+            autoIndentEnabled = settings.AutoIndentEnabled;
+            smartTabsEnabled = settings.SmartTabsEnabled;
+            elasticTabsEnabled = settings.ElasticTabsEnabled;
+            _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
+            if (rainbowBracketsMenuItem != null) rainbowBracketsMenuItem.Checked = settings.RainbowBracketsEnabled;
+            _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
+            if (breadcrumbMenuItem != null) breadcrumbMenuItem.Checked = settings.BreadcrumbsEnabled;
+            _autoSaveEnabled = settings.AutoSaveEnabled;
+            if (autoSaveMenuItem != null) autoSaveMenuItem.Checked = settings.AutoSaveEnabled;
+            if (settings.AutoSaveEnabled) _autoSaveTimer.Start(); else _autoSaveTimer.Stop();
+            _hoverLineHighlightEnabled = settings.HoverLineHighlightEnabled;
 
             // Panels
-            _workspaceVisible = workspaceVisible;
-            if (workspaceMenuItem != null) workspaceMenuItem.Checked = workspaceVisible;
-            _symbolPanelVisible = symbolPanelVisible;
-            if (symbolsMenuItem != null) symbolsMenuItem.Checked = symbolPanelVisible;
-            _problemsPanelVisible = problemsPanelVisible;
-            if (problemsMenuItem != null) problemsMenuItem.Checked = problemsPanelVisible;
-            _terminalVisible = terminalVisible;
-            if (terminalMenuItem != null) terminalMenuItem.Checked = terminalVisible;
-            _terminalHeight = Math.Max(60, Math.Min(600, terminalHeight));
-            _terminalShell = terminalShell ?? "";
+            _workspaceVisible = settings.WorkspaceVisible;
+            if (workspaceMenuItem != null) workspaceMenuItem.Checked = settings.WorkspaceVisible;
+            _symbolPanelVisible = settings.SymbolPanelVisible;
+            if (symbolsMenuItem != null) symbolsMenuItem.Checked = settings.SymbolPanelVisible;
+            _problemsPanelVisible = settings.ProblemsPanelVisible;
+            if (problemsMenuItem != null) problemsMenuItem.Checked = settings.ProblemsPanelVisible;
+            _terminalVisible = settings.TerminalVisible;
+            if (terminalMenuItem != null) terminalMenuItem.Checked = settings.TerminalVisible;
+            _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
+            _terminalShell = settings.TerminalShellPath ?? "";
 
             // Advanced
-            _analyzersEnabled = analyzersEnabled;
+            _analyzersEnabled = settings.AnalyzersEnabled;
 
             // Vim mode
-            vimModeEnabled = vimMode;
-            if (vimModeMenuItem != null) vimModeMenuItem.Checked = vimMode;
-            vimModeLabel.Visible = vimMode;
-            if (!vimMode) vimModeLabel.Text = "";
+            vimModeEnabled = settings.VimModeEnabled;
+            if (vimModeMenuItem != null) vimModeMenuItem.Checked = settings.VimModeEnabled;
+            vimModeLabel.Visible = settings.VimModeEnabled;
+            if (!settings.VimModeEnabled) vimModeLabel.Text = "";
 
             // Sticky scroll
-            _stickyScrollEnabled = stickyScroll;
-            if (stickyScrollMenuItem != null) stickyScrollMenuItem.Checked = stickyScroll;
-            stickyScrollPanel.Visible = stickyScroll;
+            _stickyScrollEnabled = settings.StickyScrollEnabled;
+            if (stickyScrollMenuItem != null) stickyScrollMenuItem.Checked = settings.StickyScrollEnabled;
+            stickyScrollPanel.Visible = settings.StickyScrollEnabled;
 
             // Sync menu item states
-            if (gutterMenuItem != null) gutterMenuItem.Checked = gutterVisible;
-            if (wordWrapMenuItem != null) wordWrapMenuItem.Checked = wordWrapEnabled;
-            if (autoIndentMenuItem != null) autoIndentMenuItem.Checked = autoIndentEnabled;
-            if (insertSpacesMenuItem != null) insertSpacesMenuItem.Checked = insertSpaces;
+            if (gutterMenuItem != null) gutterMenuItem.Checked = settings.GutterVisible;
+            if (wordWrapMenuItem != null) wordWrapMenuItem.Checked = settings.WordWrapEnabled;
+            if (autoIndentMenuItem != null) autoIndentMenuItem.Checked = settings.AutoIndentEnabled;
+            if (insertSpacesMenuItem != null) insertSpacesMenuItem.Checked = settings.InsertSpaces;
 
             // Refresh UI
             UpdateStatusBar();

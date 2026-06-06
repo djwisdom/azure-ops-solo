@@ -5,49 +5,50 @@ namespace MyCrownJewelApp.Pfpad;
 /// <summary>
 /// Persisted user preferences for Pfpad. Pure data — no WinForms dependency.
 /// </summary>
-public record AppSettings(
-    bool WordWrapEnabled,
-    bool GutterVisible,
-    bool StatusBarVisible,
-    bool ShowGuide,
-    int GuideColumn,
-    int TabSize,
-    string FontName,
-    float FontSize,
-    bool InsertSpaces,
-    bool AutoIndentEnabled,
-    bool SmartTabsEnabled,
-    bool ElasticTabsEnabled,
-    CurrentLineHighlightMode CurrentLineHighlightMode,
-    bool SyntaxHighlightingEnabled,
-    bool MinimapVisible,
-    bool TerminalVisible = false,
-    int TerminalHeight = 200,
-    string TerminalShellPath = "",
-    string ThemeName = "Dark",
-    List<ExternalTool>? ExternalTools = null,
-    bool WorkspaceVisible = false,
-    int WorkspaceWidth = 200,
-    string WorkspaceRoot = "",
-    bool ShowWhitespace = true,
-    bool SymbolPanelVisible = false,
-    bool ProblemsPanelVisible = false,
-    bool RainbowBracketsEnabled = false,
-    bool BreadcrumbsEnabled = false,
-    bool AnalyzersEnabled = true,
-    bool AutoSaveEnabled = false,
-    bool HoverLineHighlightEnabled = false,
-    List<string>? RecentWorkspaces = null,
-    string WindowBounds = "",
-    string WindowState = "",
-    string ActiveConfiguration = "Debug",
-    // File size limits (in MB)
-    int MaxFileSizeMB = 500,
-    int LargeFileWarningMB = 50,
-    int AsyncFileWarningMB = 20,
-    // Feature degradation settings
-    bool DisableSyntaxHighlightingForLargeFiles = true,
-    bool DisableMinimapForLargeFiles = true,
-    bool DisableWordWrapForLargeFiles = false,
-    long SyntaxHighlightingThresholdBytes = 200 * 1024 // 200 KB
-);
+public record AppSettings
+{
+    public bool WordWrapEnabled { get; init; } = false;
+    public bool GutterVisible { get; init; } = true;
+    public bool StatusBarVisible { get; init; } = true;
+    public bool ShowGuide { get; init; } = false;
+    public int GuideColumn { get; init; } = 80;
+    public int TabSize { get; init; } = 4;
+    public string FontName { get; init; } = "Consolas";
+    public float FontSize { get; init; } = 10f;
+    public bool InsertSpaces { get; init; } = true;
+    public bool AutoIndentEnabled { get; init; } = true;
+    public bool SmartTabsEnabled { get; init; } = true;
+    public bool ElasticTabsEnabled { get; init; } = true;
+    public CurrentLineHighlightMode CurrentLineHighlightMode { get; init; } = MyCrownJewelApp.Pfpad.CurrentLineHighlightMode.Off;
+    public bool SyntaxHighlightingEnabled { get; init; } = true;
+    public bool MinimapVisible { get; init; } = false;
+    public bool TerminalVisible { get; init; } = false;
+    public int TerminalHeight { get; init; } = 200;
+    public string TerminalShellPath { get; init; } = "";
+    public string ThemeName { get; init; } = "Dark";
+    public List<ExternalTool>? ExternalTools { get; init; } = null;
+    public bool WorkspaceVisible { get; init; } = false;
+    public int WorkspaceWidth { get; init; } = 200;
+    public string WorkspaceRoot { get; init; } = "";
+    public bool ShowWhitespace { get; init; } = true;
+    public bool SymbolPanelVisible { get; init; } = false;
+    public bool ProblemsPanelVisible { get; init; } = false;
+    public bool RainbowBracketsEnabled { get; init; } = false;
+    public bool BreadcrumbsEnabled { get; init; } = false;
+    public bool AnalyzersEnabled { get; init; } = true;
+    public bool AutoSaveEnabled { get; init; } = false;
+    public bool HoverLineHighlightEnabled { get; init; } = false;
+    public List<string>? RecentWorkspaces { get; init; } = null;
+    public string WindowBounds { get; init; } = "";
+    public string WindowState { get; init; } = "";
+    public string ActiveConfiguration { get; init; } = "Debug";
+    public int MaxFileSizeMB { get; init; } = 500;
+    public int LargeFileWarningMB { get; init; } = 50;
+    public int AsyncFileWarningMB { get; init; } = 20;
+    public bool DisableSyntaxHighlightingForLargeFiles { get; init; } = true;
+    public bool DisableMinimapForLargeFiles { get; init; } = true;
+    public bool DisableWordWrapForLargeFiles { get; init; } = false;
+    public long SyntaxHighlightingThresholdBytes { get; init; } = 200 * 1024;
+    public bool VimModeEnabled { get; init; } = false;
+    public bool StickyScrollEnabled { get; init; } = true;
+}
