@@ -1681,7 +1681,6 @@ using Microsoft.Extensions.DependencyInjection;
             try
             {
                 int charWidth;
-                // Use editor's native character positioning for accurate tab stop calculation
                 if (textEditor.TextLength > 0)
                 {
                     Point p0 = textEditor.GetPositionFromCharIndex(0);
@@ -1690,20 +1689,11 @@ using Microsoft.Extensions.DependencyInjection;
                 }
                 else
                 {
-                    // Editor empty — measure a single character using TextRenderer (GDI)
                     var size = TextRenderer.MeasureText("0", textEditor.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
                     charWidth = size.Width;
                 }
 
-                if (charWidth <= 0) charWidth = 8; // sensible fallback
-
-                int tabPixelWidth = Math.Max(1, charWidth * tabSize);
-                var stops = new List<int>();
-                for (int pos = tabPixelWidth; pos <= tabPixelWidth * 500; pos += tabPixelWidth)
-                {
-                    stops.Add(pos);
-                }
-                textEditor.SelectionTabs = stops.ToArray();
+                textEditor.SelectionTabs = ElasticTabService.BuildFixedTabStops(charWidth, tabSize);
             }
             catch { }
         }
@@ -1767,37 +1757,12 @@ using Microsoft.Extensions.DependencyInjection;
                     int lastIndex = Math.Min(firstVisible + visibleLineCount, lines.Length) - 1;
                     if (lastIndex < firstVisible) return;
 
-                    // Compute max cell width per column using captured font
-                    var maxWidths = new Dictionary<int, int>();
+                    // Delegate width measurement to the cache with the captured font
                     using var font = new Font(fontName!, fontSize, fontStyle);
-                    for (int lineIdx = firstVisible; lineIdx <= lastIndex; lineIdx++)
-                    {
-                        if (token.IsCancellationRequested) return;
-                        string line = lines[lineIdx];
-                        string[] cells = line.Split('\t');
-                        for (int col = 0; col < cells.Length - 1; col++)
-                        {
-                            string cell = cells[col];
-                            int w = TabMeasurementCache.GetStringWidth(cell, font);
-                            lock (maxWidths)
-                            {
-                                if (!maxWidths.ContainsKey(col) || w > maxWidths[col])
-                                    maxWidths[col] = w;
-                            }
-                        }
-                    }
-
-                    if (token.IsCancellationRequested) return;
-
-                    // Build tab stop positions (cumulative widths + padding)
-                    var stops = new List<int>();
-                    int cumulative = 0;
-                    for (int i = 0; ; i++)
-                    {
-                        if (!maxWidths.TryGetValue(i, out int w)) break;
-                        cumulative += w + 2; // 2px padding between columns
-                        stops.Add(cumulative);
-                    }
+                    int[] stops = ElasticTabService.ComputeTabStops(
+                        lines, firstVisible, lastIndex,
+                        s => TabMeasurementCache.GetStringWidth(s, font),
+                        token);
 
                     if (token.IsCancellationRequested) return;
 
@@ -1806,9 +1771,9 @@ using Microsoft.Extensions.DependencyInjection;
                     {
                         textEditor.BeginInvoke(new Action(() =>
                         {
-                            if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Count > 0)
+                            if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Length > 0)
                             {
-                                textEditor.SelectionTabs = stops.ToArray();
+                                textEditor.SelectionTabs = stops;
                             }
                         }));
                     }
@@ -8642,25 +8607,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
         #endregion
 
         // Tab measurement cache for elastic tab stops
-        private static class TabMeasurementCache
-        {
-            private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _cache
-                = new System.Collections.Concurrent.ConcurrentDictionary<string, int>(StringComparer.Ordinal);
-            
-            public static int GetStringWidth(string s, Font font)
-            {
-                if (string.IsNullOrEmpty(s)) return 0;
-                string key = $"{s}|{font.Name}|{font.Size}";
-                return _cache.GetOrAdd(key, _ =>
-                {
-                    using var bmp = new Bitmap(1, 1);
-                    using var g = Graphics.FromImage(bmp);
-                    var size = g.MeasureString(s, font, new PointF(0, 0), StringFormat.GenericTypographic);
-                    return (int)Math.Ceiling(size.Width);
-                });
-            }
-        }
-
         // Custom renderer for menu theming
         private class ThemeColorTable : ProfessionalColorTable
         {
