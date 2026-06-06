@@ -243,9 +243,7 @@ using Microsoft.Extensions.DependencyInjection;
         private System.Windows.Forms.Timer? _breadcrumbDebounce;
         private const int BreadcrumbDebounceMs = 100;
 
-        // Column guide state
-        internal int guideColumn = 80;
-        internal bool showGuide = false;
+        // Column guide state is authoritative in textEditor.GuideColumn / textEditor.ShowGuide
         private readonly Color guideColor = Color.FromArgb(60, 60, 60);
 
         // Ruler
@@ -391,8 +389,8 @@ using Microsoft.Extensions.DependencyInjection;
         public bool DisableWordWrapForLargeFiles { get; private set; } = false;
         public long SyntaxHighlightingThresholdBytes { get; private set; } = 50 * 1024;
         public bool CurrentWordWrap => wordWrapEnabled;
-        public bool CurrentShowGuide => showGuide;
-        public int CurrentGuideColumn => guideColumn;
+        public bool CurrentShowGuide => textEditor?.ShowGuide ?? false;
+        public int CurrentGuideColumn => textEditor?.GuideColumn ?? 80;
         public string CurrentThemeName => _themeManager.CurrentTheme.Name;
         public bool CurrentGutterVisible => gutterVisible;
         public bool CurrentStatusBarVisible => statusBarVisible;
@@ -646,7 +644,7 @@ using Microsoft.Extensions.DependencyInjection;
         wordWrapEnabled = false;
         syntaxHighlightingEnabled = false;
         gutterVisible = false;
-        showGuide = false;
+        textEditor.ShowGuide = false;
             
             _sessionManager.LoadRecentFiles();
             UpdateRecentMenu();
@@ -721,7 +719,7 @@ using Microsoft.Extensions.DependencyInjection;
 
             // Initialize toggles to match loaded/default settings
             gutterMenuItem.Checked = gutterVisible;
-            columnGuideMenuItem.Checked = showGuide;
+            columnGuideMenuItem.Checked = textEditor.ShowGuide;
             minimapMenuItem.Checked = _pendingMinimapVisible;
             syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
@@ -746,11 +744,6 @@ using Microsoft.Extensions.DependencyInjection;
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
             whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
-            if (showGuide)
-            {
-                textEditor!.ShowGuide = true;
-                textEditor!.GuideColumn = guideColumn;
-            }
             statusStrip.Visible = statusBarVisible;
             
             // Set initial column widths for visible state
@@ -1977,8 +1970,8 @@ using Microsoft.Extensions.DependencyInjection;
                 gutterVisible = settings.GutterVisible;
                 statusBarVisible = settings.StatusBarVisible;
                 if (statusBarMenuItem != null) statusBarMenuItem.Checked = statusBarVisible;
-                showGuide = settings.ShowGuide;
-                guideColumn = settings.GuideColumn;
+                textEditor.ShowGuide = settings.ShowGuide;
+                textEditor.GuideColumn = settings.GuideColumn;
                 tabSize = settings.TabSize;
                 _fontService.LoadFrom(settings);
                 insertSpaces = settings.InsertSpaces;
@@ -2079,8 +2072,8 @@ using Microsoft.Extensions.DependencyInjection;
                 WordWrapEnabled = wordWrapEnabled,
                 GutterVisible = gutterVisible,
                 StatusBarVisible = statusBarVisible,
-                ShowGuide = showGuide,
-                GuideColumn = guideColumn,
+                ShowGuide = textEditor.ShowGuide,
+                GuideColumn = textEditor.GuideColumn,
                 TabSize = tabSize,
                 FontName = _fontService.FontName,
                 FontSize = _fontService.FontSize,
@@ -2133,8 +2126,8 @@ using Microsoft.Extensions.DependencyInjection;
             this.insertSpaces = settings.InsertSpaces;
             wordWrapEnabled = settings.WordWrapEnabled;
             textEditor.WordWrap = wordWrapEnabled;
-            this.showGuide = settings.ShowGuide;
-            this.guideColumn = settings.GuideColumn;
+            textEditor.ShowGuide = settings.ShowGuide;
+            textEditor.GuideColumn = settings.GuideColumn;
 
             // Font
             _fontService.LoadFrom(settings);
@@ -3245,7 +3238,7 @@ internal void ToggleGutter()
                 MinimizeBox = false
             };
             Label label = new Label() { Text = "Column:", Location = new Point(10, 15), AutoSize = true };
-            TextBox textBox = new TextBox() { Location = new Point(60, 12), Width = 80, Text = guideColumn.ToString() };
+            TextBox textBox = new TextBox() { Location = new Point(60, 12), Width = 80, Text = textEditor.GuideColumn.ToString() };
             Button ok = new Button() { Text = "OK", Location = new Point(60, 50), DialogResult = DialogResult.OK };
             Button cancel = new Button() { Text = "Cancel", Location = new Point(150, 50), DialogResult = DialogResult.Cancel };
             dlg.Controls.AddRange(new Control[] { label, textBox, ok, cancel });
@@ -3262,19 +3255,16 @@ internal void ToggleGutter()
 
         internal void SetGuideColumn(int column)
         {
-            guideColumn = column;
-            showGuide = true;
-            columnGuideMenuItem.Checked = true;
-            textEditor.ShowGuide = true;
             textEditor.GuideColumn = column;
+            textEditor.ShowGuide = true;
+            columnGuideMenuItem.Checked = true;
             UpdateColumnGuideMenuChecked();
             SaveSettings();
         }
 
         private void ToggleColumnGuide(object? sender, EventArgs e)
         {
-            showGuide = columnGuideMenuItem.Checked;
-            textEditor.ShowGuide = showGuide;
+            textEditor.ShowGuide = columnGuideMenuItem.Checked;
             textEditor.Invalidate();
             SaveSettings();
         }
@@ -3285,12 +3275,13 @@ internal void ToggleGutter()
                 col120MenuItem == null || col150MenuItem == null || colCustomMenuItem == null)
                 return;
 
-            col72MenuItem.Checked = (guideColumn == 72);
-            col80MenuItem.Checked = (guideColumn == 80);
-             col100MenuItem.Checked = (guideColumn == 100);
-             col120MenuItem.Checked = (guideColumn == 120);
-             col150MenuItem.Checked = (guideColumn == 150);
-             colCustomMenuItem.Checked = !(guideColumn == 72 || guideColumn == 80 || guideColumn == 100 || guideColumn == 120 || guideColumn == 150);
+            int col = textEditor.GuideColumn;
+            col72MenuItem.Checked = (col == 72);
+            col80MenuItem.Checked = (col == 80);
+             col100MenuItem.Checked = (col == 100);
+             col120MenuItem.Checked = (col == 120);
+             col150MenuItem.Checked = (col == 150);
+             colCustomMenuItem.Checked = !(col == 72 || col == 80 || col == 100 || col == 120 || col == 150);
          }
 
         #endregion

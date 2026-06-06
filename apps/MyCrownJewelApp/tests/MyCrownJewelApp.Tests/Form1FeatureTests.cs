@@ -506,8 +506,6 @@ public class Form1FeatureTests : IDisposable
         RunInSta(form =>
         {
             form.SetGuideColumn(100);
-            Assert.Equal(100, form.guideColumn);
-            Assert.True(form.showGuide);
             Assert.True(form.textEditor.ShowGuide);
             Assert.Equal(100, form.textEditor.GuideColumn);
         });
