@@ -253,8 +253,7 @@ using Microsoft.Extensions.DependencyInjection;
 
         // Theme management
         private ThemeManager _themeManager = ThemeManager.Instance;
-        private string fontName = "Consolas";
-        private float fontSize = 12f;
+        private readonly FontService _fontService = new();
         
         // Colors - for syntax highlighting
         // Current file state
@@ -673,7 +672,7 @@ using Microsoft.Extensions.DependencyInjection;
             RebuildExternalToolsMenu();
             
             // Apply loaded font after settings are loaded
-            try { textEditor.Font = new Font(fontName, fontSize); } catch { }
+            _fontService.ApplyFont(textEditor);
             
             // Subscribe to handle creation BEFORE any operations that might cause handle creation
             textEditor.HandleCreated += (s, e) =>
@@ -2016,8 +2015,7 @@ using Microsoft.Extensions.DependencyInjection;
                 showGuide = settings.ShowGuide;
                 guideColumn = settings.GuideColumn;
                 tabSize = settings.TabSize;
-                fontName = settings.FontName;
-                fontSize = settings.FontSize;
+                _fontService.LoadFrom(settings);
                 insertSpaces = settings.InsertSpaces;
                 autoIndentEnabled = settings.AutoIndentEnabled;
                 smartTabsEnabled = settings.SmartTabsEnabled;
@@ -2119,8 +2117,8 @@ using Microsoft.Extensions.DependencyInjection;
                 ShowGuide = showGuide,
                 GuideColumn = guideColumn,
                 TabSize = tabSize,
-                FontName = fontName,
-                FontSize = fontSize,
+                FontName = _fontService.FontName,
+                FontSize = _fontService.FontSize,
                 InsertSpaces = insertSpaces,
                 AutoIndentEnabled = autoIndentEnabled,
                 SmartTabsEnabled = smartTabsEnabled,
@@ -2174,11 +2172,8 @@ using Microsoft.Extensions.DependencyInjection;
             this.guideColumn = settings.GuideColumn;
 
             // Font
-            if (!string.IsNullOrEmpty(settings.FontName) && settings.FontSize >= 6 && settings.FontSize <= 72)
-            {
-                try { textEditor.Font = new Font(settings.FontName, settings.FontSize); }
-                catch { }
-            }
+            _fontService.LoadFrom(settings);
+            _fontService.ApplyFont(textEditor);
 
             // Appearance
             this.gutterVisible = settings.GutterVisible;
@@ -2279,11 +2274,9 @@ using Microsoft.Extensions.DependencyInjection;
             }
             if (profile.OverrideFontSize.HasValue)
             {
-                float fs = Math.Max(6, Math.Min(72, profile.OverrideFontSize.Value));
-                if (Math.Abs(fs - fontSize) > 0.1f)
+                if (_fontService.SetFontSize(profile.OverrideFontSize.Value))
                 {
-                    fontSize = fs;
-                    try { textEditor.Font = new Font(fontName, fontSize); } catch { }
+                    _fontService.ApplyFont(textEditor);
                     changed = true;
                 }
             }
@@ -3742,9 +3735,8 @@ private void NewWindow_Click(object? sender, EventArgs e)
             fd.Font = textEditor.Font;
             if (fd.ShowDialog() == DialogResult.OK)
             {
-                textEditor.Font = fd.Font;
-                fontName = fd.Font.Name;
-                fontSize = fd.Font.Size;
+                _fontService.SetFont(fd.Font);
+                _fontService.ApplyFont(textEditor);
                 // Trigger gutter refresh to recalc line numbers
                 if (gutterPanel != null) gutterPanel.RefreshGutter();
                 SaveSettings();
