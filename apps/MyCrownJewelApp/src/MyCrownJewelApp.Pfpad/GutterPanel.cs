@@ -6,44 +6,103 @@ using System.Text;
 
 namespace MyCrownJewelApp.Pfpad;
 
+/// <summary>
+/// Gutter panel drawn to the left of the text editor.
+///
+/// Column layout (left → right):
+///   [GLYPH=14px] [LINE_NUM=snug] [BOOKMARK=14px?] [CHANGE=5px?] [COVERAGE=5px?] [FOLD=16px]
+///
+/// GLYPH column: breakpoint dot, active-debug arrow, or quick-action lightbulb.
+/// LINE_NUM  : right-aligned absolute or relative line numbers, width auto-sized to digits.
+/// FOLD      : always the rightmost column; click zone extends 8px left for usability.
+/// </summary>
 public class GutterPanel : Panel
 {
-
     private Form1 mainForm;
-    private int LineNumberMarginWidth = 60;
-    private const int BookmarkMarginWidth = 20;
-    private const int ChangeMarginWidth = 20;
-    private const int FoldMarginWidth = 18;
-    private const int FoldClickWidth = 28;
-    private const int QuickActionWidth = 18;
-    private const int CoverageMarginWidth = 8;
-    private const int BreakpointMarginWidth = 16;
 
-    private int totalMarginWidth;
+    // ── Column widths ────────────────────────────────────────────────────────
+    private const int GlyphColWidth    = 14;   // BP / debug / QA
+    private const int FoldColWidth     = 16;   // fold markers
+    private const int FoldClickExtra   =  8;   // extra click zone left of fold column
+    private const int BookmarkColWidth = 14;
+    private const int ChangeColWidth   =  5;
+    private const int CoverageColWidth =  5;
+
+    private int LineNumberColWidth = 36;        // recomputed in UpdateLineNumberWidth()
+
+    // ── State ────────────────────────────────────────────────────────────────
     private bool _showFoldMarkers;
-    private int _hoveredActionLine = -1;
+    private int  _hoveredGlyphLine = -1;        // 1-based line with hovered QA icon
 
     private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
-    private Dictionary<int, int>? _coverageHits; // line → hit count
-    private Dictionary<int, byte> _lineDiffs = new(); // 1=added, 2=modified
+    private Dictionary<int, int>?  _coverageHits;
+    private Dictionary<int, byte>  _lineDiffs = new();
 
-    // Dirty-region tracking (written by callers; read-suppressed since OnPaint always redraws)
-    private int _lastFirstLine = -1;
-    private int _lastVisibleCount = -1;
 #pragma warning disable CS0414
-    private bool _gutterDataDirty = true;
+    private bool _gutterDataDirty  = true;
     private bool _breakpointsDirty = false;
 #pragma warning restore CS0414
 
+    private ContextMenuStrip? _debugMenu;
+
+    // ── Public surface ───────────────────────────────────────────────────────
     public event Action<int>? BreakpointClicked;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int TopOffset { get; set; }
 
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowLineNumbers  { get; set; } = true;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool RelativeNumbers  { get; set; } = false;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public int  CurrentLine      { get; set; } = 1;
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowBookmarks    { get; set; } = false;
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowChangeHistory{ get; set; } = false;
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowCodeFolds    { get; set; } = true;
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowBreakpoints  { get; set; } = true;
+
+    // ── P/Invoke ─────────────────────────────────────────────────────────────
+    [DllImport("user32.dll")]
+    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+    private const int EM_GETLINECOUNT        = 0x00BA;
+    private const int EM_LINEINDEX           = 0x00BB;
+
+    // ── Constructor ──────────────────────────────────────────────────────────
+    public GutterPanel(Form1 form)
+    {
+        mainForm      = form;
+        Dock          = DockStyle.Fill;
+        Width         = GetTotalMarginWidth();
+        BackColor     = Color.FromArgb(45, 45, 45);
+        DoubleBuffered = true;
+        ResizeRedraw   = true;
+        MouseClick += GutterPanel_MouseClick;
+        MouseMove  += GutterPanel_MouseMove;
+        MouseLeave += GutterPanel_MouseLeave;
+    }
+
+    // ── Public helpers ───────────────────────────────────────────────────────
     public void SetQuickActions(List<(int line, string title, Func<string, string>? apply)> actions)
     {
-        _quickActions = actions;
-        _gutterDataDirty = true;
+        _quickActions      = actions;
+        _gutterDataDirty   = true;
         Invalidate();
     }
 
@@ -55,228 +114,65 @@ public class GutterPanel : Panel
 
     public void SetCoverage(Dictionary<int, int>? lineHits)
     {
-        _coverageHits = lineHits;
+        _coverageHits    = lineHits;
         _gutterDataDirty = true;
         Invalidate();
     }
 
     public void SetLineDiffs(Dictionary<int, byte> diffs)
     {
-        _lineDiffs = diffs ?? new Dictionary<int, byte>();
+        _lineDiffs       = diffs ?? new Dictionary<int, byte>();
         _gutterDataDirty = true;
         Invalidate();
     }
 
-    public void SetBreakpointsDirty()
-    {
-        _breakpointsDirty = true;
-    }
+    public void SetBreakpointsDirty() => _breakpointsDirty = true;
 
     public void InvalidateBreakpointArea()
+        => Invalidate(new Rectangle(0, 0, GlyphColWidth, Height));
+
+    public void RefreshGutter()
     {
-        int bpX = QuickActionWidth;
-        if (ShowLineNumbers) bpX += LineNumberMarginWidth;
-        if (ShowBookmarks) bpX += BookmarkMarginWidth;
-        Invalidate(new Rectangle(bpX, 0, BreakpointMarginWidth, Height));
+        _gutterDataDirty = true;
+        Invalidate();
     }
 
-    private void ShowDebugMenu(Point location, int lineIndex)
-    {
-        if (_debugMenu == null)
-        {
-            _debugMenu = new ContextMenuStrip();
-            _debugMenu.Items.Add("🔴 Toggle Breakpoint Here", null, (s, e) => BreakpointClicked?.Invoke(lineIndex));
-            _debugMenu.Items.Add("✅ Enable All Breakpoints", null, (s, e) => mainForm?.DebugBreakpointManager?.EnableAll());
-            _debugMenu.Items.Add("❌ Disable All Breakpoints", null, (s, e) => mainForm?.DebugBreakpointManager?.DisableAll());
-            _debugMenu.Items.Add("🗑️ Clear All Breakpoints", null, (s, e) => mainForm?.DebugBreakpointManager?.ClearAll());
-        }
-        _debugMenu.Show(this, location);
-    }
+    public int DesiredWidth => GetTotalMarginWidth();
 
-    [Category("Appearance")]
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowLineNumbers { get; set; } = true;
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool RelativeNumbers { get; set; } = false;
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public int CurrentLine { get; set; } = 1;
-
-    [Category("Appearance")]
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowBookmarks { get; set; } = false;
-
-    [Category("Appearance")]
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowChangeHistory { get; set; } = false;
-
-    [Category("Appearance")]
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowCodeFolds { get; set; } = true;
-
-    [Category("Appearance")]
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public bool ShowBreakpoints { get; set; } = true;
-
-    [DllImport("user32.dll")]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-    private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
-    private const int EM_GETLINECOUNT = 0x00BA;
-
-    public GutterPanel(Form1 form)
-    {
-        mainForm = form;
-        Dock = DockStyle.Fill;
-        Width = GetTotalMarginWidth();
-        BackColor = Color.FromArgb(45, 45, 45);
-        DoubleBuffered = true;
-        ResizeRedraw = true;
-        MouseClick += GutterPanel_MouseClick;
-        MouseMove += GutterPanel_MouseMove;
-        MouseLeave += GutterPanel_MouseLeave;
-    }
-
-    private ContextMenuStrip? _debugMenu;
-
-    private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
-    {
-        if (mainForm?.textEditor == null) return;
-        var editor = mainForm.textEditor;
-        // Subtract TopOffset so the click Y is in editor-client coordinates.
-        // GetLineY() draws at charPos.Y + TopOffset; passing raw e.Y to the
-        // editor maps to the wrong (lower) line when ruler/breadcrumbs add offset.
-        int adjustedY = Math.Max(0, e.Y - TopOffset);
-        Point pt = new Point(0, adjustedY);
-        int charIndex = editor.GetCharIndexFromPosition(pt);
-        int lineIndex = editor.GetLineFromCharIndex(charIndex);
-
-        if (e.Button == MouseButtons.Right)
-        {
-            ShowDebugMenu(e.Location, lineIndex);
-            return;
-        }
-
-        // Breakpoint click (right of line numbers)
-        int bpX = QuickActionWidth;
-        if (ShowLineNumbers) bpX += LineNumberMarginWidth;
-        if (ShowBookmarks) bpX += BookmarkMarginWidth;
-        int bpEnd = bpX + BreakpointMarginWidth;
-        if (e.X >= bpX && e.X < bpEnd)
-        {
-            BreakpointClicked?.Invoke(lineIndex);
-            return;
-        }
-
-        // Quick action click (left side)
-        if (e.X >= 0 && e.X < QuickActionWidth)
-        {
-            var actions = _quickActions.Where(a => a.line == lineIndex + 1).ToList();
-            if (actions.Count > 0)
-            {
-                var menu = new ContextMenuStrip();
-                foreach (var act in actions)
-                {
-                    menu.Items.Add(act.title, null, (s, args) =>
-                    {
-                        if (act.apply != null)
-                        {
-                            string text = editor.Text;
-                            string newText = act.apply(text);
-                            int selStart = editor.SelectionStart;
-                            editor.Text = newText;
-                            if (selStart <= editor.TextLength)
-                                editor.SelectionStart = selStart;
-                        }
-                    });
-                }
-                menu.Show(this, e.Location);
-                return;
-            }
-        }
-
-        // Fold click (right side)
-        if (mainForm?.FoldingManager == null) return;
-        int foldX = Width - FoldClickWidth;
-        if (e.X < foldX || e.X > Width) return;
-
-        var region = mainForm.FoldingManager.GetRegionAtLine(lineIndex);
-        if (region.HasValue)
-        {
-            mainForm.ToggleFold(lineIndex);
-            _showFoldMarkers = true;
-            _gutterDataDirty = true;
-            Invalidate();
-        }
-    }
-
-    private void GutterPanel_MouseMove(object? sender, MouseEventArgs e)
-    {
-        if (mainForm?.textEditor == null) return;
-
-        int foldX = Width - FoldClickWidth;
-        bool inFoldMargin = e.X >= foldX && e.X <= Width;
-
-        int newHoverLine = -1;
-        if (e.X < QuickActionWidth)
-        {
-            var editor = mainForm.textEditor;
-            int lineHeight = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
-            int firstVis = (int)SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-        int yOffset = Math.Max(0, e.Y - TopOffset);
-        int lineIndex = firstVis + (yOffset + lineHeight / 2) / lineHeight;
-            if (_quickActions.Any(a => a.line == lineIndex + 1))
-                newHoverLine = lineIndex + 1;
-        }
-
-        if (inFoldMargin != _showFoldMarkers || newHoverLine != _hoveredActionLine)
-        {
-            _showFoldMarkers = inFoldMargin;
-            _hoveredActionLine = newHoverLine;
-            _gutterDataDirty = true;
-            Invalidate();
-        }
-    }
-
-    private void GutterPanel_MouseLeave(object? sender, EventArgs e)
-    {
-        if (_showFoldMarkers || _hoveredActionLine >= 0)
-        {
-            _showFoldMarkers = false;
-            _hoveredActionLine = -1;
-            _gutterDataDirty = true;
-            Invalidate();
-        }
-    }
-
-    private int GetTotalLineCount()
-    {
-        var editor = mainForm?.textEditor;
-        if (editor == null || !editor.IsHandleCreated) return 1;
-        return Math.Max(1, (int)SendMessage(editor.Handle, EM_GETLINECOUNT, 0, 0));
-    }
-
+    // ── Width management ─────────────────────────────────────────────────────
     public void UpdateLineNumberWidth()
     {
-        int lineNumberWidth = ShowLineNumbers ? LineNumberMarginWidth : 0;
-        if (mainForm?.textEditor != null && ShowLineNumbers)
+        if (!ShowLineNumbers)
         {
-            var editor = mainForm.textEditor;
-            if (editor.IsHandleCreated)
-            {
-                int maxLineNumber = Math.Max(1, GetTotalLineCount());
-                int digitCount = maxLineNumber.ToString().Length;
-                float scaledSize = editor.Font.Size * editor.ZoomFactor;
-                using var measureFont = new Font(editor.Font.FontFamily, scaledSize);
-                string sample = new string('8', digitCount);
-                using var g = Graphics.FromImage(new Bitmap(1, 1));
-                int textWidth = (int)Math.Ceiling(g.MeasureString(sample, measureFont).Width);
-                lineNumberWidth = textWidth + 15;
-            }
+            Width = GetTotalMarginWidth();
+            _gutterDataDirty = true;
+            Invalidate();
+            return;
         }
-        if (lineNumberWidth < 60) lineNumberWidth = 60;
-        if (lineNumberWidth > 400) lineNumberWidth = 400;
 
-        lineNumberWidth += 8; // left edge padding
-        LineNumberMarginWidth = lineNumberWidth;
+        var editor = mainForm?.textEditor;
+        if (editor == null || !editor.IsHandleCreated)
+        {
+            LineNumberColWidth = 36;
+            Width = GetTotalMarginWidth();
+            return;
+        }
+
+        int maxLine  = Math.Max(1, GetTotalLineCount());
+        int digits   = Math.Max(2, maxLine.ToString().Length);
+        float scaledPt = editor.Font.Size * editor.ZoomFactor;
+
+        // Measure with bold font — current-line number is bold, worst-case width.
+        using var boldFont = new Font(editor.Font.FontFamily, scaledPt, FontStyle.Bold);
+        string sample = new string('9', digits);
+        int textWidth = TextRenderer.MeasureText(
+            sample, boldFont,
+            new Size(int.MaxValue, int.MaxValue),
+            TextFormatFlags.NoPadding).Width;
+
+        // 4px left pad + 6px right gap before the next column
+        LineNumberColWidth = textWidth + 10;
+
         Width = GetTotalMarginWidth();
         _gutterDataDirty = true;
         Invalidate();
@@ -284,62 +180,200 @@ public class GutterPanel : Panel
 
     private int GetTotalMarginWidth()
     {
-        totalMarginWidth = QuickActionWidth;
-        if (ShowLineNumbers) totalMarginWidth += LineNumberMarginWidth;
-        if (ShowBookmarks) totalMarginWidth += BookmarkMarginWidth;
-        if (ShowChangeHistory) totalMarginWidth += ChangeMarginWidth;
-        if (_coverageHits != null) totalMarginWidth += CoverageMarginWidth;
-        if (ShowBreakpoints) totalMarginWidth += BreakpointMarginWidth;
-        if (ShowCodeFolds) totalMarginWidth += FoldMarginWidth;
-        return totalMarginWidth;
+        int w = GlyphColWidth;
+        if (ShowLineNumbers)        w += LineNumberColWidth;
+        if (ShowBookmarks)          w += BookmarkColWidth;
+        if (ShowChangeHistory)      w += ChangeColWidth;
+        if (_coverageHits != null)  w += CoverageColWidth;
+        if (ShowCodeFolds)          w += FoldColWidth;
+        return w;
     }
 
-    public int DesiredWidth => GetTotalMarginWidth();
+    private int GetTotalLineCount()
+    {
+        var ed = mainForm?.textEditor;
+        if (ed == null || !ed.IsHandleCreated) return 1;
+        return Math.Max(1, SendMessage(ed.Handle, EM_GETLINECOUNT, 0, 0));
+    }
 
+    // ── Mouse events ─────────────────────────────────────────────────────────
+    private int LineIndexFromClick(MouseEventArgs e)
+    {
+        var editor = mainForm!.textEditor;
+        int adjustedY = Math.Max(0, e.Y - TopOffset);
+        int charIndex = editor.GetCharIndexFromPosition(new Point(0, adjustedY));
+        return editor.GetLineFromCharIndex(charIndex);
+    }
+
+    private void GutterPanel_MouseClick(object? sender, MouseEventArgs e)
+    {
+        if (mainForm?.textEditor == null) return;
+        int lineIndex = LineIndexFromClick(e);
+
+        if (e.Button == MouseButtons.Right)
+        {
+            ShowDebugMenu(e.Location, lineIndex);
+            return;
+        }
+
+        // ── Glyph column (BP / QA) ────────────────────────────────────────
+        if (e.X < GlyphColWidth)
+        {
+            int fileLine = lineIndex + 1;
+            var actions  = _quickActions.Where(a => a.line == fileLine).ToList();
+            if (actions.Count > 0)
+            {
+                // Quick-action lightbulb: show action menu
+                var menu = new ContextMenuStrip();
+                foreach (var act in actions)
+                {
+                    var capture = act;
+                    menu.Items.Add(capture.title, null, (s, args) =>
+                    {
+                        if (capture.apply != null)
+                        {
+                            var editor = mainForm.textEditor;
+                            string newText = capture.apply(editor.Text);
+                            int sel = editor.SelectionStart;
+                            editor.Text = newText;
+                            if (sel <= editor.TextLength) editor.SelectionStart = sel;
+                        }
+                    });
+                }
+                menu.Show(this, e.Location);
+            }
+            else
+            {
+                BreakpointClicked?.Invoke(lineIndex);
+            }
+            return;
+        }
+
+        // ── Fold column (rightmost) ────────────────────────────────────────
+        int foldHitX = Width - FoldColWidth - FoldClickExtra;
+        if (e.X >= foldHitX && mainForm?.FoldingManager != null)
+        {
+            var region = mainForm.FoldingManager.GetRegionAtLine(lineIndex);
+            if (region.HasValue)
+            {
+                mainForm.ToggleFold(lineIndex);
+                _showFoldMarkers = true;
+                _gutterDataDirty = true;
+                Invalidate();
+            }
+        }
+    }
+
+    private void GutterPanel_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (mainForm?.textEditor == null) return;
+        var editor = mainForm.textEditor;
+
+        bool inFoldMargin   = e.X >= Width - FoldColWidth - FoldClickExtra;
+        int  newHoverGlyph  = -1;
+
+        if (e.X < GlyphColWidth)
+        {
+            int adjustedY = Math.Max(0, e.Y - TopOffset);
+            int charIndex = editor.GetCharIndexFromPosition(new Point(0, adjustedY));
+            int lineIndex = editor.GetLineFromCharIndex(charIndex);
+            int fileLine  = lineIndex + 1;
+            if (_quickActions.Any(a => a.line == fileLine))
+                newHoverGlyph = fileLine;
+        }
+
+        if (inFoldMargin != _showFoldMarkers || newHoverGlyph != _hoveredGlyphLine)
+        {
+            _showFoldMarkers  = inFoldMargin;
+            _hoveredGlyphLine = newHoverGlyph;
+            _gutterDataDirty  = true;
+            Invalidate();
+        }
+    }
+
+    private void GutterPanel_MouseLeave(object? sender, EventArgs e)
+    {
+        if (_showFoldMarkers || _hoveredGlyphLine >= 0)
+        {
+            _showFoldMarkers  = false;
+            _hoveredGlyphLine = -1;
+            _gutterDataDirty  = true;
+            Invalidate();
+        }
+    }
+
+    private void ShowDebugMenu(Point location, int lineIndex)
+    {
+        // Rebuild each time so the captured lineIndex is always current.
+        _debugMenu?.Dispose();
+        _debugMenu = new ContextMenuStrip();
+        _debugMenu.Items.Add("🔴 Toggle Breakpoint Here",   null, (s, e2) => BreakpointClicked?.Invoke(lineIndex));
+        _debugMenu.Items.Add("✅ Enable All Breakpoints",   null, (s, e2) => mainForm?.DebugBreakpointManager?.EnableAll());
+        _debugMenu.Items.Add("❌ Disable All Breakpoints",  null, (s, e2) => mainForm?.DebugBreakpointManager?.DisableAll());
+        _debugMenu.Items.Add("🗑️ Clear All Breakpoints",  null, (s, e2) => mainForm?.DebugBreakpointManager?.ClearAll());
+
+        // Append quick actions if any
+        var actions = _quickActions.Where(a => a.line == lineIndex + 1).ToList();
+        if (actions.Count > 0)
+        {
+            _debugMenu.Items.Add(new ToolStripSeparator());
+            foreach (var act in actions)
+            {
+                var capture = act;
+                _debugMenu.Items.Add("💡 " + capture.title, null, (s, e2) =>
+                {
+                    if (capture.apply != null)
+                    {
+                        var editor = mainForm.textEditor;
+                        string newText = capture.apply(editor.Text);
+                        int sel = editor.SelectionStart;
+                        editor.Text = newText;
+                        if (sel <= editor.TextLength) editor.SelectionStart = sel;
+                    }
+                });
+            }
+        }
+
+        _debugMenu.Show(this, location);
+    }
+
+    // ── Paint ────────────────────────────────────────────────────────────────
     protected override void OnPaintBackground(PaintEventArgs e)
     {
-        // Suppress: DrawGutter calls g.Clear(BackColor) at the top of every paint,
-        // so a separate background erase here would produce a blank intermediate
-        // frame whenever WM_ERASEBKGND fires before WM_PAINT (= the flicker source).
+        // Suppressed: DrawGutter calls g.Clear() at the top of every frame.
+        // A separate background erase produces a blank intermediate frame (flicker).
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        // Never return early.  The previous code returned without painting when
-        // the visible range hadn't changed, but OnPaintBackground had already
-        // cleared the buffer → the control went blank for one frame (flicker).
-        // Always draw; DrawGutter is cheap (narrow panel, double-buffered).
         GetVisibleLineRange(out int firstLine, out int visibleCount);
-        _lastFirstLine = firstLine;
+        _lastFirstLine   = firstLine;
         _lastVisibleCount = visibleCount;
-        _gutterDataDirty = false;
+        _gutterDataDirty  = false;
         _breakpointsDirty = false;
         base.OnPaint(e);
         DrawGutter(e.Graphics);
     }
+    private int _lastFirstLine   = -1;
+    private int _lastVisibleCount = -1;
 
     private void DrawGutter(Graphics g)
     {
         if (mainForm?.textEditor == null) return;
-
-        RichTextBox editor = mainForm.textEditor;
+        var editor = mainForm.textEditor;
         if (editor.IsDisposed || !editor.Visible) return;
 
         GetVisibleLineRange(out int firstVisibleLine, out int visibleLines);
-
         g.Clear(BackColor);
 
-        int lineHeight = (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor);
-        if (lineHeight <= 0) lineHeight = 1;
-
+        int lineH      = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
         int totalLines = GetTotalLineCount();
 
-        // ── Pass 1: 1px vertical fold-scope guide lines (drawn first so per-line
-        //            markers render on top and the box covers the line at intersections).
+        // Pass 1: fold scope guide lines (drawn under per-line markers)
         if (ShowCodeFolds)
-            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineHeight);
+            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineH);
 
-        // ── Pass 2: per-line gutter elements ──────────────────────────────────────
+        // Pass 2: per-line elements
         for (int i = 0; i < visibleLines; i++)
         {
             int lineIndex = firstVisibleLine + i;
@@ -347,235 +381,219 @@ public class GutterPanel : Panel
 
             int lineY = GetLineY(editor, lineIndex);
             if (lineY < 0) continue;
+            if (lineY + lineH <= TopOffset)                           continue;
+            if (lineY > editor.ClientSize.Height + TopOffset + 2)     break;
 
-            if (lineY + lineHeight <= TopOffset) continue;
-            if (lineY > editor.ClientSize.Height + TopOffset + 2) break;
+            int colX = 0;
 
-            int currentX = 0;
+            // Glyph column: BP / debug active / QA
+            DrawGlyphColumn(g, lineIndex, colX, lineY, lineH);
+            colX += GlyphColWidth;
 
-            // Quick action lightbulb
-            DrawQuickAction(g, lineIndex + 1, currentX, lineY);
-            currentX += QuickActionWidth;
-
-            // Draw line numbers first
+            // Line numbers
             if (ShowLineNumbers)
             {
-                int lineNumberX = QuickActionWidth;
-                DrawLineNumber(g, lineIndex + 1, lineNumberX, lineY);
-                currentX += LineNumberMarginWidth;
+                DrawLineNumber(g, lineIndex + 1, colX, lineY);
+                colX += LineNumberColWidth;
             }
 
+            // Bookmarks
             if (ShowBookmarks)
             {
-                DrawBookmark(g, lineIndex, currentX, lineY);
-                currentX += BookmarkMarginWidth;
+                DrawBookmark(g, lineIndex, colX, lineY, lineH);
+                colX += BookmarkColWidth;
             }
 
-            if (ShowBreakpoints)
-            {
-                DrawBreakpoint(g, lineIndex, currentX, lineY);
-                currentX += BreakpointMarginWidth;
-            }
-
+            // Change history
             if (ShowChangeHistory)
             {
-                DrawChangeIndicator(g, lineIndex, currentX, lineY);
-                currentX += ChangeMarginWidth;
+                DrawChangeIndicator(g, lineIndex, colX, lineY, lineH);
+                colX += ChangeColWidth;
             }
 
+            // Coverage
             if (_coverageHits != null)
             {
-                DrawCoverageIndicator(g, lineIndex + 1, currentX, lineY);
-                currentX += CoverageMarginWidth;
+                DrawCoverageIndicator(g, lineIndex + 1, colX, lineY, lineH);
+                colX += CoverageColWidth;
             }
 
+            // Fold markers — always at rightmost position
             if (ShowCodeFolds)
-            {
-                DrawFoldMarker(g, lineIndex, currentX, lineY);
-            }
+                DrawFoldMarker(g, lineIndex, Width - FoldColWidth, lineY, lineH);
         }
     }
 
+    // ── Visible range ────────────────────────────────────────────────────────
     private void GetVisibleLineRange(out int firstLine, out int lineCount)
     {
-        RichTextBox editor = mainForm.textEditor;
-        firstLine = 0;
-        lineCount = 0;
-
+        var editor = mainForm.textEditor;
+        firstLine  = 0;
+        lineCount  = 0;
         if (editor.IsDisposed || !editor.Visible) return;
 
         int nativeFirst = SendMessage(editor.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
         if (nativeFirst < 0) nativeFirst = 0;
-
-        int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
-
         firstLine = nativeFirst;
 
-        int clientHeight = editor.ClientSize.Height;
-        lineCount = (int)Math.Ceiling((clientHeight - TopOffset) / (double)lineHeight) + 3;
+        int lineH      = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
+        int clientH    = editor.ClientSize.Height;
+        lineCount = (int)Math.Ceiling((clientH - TopOffset) / (double)lineH) + 3;
         if (lineCount < 1) lineCount = 1;
     }
 
     private int GetLineY(RichTextBox editor, int lineIndex)
     {
-        int totalLines = Math.Max(1, GetTotalLineCount());
-        if (lineIndex >= totalLines) return -1;
-
-        int lineHeight = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
-
+        if (lineIndex >= Math.Max(1, GetTotalLineCount())) return -1;
+        int lineH = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
         try
         {
-            int charIndex = (int)SendMessage(editor.Handle, 0x00BB, lineIndex, 0);
+            int charIndex = SendMessage(editor.Handle, EM_LINEINDEX, lineIndex, 0);
             if (charIndex >= 0)
             {
-                Point charPos = editor.GetPositionFromCharIndex(charIndex);
-                return charPos.Y + TopOffset;
+                Point pos = editor.GetPositionFromCharIndex(charIndex);
+                return pos.Y + TopOffset;
             }
         }
         catch { }
-
-        return lineIndex * lineHeight;
+        return lineIndex * lineH;
     }
 
-    private void DrawVerticalLine(Graphics g, int x, Color color)
+    // ── Per-column drawers ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Glyph column: draws whichever indicator has highest priority for this line.
+    /// Priority: active-debug > breakpoint > quick-action lightbulb.
+    /// </summary>
+    private void DrawGlyphColumn(Graphics g, int lineIndex, int x, int y, int lineH)
     {
-        using var pen = new Pen(color);
-        g.DrawLine(pen, x, 0, x, Height);
-    }
-
-    private void DrawLineNumber(Graphics g, int lineNumber, int x, int y)
-    {
-        RichTextBox editor = mainForm.textEditor;
-        int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
-        bool isCurrent = lineNumber == currentLineNum;
-        string text;
-        if (RelativeNumbers && !isCurrent)
-        {
-            text = Math.Abs(lineNumber - currentLineNum).ToString();
-        }
-        else
-        {
-            text = lineNumber.ToString();
-        }
-
-        bool isCurrentLine = false;
-        if (mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly || mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberAndWholeLine)
-        {
-            isCurrentLine = (lineNumber == currentLineNum);
-        }
-
-        FontStyle style = editor.Font.Style;
-        Color color = mainForm.IsDarkTheme ? Color.LightGray : Color.DarkGray;
-        if (isCurrentLine)
-        {
-            style |= FontStyle.Bold;
-            color = mainForm.IsDarkTheme ? Color.Yellow : Color.Black;
-        }
-
-        using var font = new Font(editor.Font.FontFamily, editor.Font.Size * editor.ZoomFactor, style);
-        Size textSize = TextRenderer.MeasureText(text, font);
-        int textX = x + LineNumberMarginWidth - textSize.Width - 4;
-        int textY = y;
-
-        TextRenderer.DrawText(g, text, font, new Point(textX, textY), color);
-    }
-
-    private void DrawBookmark(Graphics g, int lineIndex, int x, int y)
-    {
-        if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
-
-        bool hasBookmark = mainForm.Bookmarks.Contains(lineIndex);
-        int centerX = x + BookmarkMarginWidth / 2;
-        int centerY = y + 10;
-        int radius = 5;
-
-        if (hasBookmark)
-        {
-            using var brush = new SolidBrush(Color.Orange);
-            g.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-        }
-    }
-
-    private void DrawBreakpoint(Graphics g, int lineIndex, int x, int y)
-    {
-        if (mainForm?.DebugBreakpointManager == null) return;
         int fileLine = lineIndex + 1;
-        string? filePath = mainForm.CurrentFilePath;
-        if (filePath == null) return;
+        int cx = x + GlyphColWidth / 2;
+        int cy = y + lineH / 2;
+        int r  = Math.Max(4, Math.Min(6, lineH / 3));
 
-        bool hasBp = mainForm.DebugBreakpointManager.HasBreakpoint(filePath, fileLine);
         bool isActive = mainForm.DebugActiveLine == fileLine;
-        if (!hasBp && !isActive) return;
-
-        int cx = x + BreakpointMarginWidth / 2;
-        int cy = y + 8;
-        int r = 6;
+        bool hasBp    = ShowBreakpoints
+                     && mainForm.DebugBreakpointManager != null
+                     && mainForm.CurrentFilePath != null
+                     && mainForm.DebugBreakpointManager.HasBreakpoint(mainForm.CurrentFilePath, fileLine);
 
         if (isActive)
         {
-            using var brush = new SolidBrush(Color.Gold);
-            g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
-            using var innerBrush = new SolidBrush(Color.FromArgb(220, 180, 0));
-            g.FillEllipse(innerBrush, cx - r / 2, cy - r / 2, r, r);
+            using var outer = new SolidBrush(Color.Gold);
+            g.FillEllipse(outer, cx - r, cy - r, r * 2, r * 2);
+            using var inner = new SolidBrush(Color.FromArgb(220, 180, 0));
+            g.FillEllipse(inner, cx - r / 2, cy - r / 2, r, r);
         }
         else if (hasBp)
         {
             using var brush = new SolidBrush(Color.FromArgb(220, 40, 40));
             g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
         }
+        else if (_quickActions.Any(a => a.line == fileLine))
+        {
+            bool hovered = _hoveredGlyphLine == fileLine;
+            Color qc = hovered ? Color.Gold : Color.FromArgb(180, 180, 100);
+            using var outer = new SolidBrush(qc);
+            g.FillEllipse(outer, cx - r, cy - r, r * 2, r * 2);
+            using var dot = new SolidBrush(BackColor);
+            g.FillEllipse(dot, cx - 2, cy - 2, 4, 4);
+        }
     }
 
-    private void DrawChangeIndicator(Graphics g, int lineIndex, int x, int y)
+    private void DrawLineNumber(Graphics g, int lineNumber, int x, int y)
+    {
+        var editor = mainForm.textEditor;
+        int currentLineNum = editor.GetLineFromCharIndex(editor.SelectionStart) + 1;
+        bool isCurrent = lineNumber == currentLineNum;
+
+        string text = (RelativeNumbers && !isCurrent)
+            ? Math.Abs(lineNumber - currentLineNum).ToString()
+            : lineNumber.ToString();
+
+        bool highlightCurrent =
+            mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberOnly ||
+            mainForm.LineHighlightMode == CurrentLineHighlightMode.NumberAndWholeLine;
+
+        FontStyle style = editor.Font.Style;
+        Color     color = mainForm.IsDarkTheme ? Color.LightGray : Color.DarkGray;
+
+        if (highlightCurrent && isCurrent)
+        {
+            style |= FontStyle.Bold;
+            color  = mainForm.IsDarkTheme ? Color.Yellow : Color.Black;
+        }
+
+        float scaledPt = editor.Font.Size * editor.ZoomFactor;
+        using var font = new Font(editor.Font.FontFamily, scaledPt, style);
+
+        var sz = TextRenderer.MeasureText(g, text, font,
+            new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
+
+        // Right-align within the line-number zone; 4px right gap toward the next column
+        int textX = x + LineNumberColWidth - sz.Width - 4;
+        TextRenderer.DrawText(g, text, font, new Point(textX, y), color, TextFormatFlags.NoPadding);
+    }
+
+    private void DrawBookmark(Graphics g, int lineIndex, int x, int y, int lineH)
+    {
+        if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
+        if (!mainForm.Bookmarks.Contains(lineIndex)) return;
+
+        int cx = x + BookmarkColWidth / 2;
+        int cy = y + lineH / 2;
+        int r  = 4;
+        using var brush = new SolidBrush(Color.Orange);
+        g.FillEllipse(brush, cx - r, cy - r, r * 2, r * 2);
+    }
+
+    private void DrawChangeIndicator(Graphics g, int lineIndex, int x, int y, int lineH)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
 
-        bool modified = mainForm.ModifiedLines.Contains(lineIndex);
+        Color? barColor = null;
         if (_lineDiffs.TryGetValue(lineIndex + 1, out byte diffType))
         {
-            int barWidth = 4;
-            int barX = x + (ChangeMarginWidth - barWidth) / 2;
-            int lineH = Math.Max(1, (int)Math.Ceiling(mainForm.textEditor.Font.GetHeight() * mainForm.textEditor.ZoomFactor));
-            Color c = diffType switch
-            {
-                1 => Color.FromArgb(80, 200, 80),
-                _ => Color.FromArgb(220, 180, 60),
-            };
-            using var brush = new SolidBrush(c);
-            g.FillRectangle(brush, barX, y + 2, barWidth, lineH - 4);
+            barColor = diffType == 1
+                ? Color.FromArgb(80, 200, 80)
+                : Color.FromArgb(220, 180, 60);
         }
-        else if (modified)
+        else if (mainForm.ModifiedLines.Contains(lineIndex))
         {
-            int barWidth = 4;
-            int barX = x + (ChangeMarginWidth - barWidth) / 2;
-            using var brush = new SolidBrush(Color.Orange);
-            g.FillRectangle(brush, barX, y + 2, barWidth, 10);
+            barColor = Color.Orange;
         }
+
+        if (barColor == null) return;
+
+        // 3px bar, full line height
+        int barH = Math.Max(4, lineH - 4);
+        using var brush = new SolidBrush(barColor.Value);
+        g.FillRectangle(brush, x + 1, y + 2, 3, barH);
     }
 
-    private void DrawCoverageIndicator(Graphics g, int lineNumber, int x, int y)
+    private void DrawCoverageIndicator(Graphics g, int lineNumber, int x, int y, int lineH)
     {
-        if (_coverageHits == null) return;
-        if (!_coverageHits.TryGetValue(lineNumber, out int hits)) return;
-
-        int barWidth = CoverageMarginWidth - 2;
-        int barX = x + 1;
+        if (_coverageHits == null || !_coverageHits.TryGetValue(lineNumber, out int hits)) return;
         Color c = hits > 0 ? Color.FromArgb(80, 200, 80) : Color.FromArgb(220, 60, 60);
         using var brush = new SolidBrush(c);
-        g.FillRectangle(brush, barX, y + 2, barWidth, 10);
+        g.FillRectangle(brush, x, y + 2, CoverageColWidth - 1, Math.Max(4, lineH - 4));
     }
 
+    // ── Fold drawing ─────────────────────────────────────────────────────────
+
     /// <summary>
-    /// Pass 1 — draws 1px vertical guide lines for all fold regions visible on screen.
-    /// Drawn before per-line elements so the box markers (Pass 2) paint on top.
+    /// Pass 1 — 1px vertical guide lines for all open fold regions visible on screen.
+    /// Drawn before per-line markers so the box (+/−) covers the line at intersections.
     /// </summary>
     private void DrawFoldScopeLines(Graphics g, RichTextBox editor,
                                     int firstLine, int lastLine, int lineH)
     {
         if (mainForm?.FoldingManager == null) return;
 
-        int foldLineX = Width - FoldMarginWidth + FoldMarginWidth / 2; // centre of fold margin
-        int areaTop   = TopOffset;
-        int areaBot   = editor.ClientSize.Height + TopOffset;
+        // Guide line runs down the centre of the fold column
+        int lineX   = Width - FoldColWidth + FoldColWidth / 2;
+        int areaTop = TopOffset;
+        int areaBot = editor.ClientSize.Height + TopOffset;
 
         Color lineCol = mainForm.IsDarkTheme
             ? Color.FromArgb(80, 160, 160, 160)
@@ -585,107 +603,60 @@ public class GutterPanel : Panel
 
         foreach (var region in mainForm.FoldingManager.GetAllRegions())
         {
-            if (region.IsCollapsed) continue;
-            if (region.CloseLine <= region.OpenLine + 1) continue; // no content to mark
-            if (region.OpenLine  > lastLine)  continue; // below visible
-            if (region.CloseLine < firstLine) continue; // above visible
+            if (region.IsCollapsed)             continue;
+            if (region.CloseLine <= region.OpenLine + 1) continue;
+            if (region.OpenLine  > lastLine)    continue;
+            if (region.CloseLine < firstLine)   continue;
 
-            // Y start: bottom of open-brace line (clamp to area top if off-screen above)
-            int yStart;
-            if (region.OpenLine >= firstLine)
-            {
-                int oy = GetLineY(editor, region.OpenLine);
-                yStart = oy >= 0 ? oy + lineH : areaTop;
-            }
-            else
-            {
-                yStart = areaTop;
-            }
+            int yStart = region.OpenLine >= firstLine
+                ? (GetLineY(editor, region.OpenLine) is int oy && oy >= 0 ? oy + lineH : areaTop)
+                : areaTop;
 
-            // Y end: top of close-brace line (clamp to area bottom if off-screen below)
-            int yEnd;
-            if (region.CloseLine <= lastLine)
-            {
-                int cy = GetLineY(editor, region.CloseLine);
-                yEnd = cy >= 0 ? cy : areaBot;
-            }
-            else
-            {
-                yEnd = areaBot;
-            }
+            int yEnd = region.CloseLine <= lastLine
+                ? (GetLineY(editor, region.CloseLine) is int cy && cy >= 0 ? cy : areaBot)
+                : areaBot;
 
             yStart = Math.Max(areaTop, yStart);
             yEnd   = Math.Min(areaBot, yEnd);
             if (yEnd <= yStart + 1) continue;
 
-            g.DrawLine(pen, foldLineX, yStart, foldLineX, yEnd);
+            g.DrawLine(pen, lineX, yStart, lineX, yEnd);
         }
     }
 
-    private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y)
+    private void DrawFoldMarker(Graphics g, int lineIndex, int x, int y, int lineH)
     {
         if (lineIndex < 0 || lineIndex >= GetTotalLineCount()) return;
         if (mainForm?.FoldingManager == null) return;
         if (!mainForm.FoldingManager.IsFoldStart(lineIndex)) return;
 
-        bool folded = mainForm.FoldingManager.IsCollapsed(lineIndex);
-        RichTextBox editor = mainForm.textEditor;
-        int lineH = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
+        bool folded  = mainForm.FoldingManager.IsCollapsed(lineIndex);
+        int  boxSize = Math.Max(8, Math.Min(12, lineH - 4));
+        int  bx      = x + (FoldColWidth - boxSize) / 2;
+        int  by      = y + (lineH - boxSize) / 2;
 
-        // Box: 8–12 px, vertically centred in the line height
-        int boxSize = Math.Max(8, Math.Min(12, lineH - 4));
-        int bx = x + (FoldMarginWidth - boxSize) / 2;
-        int by = y + (lineH - boxSize) / 2;
-
-        // Visibility: fully opaque when hovering fold margin, subtle otherwise
-        int alpha = _showFoldMarkers ? 220 : 150;
+        int alpha  = _showFoldMarkers ? 220 : 140;
         Color border = mainForm.IsDarkTheme
             ? Color.FromArgb(alpha, 160, 160, 160)
-            : Color.FromArgb(alpha, 80, 80, 80);
+            : Color.FromArgb(alpha, 80,  80,  80);
 
-        // Fill box with gutter background so it covers the scope guide line
+        // Fill the box to mask the scope guide line underneath
         using (var fill = new SolidBrush(BackColor))
             g.FillRectangle(fill, bx, by, boxSize, boxSize);
 
-        // 1px border rectangle
-        using (var bp = new Pen(border, 1f))
-            g.DrawRectangle(bp, bx, by, boxSize - 1, boxSize - 1);
+        // 1px border
+        using (var pen = new Pen(border, 1f))
+            g.DrawRectangle(pen, bx, by, boxSize - 1, boxSize - 1);
 
-        // +/− symbol: 1px lines inside the box
-        int cx  = bx + boxSize / 2;
-        int cy  = by + boxSize / 2;
-        int arm = boxSize / 2 - 2;
-        using (var sp = new Pen(border, 1f))
+        // +/− symbol
+        int midX = bx + boxSize / 2;
+        int midY = by + boxSize / 2;
+        int arm  = boxSize / 2 - 2;
+        using (var pen = new Pen(border, 1f))
         {
-            g.DrawLine(sp, cx - arm, cy, cx + arm, cy);       // horizontal (always)
+            g.DrawLine(pen, midX - arm, midY, midX + arm, midY);    // horizontal (both states)
             if (folded)
-                g.DrawLine(sp, cx, cy - arm, cx, cy + arm);   // vertical (+) when collapsed
+                g.DrawLine(pen, midX, midY - arm, midX, midY + arm); // vertical (+) when collapsed
         }
     }
-
-    private void DrawQuickAction(Graphics g, int lineNumber, int x, int y)
-    {
-        var actions = _quickActions.Where(a => a.line == lineNumber).ToList();
-        if (actions.Count == 0) return;
-
-        int centerX = x + QuickActionWidth / 2;
-        int centerY = y + 8;
-        int radius = 5;
-
-        Color c = (_hoveredActionLine == lineNumber)
-            ? Color.Gold
-            : Color.FromArgb(180, 180, 100);
-
-        using var brush = new SolidBrush(c);
-        g.FillEllipse(brush, centerX - radius, centerY - radius, radius * 2, radius * 2);
-
-        using var insideBrush = new SolidBrush(Color.FromArgb(45, 45, 45));
-        g.FillEllipse(insideBrush, centerX - 2, centerY - 2, 4, 4);
-    }
-
-    public void RefreshGutter()
-    {
-        _gutterDataDirty = true;
-        Invalidate();
-    }
-}
+}
