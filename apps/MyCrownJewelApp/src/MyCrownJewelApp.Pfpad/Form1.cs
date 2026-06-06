@@ -731,7 +731,7 @@ using Microsoft.Extensions.DependencyInjection;
             rainbowBracketsMenuItem.Checked = _rainbowBracketsEnabled;
             breadcrumbMenuItem.Checked = _breadcrumbsEnabled;
             breadcrumbPanel.Visible = _breadcrumbsEnabled;
-            gutterPanel.TopOffset = _breadcrumbsEnabled ? breadcrumbPanel.Height : 0;
+            gutterPanel.TopOffset = (_breadcrumbsEnabled ? breadcrumbPanel.Height : 0) + (_rulerEnabled ? rulerPanel.Height : 0);
 
             // Initialize incremental syntax highlighter if enabled
             if (syntaxHighlightingEnabled)
