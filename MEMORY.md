@@ -1,10 +1,37 @@
 # Project Memory — Azure Ops Solo
 
 ## Current State
-- **Last session:** 2026-06-06
-- **Last commit:** `0d8bdd8` — add session restore, CLI workspace folder, and clone repository dialog
-- **Branch:** master (~205 commits), up to date with origin/master
-- **Active work:** .NET 9 migration complete (net9.0-windows, v1.0.34.0). DI/Logging packages added (Microsoft.Extensions.* 9.*). WFO1000 suppressed pending attribute fixes. Cleanup: patch_form.py x3, temp files, MSIX flag all removed.
+- **Last session:** 2026-06-09 (Phase 12)
+- **Last commit:** `07be6f2` — Phase 12: Fix auto-save timer bug + deduplicate ComputeContentHash
+- **Branch:** master (12 refactoring commits on top of original ~205), up to date
+- **Active work:** 12-phase .NET 9 migration + God Class refactoring. 226 tests passing.
+
+## Refactoring Progress (Phases 0–12)
+| Phase | Commit | Description | Tests |
+|---|---|---|---|
+| 0+1 | `2081cf4` | .NET 9 migration, cleanup | 125 |
+| 2 | `35d0f94` | DI container + structured logging | 125 |
+| 3 | `e3b753e` | EditorDocument + DocumentManager | 145 |
+| 4 | `82c8bf3` | AppSettings + SettingsService | 158 |
+| 5 | `e64030c` | WFO1000 attribute fixes | 158 |
+| 6 | `c70ff7c` | Warning cleanup + ThemeManager dedup | 168 |
+| 7 | `f7c078b` | RecentWorkspaces → SessionManager | 178 |
+| 8 | `040b4aa` | RecentFiles → SessionManager | 188 |
+| 9 | `52ec48d` | Alias field removal (bookmarks/modifiedLines/collapsedRegions) | 188 |
+| 10 | `525807f` | WorkspaceHelper + ProjectLocator extractions | 208 |
+| 11 | `c5e40f2` | AppSettings init-property + ApplySettings refactor | 220 |
+| 12 | `07be6f2` | Fix auto-save timer bug + ComputeContentHash dedup | 226 |
+
+## Services Extracted from Form1
+- `EditorDocument` — per-tab POCO (FilePath, Content, Bookmarks, IsDirty, SavedHash, Syntax …)
+- `DocumentManager` — owns `List<EditorDocument>`, active index, lifecycle
+- `AppSettings` — 44-property init-record (formerly 30-param positional record)
+- `SettingsService` — atomic JSON I/O, path-injectable, Load returns `AppSettings?`
+- `WorkspaceHelper` — `DetectLanguage`, `SearchDirectory`, `ComputeContentHash` (static, testable)
+- `ProjectLocator` — `FindProjectDirectory`, `FindOutputAssembly` (static, testable)
+- `SessionManager` — RecentWorkspaces (JSON), RecentFiles (text), session save/restore
+- `ThemeManager` — single source of truth for theme name (no `_currentTheme` alias field)
+- `StartupFileLoggerProvider` — structured file logger for Program.cs crash handler
 
 ## Toolchain
 | Tool | Version |
@@ -31,8 +58,13 @@
 - **`patching/`** — VM/VMSS patching: 3 PS scripts, 4 runbooks (md), compliance templates, Wiz baseline
 - **`dist/MyCrownJewelApp.TextEditor/`** — Prebuilt release binary with localized satellite assemblies
 
+## Next Steps (Remaining Refactoring)
+- **Phase 13:** Extract `FontService` — move `fontName`/`fontSize` (17 usages) into a service with `ApplyFont(IWin32Window)` method
+- **Phase 14 (high risk):** Consolidate `isModified`/`currentFilePath`/`savedContentHash`/`currentSyntax`/`lastFileWriteTime` shadow fields into `EditorDocument` access (122 usages total, bi-directional sync today)
+- **Phase 15:** Azure Pipeline fix — add `ppa:git-core/ppa` step to Ubuntu 22.04 agents to get Git 2.47+ for GitVersion compatibility
+
 ## Hot Files (frequently modified / high churn)
-- `src/MyCrownJewelApp.Pfpad/Form1.cs` — Main editor form, UI integration (~6900 lines)
+- `src/MyCrownJewelApp.Pfpad/Form1.cs` — Main editor form, UI integration (~8695 lines, down from ~8900)
 - `src/MyCrownJewelApp.Pfpad/IncrementalHighlighter.cs` — Core syntax highlighting engine
 - `src/MyCrownJewelApp.Pfpad/ThemeManager.cs` — Theme system (22 themes)
 - `src/MyCrownJewelApp.Pfpad/SessionManager.cs` — Session restore (file/cursor/scroll persistence)
@@ -43,10 +75,15 @@
 - `src/MyCrownJewelApp.Pfpad/SymbolIndexService.cs` — Go-to-definition indexer
 
 ## Test Health
-- **Test framework:** xUnit (.NET 8.0-windows)
-- **Test files:** TerminalTests, DirtyFlagTests, Form1FeatureTests, IncrementalHighlighterTests, IndentationTests, SyntaxHighlightRegressionTests
-- **Last run:** 2026-06-06 — **125 passed, 1 skipped, 0 failed** (38s duration, net9.0-windows)
+- **Test framework:** xUnit (net9.0-windows)
+- **Test files:** 15 (original 6 + 9 new service-level test files)
+- **Last run:** 2026-06-09 — **226 passed, 1 skipped, 0 failed** (~20s)
 - **Skipped:** `Highlighter_MarksDirty_AndTokenizes` (pre-existing, requires STA thread setup)
+
+## Known Bugs Fixed in Refactoring
+- `_autoSaveTimer` had no Tick handler — auto-save ran timer but never saved. Fixed Phase 12.
+- `DetectLanguage` matched `name == "*.sln"` (never true) → fixed to `name.EndsWith(".sln")`. Fixed Phase 10.
+- `VimModeEnabled`/`StickyScrollEnabled` were never persisted between sessions. Fixed Phase 11.
 
 ## Environment Quirks & Windows-Specific Notes
 - `head` and `tail` are NOT available as native commands in PowerShell — use `Select-Object -First`/`-Last`
