@@ -25,6 +25,9 @@ namespace MyCrownJewelApp.Pfpad
         private Dictionary<int, string> _lineMessages = new();
         private List<int> _extraCarets = new();
 
+        // Whitespace glyphs
+        private bool  _showWhitespace      = false;
+        private Color _whitespaceGlyphColor = Color.FromArgb(110, 180, 180, 180);
         // Rainbow brackets
         private bool _rainbowBracketsEnabled;
         private RainbowBracketResult? _lastBracketResult;
@@ -799,6 +802,111 @@ namespace MyCrownJewelApp.Pfpad
         set { _foldLineColor = value; Invalidate(); }
     }
 
+    // ── Whitespace glyph rendering ────────────────────────────────────────────
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowWhitespace
+    {
+        get => _showWhitespace;
+        set { if (_showWhitespace == value) return; _showWhitespace = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color WhitespaceGlyphColor
+    {
+        get => _whitespaceGlyphColor;
+        set { _whitespaceGlyphColor = value; if (_showWhitespace) Invalidate(); }
+    }
+
+    /// <summary>
+    /// Draws crisp geometric whitespace glyphs directly onto the editor surface.
+    /// Called from WM_PAINT after the RichTextBox has rendered its text.
+    ///   Space → small anti-aliased dot centred in the character cell
+    ///   Tab   → horizontal arrow (line + arrowhead) spanning the tab-stop cell
+    /// </summary>
+    private void DrawWhitespaceGlyphs(Graphics g)
+    {
+        if (!_showWhitespace || !IsHandleCreated || TextLength == 0) return;
+        try
+        {
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+
+            int firstVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+            if (firstVis < 0) firstVis = 0;
+            int visCount  = ClientSize.Height / lineH + 2;
+            int lastVis   = Math.Min(Lines.Length - 1, firstVis + visCount);
+
+            // Character advance width for dot centering (monospace — measure once).
+            float scaledSz = Font.Size * ZoomFactor;
+            int charW;
+            using (var sf = new Font(Font.FontFamily, scaledSz, Font.Style))
+                charW = Math.Max(1, TextRenderer.MeasureText("X", sf, Size.Empty, TextFormatFlags.NoPadding).Width);
+
+            float dotR   = Math.Max(0.9f, lineH * 0.09f);   // dot radius for spaces
+            float headSz = Math.Max(2.5f, lineH * 0.22f);   // arrowhead size for tabs
+
+            var prevSmoothing = g.SmoothingMode;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            using var dotBrush  = new SolidBrush(_whitespaceGlyphColor);
+            using var arrowPen  = new Pen(_whitespaceGlyphColor, 1.0f);
+
+            for (int li = firstVis; li <= lastVis; li++)
+            {
+                if (li < 0 || li >= Lines.Length) continue;
+                string line = Lines[li];
+                if (line.Length == 0) continue;
+
+                int lineStart = GetFirstCharIndexFromLine(li);
+                if (lineStart < 0) continue;
+
+                for (int i = 0; i < line.Length; i++)
+                {
+                    char c = line[i];
+                    if (c != ' ' && c != '\t') continue;
+
+                    Point pt = GetPositionFromCharIndex(lineStart + i);
+                    if (pt.IsEmpty) continue;
+                    // Skip characters outside the visible client area
+                    if (pt.Y < 0 || pt.Y >= ClientSize.Height) continue;
+                    if (pt.X < -charW * 2 || pt.X >= ClientSize.Width) continue;
+
+                    float cy = pt.Y + lineH * 0.5f;
+
+                    if (c == ' ')
+                    {
+                        // Small filled circle centred inside the character cell
+                        float cx = pt.X + charW * 0.5f;
+                        g.FillEllipse(dotBrush, cx - dotR, cy - dotR, dotR * 2f, dotR * 2f);
+                    }
+                    else // tab
+                    {
+                        // Arrow spanning left-edge → right-edge of the tab stop cell
+                        int    nextIdx  = lineStart + i + 1;
+                        Point  nextPt   = nextIdx <= TextLength
+                                          ? GetPositionFromCharIndex(nextIdx)
+                                          : new Point(pt.X + charW * 4, pt.Y);
+                        if (nextPt.IsEmpty) nextPt = new Point(pt.X + charW * 4, pt.Y);
+
+                        float arrowL = pt.X + 2f;
+                        float arrowR = nextPt.X - 2f;
+                        if (arrowR - arrowL < 3f) continue;
+
+                        float hs = Math.Min(headSz, (arrowR - arrowL) * 0.40f);
+                        g.DrawLine(arrowPen, arrowL, cy, arrowR, cy);
+                        g.DrawLine(arrowPen, arrowR - hs, cy - hs * 0.55f, arrowR, cy);
+                        g.DrawLine(arrowPen, arrowR - hs, cy + hs * 0.55f, arrowR, cy);
+                    }
+                }
+            }
+
+            g.SmoothingMode = prevSmoothing;
+        }
+        catch { }
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);
 
@@ -960,6 +1068,7 @@ namespace MyCrownJewelApp.Pfpad
                              DrawMatchingBraces(g);
                              DrawSquiggles(g);
                              DrawErrorLens(g);
+                             DrawWhitespaceGlyphs(g);
 
                              if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
                                  DrawBlockCursor(g);

@@ -744,7 +744,7 @@ using Microsoft.Extensions.DependencyInjection;
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
-            whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
+            textEditor.ShowWhitespace = whitespaceMenuItem.Checked;
             statusStrip.Visible = statusBarVisible;
             
             // Set initial column widths for visible state
@@ -772,10 +772,6 @@ using Microsoft.Extensions.DependencyInjection;
                 minimapControl.ViewportChanged += MinimapControl_ViewportChanged;
                 minimapControl.SetTokenProvider(GetTokensForLine);
             }
-
-            // Wire whitespace overlay (transparent overlay form)
-            whitespaceOverlay.LinkedEditor = textEditor;
-            whitespaceOverlay.OwnerForm = this;
 
             // Tab dropdown menu button (rightmost corner of tab strip)
             _tabDropdownButton = new Button
@@ -1885,9 +1881,11 @@ using Microsoft.Extensions.DependencyInjection;
                 minimapControl.MarkDirty();
                 minimapControl.RefreshNow();
             }
-            if (whitespaceOverlay != null)
+            if (textEditor != null)
             {
-                whitespaceOverlay.GlyphColor = theme.IsLight ? Color.FromArgb(200, 200, 200) : Color.FromArgb(180, 180, 180);
+                textEditor.WhitespaceGlyphColor = theme.IsLight
+                    ? Color.FromArgb(130, 150, 150, 150)
+                    : Color.FromArgb(110, 190, 190, 190);
             }
             textEditor!.GuideColor = Color.FromArgb(120, 120, 120);
             if (_tabDropdownButton != null)
@@ -2072,7 +2070,7 @@ using Microsoft.Extensions.DependencyInjection;
                 if (whitespaceMenuItem != null)
                 {
                     whitespaceMenuItem.Checked = showWhitespace;
-                    whitespaceOverlay.ShowGlyphs = showWhitespace;
+                    textEditor.ShowWhitespace = showWhitespace;
                 }
                 _savedWindowBounds = settings.WindowBounds;
                 _savedWindowState = settings.WindowState;
@@ -2211,7 +2209,7 @@ using Microsoft.Extensions.DependencyInjection;
             if (whitespaceMenuItem != null)
             {
                 whitespaceMenuItem.Checked = settings.ShowWhitespace;
-                whitespaceOverlay.ShowGlyphs = settings.ShowWhitespace;
+                textEditor.ShowWhitespace = settings.ShowWhitespace;
             }
             currentLineHighlightMode = settings.CurrentLineHighlightMode;
 
@@ -5099,7 +5097,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void ToggleWhitespace_Click(object? sender, EventArgs e)
         {
-            whitespaceOverlay.ShowGlyphs = whitespaceMenuItem.Checked;
+            textEditor.ShowWhitespace = whitespaceMenuItem.Checked;
         }
 
         private void OnFeedUpdated()
