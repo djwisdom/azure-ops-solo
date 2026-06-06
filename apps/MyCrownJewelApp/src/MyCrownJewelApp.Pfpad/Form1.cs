@@ -1771,9 +1771,27 @@ using Microsoft.Extensions.DependencyInjection;
                     {
                         textEditor.BeginInvoke(new Action(() =>
                         {
-                            if (!textEditor.IsDisposed && !textEditor.Disposing && stops.Length > 0)
+                            if (textEditor.IsDisposed || textEditor.Disposing || stops.Length == 0) return;
+
+                            // RichTextBox.SelectionTabs is PER-PARAGRAPH: it only affects
+                            // whichever paragraph the cursor sits in at the moment this runs.
+                            // If we leave different paragraphs with different tab-stop arrays,
+                            // cursor movement causes lines to jump as each paragraph's stored
+                            // tab stops become "active".  Fix: select the entire document so all
+                            // paragraphs receive the same computed stops in one atomic call,
+                            // then restore the original cursor position.
+                            int savedStart  = textEditor.SelectionStart;
+                            int savedLength = textEditor.SelectionLength;
+                            _suspendSelectionChanged = true;
+                            try
                             {
+                                textEditor.Select(0, textEditor.TextLength);
                                 textEditor.SelectionTabs = stops;
+                            }
+                            finally
+                            {
+                                textEditor.Select(savedStart, savedLength);
+                                _suspendSelectionChanged = false;
                             }
                         }));
                     }
