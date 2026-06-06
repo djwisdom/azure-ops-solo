@@ -11,14 +11,20 @@ namespace MyCrownJewelApp.Pfpad
     public class MinimapControl : Control
     {
         public event EventHandler<ViewportChangedEventArgs>? ViewportChanged;
+
         [DllImport("user32.dll")]
         private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
+        [DllImport("user32.dll")]
+        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
         private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
         private const int EM_LINESCROLL = 0x00B6;
         private const int EM_GETLINE = 0x00C4;
+        private const int WS_EX_LAYERED = 0x00080000;
+        private const uint LWA_ALPHA = 0x00000002;
 
         private Control? _attachedEditor;
         private System.Windows.Forms.Timer? _pollTimer;
@@ -53,6 +59,36 @@ namespace MyCrownJewelApp.Pfpad
         public Color BorderColor { get; set; } = Color.FromArgb(60, 60, 60);
 
         private bool _mouseHovering;
+        private float _opacity = 0.80f;
+
+        /// <summary>Opacity of the minimap overlay (0.0 = invisible, 1.0 = fully opaque). Default 80%.</summary>
+        [Category("Appearance")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public float Opacity
+        {
+            get => _opacity;
+            set
+            {
+                _opacity = Math.Clamp(value, 0f, 1f);
+                ApplyOpacity();
+            }
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_LAYERED;
+                return cp;
+            }
+        }
+
+        private void ApplyOpacity()
+        {
+            if (IsHandleCreated)
+                SetLayeredWindowAttributes(Handle, 0, (byte)Math.Round(_opacity * 255f), LWA_ALPHA);
+        }
 
         public MinimapControl()
         {
@@ -434,6 +470,7 @@ namespace MyCrownJewelApp.Pfpad
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            ApplyOpacity();
         }
 
         protected override void OnResize(EventArgs e)

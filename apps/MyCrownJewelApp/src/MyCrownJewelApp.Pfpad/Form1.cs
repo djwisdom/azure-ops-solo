@@ -1434,10 +1434,17 @@ using Microsoft.Extensions.DependencyInjection;
             };
             mainLayout.Layout += (s, e) =>
             {
-                PositionMinimap();
-                if (stickyScrollPanel.Visible)
-                    stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
-                PositionTabDropdownButton();
+                // Defer until after the layout pass completes so all child control
+                // bounds are finalized before we read editorPanel / textEditor dimensions.
+                // Calling PositionMinimap() directly here reads stale ClientSize values
+                // (layout is still in progress), which collapses the minimap to 1px wide.
+                BeginInvoke((Action)(() =>
+                {
+                    PositionMinimap();
+                    if (stickyScrollPanel.Visible)
+                        stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
+                    PositionTabDropdownButton();
+                }));
             };
             editorPanel.SizeChanged += (s, e) =>
             {
@@ -2334,7 +2341,9 @@ internal void ToggleGutter()
             statusBarVisible = !statusBarVisible;
             statusBarMenuItem.Checked = statusBarVisible;
             statusStrip.Visible = statusBarVisible;
-            // Form will auto-layout: statusStrip dock=Bottom, mainTable dock=Fill
+            // Layout settles asynchronously after the visibility change;
+            // defer minimap repositioning so we read correct bounds.
+            BeginInvoke((Action)PositionMinimap);
             SaveSettings();
         }
 
@@ -7031,15 +7040,15 @@ private void NewWindow_Click(object? sender, EventArgs e)
             minimapControl.BringToFront();
             minimapControl.AttachEditor(textEditor);
 
-            // Always use the full declared minimap width — no artificial shrinkage
-            // on narrow windows. Anchor to the right edge of editorPanel so the
-            // minimap stays flush with the panel regardless of scrollbar state.
+            // Always use the full declared minimap width — no artificial shrinkage.
+            // Use textEditor.Width (= editorPanel.ClientSize.Width for Dock=Fill) as the
+            // panel width reference; it reflects the already-committed resize bounds
+            // and is more reliable than editorPanel.ClientSize during deferred calls.
             int mw = minimapControl.MinimapWidth;
-            int panelW = editorPanel.ClientSize.Width;
+            int panelW = textEditor.Width;
             int x = Math.Max(0, panelW - mw);
 
-            // ClientSize.Height already excludes the horizontal scrollbar, so no
-            // additional adjustment is required when the HScroll bar is visible.
+            // ClientSize.Height already excludes the horizontal scrollbar.
             int h = textEditor.ClientSize.Height;
 
             minimapControl.Location = new Point(x, textEditor.Top);
