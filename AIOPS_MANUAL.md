@@ -1,927 +1,1415 @@
 # pfpad AIOps Manual
 
-## *An AIOps-Aware Developer Editor for DevSecOps, SRE, and AIOps-Driven Software Delivery*
+## Overview
+
+pfpad AIOps turns the editor into an operations-aware engineering cockpit.
+
+It is positioned in three ways:
+
+1. **A developer editor with production context** — code, incidents, alerts, deployment state, and telemetry live in one workflow.
+2. **A DevSecOps workstation** — SAST, secrets, policy validation, and PR risk review happen before merge or deploy.
+3. **An SRE-ready investigation console** — incident timeline, RCA, service dependencies, runbooks, and observability guidance are available beside the source file.
+
+AIOps in pfpad is designed for engineering teams that want evidence-based answers instead of disconnected dashboards.
+
+It combines:
+
+- source-aware security scanning
+- deployment risk scoring
+- telemetry-aware reasoning
+- incident correlation
+- inline annotations
+- OpenTelemetry code generation
+- runbook-assisted operational response
 
 ---
 
 ## Table of Contents
 
-1. [Vision and Positioning](#1-vision-and-positioning)
-2. [Architecture Overview](#2-architecture-overview)
-3. [AI Safety Model](#3-ai-safety-model)
-4. [Quick Start](#4-quick-start)
-5. [AIOps Panel (Hub)](#5-aiops-panel-hub)
-6. [Deployment Risk Scoring](#6-deployment-risk-scoring)
-7. [Security Scanning (DevSecOps)](#7-security-scanning-devsecops)
-8. [Policy-as-Code Validation](#8-policy-as-code-validation)
-9. [Telemetry Panel](#9-telemetry-panel)
-10. [Incident Correlation](#10-incident-correlation)
-11. [SLO Monitoring](#11-slo-monitoring)
-12. [Observability Advisor](#12-observability-advisor)
-13. [Deployment Panel (CI/CD)](#13-deployment-panel-cicd)
-14. [Insights Panel](#14-insights-panel)
-15. [Integrations Setup](#15-integrations-setup)
-16. [Developer Workflow Guides](#16-developer-workflow-guides)
-17. [Keyboard Reference](#17-keyboard-reference)
-18. [Troubleshooting](#18-troubleshooting)
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Quick Start](#quick-start)
+4. [AIOps Menu Reference](#aiops-menu-reference)
+5. [AI Query Panel](#ai-query-panel)
+6. [Security and DevSecOps](#security-and-devsecops)
+7. [Deployment Risk Scoring](#deployment-risk-scoring)
+8. [Incident Timeline and RCA](#incident-timeline-and-rca)
+9. [PR Risk Analysis](#pr-risk-analysis)
+10. [Service Dependencies](#service-dependencies)
+11. [Connectors Setup Guide](#connectors-setup-guide)
+12. [AI Safety Model](#ai-safety-model)
+13. [Inline Annotations](#inline-annotations)
+14. [OTel Code Generation](#otel-code-generation)
+15. [Runbooks](#runbooks)
+16. [Troubleshooting](#troubleshooting)
+17. [Developer Workflow Guides](#developer-workflow-guides)
 
 ---
 
-## 1. Vision and Positioning
+## Architecture
 
-### What is pfpad?
+### Full-stack architecture
 
-**pfpad** (Personal Flip Pad) is an AIOps-aware developer editor that connects code, deployments, observability, security, and incidents into one intelligent engineering workflow.
-
-It is positioned for:
-- **DevSecOps engineers** who need security scanning, policy-as-code validation, and secret detection inline while coding
-- **SRE (Site Reliability Engineers)** who need SLO burn rates, incident correlation, and deployment risk scoring before pushing changes
-- **AIOps-driven teams** who want AI-generated, evidence-based insights about how code changes affect reliability, security, and production health
-
-### Core Differentiators
-
-| Capability | Traditional IDE | pfpad |
-|---|---|---|
-| Security scanning | External plugin or CI step | **Inline as you type, before commit** |
-| Deployment risk | Post-deploy monitoring | **Pre-deploy risk scoring from git diff** |
-| Incident correlation | Post-mortem, external tool | **Inline: which function caused last incident** |
-| SLO awareness | Dashboard in another tool | **Right next to your code** |
-| Policy-as-code | CI/CD gate | **Inline in Bicep/Terraform/YAML files** |
-| Observability | APM tool separately | **Code-level OTel instrumentation suggestions** |
-| AI insights | Guess-based suggestions | **Evidence-based, confidence-scored, cited** |
-
----
-
-## 2. Architecture Overview
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        pfpad AIOps Editor                             │
-│                                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐  │
-│  │                         UI Layer                                 │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────────┐ │  │
-│  │  │ AIOps    │  │Telemetry │  │ Security │  │  Deployment    │ │  │
-│  │  │ Panel    │  │ Panel    │  │  Panel   │  │    Panel       │ │  │
-│  │  │ (Hub)    │  │Log/Met/  │  │ SAST +   │  │ CI/CD +        │ │  │
-│  │  │ Risk     │  │ Traces   │  │ Policy   │  │ Deployments    │ │  │
-│  │  └──────────┘  └──────────┘  └──────────┘  └────────────────┘ │  │
-│  │  ┌──────────┐                                                   │  │
-│  │  │ Insights │                                                   │  │
-│  │  │  Panel   │                                                   │  │
-│  │  └──────────┘                                                   │  │
-│  └─────────────────────────────────────────────────────────────────┘  │
-│                                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐  │
-│  │                      AIOps Engine Layer                          │  │
-│  │                                                                  │  │
-│  │  ┌────────────────┐  ┌──────────────┐  ┌─────────────────────┐ │  │
-│  │  │ Deployment     │  │ SAST Scanner │  │ Policy Validator    │ │  │
-│  │  │ Risk Scorer    │  │ + Secrets    │  │ (Bicep/TF/K8s/      │ │  │
-│  │  │ (git diff →    │  │ Detector     │  │  Dockerfile)        │ │  │
-│  │  │  risk report)  │  │              │  │                     │ │  │
-│  │  └────────────────┘  └──────────────┘  └─────────────────────┘ │  │
-│  │  ┌────────────────┐  ┌──────────────┐  ┌─────────────────────┐ │  │
-│  │  │ Observability  │  │ Incident     │  │ SLO Monitor         │ │  │
-│  │  │ Advisor (OTel  │  │ Analyzer     │  │ (burn rate,         │ │  │
-│  │  │  gaps)         │  │ (RCA)        │  │  error budget)      │ │  │
-│  │  └────────────────┘  └──────────────┘  └─────────────────────┘ │  │
-│  │  ┌──────────────────────────────────────────────────────────┐   │  │
-│  │  │             AIOpsEngine (Orchestrator)                    │   │  │
-│  │  │  - Aggregates all connector data                         │   │  │
-│  │  │  - Fires typed events to UI layer                        │   │  │
-│  │  │  - Polls on configurable interval (default: 60s)         │   │  │
-│  │  └──────────────────────────────────────────────────────────┘   │  │
-│  └─────────────────────────────────────────────────────────────────┘  │
-│                                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐  │
-│  │                    Connector Layer                               │  │
-│  │                                                                  │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌──────────┐ │  │
-│  │  │   Azure    │  │   Azure    │  │Kubernetes  │  │   Mock   │ │  │
-│  │  │  Monitor   │  │  DevOps    │  │  API Server│  │   Data   │ │  │
-│  │  │(Log Analyt.│  │(Builds,    │  │(Deployments│  │(Demo/Dev │ │  │
-│  │  │ Metrics,   │  │ Releases,  │  │ Pods, Health│  │  mode)  │ │  │
-│  │  │ Alerts)    │  │ ADO Items) │  │)           │  │          │ │  │
-│  │  └────────────┘  └────────────┘  └────────────┘  └──────────┘ │  │
-│  └─────────────────────────────────────────────────────────────────┘  │
-│                                                                        │
-│  ┌─────────────────────────────────────────────────────────────────┐  │
-│  │                      Model Layer                                 │  │
-│  │  MetricPoint | LogEntry | TraceSpan | ServiceHealth             │  │
-│  │  Incident | Deployment | Pipeline | Slo                         │  │
-│  │  SecurityFinding | PolicyViolation | DeploymentRiskReport       │  │
-│  │  ObservabilityGap | RemediationSuggestion | AIOpsInsight        │  │
-│  └─────────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────────┘
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                 pfpad UI                                     │
+│                                                                              │
+│  Menu / Shortcuts / Sidebar / Editor Surface / Inline Glyphs / Dialogs       │
+│                                                                              │
+│  ┌────────────────────────────────────────────────────────────────────────┐   │
+│  │ Panels                                                                 │   │
+│  │                                                                        │   │
+│  │  AIOps Hub        Security        Deployment       Telemetry           │   │
+│  │  Insights         AI Query        Incident Timeline PR Risk            │   │
+│  │  Service Deps     Runbooks        OTel Generation  Inline Annotations  │   │
+│  └────────────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              AIOps Engine Layer                              │
+│                                                                              │
+│  AIOpsEngine                                                                 │
+│    ├─ DeploymentRiskScorer                                                   │
+│    ├─ SastScanner                                                            │
+│    ├─ SecretsDetector                                                        │
+│    ├─ PolicyValidator                                                        │
+│    ├─ ObservabilityAdvisor                                                   │
+│    ├─ CorrelationEngine                                                      │
+│    ├─ AnomalyDetector                                                        │
+│    ├─ RootCauseAnalyzer                                                      │
+│    ├─ ServiceContextEngine                                                   │
+│    ├─ OpsQueryEngine                                                         │
+│    ├─ OTelCodeGenerator                                                      │
+│    ├─ RunbookEngine                                                          │
+│    └─ AuditLogger                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                               Connector Layer                                │
+│                                                                              │
+│  Azure Monitor   Azure DevOps   Kubernetes   Prometheus   PagerDuty          │
+│  GitHub Actions  Mock Data                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                              External Systems                                │
+│                                                                              │
+│  Logs / Metrics / Traces / Alerts / Incidents / Pipelines / Pull Requests    │
+│  Service Topology / Runbooks / Infrastructure-as-Code / Deployment History   │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow
+### Data flow summary
 
-```
-Developer edits code
-       │
-       ├── Auto-scan on save ──► SastScanner + SecretsDetector + PolicyValidator
-       │                              │
-       │                              └── SecurityPanel (inline findings)
-       │
-       ├── Before commit ──────► DeploymentRiskScorer (git diff analysis)
-       │                              │
-       │                              └── AIOpsPanel (risk score + factors)
-       │
-       ├── Background poll ────► AIOpsEngine.RefreshAllAsync()
-       │                              │
-       │                              ├── Azure Monitor → logs, metrics, alerts
-       │                              ├── Azure DevOps  → builds, releases
-       │                              ├── Kubernetes    → deployment state
-       │                              └── MockData      → demo data (if enabled)
-       │
-       └── Connector events ───► IncidentsRefreshed, SlosRefreshed,
-                                  DeploymentsRefreshed, RiskReportGenerated
-```
+1. pfpad loads AIOps settings.
+2. `AIOpsEngine` builds the enabled connectors.
+3. Connectors poll external systems on the configured interval.
+4. The engine normalizes incidents, deployments, pipelines, SLOs, alerts, PRs, and runbooks.
+5. The engine raises strongly typed events to the WinForms UI.
+6. Panels render those models in the sidebar.
+7. File scans and context-aware actions enrich the current source file.
+8. Audit logs record security findings, recommendations, and runbook executions.
 
----
+### Core responsibilities by layer
 
-## 3. AI Safety Model
-
-pfpad's AIOps AI engine operates under strict safety principles:
-
-### 3.1 Evidence-Based Only
-
-Every insight includes:
-- **ConfidenceScore** (0.0–1.0): numeric certainty
-- **ConfidenceLevel** (Low/Medium/High): human-readable tier
-- **Evidence[]**: cited sources — log line, metric data point, deployment ID, rule match
-
-If there is insufficient evidence (`HasSufficientEvidence == false`), the engine returns "Insufficient data to generate insight" rather than guessing.
-
-### 3.2 Confidence Thresholds
-
-| Score | Level | Displayed as |
-|---|---|---|
-| ≥ 0.8 | High | Green badge — high confidence |
-| 0.5–0.79 | Medium | Yellow badge — review recommended |
-| < 0.5 | Low | Gray badge — treat as hypothesis |
-
-SAST/Secrets findings: **0.7–0.9** (pattern match confidence)
-Risk scoring: **0.6–0.85** (depends on available operational data)
-RCA hypotheses: **0.4–0.75** (always shown as hypothesis, never as fact)
-
-### 3.3 Sensitive Data Redaction
-
-The `DataRedactor` class automatically redacts before any data is displayed:
-- Passwords in connection strings
-- AWS access/secret keys
-- Azure SAS tokens and signing keys
-- Bearer tokens
-- Private key content
-- Generic long base64 secrets (40+ chars)
-
-Redaction is **irreversible** — pfpad never sends raw secrets to any external service.
-
-### 3.4 Production Safety Gates
-
-Actions that affect production **require explicit user approval**:
-- Applying a remediation to a production file
-- Triggering a deployment from the Deployment Panel
-- Restarting a Kubernetes pod
-- Approving a pipeline run
-
-The setting `RequireApprovalForProduction = true` (default) enforces this. The UI shows a **[Review & Apply]** button (not auto-apply) for any `RemediationRisk >= ReviewRequired`.
-
-### 3.5 No Telemetry Exfiltration
-
-pfpad does **not** send your code, logs, or secrets to any AI cloud service. All analysis is local:
-- SAST, secrets, and policy scanning: 100% local regex/pattern matching
-- Risk scoring: local git diff analysis + locally-cached operational data
-- Log/metric display: pulled from your configured endpoints, displayed locally, never forwarded
-
----
-
-## 4. Quick Start
-
-### 4.1 First Launch (Demo Mode)
-
-By default, pfpad starts in **Mock Data Mode** — a realistic demo environment with sample incidents, deployments, SLOs, and security findings. This lets you explore all features without any configuration.
-
-1. Open pfpad
-2. Press `Ctrl+Alt+A` or go to **AIOps → AIOps Hub** to open the hub panel
-3. Explore the risk gauge, active incidents, SLO status, and recent deployments
-4. Open any `.cs`, `.tf`, `.bicep`, or `.yaml` file and press `Ctrl+Alt+S` to run a security scan
-5. View findings in **AIOps → Security Panel**
-
-### 4.2 Connect to Real Integrations
-
-Go to **AIOps → Settings** (`Ctrl+Alt+,`) and configure:
-1. Disable **Mock Data Mode**
-2. Enable **Azure Monitor** and enter your tenant/workspace credentials
-3. Enable **Azure DevOps** and enter your organization/PAT
-4. Optionally enable **Kubernetes** with your API server URL and service account token
-5. Click **Save** — pfpad connects and polls every 60 seconds (configurable)
-
-### 4.3 Scan a File
-
-- **Auto-scan**: Enabled by default on every save. Results appear in the Security Panel.
-- **Manual scan**: `Ctrl+Alt+S` scans the active file immediately.
-- **Scan project**: Open the Command Palette (`Ctrl+Shift+P`) and run **"AIOps: Scan All Files"**.
-
-### 4.4 Score Deployment Risk
-
-Before committing staged changes:
-1. Open **AIOps → AIOps Hub**
-2. Click **[↺ Scan Now]** (or press `Ctrl+Alt+R`)
-3. pfpad reads your git diff, factors in active incidents + SLO burn rates, and generates a **DeploymentRiskReport**
-4. Review the risk factors and recommendations
-5. If risk is **High or Critical**, the report recommends approval before deploying
-
----
-
-## 5. AIOps Panel (Hub)
-
-**Location:** `AIOps → AIOps Hub` | Keyboard: `Ctrl+Alt+A`
-
-The hub is your production health dashboard embedded in the editor.
-
-### 5.1 Risk Gauge
-
-The large color-coded panel at the top shows:
-```
-RISK: 72 / HIGH
-Last scanned: 2 minutes ago  [↺ Scan Now]
-```
-
-Colors:
-- 🟢 **Low (0–25)**: Safe to deploy
-- 🟡 **Medium (26–50)**: Review recommendations before deploying
-- 🔴 **High (51–75)**: Address factors or get approval
-- 🔴 **Critical (76–100)**: Block deployment, resolve incidents first
-
-### 5.2 Active Incidents
-
-Real-time list of active incidents from your monitoring system.
-
-| Column | Description |
+| Layer | Responsibility |
 |---|---|
-| Severity | Critical / High / Medium / Low badge |
-| Title | Incident name |
-| Service | Affected service |
-| Age | How long since triggered |
-
-Double-click an incident to open its URL (PagerDuty, Azure Monitor Alert, etc.)
-
-### 5.3 SLO Status
-
-| Column | Description |
-|---|---|
-| Service | Service name |
-| SLO Name | e.g., "Availability 99.9%" |
-| Current% | Current achievement |
-| Target% | SLO target |
-| Status | 🟢 Healthy / 🟡 AtRisk / 🔴 Breached |
-
-**Burn rate** is shown in the tooltip — a burn rate > 1.0 means the error budget is being consumed faster than it replenishes.
-
-### 5.4 Recent Deployments
-
-Last 20 deployments across environments:
-
-| Column | Description |
-|---|---|
-| Service | Deployed service |
-| Env | prod / staging / dev |
-| Version | Semantic version or commit SHA |
-| Status | ✅ Succeeded / ❌ Failed / ↩ RolledBack |
-| Age | When deployed |
-
-### 5.5 Top Security Findings
-
-The 5 most severe unresolved security findings from the last scan. Click any to navigate to the line in the editor.
+| UI | Present operational state, accept actions, route navigation back into the editor |
+| Engine | Aggregate data, score risk, analyze incidents, generate recommendations |
+| Connector | Fetch external data from specific platforms |
+| Model | Carry normalized facts such as incidents, findings, PRs, SLOs, and runbooks |
+| Audit | Persist redacted records of key AI/ops actions |
 
 ---
 
-## 6. Deployment Risk Scoring
+## Quick Start
 
-**Keyboard:** `Ctrl+Alt+R`
+### 1. Enable AIOps
 
-pfpad analyzes your staged git changes against live operational state to produce a risk score before you deploy.
+Open **AIOps > AIOps Settings...**.
 
-### 6.1 Risk Factors
+Verify these baseline options:
 
-| Factor | Trigger | Points Added |
+- `Enabled = true`
+- `Mock Data Enabled = true` for first-run exploration, or disabled if you already have real connectors
+- `Poll Interval Seconds = 60` unless you need faster refresh
+- `Inline Insights Enabled = true`
+- `Auto Scan On Save = true`
+- `Require Approval For Production = true`
+
+### 2. Connect your first data source
+
+For a first successful demo, choose one of these approaches:
+
+- **Fastest:** enable Mock Data
+- **Most common:** configure Azure Monitor
+- **Dev workflow focused:** configure GitHub Actions or Azure DevOps
+
+### 3. Start the first scan
+
+Open a source file in the editor.
+
+Then use:
+
+- **AIOps > Scan Active File**
+- or press **Ctrl+Alt+S**
+
+pfpad will:
+
+- inspect the active file
+- run SAST checks
+- detect secrets
+- validate policy-as-code when applicable
+- update AIOps panels with findings
+
+### 4. Open the intelligence panels
+
+Recommended first tour:
+
+1. `Ctrl+Alt+A` — AIOps Hub
+2. `Ctrl+Alt+E` — Security Panel
+3. `Ctrl+Alt+Q` — AI Query Panel
+4. `Ctrl+Alt+L` — Incident Timeline
+5. `Ctrl+Alt+P` — PR Risk Analysis
+6. `Ctrl+Alt+W` — Service Dependencies
+7. `Ctrl+Alt+B` — Runbooks
+
+### 5. Generate your first observability snippet
+
+Open a `.cs`, `.py`, `.js`, `.ts`, `.go`, or `.java` file.
+
+Then press **Ctrl+Alt+G**.
+
+pfpad will infer the language from the file extension and generate an OpenTelemetry function snippet for the current file name / service context.
+
+### First-run success checklist
+
+| Check | Expected outcome |
+|---|---|
+| AIOps enabled | Menu actions respond and panels can open |
+| Connector configured | Telemetry and deployment views populate |
+| File scanned | Security findings or policy results appear |
+| Query panel opened | Current file context shows in the header |
+| Incident timeline opened | Incidents and correlation data display |
+| OTel code generated | Example snippet appears in a dialog |
+
+---
+
+## AIOps Menu Reference
+
+### Keyboard shortcuts
+
+| Shortcut | Menu item | What it does |
 |---|---|---|
-| **Active Critical Incident** | Any Critical incident open | +40 |
-| **Active High Incident** | Any High incident open | +25 |
-| **Database Migration** | `.sql`, `*migration*`, `*Migration*` files changed | +25 |
-| **Active Incidents (any)** | Any active incident | +10 |
-| **SLO Burn Rate > 2x** | Any SLO burning budget at 2× normal rate | +25 |
-| **Critical File Changed** | `Dockerfile`, `*.tf`, `*.bicep`, `appsettings.Production.json` changed | +20 |
-| **SLO Burn Rate > 1.5x** | Any SLO at elevated burn rate | +15 |
-| **Security Files Changed** | `*auth*`, `*security*`, `*crypto*`, `*jwt*` files changed | +15 |
-| **No Tests in Change Set** | Changed files include no test files | +10 |
-| **Large Change Set** | > 50 files changed | +30 |
+| `Ctrl+Alt+A` | AIOps Hub | Opens the overview dashboard with high-level AIOps state |
+| `Ctrl+Alt+E` | Security Panel | Opens SAST, secrets, and policy validation results |
+| `Ctrl+Alt+D` | Deployment Panel | Opens CI/CD pipelines, deployments, and rollout history |
+| `Ctrl+Alt+T` | Telemetry Panel | Opens logs, metrics, traces, and connector-backed telemetry |
+| `Ctrl+Alt+I` | Insights Panel | Opens observability gaps and remediation guidance |
+| `Ctrl+Alt+Q` | AI Query Panel | Opens the natural-language production query panel |
+| `Ctrl+Alt+L` | Incident Timeline | Opens incidents, timeline view, and root cause analysis |
+| `Ctrl+Alt+P` | PR Risk Analysis | Opens DevSecOps-style pull request risk review |
+| `Ctrl+Alt+W` | Service Dependencies | Opens the service dependency graph and health view |
+| `Ctrl+Alt+B` | Runbooks | Opens operational procedures and dry-run execution |
+| `Ctrl+Alt+S` | Scan Active File | Scans the current file for security and policy issues |
+| `Ctrl+Alt+R` | Score Deployment Risk | Scores the current working tree / diff for deploy risk |
+| `Ctrl+Alt+O` | Analyze Observability Gaps | Reviews instrumentation and observability quality |
+| `Ctrl+Alt+G` | Generate OTel Code | Generates OpenTelemetry code for the active file language |
 
-**Score** = sum of applicable factors, capped at 100.
+### Panel notes
 
-**Risk Level:**
-- 0–25: Low
-- 26–50: Medium
-- 51–75: High
-- 76–100: Critical
+#### AIOps Hub
 
-### 6.2 Reading the Report
+Use this as the starting dashboard.
 
-```
-DEPLOYMENT RISK REPORT
-Score: 65 / HIGH    Confidence: 0.78 (High)    Generated: 14:32:01
+Typical uses:
 
-FACTORS:
-  🔴 HIGH  Active High Incident (+25 pts)
-           Source: Azure Monitor • "API latency spike — payments service"
-           Started: 47 minutes ago
+- spot active incidents
+- review deployment health
+- confirm whether the environment is stable enough for change
 
-  🟡 MED   SLO Burn Rate Elevated (+15 pts)  
-           Source: Azure Monitor SLO
-           payments-api Availability: 1.8x burn rate (budget: 23% remaining)
+#### Security Panel
 
-  🟡 MED   Critical File Changed (+20 pts)
-           Source: Git diff
-           terraform/payments/main.tf — infrastructure change
+Use this after scanning the active file.
 
-RECOMMENDATIONS:
-  1. Resolve the active 'API latency spike' incident before deploying
-  2. Review terraform changes for payments infrastructure carefully
-  3. Consider deploying to staging first and monitoring for 15 minutes
-  4. Notify on-call SRE before production deployment
+It shows:
 
-CHANGED FILES: 8 files
-  ⚠ terraform/payments/main.tf  
-  ⚠ src/PaymentsService/PaymentProcessor.cs
-  + src/PaymentsService/PaymentProcessor.Tests.cs
-  ... 5 more
-```
+- code findings
+- secret exposure detections
+- policy violations
 
-### 6.3 Approval Workflow
+#### Deployment Panel
 
-If risk is **High or Critical**, the report shows:
-```
-⚠ THIS DEPLOYMENT REQUIRES APPROVAL
-[Request Approval] [Override with Justification]
-```
+Use this to inspect rollout history.
 
-Approvals are logged to the audit trail with timestamp, user, risk score, and justification.
+It helps answer:
 
----
+- what was deployed
+- when it was deployed
+- whether the pipeline is healthy
 
-## 7. Security Scanning (DevSecOps)
+#### Telemetry Panel
 
-**Keyboard:** `Ctrl+Alt+S` (scan active file)
+Use this to connect code with runtime signals.
 
-pfpad includes a built-in SAST (Static Application Security Testing) scanner that runs on every save or on demand.
+It is best for:
 
-### 7.1 SAST Rules
+- service-level troubleshooting
+- operational state review
+- quick telemetry lookups
 
-| Rule ID | Title | Severity | Languages |
-|---|---|---|---|
-| CWE-89 | SQL Injection | High | C#, SQL |
-| CWE-78 | Command Injection | High | C#, Python, Shell |
-| CWE-22 | Path Traversal | Medium | C# |
-| CWE-338 | Insecure Random (in security context) | Medium | C# |
-| CWE-327 | Weak Cryptography (MD5, SHA1, DES) | High | C# |
-| CWE-798 | Hardcoded Credentials | Critical | All |
-| CWE-601 | Open Redirect | Medium | C# |
+#### Insights Panel
 
-### 7.2 Secrets Detection Rules
+Use this when you want observability guidance.
 
-| Rule | Pattern | Severity |
-|---|---|---|
-| SECRET-AWS-KEY | `AKIA[0-9A-Z]{16}` | Critical |
-| SECRET-AZURE-SAS | `sv=YYYY-MM-DD...sig=` | Critical |
-| SECRET-AZURE-CONN | DefaultEndpointsProtocol connection strings | High |
-| SECRET-GITHUB-TOKEN | `ghp_[A-Za-z0-9]{36}` | Critical |
-| SECRET-GENERIC-API | `api_key=<20+ char value>` | High |
-| SECRET-PRIVATE-KEY | `-----BEGIN PRIVATE KEY-----` | Critical |
+It highlights:
 
-> **All secret values are redacted** in the display. pfpad shows `[REDACTED]` in place of any detected secret. The location (file + line) is shown so you can fix it.
+- missing instrumentation
+- likely telemetry blind spots
+- suggested remediations
 
-### 7.3 Remediation Suggestions
+#### AI Query Panel
 
-Each finding includes a specific remediation:
-- **Hardcoded secret**: "Move to Azure Key Vault / user secrets (`dotnet user-secrets set`) / environment variable"
-- **SQL injection**: "Use parameterized queries: `command.Parameters.AddWithValue(\"@param\", value)`"
-- **Weak crypto**: "Replace MD5 with SHA-256: `SHA256.Create()`"
-- **Path traversal**: "Validate path with `Path.GetFullPath()` and verify it's within allowed directory"
+Use this for natural-language questions grounded in the active file and current service context.
 
-### 7.4 Security Panel
+#### Incident Timeline
 
-**Location:** `AIOps → Security Panel` | Keyboard: `Ctrl+Alt+E`
+Use this to review incidents chronologically and run RCA on demand.
 
-The Security Panel shows all findings from the last scan:
-- Filter by Severity (All / Critical / High / Medium / Low)
-- Filter by Category (All / Secret / Injection / Policy / Infrastructure)
-- Double-click any finding → jump to that line in the editor
-- Bottom pane shows full description + remediation + CWE link
+#### PR Risk Analysis
+
+Use this to understand deployment and review risk before merge or release.
+
+#### Service Dependencies
+
+Use this to inspect upstream and downstream relationships between services.
+
+#### Runbooks
+
+Use this to browse operational procedures and safely dry-run command steps.
+
+#### Scan Active File
+
+Use this whenever you want fast local feedback on source or infra files.
+
+#### Score Deployment Risk
+
+Use this before deployment, approval, or merge.
+
+#### Analyze Observability Gaps
+
+Use this when adding or reviewing telemetry instrumentation.
+
+#### Generate OTel Code
+
+Use this when you want a language-specific tracing starter snippet.
 
 ---
 
-## 8. Policy-as-Code Validation
+## AI Query Panel
 
-pfpad validates infrastructure files against built-in policies automatically when you open or save them.
+### Purpose
 
-### 8.1 Supported File Types
+The AI Query Panel lets you ask operational questions in plain language while keeping the current file path in scope.
 
-| File Type | Policies Applied |
+It is designed for:
+
+- developers troubleshooting a file they are editing
+- SREs investigating live service behavior
+- security engineers asking context-aware questions before merge
+
+### How to use it
+
+1. Open a file.
+2. Press **Ctrl+Alt+Q**.
+3. Confirm the file path shown in the panel header.
+4. Ask a question.
+5. Review the answer, evidence, confidence, and recommendations.
+
+### What context the panel uses
+
+The panel is fed by the active file path and service resolution logic.
+
+The engine can combine:
+
+- active incidents
+- recent deployments
+- recent anomalies
+- SLO signals
+- recent alerts
+- inline annotations
+- the last deployment risk report
+- correlation chains
+
+### Supported query intents
+
+The current intent classifier supports these categories:
+
+| Intent | Description |
 |---|---|
-| `*.bicep` | Required tags, no public exposure, encryption at rest, TLS 1.2+ |
-| `*.tf`, `*.tfvars` | Required tags, no public storage access, HTTPS only |
-| `*.yaml` (K8s) | No privileged containers, resource limits required, approved image registries, no wildcard RBAC |
-| `Dockerfile` | No root USER, approved base images |
+| `incident_investigation` | Questions about breakage, outages, failures, and why something is down |
+| `risk_analysis` | Questions about deployment safety, blast radius, and rollout risk |
+| `log_query` | Questions about logs, exceptions, crashes, and traces |
+| `observability` | Questions about tracing, metrics, performance, SLOs, and instrumentation |
+| `security` | Questions about vulnerabilities, secrets, permissions, and exposure |
+| `general` | Broad operational status questions that do not match a narrower intent |
 
-### 8.2 Built-in Policies
+### Example queries
 
-| Policy ID | Name | Severity | Description |
-|---|---|---|---|
-| POL-001 | Required Tags | Medium | Resources must have `environment` and `owner` tags |
-| POL-002 | No Public Exposure | High | No public IP allocation without NSG |
-| POL-003 | Encryption at Rest | High | Storage accounts must have encryption enabled |
-| POL-004 | TLS Minimum 1.2 | High | No TLS 1.0 or 1.1 configurations |
-| POL-005 | No Root Containers | High | Dockerfile must not run as root (`USER root`) |
-| POL-006 | Resource Limits | Medium | K8s containers must define CPU and memory limits |
-| POL-007 | Approved Image Registries | Medium | Images must come from `mcr.microsoft.com`, `registry.hub.docker.com`, or your private registry |
-| POL-008 | No Wildcard RBAC | Critical | ClusterRole must not grant `*` verbs on `*` resources |
+#### Incident investigation
 
-### 8.3 Policy Violation Example
+- `Why is checkout-service failing?`
+- `What changed before the latest incident?`
+- `Do we have evidence of a deployment regression?`
 
-```bicep
-// main.bicep — line 12
-resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  // ⚠ POL-001 MEDIUM: Missing required tags 'environment' and 'owner'
-  // ⚠ POL-003 HIGH: Encryption at rest not explicitly configured
-  name: 'mystorageaccount'
-  location: resourceGroup().location
-  sku: { name: 'Standard_LRS' }
-  kind: 'StorageV2'
+#### Risk analysis
+
+- `Is this deployment safe right now?`
+- `What is increasing the blast radius of this change?`
+- `Should this release require approval?`
+
+#### Log query
+
+- `What recent errors should I inspect first?`
+- `Are timeout patterns likely here?`
+- `Show the likely exception focus area.`
+
+#### Observability
+
+- `Where should I add tracing in this file?`
+- `Do we have enough telemetry for this service?`
+- `Is there an SLO or latency risk signal attached here?`
+
+#### Security
+
+- `Is this file likely to introduce a security issue?`
+- `Do we have secret exposure risk in this area?`
+- `What auth-related changes need more review?`
+
+#### General
+
+- `What is the current operational state of this service?`
+- `Summarize risk, incidents, and alerts for the active file.`
+
+### Reading the response
+
+Focus on four parts:
+
+1. **Answer** — the short natural-language summary.
+2. **Evidence** — structured facts attached to the answer.
+3. **Recommendations** — next steps to take.
+4. **Confidence / disclaimer** — how strongly the engine trusts the conclusion.
+
+### Good usage patterns
+
+- Ask specific questions tied to a service or file.
+- Use it after scanning or after opening timeline / deployment views.
+- Treat low-confidence answers as prompts for investigation, not automatic truth.
+
+---
+
+## Security and DevSecOps
+
+### Scope
+
+pfpad AIOps combines three layers of local DevSecOps review:
+
+1. SAST pattern scanning
+2. secrets detection
+3. policy-as-code validation
+
+### SAST rules
+
+Current built-in rule examples include:
+
+| Rule ID | Title | Meaning |
+|---|---|---|
+| `CWE-89` | SQL Injection | Dynamic SQL assembled with concatenation |
+| `CWE-78` | Command Injection | Shell/process execution may include untrusted input |
+| `CWE-22` | Path Traversal | Potential unsafe path composition |
+| `CWE-338` | Insecure Random | Non-cryptographic randomness in sensitive context |
+| `CWE-327` | Weak Crypto | Obsolete crypto primitives such as MD5, SHA1, DES, RC2 |
+| `CWE-798` | Hardcoded Credentials | Credentials or API keys in source |
+| `CWE-601` | Open Redirect | Redirect target influenced by request input |
+| `CWE-476` | Null Deref Risk | Possible null dereference pattern |
+| `SEC-K8S-001` | Privileged Container | Kubernetes workload runs privileged |
+| `SEC-K8S-002` | Latest Image Tag | Container image pinned to `latest` |
+| `SEC-TF-001` | Public Storage | Terraform indicates public storage exposure |
+| `SEC-TF-002` | No HTTPS | HTTPS-only enforcement appears disabled |
+
+### Secrets detection
+
+Current secret detectors include patterns such as:
+
+- AWS access keys
+- AWS secret keys
+- Azure SAS tokens
+- Azure connection strings
+- GitHub personal access tokens
+- generic API keys
+- PEM/private key blocks
+- basic-auth URLs with embedded credentials
+
+### Policy validation
+
+The policy validator inspects infrastructure and container definitions.
+
+Supported file families:
+
+- Bicep
+- Terraform
+- Kubernetes YAML
+- generic YAML / YML infra manifests
+- Dockerfile
+
+### Policy examples
+
+| Policy ID | Policy | Meaning |
+|---|---|---|
+| `POL-001` | Required tags | Environment and owner tags/labels should be present |
+| `POL-002` | No public exposure | Dynamic public IP without clear NSG evidence |
+| `POL-003` | Encryption at rest | Storage resource appears not to enable encryption |
+| `POL-004` | TLS minimum 1.2 | Legacy TLS detected |
+| `POL-005` | No root containers | Dockerfile explicitly uses `USER root` |
+| `POL-006` | Resource limits | Kubernetes workload missing CPU/memory limits |
+| `POL-007` | Approved image registries | Container image not from an approved registry |
+| `POL-008` | No wildcard RBAC | Kubernetes `ClusterRole` uses wildcard verbs/resources |
+
+### Recommended security workflow
+
+1. Open the changed file.
+2. Press **Ctrl+Alt+S**.
+3. Review findings in the Security Panel.
+4. Fix critical and high severity items first.
+5. If working in infra, confirm policy validation results.
+6. Re-scan the file.
+7. Run PR Risk Analysis before merge.
+
+### Severity handling guidance
+
+| Severity | Suggested response |
+|---|---|
+| Critical | Stop and fix before merge or release |
+| High | Fix before release; require review if deferral is unavoidable |
+| Medium | Address during current change if possible |
+| Low | Track and resolve without blocking unless the area is sensitive |
+| Info | Document or monitor |
+
+---
+
+## Deployment Risk Scoring
+
+### What it does
+
+Deployment risk scoring evaluates the current working set using changed files, current incidents, SLO state, and deployment-sensitive heuristics.
+
+### The 7 scoring factors
+
+The current scorer evaluates these seven factors:
+
+| Factor | Description | Typical effect |
+|---|---|---|
+| Changed file count | Large change set increases blast radius | Higher risk for wide changes |
+| Critical file changed | Infra, config, container, appsettings, Bicep, Terraform, migration-sensitive files changed | Higher risk |
+| Active incidents | Shipping during an ongoing incident is dangerous | Higher risk, can become critical |
+| SLO burn rate | Elevated burn rate means the service is already stressed | Higher risk |
+| Security-sensitive files | Auth, identity, security, secrets, login, token areas changed | Higher review burden |
+| Test coverage signal | No obvious tests in the change set increases uncertainty | Moderate risk increase |
+| Database migrations | Schema or SQL migration changes increase operational complexity | High risk increase |
+
+### Score bands
+
+| Score | Band | Meaning |
+|---|---|---|
+| `0-25` | Low | Normal rollout posture |
+| `26-50` | Medium | Elevated caution; monitor carefully |
+| `51-75` | High | Approval strongly recommended |
+| `76-100` | Critical | Stop and review before production rollout |
+
+### Interpretation notes
+
+- A high score does not always mean the code is wrong.
+- A high score means the deployment conditions are risky.
+- A medium score often means rollout strategy matters more than code correctness.
+- A critical score usually means an incident, burn rate issue, or dangerous change combination exists.
+
+### When to use it
+
+Use **Ctrl+Alt+R**:
+
+- before deployment
+- before PR approval on risky branches
+- during incident response when deciding whether to keep shipping
+- after large config or schema changes
+
+### Recommended actions by band
+
+| Band | Action |
+|---|---|
+| Low | Proceed with normal smoke tests and monitoring |
+| Medium | Use guarded rollout, confirm monitoring, review recommendations |
+| High | Require explicit reviewer approval and rollback readiness |
+| Critical | Pause production rollout until the risk drivers are mitigated |
+
+---
+
+## Incident Timeline and RCA
+
+### What the panel does
+
+The Incident Timeline panel brings together:
+
+- active incidents
+- correlation chains
+- timeline ordering
+- ranked root-cause hypotheses
+- file navigation back into the editor
+
+### How to trigger RCA
+
+1. Open **Incident Timeline** with **Ctrl+Alt+L**.
+2. Select an incident.
+3. Click **Analyze RCA**.
+4. Wait for the ranked hypotheses to populate.
+5. Double-click related files to jump into the editor.
+
+### Reading the correlation chain
+
+The timeline combines operational events near incident onset.
+
+Look for:
+
+- recent deployments close to the incident start
+- alert fan-out across one service or several services
+- anomaly spikes near the same time window
+- risky commits or PRs linked to the affected service
+- ordering that suggests a clear trigger followed by cascading effects
+
+### The 5 hypothesis types
+
+The current RCA engine can generate five major hypothesis families:
+
+| Hypothesis type | What it means |
+|---|---|
+| Deployment regression | A recent deployment likely introduced the issue |
+| High-risk commit regression | A risky recent commit may have caused config, migration, or security fallout |
+| Dependency failure | Downstream or upstream dependency failure aligns with incident timing |
+| SLO burn / error-budget pressure | SLO burn indicators align with the incident window |
+| Correlated multi-alert failure | Multiple alerts suggest a broader shared failure mode |
+
+### How to interpret ranked hypotheses
+
+- **Rank 1** is the strongest current hypothesis.
+- **Confidence** reflects how much evidence supported that hypothesis.
+- **Evidence** shows why the engine ranked it highly.
+- **Remediation** suggests what to inspect or do next.
+
+### Good RCA workflow
+
+1. Start with the top-ranked hypothesis.
+2. Review the evidence timestamps.
+3. Compare against the deployment timeline.
+4. Check affected files and recent commits.
+5. Open the relevant file directly from the panel.
+6. Confirm or reject the hypothesis with telemetry.
+
+---
+
+## PR Risk Analysis
+
+### Purpose
+
+The PR Risk Analysis panel is a lightweight DevSecOps review surface for recent pull requests.
+
+It is useful for:
+
+- assessing deployability
+- reviewing changed-file blast radius
+- understanding security-sensitive changes
+- deciding whether approval is required
+
+### How to analyze a PR
+
+1. Open **PR Risk Analysis** with **Ctrl+Alt+P**.
+2. Select a pull request from the drop-down.
+3. Review the changed files and commit history.
+4. Click **Analyze**.
+5. Review the generated risk report.
+
+### What the panel shows
+
+- PR title, author, branches, created date, and status
+- changed files
+- risk score and band
+- factor-by-factor explanation
+- recommendations for mitigation
+- space for security findings when available from upstream scans
+- recent commits associated with the PR
+
+### Understanding the risk report
+
+Pay attention to:
+
+- the overall risk band
+- the highest-severity factors
+- whether rollout approval is required
+- whether infra, auth, or migration files are involved
+- whether the environment is already degraded
+
+### Acting on findings
+
+If the report is **Low**:
+
+- continue with normal review
+- verify smoke tests
+
+If the report is **Medium**:
+
+- add reviewer focus to risky areas
+- consider canary or staged rollout
+
+If the report is **High**:
+
+- require explicit reviewer sign-off
+- validate rollback plan
+- confirm monitoring and alert readiness
+
+If the report is **Critical**:
+
+- do not ship immediately
+- stabilize incidents or burn rate first
+- break apart the change or defer release
+
+---
+
+## Service Dependencies
+
+### What it does
+
+The Service Dependencies panel renders a service dependency graph and health-aware tree.
+
+It helps answer:
+
+- what depends on this service
+- what this service depends on
+- whether a dependency issue may explain a failure
+- where documentation for the service lives
+
+### Main elements
+
+- service tree
+- filter box
+- upstream list
+- downstream list
+- documentation link
+- health-indicator dots
+
+### Reading health indicators
+
+| State | Meaning |
+|---|---|
+| Healthy | Normal error rate, availability, and latency |
+| Degraded | Elevated latency or weaker availability |
+| Critical | Serious latency, error rate, or availability problem |
+| Unknown | No current health data attached |
+
+### Practical uses
+
+- map blast radius before deployment
+- confirm shared dependencies during incidents
+- identify likely choke points in a request path
+- onboard developers to service boundaries quickly
+
+---
+
+## Connectors Setup Guide
+
+### General guidance
+
+You can mix connectors.
+
+Common pattern:
+
+- Azure Monitor for telemetry
+- Azure DevOps or GitHub Actions for delivery state
+- Kubernetes for service state
+- PagerDuty for incidents
+- Prometheus for metrics
+
+### Azure Monitor
+
+Required fields in settings:
+
+- Tenant ID
+- Client ID
+- Client Secret
+- Subscription ID
+- Resource Group
+- Workspace ID
+- App Insights Key
+
+Use Azure Monitor when you want:
+
+- logs and metrics from Log Analytics / Application Insights
+- recent alerts
+- service health snapshots
+
+Checklist:
+
+1. Create or reuse an app registration.
+2. Grant the app access to the workspace and relevant telemetry resources.
+3. Enter tenant, client, and secret values.
+4. Fill in subscription, resource group, workspace ID, and Application Insights key.
+5. Enable the connector.
+
+### Azure DevOps
+
+Required fields:
+
+- Organization
+- Project
+- PAT
+
+Use Azure DevOps when you want:
+
+- pipeline runs
+- deployment history
+- CI/CD state in the Deployment Panel
+
+Checklist:
+
+1. Create a PAT with read access to builds and releases.
+2. Enter the org name.
+3. Enter the project name.
+4. Paste the PAT.
+5. Enable the connector.
+
+### Kubernetes
+
+Required fields:
+
+- API server URL
+- Bearer token
+- Namespace
+
+Optional field:
+
+- Skip TLS verify
+
+Use Kubernetes when you want:
+
+- cluster service topology
+- service health hints
+- workload and namespace-aware context
+
+Checklist:
+
+1. Copy the cluster API server URL.
+2. Use a token with the minimum read permissions you need.
+3. Set the working namespace.
+4. Only enable `Skip TLS Verify` in controlled lab situations.
+5. Enable the connector.
+
+### Prometheus
+
+Required fields:
+
+- Base URL
+
+Optional fields:
+
+- Bearer token
+- Username
+- Password
+- Timeout seconds
+
+Use Prometheus when you want:
+
+- metric-backed latency and error-rate context
+- SLO-style operational signals
+
+Checklist:
+
+1. Set the Prometheus base URL.
+2. Add auth only if your deployment requires it.
+3. Keep timeout conservative for interactive use.
+4. Enable the connector.
+
+### PagerDuty
+
+Required fields:
+
+- API token
+
+Optional field:
+
+- Service ID
+- Timeout seconds
+
+Use PagerDuty when you want:
+
+- incident state
+- recent alert history
+- responder-oriented timeline context
+
+Checklist:
+
+1. Create an API token with read access.
+2. Enter the token.
+3. Optionally scope to a service ID.
+4. Enable the connector.
+
+### GitHub Actions
+
+Required fields:
+
+- Owner
+- Repo
+- PAT
+
+Optional field:
+
+- Timeout seconds
+
+Use GitHub Actions when you want:
+
+- workflow status
+- recent delivery history
+- PR and repository deployment context
+
+Checklist:
+
+1. Generate a PAT with repo and workflow read access as needed.
+2. Enter owner and repository.
+3. Paste the token.
+4. Enable the connector.
+
+### Mock Data
+
+Use Mock Data when you want:
+
+- immediate demo mode
+- safe UI exploration without external systems
+- predictable sample incidents, alerts, topology, and runbooks
+
+---
+
+## AI Safety Model
+
+### Safety principles
+
+pfpad AIOps is designed around evidence-backed, local, deterministic logic rather than unconstrained generative behavior.
+
+### Confidence scoring
+
+Every major AI-style output carries a confidence score.
+
+Interpretation:
+
+| Score | Meaning |
+|---|---|
+| `>= 0.80` | Strong evidence, high confidence |
+| `0.50 - 0.79` | Useful but should be verified |
+| `< 0.50` | Weak evidence; treat as a lead, not a conclusion |
+
+### Evidence-based responses
+
+Responses are built from structured models such as:
+
+- incidents
+- deployments
+- alerts
+- anomalies
+- SLOs
+- risk factors
+- inline annotations
+
+This means the answer should be traceable back to recorded facts.
+
+### Data redaction
+
+Before data is persisted or displayed in sensitive contexts, pfpad applies redaction rules.
+
+Examples include:
+
+- passwords
+- bearer tokens
+- AWS keys
+- SAS signatures
+- private keys
+- generic long secret-like blobs
+
+### Approval workflow
+
+The platform supports approval-aware behavior in two places:
+
+1. **Deployment risk** — high or critical risk should trigger review before production.
+2. **Runbooks** — steps marked as requiring approval will stop real execution unless approved.
+
+### Audit logging location
+
+AIOps audit events are written under:
+
+```text
+%LocalAppData%\pfpad\aiops-audit\
+```
+
+Daily files follow the pattern:
+
+```text
+aiops-audit-YYYYMMDD.log
+```
+
+Logged event types include:
+
+- recommendation
+- security finding
+- production action
+- runbook execution
+
+### Prompt injection protection
+
+The current AIOps layer is deliberately conservative.
+
+Key protections:
+
+- the query layer classifies intents with deterministic code
+- answers are assembled from structured operational context
+- connector data is treated as input data, not executable instructions
+- runbook commands are checked against an allow-list of safe prefixes
+- unsafe commands are blocked during execution
+- redaction runs before audit persistence
+
+### Operator guidance
+
+- never treat a low-confidence answer as automatic truth
+- keep production approval enabled
+- review audit logs for sensitive or operationally meaningful actions
+- prefer dry-run for unfamiliar runbooks
+
+---
+
+## Inline Annotations
+
+### What they are
+
+Inline annotations attach operational meaning to files.
+
+They are stored per file and can be updated as the engine generates context.
+
+### Glyph legend
+
+| Glyph | Meaning |
+|---|---|
+| `⚡` | Latency hotspot or hot path |
+| `⚡⚡` | Multiple latency-style signals clustered near the same area |
+| `💥` | Error-prone code path |
+| `🚨` | Incident-linked code area |
+| `🔒` | Security-sensitive or risk-bearing location |
+| `👁` | Observability gap |
+| `📊` | SLO at risk |
+| `🚀` | Deployment risk attached to the file |
+| `📈` | Anomaly detected |
+
+### What inline annotations help with
+
+- knowing where operational risk concentrates
+- seeing production relevance while editing code
+- moving from alert to file faster
+- identifying instrumentation blind spots early
+
+### How to see details
+
+Look for annotation glyphs near the affected file context and use the relevant panel to inspect the attached evidence.
+
+Details usually include:
+
+- message
+- severity
+- evidence summary
+- action label where available
+
+### Annotation lifecycle
+
+- the engine generates annotations from operational context
+- the annotation service stores them per file
+- annotations can be replaced for a file or cleared globally
+
+---
+
+## OTel Code Generation
+
+### What it does
+
+The OTel generator creates starter instrumentation snippets for the active file language.
+
+### Supported languages
+
+| Language | Generated from file extension |
+|---|---|
+| C# | `.cs` |
+| Python | `.py` |
+| JavaScript | `.js` |
+| TypeScript | `.ts` |
+| Go | `.go` |
+| Java | `.java` |
+
+### How to use it
+
+1. Open a supported source file.
+2. Press **Ctrl+Alt+G**.
+3. Review the generated snippet in the dialog.
+4. Paste or adapt it into your implementation.
+
+### What the generator includes
+
+Typical snippet features:
+
+- tracer or activity source creation
+- service name tag
+- function or namespace tag
+- success status
+- exception capture
+- error status tagging
+
+### Example output for C#
+
+```csharp
+using System.Diagnostics;
+
+private static readonly ActivitySource ActivitySource = new("checkout-service");
+
+public async Task ValidateCartAsync(CancellationToken ct)
+{
+    using var activity = ActivitySource.StartActivity("ValidateCart", ActivityKind.Internal);
+    activity?.SetTag("service.name", "checkout-service");
+    activity?.SetTag("code.function", "ValidateCart");
+
+    try
+    {
+        await Task.CompletedTask;
+        activity?.SetStatus(ActivityStatusCode.Ok);
+    }
+    catch (Exception ex)
+    {
+        activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+        activity?.RecordException(ex);
+        throw;
+    }
 }
 ```
 
----
+### Best practices
 
-## 9. Telemetry Panel
-
-**Location:** `AIOps → Telemetry Panel` | Keyboard: `Ctrl+Alt+T`
-
-The Telemetry Panel shows live logs, metrics, and traces from your configured monitoring backend.
-
-### 9.1 Logs Tab
-
-Shows recent log entries for the selected service:
-```
-[14:31:55] [INFO]  Processing payment request for order ORD-1234
-[14:31:56] [WARN]  High latency detected: 450ms (threshold: 200ms)
-[14:31:57] [ERROR] Payment gateway timeout after 30000ms — TraceId: abc123
-```
-
-> Sensitive data is redacted automatically. Passwords, tokens, and keys are never shown.
-
-**Filtering:**
-- Service name: type to filter by service
-- Time range: Last 1h / 6h / 24h / 7 days
-- Log level: All / Error / Warning / Info
-
-### 9.2 Metrics Tab
-
-Shows metric time series data:
-
-| Metric | Value | Unit | Time | Dimensions |
-|---|---|---|---|---|
-| requests/duration | 452.3 | ms | 14:31:55 | service=payments |
-| exceptions/count | 3 | count/min | 14:31:00 | |
-| availability | 99.87 | % | 14:31:00 | region=eastus |
-
-### 9.3 Traces Tab
-
-Distributed trace tree:
-```
-TraceId: abc123def456
-└── payments-api / POST /api/payments  [450ms] ❌
-    ├── database / SELECT payments  [12ms] ✅
-    ├── payments-gateway / POST /charge  [30001ms] ❌ TIMEOUT
-    └── notifications / POST /send  [8ms] ✅
-```
-
-Double-click any span to see its full tags and attributes.
+- rename the generated function to match your real method
+- add business attributes that matter for your service
+- avoid recording secrets or PII in span attributes
+- pair span creation with good error handling
 
 ---
 
-## 10. Incident Correlation
+## Runbooks
 
-pfpad correlates active and recent incidents with the code you are editing.
+### What the panel does
 
-### 10.1 How It Works
+The Runbooks panel shows operational procedures grouped by service.
 
-1. The AIOps Engine polls your incident management system (Azure Monitor Alerts, PagerDuty via webhook, or ADO work items)
-2. When you open a file, pfpad checks if any open incidents mention the service name inferred from the file's namespace/directory
-3. If a match is found, an indicator appears in the AIOps Hub and in the file's gutter
+It is built for:
 
-### 10.2 Incident Root Cause Analysis (RCA)
+- incident response
+- platform maintenance
+- repetitive diagnostics
+- safe operator onboarding
 
-The `IncidentAnalyzer` generates a hypothesis for each active incident:
-- Cross-correlates incident start time with recent deployments
-- Checks if recently changed files overlap with the affected service
-- Queries error logs at incident start time for exception patterns
-- Scores each hypothesis by confidence
+### How to browse runbooks
 
-Example hypothesis:
-```
-INCIDENT: Payment API latency spike
-RCA HYPOTHESIS (confidence: 0.67 — Medium):
-  Most likely cause: Deployment #4521 (payments-api v1.4.2) at 14:15 UTC
-  Evidence:
-  - Incident started 3 minutes after deployment
-  - Exception logs show "NullReferenceException in PaymentProcessor.ProcessAsync"
-  - 3 recent deployments to payments-api in last 24h (elevated change frequency)
-  
-  NOTE: This is a hypothesis, not a confirmed root cause.
-  Confidence is Medium due to circumstantial timing evidence only.
-```
+1. Open **Runbooks** with **Ctrl+Alt+B**.
+2. Select a service.
+3. Select a runbook.
+4. Review steps, description, severity, and linked docs.
 
-### 10.3 Correlation to Code
+### Dry-run behavior
 
-When a correlated incident is found for the active file, the AIOps Hub shows:
-```
-⚠ ACTIVE INCIDENT CORRELATED TO THIS FILE
-  [HIGH] API latency spike — payments-api (47 min ago)
-  Possibly related to: PaymentProcessor.cs (line 142)
-  [View Incident] [View RCA]
+Dry-run is the safest first step.
+
+In dry-run mode:
+
+- steps are enumerated
+- approval steps are surfaced
+- commands are not executed live
+- you can inspect expected behavior before taking action
+
+### What commands are considered safe
+
+The current runbook engine allow-lists these prefixes:
+
+- `kubectl get`
+- `kubectl describe`
+- `kubectl logs`
+- `kubectl top`
+- `git log`
+- `git status`
+- `git diff`
+- `dotnet --version`
+- `docker ps`
+- `docker images`
+
+### Safety model for runbooks
+
+- unsafe commands are blocked
+- approval-required steps halt real execution when not approved
+- dry-run can be used without production impact
+- results are logged to the audit log
+
+### Recommended operator workflow
+
+1. Start with dry-run.
+2. Review the step descriptions.
+3. Confirm whether approval is required.
+4. Validate command safety.
+5. Only then consider real execution in a controlled environment.
+
+---
+
+## Troubleshooting
+
+### AIOps panel opens but is empty
+
+Possible causes:
+
+- connector not configured
+- AIOps disabled
+- no mock data and no live data source
+- panel opened before first poll completed
+
+Fixes:
+
+- enable Mock Data temporarily
+- verify AIOps settings
+- reduce poll interval for testing
+- reopen the panel after refresh
+
+### Security scan finds nothing when you expected results
+
+Possible causes:
+
+- file type is unsupported for the specific rule set
+- the current content does not match a rule pattern
+- the issue is in a different file than the active one
+
+Fixes:
+
+- scan the exact file containing the risky pattern
+- confirm file extension
+- re-run after saving changes
+
+### Query answers are too generic
+
+Possible causes:
+
+- limited operational context
+- no recent incident / alert / SLO data
+- weak service resolution for the active file
+
+Fixes:
+
+- open the relevant file first
+- run a file scan
+- open timeline or deployment panels before asking
+- connect telemetry and incident sources
+
+### Incident Timeline has no RCA result
+
+Possible causes:
+
+- insufficient recent correlated data
+- no matching deployment, alert, anomaly, commit, or PR evidence
+
+Fixes:
+
+- wait for connector refresh
+- connect more data sources
+- confirm the incident has service context
+
+### PR Risk Analysis shows no pull requests
+
+Possible causes:
+
+- PR-capable connector is not enabled
+- no recent PRs are available
+
+Fixes:
+
+- configure GitHub Actions or another PR source in your environment
+- enable Mock Data for exploration
+
+### Service dependency graph is sparse
+
+Possible causes:
+
+- topology source not connected
+- environment does not expose dependency data
+
+Fixes:
+
+- connect Kubernetes or Mock Data
+- verify service naming conventions
+
+### OTel generation picks the wrong language
+
+Possible causes:
+
+- file extension is unusual or unsupported
+
+Fixes:
+
+- rename the file to a supported extension first
+- use the generated snippet as a starting point and adapt manually
+
+### Runbook execution is blocked
+
+Possible causes:
+
+- command is not on the safe allow-list
+- approval is required
+
+Fixes:
+
+- use dry-run first
+- move risky commands into a manually approved workflow
+
+### Audit log review
+
+If you need to verify what AIOps did, inspect:
+
+```text
+%LocalAppData%\pfpad\aiops-audit\
 ```
 
 ---
 
-## 11. SLO Monitoring
+## Developer Workflow Guides
 
-pfpad shows Service Level Objective (SLO) status and burn rates from your monitoring backend.
+### C# / .NET developer
 
-### 11.1 SLO Concepts
+Typical workflow:
 
-- **SLO**: A target for service reliability (e.g., "99.9% availability over 30 days")
-- **Error Budget**: The allowed downtime within the SLO window (0.1% = ~43 min/month for 99.9%)
-- **Burn Rate**: How fast the error budget is being consumed. `1.0x` = burning at normal rate. `2.0x` = burning twice as fast, will exhaust budget in half the time.
+1. Open the target `.cs` file.
+2. Run **Scan Active File**.
+3. Review Security Panel output for injection, crypto, and null-risk issues.
+4. Use **AI Query Panel** to ask whether the current service is unstable.
+5. Use **Generate OTel Code** to add tracing to critical methods.
+6. Run **Score Deployment Risk** before shipping auth, config, or migration changes.
 
-### 11.2 SLO Status in pfpad
+Best uses in .NET:
 
-The AIOps Hub SLO section shows:
+- SQL injection detection in repository or data-access code
+- weak crypto review
+- activity source generation for `ActivitySource`
+- deployment review for `appsettings.json` and migration changes
 
-| Service | SLO | Current | Target | Status | Burn Rate |
-|---|---|---|---|---|---|
-| payments-api | Availability | 99.93% | 99.9% | 🟢 Healthy | 0.7x |
-| search-service | P99 Latency | 98.1% | 99.5% | 🔴 Breached | 3.2x |
-| auth-service | Availability | 99.85% | 99.9% | 🟡 AtRisk | 1.4x |
+### Python developer
 
-### 11.3 SLO Impact on Deployment Risk
+Typical workflow:
 
-If **any SLO has a burn rate > 1.5x**, deployment risk is automatically elevated. The risk scorer will:
-- Add +15 points (burn rate 1.5–2x) or +25 points (burn rate > 2x)
-- Include SLO burn rate as a risk factor in the report with evidence citing the metric
+1. Open the `.py` file.
+2. Scan it for shell, secret, and security-sensitive patterns.
+3. Ask AI Query whether recent failures align with the current module.
+4. Generate OTel code for async functions.
+5. Review observability gaps before deploy.
 
----
+Best uses in Python:
 
-## 12. Observability Advisor
+- command injection checks
+- secret detection
+- trace scaffolding for async handlers
+- deployment caution for infra-adjacent scripts
 
-**Keyboard:** `Ctrl+Alt+O` (analyze current file)
+### JavaScript / TypeScript developer
 
-The Observability Advisor analyzes your C# code for missing OpenTelemetry (OTel) instrumentation and suggests specific code additions.
+Typical workflow:
 
-### 12.1 What It Detects
+1. Open the `.js` or `.ts` file.
+2. Scan the file.
+3. Review auth, token, secret, and redirect risks.
+4. Use PR Risk Analysis for frontend/backend integration PRs.
+5. Generate OTel code for service handlers.
 
-| Pattern | Detection | Suggested Fix |
-|---|---|---|
-| Missing Activity span | HTTP handler method without `Activity.StartActivity()` | Add span around the operation |
-| Unlogged exception | `throw` statement without nearby `ILogger.LogError()` | Add structured log before throw |
-| Missing metrics | Method named `Process*`, `Calculate*`, `Handle*` with no counter/histogram | Add OTel counter |
-| Untracked HTTP call | `await _http.GetAsync()` without activity context propagation | Add activity tags |
-| Missing correlation | `CancellationTokenSource` created without propagating activity context | Pass existing context |
+Best uses in JS / TS:
 
-### 12.2 Example Gap
+- token and secret review
+- route or redirect safety review
+- instrumentation starter code for Node services
+- dependency-aware operational questions from the query panel
 
-```csharp
-// Detected gap in PaymentProcessor.cs line 23:
-// "Missing Activity span for HTTP handler"
-// Category: Tracing | Confidence: 0.82 (High)
-//
-// Suggested code to add:
-using var activity = ActivitySource.StartActivity("ProcessPayment");
-activity?.SetTag("order.id", request.OrderId);
-activity?.SetTag("amount", request.Amount);
-```
+### Go developer
 
-### 12.3 Viewing Gaps
+Typical workflow:
 
-Gaps appear in the **Insights Panel** (`Ctrl+Alt+I`) with:
-- Category badge (Tracing / Logging / Metrics)
-- Description of what's missing
-- Suggested code snippet (copy-pasteable)
-- Confidence score
+1. Open the `.go` file.
+2. Use the query panel to understand current service health.
+3. Generate OTel snippets for handlers or worker paths.
+4. Score risk before merging infra or migration work.
+5. Use Incident Timeline during rollout failures.
 
-Gaps are sorted by severity — HTTP handlers without any tracing are highest priority.
+Best uses in Go:
 
----
+- rapid trace scaffolding
+- service health correlation
+- rollout caution for backend services with strong SLOs
 
-## 13. Deployment Panel (CI/CD)
+### DevSecOps engineer
 
-**Location:** `AIOps → Deployment Panel` | Keyboard: `Ctrl+Alt+D`
+Typical workflow:
 
-The Deployment Panel shows your CI/CD pipelines and deployment history.
+1. Scan application and infra files.
+2. Review Security Panel for SAST + secrets + policy findings.
+3. Run PR Risk Analysis on risky changes.
+4. Run deployment risk scoring before release approval.
+5. Inspect runbooks and dry-run operator procedures.
 
-### 13.1 Pipelines Tab
+Best uses for DevSecOps:
 
-Real-time pipeline status from Azure DevOps or GitHub Actions:
+- pre-merge guardrails
+- policy drift checks in Bicep, Terraform, K8s YAML, Dockerfile
+- secret-exposure prevention
+- risk-based release approval support
 
-```
-🔵 main
-└── ✅ Build-and-Deploy  Started: 14:20  Duration: 8m 32s
-    ├── ✅ Restore & Build  [1m 12s]
-    ├── ✅ Test             [3m 45s]
-    ├── ✅ Security Scan    [45s]
-    ├── ✅ Deploy to Dev    [1m 20s]
-    └── ⏳ Deploy to Staging [running...]
+### SRE / Platform engineer
 
-🔴 feature/payment-refactor
-└── ❌ Build-and-Deploy  Started: 13:55  Duration: 4m 20s
-    ├── ✅ Restore & Build  [1m 10s]
-    └── ❌ Test             [3m 10s]  ← 12 tests failed
-```
+Typical workflow:
 
-### 13.2 Deployments Tab
+1. Open Incident Timeline.
+2. Run RCA for the active incident.
+3. Inspect Service Dependencies for blast radius.
+4. Review Runbooks and dry-run the next safe command set.
+5. Ask AI Query for an evidence-backed summary.
+6. Check deployment risk before allowing new rollouts.
 
-| Environment | Service | Version | Status | Deployed By | When |
-|---|---|---|---|---|---|
-| prod | payments-api | v1.4.1 | ✅ Succeeded | ci-bot | 2h ago |
-| staging | payments-api | v1.4.2 | ✅ Succeeded | ci-bot | 1h ago |
-| dev | payments-api | v1.4.3 | ✅ Succeeded | john.doe | 30m ago |
-| prod | auth-service | v2.1.0 | ↩ RolledBack | ci-bot | 4h ago |
+Best uses for SRE / Platform:
 
-### 13.3 Deployment Correlation
-
-When a deployment matches your currently open file's service, pfpad highlights it and shows it in the AIOps Hub's incident correlation section.
+- incident triage
+- deployment freeze decisions
+- dependency-driven diagnosis
+- safe operational command review
 
 ---
 
-## 14. Insights Panel
+## Final Notes
 
-**Location:** `AIOps → Insights Panel` | Keyboard: `Ctrl+Alt+I`
+pfpad AIOps is most effective when you use it as a loop, not a single feature.
 
-The Insights Panel aggregates all AI-generated insights in one place with confidence scores and evidence citations.
+Recommended loop:
 
-### 14.1 Insight Cards
+1. scan the file
+2. inspect risk
+3. ask a focused question
+4. review incidents and dependencies
+5. add telemetry
+6. confirm runbook safety
+7. ship only with acceptable risk
 
-Each insight card shows:
-```
-┌─────────────────────────────────────────────────────────┐
-│ 💡 Missing OpenTelemetry tracing in PaymentProcessor.cs │
-│                                                          │
-│ Method ProcessAsync handles HTTP requests but has no    │
-│ Activity span. This makes it invisible in traces when   │
-│ debugging latency issues.                               │
-│                                                          │
-│ Confidence: ████████░░ 0.82 (High)                      │
-│ Evidence: Code analysis • 1 source                      │
-│                                                          │
-│                              [Copy Snippet] [Apply Fix] │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 14.2 Insight Types
-
-| Type | Icon | Source |
-|---|---|---|
-| Observability Gap | 📡 | Code analysis |
-| Deployment Risk Factor | ⚠️ | Git diff + operational data |
-| Incident Correlation | 🚨 | Incident management system |
-| Security Finding | 🔒 | SAST scanner |
-| Remediation Suggestion | 💊 | Risk + security analysis |
-| SLO Warning | 📊 | SLO monitoring |
-
-### 14.3 Applying Remediations
-
-Remediations are classified by risk:
-- **Safe** (green): Code-only change, no external effects. [Apply Fix] button available.
-- **Review Required** (yellow): May affect behavior. [Review & Apply] requires you to review diff first.
-- **Production Impact** (red): Affects production infrastructure. Requires approval workflow.
-
----
-
-## 15. Integrations Setup
-
-### 15.1 Azure Monitor
-
-**Prerequisites:**
-- Azure subscription
-- Log Analytics Workspace
-- Service principal with `Monitoring Reader` role
-
-**Steps:**
-1. Go to **AIOps → Settings → Azure Monitor**
-2. Enter **Tenant ID**: found in Azure Active Directory → Overview
-3. Enter **Client ID** and **Client Secret**: create a service principal in AAD App Registrations
-4. Enter **Subscription ID**: found in Subscriptions blade
-5. Enter **Resource Group**: your application's resource group
-6. Enter **Workspace ID**: Log Analytics workspace → Agents → Workspace ID
-7. Click **[Test Connection]** — should show "Connected: {workspace name}"
-
-**What pfpad reads from Azure Monitor:**
-- Log Analytics: recent log entries via KQL queries
-- Metrics API: error rates, latency, availability
-- Alerts Management API: active alerts → incident list
-- Application Insights: request traces, exceptions, dependencies
-
-### 15.2 Azure DevOps
-
-**Prerequisites:**
-- Azure DevOps organization
-- Personal Access Token (PAT) with `Build (Read)` and `Release (Read)` scopes
-
-**Steps:**
-1. Go to **AIOps → Settings → Azure DevOps**
-2. Enter **Organization**: your ADO organization name (e.g., `mycompany`)
-3. Enter **Project**: the project name (e.g., `MyApp`)
-4. Enter **Personal Access Token**: create in ADO User Settings → Personal Access Tokens
-   - Required scopes: `Build: Read`, `Release: Read`, `Work Items: Read`
-5. Click **[Test Connection]**
-
-**What pfpad reads from Azure DevOps:**
-- Build API: recent pipeline runs, stage details
-- Release API: release deployments and environments
-- Work Items API: active bugs/incidents (mapped to Incident model)
-
-### 15.3 Kubernetes
-
-**Prerequisites:**
-- Kubernetes API server accessible from developer machine (or via `kubectl proxy`)
-- Service account token with read access to deployments and pods
-
-**Steps:**
-1. Go to **AIOps → Settings → Kubernetes**
-2. Enter **API Server URL**: e.g., `https://myaks.eastus.azmk8s.io:443`
-   - Or use `kubectl proxy` and set URL to `http://localhost:8001`
-3. Enter **Bearer Token**: from `kubectl get secret <sa-secret> -o jsonpath='{.data.token}' | base64 -d`
-4. Enter **Namespace**: your application namespace (e.g., `production`)
-5. If using self-signed certs, check **Skip TLS Verify** (not recommended for production)
-6. Click **[Test Connection]**
-
-**What pfpad reads from Kubernetes:**
-- Deployments: name, image version, replica status, conditions
-- Pods: crash loops, OOMKilled, pending states → mapped to incidents
-
-### 15.4 Mock Data Mode (Demo/Offline)
-
-Mock Data Mode provides realistic demo data without any external connections. Useful for:
-- Exploring pfpad features offline
-- Developer demos and presentations
-- CI/CD environments without live monitoring
-- Testing your team's pfpad configuration
-
-**To enable:** Go to **AIOps → Settings → General** and check **Enable Mock Data Mode**.
-
-Mock data includes:
-- 2 active incidents (1 Critical, 1 Medium)
-- 3 SLOs (1 Healthy, 1 AtRisk, 1 Breached)
-- 5 recent deployments across dev/staging/prod
-- 4 recent pipeline runs
-- Sample logs, metrics, and traces for `payments-api` and `auth-service`
-
----
-
-## 16. Developer Workflow Guides
-
-### 16.1 Workflow: Before You Commit
-
-**Recommended workflow for every commit:**
-
-1. **Save your file** — auto-scan runs SAST + secrets + policy scan
-2. Check **Security Panel** (`Ctrl+Alt+E`) — resolve any Critical/High findings
-3. **Score deployment risk** (`Ctrl+Alt+R`) — review risk report
-4. If risk is High/Critical: address the listed factors or document justification
-5. Open **Insights Panel** (`Ctrl+Alt+I`) — apply any Safe observability fixes
-6. Commit only when security panel shows 0 Critical/High findings OR with documented exception
-
-### 16.2 Workflow: Investigating a Production Incident
-
-1. Open **AIOps Hub** (`Ctrl+Alt+A`) — check Active Incidents section
-2. Double-click the incident to open it in your incident management system
-3. Open **Telemetry Panel** (`Ctrl+Alt+T`) — query logs for the affected service around incident start time
-4. Look at the Insights Panel (`Ctrl+Alt+I`) — check for RCA hypothesis
-5. Navigate to the correlated file in the editor — the AIOps Hub will highlight any correlated functions
-6. Review **recent deployments** — did a deploy precede the incident?
-7. Make fix → **score risk** before deploying the fix (`Ctrl+Alt+R`)
-
-### 16.3 Workflow: Infrastructure-as-Code Review (Bicep/Terraform)
-
-1. Open your `.bicep` or `.tf` file
-2. **Auto-policy scan** runs on open — check Security Panel for policy violations
-3. Run `Ctrl+Alt+S` for a full scan including SAST + policy
-4. Resolve all Critical/High policy violations before PR
-5. Check **POL-001** (required tags) — ensure `environment` and `owner` tags present
-6. Check **POL-003** (encryption) — verify storage encryption configured
-7. Check **SEC-TF-001/002** (public access, HTTPS) for Azure resources
-
-### 16.4 Workflow: Kubernetes Manifest Review
-
-1. Open your K8s manifest `.yaml` file
-2. pfpad auto-scans for:
-   - **SEC-K8S-001**: Privileged containers (`privileged: true`)
-   - **SEC-K8S-002**: `image: *:latest` tags (non-deterministic deployments)
-   - **POL-006**: Missing CPU/memory resource limits
-   - **POL-007**: Images from unapproved registries
-   - **POL-008**: Wildcard RBAC (`verbs: ["*"]`)
-3. Click any finding → jump to that line and apply remediation
-
-### 16.5 Workflow: Adding Observability to New Code (C#)
-
-1. Write your new service class / HTTP handler
-2. Save the file — ObservabilityAdvisor runs automatically
-3. Open **Insights Panel** (`Ctrl+Alt+I`) — look for observability gap cards
-4. For each gap:
-   - Review the suggested snippet
-   - Click **[Apply Fix]** for Safe remediations OR copy the snippet manually
-5. Ensure your class has:
-   - `ActivitySource` field and `using var activity = ...` in public methods
-   - `ILogger<T>` injected and used at Error/Warning level
-   - Counter/histogram metrics for key operations
-
-### 16.6 Workflow: SLO-Aware Development
-
-1. Open **AIOps Hub** — check SLO Status section
-2. If any SLO shows **AtRisk** or **Breached**:
-   - Pause non-critical feature work in the affected service
-   - Prioritize reliability work
-   - Check error budget remaining — < 10% = freeze all non-SLO work
-3. Before deploying to a service with elevated burn rate:
-   - Risk scorer will automatically add +15–25 points
-   - Consider deploying to staging and monitoring burn rate for 30+ minutes first
-4. After a fix deploys:
-   - Monitor SLO burn rate in Telemetry Panel
-   - Confirm burn rate returning toward 1.0x before next deploy
-
----
-
-## 17. Keyboard Reference
-
-| Shortcut | Action |
-|---|---|
-| `Ctrl+Alt+A` | Open AIOps Hub Panel |
-| `Ctrl+Alt+T` | Open Telemetry Panel |
-| `Ctrl+Alt+E` | Open Security Panel |
-| `Ctrl+Alt+D` | Open Deployment Panel |
-| `Ctrl+Alt+I` | Open Insights Panel |
-| `Ctrl+Alt+S` | Scan active file (security + policy) |
-| `Ctrl+Alt+R` | Score deployment risk (git diff) |
-| `Ctrl+Alt+O` | Analyze observability gaps in active file |
-| `Ctrl+Alt+,` | Open AIOps Settings |
-
----
-
-## 18. Troubleshooting
-
-### "Not connected" in AIOps Hub
-
-- Check **AIOps → Settings** — verify at least one connector is enabled
-- If all are disabled, enable **Mock Data Mode** for demo data
-- Click **[Test Connection]** in each connector's settings tab
-- Check firewall — pfpad needs outbound HTTPS to Azure/ADO endpoints
-
-### Azure Monitor: "Failed to get token"
-
-- Verify Tenant ID, Client ID, and Client Secret are correct
-- Ensure the service principal has `Monitoring Reader` role on the subscription
-- Check that the service principal is not expired (Azure AD → App Registrations → Certificates & Secrets)
-
-### Azure DevOps: "Unauthorized (401)"
-
-- PAT may have expired — create a new one (they default to 1-year expiry)
-- Verify PAT has `Build: Read` and `Release: Read` scopes
-- Ensure Organization and Project names are correct (case-sensitive)
-
-### Kubernetes: "Connection refused"
-
-- Verify API server URL is reachable from your machine
-- If using kubectl proxy: run `kubectl proxy --port=8001` first, then set URL to `http://localhost:8001`
-- Bearer token may have expired — rotate the service account token
-- Try enabling **Skip TLS Verify** if using self-signed certificates (dev/staging only)
-
-### Security scan shows no results
-
-- Verify the file extension is supported (`.cs`, `.py`, `.sh`, `.tf`, `.bicep`, `.yaml`, `.json`)
-- Check **AIOps → Settings → General** — confirm **Auto-scan on save** is enabled
-- Run `Ctrl+Alt+S` to scan manually
-- Check the Security Panel filter — it may be set to show only Critical/High (change to All)
-
-### Risk score always shows 0
-
-- Risk scoring requires git to be initialized in the workspace
-- Ensure the workspace folder is opened (Workspace Panel shows files)
-- Stage or commit some changes before running `Ctrl+Alt+R`
-- If no git history exists, mock data provides a sample risk report
-
----
-
-*pfpad AIOps Manual — v1.0*
-*"Evidence-based, explainable, confidence-scored, and safe."*
+That loop is what makes pfpad an AIOps-aware developer editor rather than a standard code editor with disconnected tooling.
