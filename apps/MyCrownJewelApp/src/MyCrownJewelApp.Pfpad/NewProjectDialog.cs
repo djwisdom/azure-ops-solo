@@ -77,7 +77,7 @@ internal sealed class NewProjectDialog : Form
             Width = 120,
             DropDownStyle = ComboBoxStyle.DropDownList
         };
-        _langFilter.Items.AddRange(new object[] { "All", "C#", "C", "C++", "Bicep", "Terraform" });
+        _langFilter.Items.AddRange(new object[] { "All", "C#", "C", "C++", "Bicep", "Terraform", "Python", "JavaScript", "TypeScript", "Go", "Ruby", "Shell", "PowerShell", "YAML", "SQL" });
         _langFilter.SelectedIndex = 0;
         _langFilter.SelectedIndexChanged += (s, e) => PopulateTemplateList(_langFilter.SelectedItem as string ?? "All");
         y += 34;
@@ -162,13 +162,14 @@ internal sealed class NewProjectDialog : Form
         bool isCsOrDotnet = tpl == null || tpl.Language == "C#";
         bool isCOrCpp     = tpl?.Language is "C" or "C++";
         bool isIaC        = tpl?.Language is "Bicep" or "Terraform";
+        bool isNativeOrScript = tpl?.Language is "Python" or "JavaScript" or "TypeScript" or "Go" or "Ruby" or "Shell" or "PowerShell" or "YAML" or "SQL";
 
         _solutionCheckBox.Visible = isCsOrDotnet;
         _frameworkLabel.Visible   = isCsOrDotnet;
         _frameworkCombo.Visible   = isCsOrDotnet;
 
-        // C/C++ and IaC both show git init; C/C++ also shows language standard
-        _gitCheckBox.Visible   = isCOrCpp || isIaC;
+        // Native, script, and IaC templates show git init; only C/C++ shows language standard
+        _gitCheckBox.Visible   = isCOrCpp || isIaC || isNativeOrScript;
         _standardLabel.Visible = isCOrCpp;
         _standardCombo.Visible = isCOrCpp;
 
@@ -916,6 +917,743 @@ module ""{name}"" {{
 |------|-------------|
 "),
                 (".gitignore", ".terraform/\n*.tfstate\n*.tfstate.backup\n.terraform.lock.hcl\n")
+            }
+        ));
+
+        // ── Python templates ──────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Python Script", ShortName: "py-script", Language: "Python",
+            Tags: "Script/CLI", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.py", @"#!/usr/bin/env python3
+""""""
+{name} — entry point
+""""""
+import argparse
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+log = logging.getLogger(__name__)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description='{name}')
+    parser.add_argument('--verbose', '-v', action='store_true')
+    args = parser.parse_args()
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+    log.info('Hello from {name}!')
+
+
+if __name__ == '__main__':
+    main()
+"),
+                (".gitignore", @"__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+dist/
+*.egg-info/
+.env
+"),
+                ("requirements.txt", "# Add your dependencies here\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Python Package", ShortName: "py-package", Language: "Python",
+            Tags: "Package/Library", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/{name}/__init__.py", @"""""""
+{name} package
+""""""
+
+__version__ = '0.1.0'
+"),
+                ("src/{name}/main.py", @"def hello() -> str:
+    return 'Hello from {name}!'
+"),
+                ("tests/__init__.py", ""),
+                ("tests/test_main.py", @"from {name}.main import hello
+
+
+def test_hello():
+    assert hello() == 'Hello from {name}!'
+"),
+                ("pyproject.toml", @"[build-system]
+requires = ['setuptools>=68', 'wheel']
+build-backend = 'setuptools.backends.legacy:build'
+
+[project]
+name = '{name}'
+version = '0.1.0'
+description = '{name}'
+requires-python = '>=3.11'
+dependencies = []
+
+[project.optional-dependencies]
+dev = ['pytest']
+"),
+                (".gitignore", @"__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+*.egg-info/
+.env
+")
+            }
+        ));
+
+        // ── JavaScript templates ──────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Node.js App", ShortName: "js-node", Language: "JavaScript",
+            Tags: "Node/CLI", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/index.js", @"'use strict';
+
+async function main() {
+  console.log('Hello from {name}!');
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+"),
+                ("package.json", @"{
+  ""name"": ""{name}"",
+  ""version"": ""1.0.0"",
+  ""description"": ""{name}"",
+  ""main"": ""src/index.js"",
+  ""scripts"": {
+    ""start"": ""node src/index.js"",
+    ""test"": ""jest""
+  },
+  ""license"": ""MIT""
+}
+"),
+                (".gitignore", "node_modules/\ndist/\n.env\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Express API", ShortName: "js-express", Language: "JavaScript",
+            Tags: "Node/Web/API", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/app.js", @"'use strict';
+
+const express = require('express');
+const app = express();
+
+app.use(express.json());
+
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+module.exports = app;
+"),
+                ("src/index.js", @"'use strict';
+
+const app = require('./app');
+const PORT = process.env.PORT ?? 3000;
+
+app.listen(PORT, () => console.log(`{name} listening on :${PORT}`));
+"),
+                ("package.json", @"{
+  ""name"": ""{name}"",
+  ""version"": ""1.0.0"",
+  ""main"": ""src/index.js"",
+  ""scripts"": {
+    ""start"": ""node src/index.js"",
+    ""dev"": ""nodemon src/index.js"",
+    ""test"": ""jest""
+  },
+  ""dependencies"": { ""express"": ""^4.19.2"" },
+  ""license"": ""MIT""
+}
+"),
+                (".gitignore", "node_modules/\ndist/\n.env\n")
+            }
+        ));
+
+        // ── TypeScript templates ──────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "TypeScript Node App", ShortName: "ts-node", Language: "TypeScript",
+            Tags: "Node/TypeScript", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/index.ts", @"async function main(): Promise<void> {
+  console.log('Hello from {name}!');
+}
+
+main().catch((err: unknown) => {
+  console.error(err);
+  process.exit(1);
+});
+"),
+                ("tsconfig.json", @"{
+  ""compilerOptions"": {
+    ""target"": ""ES2022"",
+    ""module"": ""CommonJS"",
+    ""outDir"": ""./dist"",
+    ""rootDir"": ""./src"",
+    ""strict"": true,
+    ""esModuleInterop"": true
+  },
+  ""include"": [""src""]
+}
+"),
+                ("package.json", @"{
+  ""name"": ""{name}"",
+  ""version"": ""1.0.0"",
+  ""scripts"": {
+    ""build"": ""tsc"",
+    ""start"": ""node dist/index.js"",
+    ""dev"": ""ts-node src/index.ts"",
+    ""test"": ""jest""
+  },
+  ""devDependencies"": { ""typescript"": ""^5.4.5"", ""ts-node"": ""^10.9.2"" },
+  ""license"": ""MIT""
+}
+"),
+                (".gitignore", "node_modules/\ndist/\n.env\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "TypeScript Library", ShortName: "ts-lib", Language: "TypeScript",
+            Tags: "Library/TypeScript", DotnetShortName: null,
+            Files: new[]
+            {
+                ("src/index.ts", @"export function hello(name = '{name}'): string {
+  return 'Hello from ' + name + '!';
+}
+"),
+                ("src/index.test.ts", @"import { hello } from '.';
+
+test('hello returns greeting', () => {
+  expect(hello()).toBe('Hello from {name}!');
+});
+"),
+                ("tsconfig.json", @"{
+  ""compilerOptions"": {
+    ""target"": ""ES2020"",
+    ""module"": ""CommonJS"",
+    ""declaration"": true,
+    ""outDir"": ""./dist"",
+    ""rootDir"": ""./src"",
+    ""strict"": true
+  },
+  ""include"": [""src""]
+}
+"),
+                ("package.json", @"{
+  ""name"": ""{name}"",
+  ""version"": ""1.0.0"",
+  ""main"": ""dist/index.js"",
+  ""types"": ""dist/index.d.ts"",
+  ""scripts"": {
+    ""build"": ""tsc"",
+    ""test"": ""jest""
+  },
+  ""devDependencies"": { ""typescript"": ""^5.4.5"", ""jest"": ""^29.0.0"" },
+  ""license"": ""MIT""
+}
+"),
+                (".gitignore", "node_modules/\ndist/\n.env\n")
+            }
+        ));
+
+        // ── Go templates ──────────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Go CLI App", ShortName: "go-cli", Language: "Go",
+            Tags: "CLI/Console", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.go", @"package main
+
+import (
+	""flag""
+	""fmt""
+	""os""
+)
+
+func main() {
+	verbose := flag.Bool(""verbose"", false, ""enable verbose output"")
+	flag.Parse()
+	if *verbose {
+		fmt.Fprintln(os.Stderr, ""verbose mode on"")
+	}
+	fmt.Println(""Hello from {name}!"")
+}
+"),
+                ("go.mod", @"module github.com/your-org/{name}
+
+go 1.22
+"),
+                (".gitignore", @"# Binaries
+{name}
+*.exe
+
+# Test cache
+/vendor/
+")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Go HTTP Server", ShortName: "go-http", Language: "Go",
+            Tags: "Web/API", DotnetShortName: null,
+            Files: new[]
+            {
+                ("main.go", @"package main
+
+import (
+	""encoding/json""
+	""fmt""
+	""log""
+	""net/http""
+)
+
+func main() {
+	http.HandleFunc(""/health"", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(""Content-Type"", ""application/json"")
+		json.NewEncoder(w).Encode(map[string]string{""status"": ""ok""})
+	})
+	addr := "":8080""
+	fmt.Println(""{name} listening on"", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
+}
+"),
+                ("go.mod", @"module github.com/your-org/{name}
+
+go 1.22
+"),
+                (".gitignore", @"# Binaries
+{name}
+*.exe
+
+/vendor/
+")
+            }
+        ));
+
+        // ── Ruby templates ────────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Ruby Script", ShortName: "rb-script", Language: "Ruby",
+            Tags: "Script/CLI", DotnetShortName: null,
+            Files: new[]
+            {
+                ("{name}.rb", @"#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'optparse'
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = 'Usage: {name}.rb [options]'
+  opts.on('-v', '--verbose', 'Run verbosely') { options[:verbose] = true }
+end.parse!
+
+puts 'Hello from {name}!'
+"),
+                ("Gemfile", @"# frozen_string_literal: true
+
+source 'https://rubygems.org'
+
+gem 'rspec', '~> 3.0', group: :development
+"),
+                (".gitignore", ".bundle/\nvendor/bundle/\n*.gem\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Ruby Gem", ShortName: "rb-gem", Language: "Ruby",
+            Tags: "Gem/Library", DotnetShortName: null,
+            Files: new[]
+            {
+                ("lib/{name}.rb", @"# frozen_string_literal: true
+
+module {UNAME}
+  VERSION = '0.1.0'
+
+  def self.hello
+    'Hello from {name}!'
+  end
+end
+"),
+                ("spec/{name}_spec.rb", @"# frozen_string_literal: true
+
+require '{name}'
+
+RSpec.describe {UNAME} do
+  it 'returns a greeting' do
+    expect({UNAME}.hello).to eq('Hello from {name}!')
+  end
+end
+"),
+                ("{name}.gemspec", @"# frozen_string_literal: true
+
+Gem::Specification.new do |spec|
+  spec.name    = '{name}'
+  spec.version = {UNAME}::VERSION
+  spec.summary = '{name}'
+  spec.files   = Dir['lib/**/*.rb']
+end
+"),
+                ("Gemfile", @"# frozen_string_literal: true
+
+source 'https://rubygems.org'
+gemspec
+"),
+                (".gitignore", "*.gem\n.bundle/\nvendor/\n")
+            }
+        ));
+
+        // ── Shell templates ───────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Bash Script", ShortName: "bash-script", Language: "Shell",
+            Tags: "Script/Bash", DotnetShortName: null,
+            Files: new[]
+            {
+                ("{name}.sh", @"#!/usr/bin/env bash
+# {name} — description
+# Usage: {name}.sh [--verbose] [--help]
+set -euo pipefail
+IFS=$'\n\t'
+
+SCRIPT_DIR=""$(cd ""$(dirname ""${BASH_SOURCE[0]}"")"" && pwd)""
+
+log()  { echo ""[INFO]  $*""; }
+warn() { echo ""[WARN]  $*"" >&2; }
+err()  { echo ""[ERROR] $*"" >&2; exit 1; }
+
+usage() { echo ""Usage: $0 [--verbose] [--help]""; exit 0; }
+
+VERBOSE=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -v|--verbose) VERBOSE=true ;;
+    -h|--help)    usage ;;
+    *) err ""Unknown argument: $1"" ;;
+  esac
+  shift
+done
+
+main() {
+  log ""Hello from {name}!""
+}
+
+main ""$@""
+"),
+                (".gitignore", "*.log\n*.tmp\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Bash Library", ShortName: "bash-lib", Language: "Shell",
+            Tags: "Library/Bash", DotnetShortName: null,
+            Files: new[]
+            {
+                ("lib/{name}.sh", @"#!/usr/bin/env bash
+# {name} library — sourced by other scripts
+# shellcheck shell=bash
+
+{UNAME}_hello() {
+  echo ""Hello from {name}!""
+}
+"),
+                ("tests/test_{name}.bats", @"#!/usr/bin/env bats
+
+load '../lib/{name}.sh'
+
+@test '{UNAME}_hello outputs greeting' {
+  run {UNAME}_hello
+  [ ""$output"" = 'Hello from {name}!' ]
+}
+"),
+                (".gitignore", "*.log\n")
+            }
+        ));
+
+        // ── PowerShell templates ──────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "PowerShell Script", ShortName: "ps-script", Language: "PowerShell",
+            Tags: "Script/Automation", DotnetShortName: null,
+            Files: new[]
+            {
+                ("{name}.ps1", @"#Requires -Version 7
+<#
+.SYNOPSIS
+    {name} — short description
+.DESCRIPTION
+    Longer description.
+.PARAMETER Verbose
+    Enable verbose output.
+.EXAMPLE
+    ./{name}.ps1 -Verbose
+#>
+[CmdletBinding()]
+param()
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Write-Log {
+    param([string]$Message)
+    Write-Host ""[INFO] $Message""
+}
+
+function Main {
+    Write-Log 'Hello from {name}!'
+}
+
+Main
+"),
+                (".gitignore", "*.log\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "PowerShell Module", ShortName: "ps-module", Language: "PowerShell",
+            Tags: "Module/Automation", DotnetShortName: null,
+            Files: new[]
+            {
+                ("{name}.psm1", @"#Requires -Version 7
+Set-StrictMode -Version Latest
+
+function Get-{UNAME}Greeting {
+    <#
+    .SYNOPSIS Returns a greeting from {name}.
+    #>
+    [CmdletBinding()]
+    param([string]$Name = '{name}')
+    ""Hello from $Name!""
+}
+
+Export-ModuleMember -Function 'Get-{UNAME}Greeting'
+"),
+                ("{name}.psd1", @"@{
+    ModuleVersion     = '1.0.0'
+    RootModule        = '{name}.psm1'
+    FunctionsToExport = @('Get-{UNAME}Greeting')
+    Description       = '{name} module'
+}
+"),
+                ("tests/{name}.Tests.ps1", @"#Requires -Modules Pester
+Import-Module ""$PSScriptRoot/../{name}.psd1"" -Force
+
+Describe 'Get-{UNAME}Greeting' {
+    It 'returns greeting' {
+        Get-{UNAME}Greeting | Should -Be 'Hello from {name}!'
+    }
+}
+"),
+                (".gitignore", "*.log\n")
+            }
+        ));
+
+        // ── YAML templates ────────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "GitHub Actions Workflow", ShortName: "yaml-ghaction", Language: "YAML",
+            Tags: "CI/CD/GitHub", DotnetShortName: null,
+            Files: new[]
+            {
+                (".github/workflows/{name}.yml", @"name: {name}
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: echo 'Configure your build environment here'
+
+      - name: Build
+        run: echo 'Run your build command here'
+
+      - name: Test
+        run: echo 'Run your tests here'
+"),
+                ("README.md", @"# {name}
+
+GitHub Actions workflow for {name}.
+")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Docker Compose", ShortName: "yaml-docker-compose", Language: "YAML",
+            Tags: "Docker/Compose", DotnetShortName: null,
+            Files: new[]
+            {
+                ("docker-compose.yml", @"services:
+  app:
+    build: .
+    ports:
+      - ""8080:8080""
+    environment:
+      - DATABASE_URL=postgres://user:pass@db:5432/{name}
+    depends_on:
+      - db
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: {name}
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+volumes:
+  db-data:
+"),
+                (".gitignore", "*.log\n.env\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "Kubernetes Manifests", ShortName: "yaml-k8s", Language: "YAML",
+            Tags: "Kubernetes/Deploy", DotnetShortName: null,
+            Files: new[]
+            {
+                ("k8s/deployment.yaml", @"apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {name}
+  labels:
+    app: {name}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: {name}
+  template:
+    metadata:
+      labels:
+        app: {name}
+    spec:
+      containers:
+        - name: {name}
+          image: your-registry/{name}:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {name}-config
+"),
+                ("k8s/service.yaml", @"apiVersion: v1
+kind: Service
+metadata:
+  name: {name}
+spec:
+  selector:
+    app: {name}
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+"),
+                ("k8s/configmap.yaml", @"apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {name}-config
+data:
+  APP_ENV: production
+  LOG_LEVEL: info
+"),
+                (".gitignore", "*.log\n.env\n")
+            }
+        ));
+
+        // ── SQL templates ─────────────────────────────────────────────────────────
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "SQL Schema", ShortName: "sql-schema", Language: "SQL",
+            Tags: "Database/Schema", DotnetShortName: null,
+            Files: new[]
+            {
+                ("schema.sql", @"-- {name} schema
+-- Run: sqlite3 {name}.db < schema.sql
+
+CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER      PRIMARY KEY AUTOINCREMENT,
+    username   VARCHAR(100) NOT NULL UNIQUE,
+    email      VARCHAR(255) NOT NULL UNIQUE,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS items (
+    id         INTEGER      PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER      NOT NULL REFERENCES users(id),
+    title      VARCHAR(255) NOT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_items_user_id ON items(user_id);
+
+CREATE VIEW IF NOT EXISTS user_items AS
+    SELECT u.username, i.title, i.created_at
+    FROM items i
+    JOIN users u ON i.user_id = u.id;
+"),
+                ("seed.sql", @"-- Seed data for {name}
+INSERT INTO users (username, email) VALUES
+    ('alice', 'alice@example.com'),
+    ('bob',   'bob@example.com');
+"),
+                (".gitignore", "*.db\n*.sqlite\n")
+            }
+        ));
+
+        _allTemplates.Add(new ProjectTemplate(
+            Name: "SQL Migrations", ShortName: "sql-migrations", Language: "SQL",
+            Tags: "Database/Migrations", DotnetShortName: null,
+            Files: new[]
+            {
+                ("migrations/001_initial.sql", @"-- Migration 001: initial schema for {name}
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version    INTEGER  PRIMARY KEY,
+    applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS {name}_records (
+    id         INTEGER      PRIMARY KEY AUTOINCREMENT,
+    name       VARCHAR(255) NOT NULL,
+    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO schema_migrations (version) VALUES (1);
+"),
+                ("migrations/002_add_status.sql", @"-- Migration 002: add status column
+
+ALTER TABLE {name}_records ADD COLUMN status VARCHAR(50) NOT NULL DEFAULT 'active';
+
+INSERT INTO schema_migrations (version) VALUES (2);
+"),
+                ("run_migrations.sh", @"#!/usr/bin/env bash
+set -euo pipefail
+DB=""{name}.db""
+for f in migrations/*.sql; do
+    echo ""Applying $f...""
+    sqlite3 ""$DB"" < ""$f""
+done
+echo ""Done.""
+"),
+                (".gitignore", "*.db\n*.sqlite\n")
             }
         ));
     }

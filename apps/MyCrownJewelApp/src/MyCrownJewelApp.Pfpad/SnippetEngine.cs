@@ -25,13 +25,22 @@ public sealed class SnippetEngine
     {
         _currentLang = ext?.ToLowerInvariant() switch
         {
-            ".cs" or ".csx"                    => "cs",
-            ".c"                               => "c",
-            ".cpp" or ".cc" or ".cxx" or ".c++" => "cpp",
-            ".h" or ".hpp" or ".hxx"            => "cpp",
-            ".bicep"                            => "bicep",
-            ".tf" or ".tfvars" or ".hcl"        => "tf",
-            _                                  => "any"
+            ".cs" or ".csx"                      => "cs",
+            ".c"                                 => "c",
+            ".cpp" or ".cc" or ".cxx" or ".c++"  => "cpp",
+            ".h" or ".hpp" or ".hxx"             => "cpp",
+            ".bicep"                             => "bicep",
+            ".tf" or ".tfvars" or ".hcl"         => "tf",
+            ".py" or ".pyw"                      => "py",
+            ".js" or ".jsx" or ".mjs" or ".cjs"  => "js",
+            ".ts" or ".tsx"                      => "ts",
+            ".go"                                => "go",
+            ".rb"                                => "rb",
+            ".sh" or ".bash" or ".zsh"           => "sh",
+            ".yaml" or ".yml"                    => "yaml",
+            ".ps1" or ".psm1" or ".psd1"         => "ps",
+            ".sql"                               => "sql",
+            _                                    => "any"
         };
     }
 
@@ -134,6 +143,130 @@ public sealed class SnippetEngine
         Add("tags",      "common tags map",            "tags = {\r\n  environment = var.environment\r\n  project     = var.project_name\r\n  managed_by  = \"terraform\"\r\n}", "tf");
         Add("tftag",     "single tag attribute",       "$0 = var.$1",                                                                                                            "tf");
         Add("depends",   "depends_on block",           "depends_on = [$0]",                                                                                                      "tf");
+
+        // ── Python snippets ───────────────────────────────────────────────────────
+        Add("def",       "function definition",        "def $0($1):\r\n    $2",                                                                                                   "py");
+        Add("class",     "class definition",           "class $0:\r\n    def __init__(self$1):\r\n        $2",                                                                    "py");
+        Add("if",        "if statement",               "if $0:\r\n    $1",                                                                                                        "py");
+        Add("ife",       "if-else",                    "if $0:\r\n    $1\r\nelse:\r\n    $2",                                                                                     "py");
+        Add("for",       "for loop",                   "for $0 in $1:\r\n    $2",                                                                                                 "py");
+        Add("while",     "while loop",                 "while $0:\r\n    $1",                                                                                                     "py");
+        Add("try",       "try-except",                 "try:\r\n    $0\r\nexcept Exception as e:\r\n    $1",                                                                      "py");
+        Add("with",      "with statement",             "with $0 as $1:\r\n    $2",                                                                                                "py");
+        Add("main",      "main guard",                 "if __name__ == '__main__':\r\n    $0",                                                                                    "py");
+        Add("dataclass", "dataclass",                  "@dataclass\r\nclass $0:\r\n    $1: $2",                                                                                   "py");
+        Add("prop",      "property decorator",         "@property\r\ndef $0(self):\r\n    return self._$0\r\n\r\n@$0.setter\r\ndef $0(self, value):\r\n    self._$0 = value",     "py");
+        Add("lc",        "list comprehension",         "[$0 for $1 in $2]",                                                                                                       "py");
+        Add("dc",        "dict comprehension",         "{$0: $1 for $2 in $3}",                                                                                                   "py");
+        Add("lambda",    "lambda expression",          "lambda $0: $1",                                                                                                           "py");
+
+        // ── JavaScript snippets ───────────────────────────────────────────────────
+        Add("fn",        "function declaration",       "function $0($1) {\r\n    $2\r\n}",                                                                                        "js");
+        Add("arrow",     "arrow function",             "const $0 = ($1) => {\r\n    $2\r\n};",                                                                                    "js");
+        Add("class",     "class declaration",          "class $0 {\r\n    constructor($1) {\r\n        $2\r\n    }\r\n}",                                                         "js");
+        Add("for",       "for loop",                   "for (let i = 0; i < $0; i++) {\r\n    $1\r\n}",                                                                           "js");
+        Add("foreach",   "forEach",                    "$0.forEach(($1) => {\r\n    $2\r\n});",                                                                                   "js");
+        Add("prom",      "Promise",                    "new Promise((resolve, reject) => {\r\n    $0\r\n});",                                                                     "js");
+        Add("async",     "async function",             "async function $0($1) {\r\n    try {\r\n        $2\r\n    } catch (err) {\r\n        console.error(err);\r\n    }\r\n}", "js");
+        Add("fetch",     "fetch call",                 "const res = await fetch('$0');\r\nconst data = await res.json();",                                                        "js");
+        Add("mod",       "ES module export",           "export $0",                                                                                                               "js");
+        Add("iife",      "immediately invoked fn",     "(() => {\r\n    $0\r\n})();",                                                                                             "js");
+        Add("event",     "addEventListener",           "$0.addEventListener('$1', ($2) => {\r\n    $3\r\n});",                                                                    "js");
+        Add("try",       "try-catch",                  "try {\r\n    $0\r\n} catch (err) {\r\n    console.error(err);\r\n}",                                                      "js");
+        Add("switch",    "switch statement",           "switch ($0) {\r\n    case $1:\r\n        $2\r\n        break;\r\n    default:\r\n        break;\r\n}",                    "js");
+
+        // ── TypeScript snippets ───────────────────────────────────────────────────
+        Add("fn",        "function declaration",       "function $0($1: $2): $3 {\r\n    $4\r\n}",                                                                                "ts");
+        Add("arrow",     "typed arrow function",       "const $0 = ($1: $2): $3 => {\r\n    $4\r\n};",                                                                            "ts");
+        Add("iface",     "interface",                  "interface $0 {\r\n    $1: $2;\r\n}",                                                                                      "ts");
+        Add("type",      "type alias",                 "type $0 = $1;",                                                                                                           "ts");
+        Add("enum",      "enum",                       "enum $0 {\r\n    $1 = '$2',\r\n}",                                                                                        "ts");
+        Add("class",     "class with constructor",     "class $0 {\r\n    constructor(private $1: $2) {}\r\n\r\n    $3($4): $5 {\r\n        $6\r\n    }\r\n}",                   "ts");
+        Add("generic",   "generic function",           "function $0<T>($1: T): T {\r\n    $2\r\n    return $1;\r\n}",                                                             "ts");
+        Add("guard",     "type guard",                 "function is$0(value: unknown): value is $0 {\r\n    return typeof value === '$1';\r\n}",                                  "ts");
+        Add("async",     "async function",             "async function $0($1: $2): Promise<$3> {\r\n    $4\r\n}",                                                                  "ts");
+        Add("prom",      "Promise type",               "Promise<$0>",                                                                                                             "ts");
+        Add("try",       "try-catch typed",            "try {\r\n    $0\r\n} catch (err: unknown) {\r\n    if (err instanceof Error) console.error(err.message);\r\n}",           "ts");
+        Add("mod",       "export module",              "export { $0 } from './$1';",                                                                                              "ts");
+
+        // ── Go snippets ───────────────────────────────────────────────────────────
+        Add("func",      "function",                   "func $0($1 $2) $3 {\r\n\t$4\r\n}",                                                                                       "go");
+        Add("main",      "main package",               "package main\r\n\r\nimport \"fmt\"\r\n\r\nfunc main() {\r\n\t$0\r\n}",                                                    "go");
+        Add("struct",    "struct type",                "type $0 struct {\r\n\t$1 $2\r\n}",                                                                                        "go");
+        Add("iface",     "interface type",             "type $0 interface {\r\n\t$1($2) $3\r\n}",                                                                                 "go");
+        Add("iferr",     "if err != nil",              "if err != nil {\r\n\treturn $0err\r\n}",                                                                                   "go");
+        Add("goroutine", "goroutine",                  "go func() {\r\n\t$0\r\n}()",                                                                                              "go");
+        Add("chan",      "channel",                    "$0 := make(chan $1, $2)",                                                                                                  "go");
+        Add("for",       "for loop",                   "for $0 := 0; $0 < $1; $0++ {\r\n\t$2\r\n}",                                                                              "go");
+        Add("forr",      "range for loop",             "for $0, $1 := range $2 {\r\n\t$3\r\n}",                                                                                   "go");
+        Add("switch",    "switch statement",           "switch $0 {\r\ncase $1:\r\n\t$2\r\ndefault:\r\n\t$3\r\n}",                                                               "go");
+        Add("defer",     "defer statement",            "defer $0()",                                                                                                               "go");
+        Add("test",      "test function",              "func Test$0(t *testing.T) {\r\n\t$1\r\n}",                                                                                "go");
+
+        // ── Ruby snippets ─────────────────────────────────────────────────────────
+        Add("def",       "method definition",          "def $0($1)\r\n  $2\r\nend",                                                                                               "rb");
+        Add("class",     "class definition",           "class $0\r\n  def initialize($1)\r\n    $2\r\n  end\r\nend",                                                              "rb");
+        Add("module",    "module definition",          "module $0\r\n  $1\r\nend",                                                                                                "rb");
+        Add("if",        "if statement",               "if $0\r\n  $1\r\nend",                                                                                                    "rb");
+        Add("ife",       "if-else",                    "if $0\r\n  $1\r\nelse\r\n  $2\r\nend",                                                                                    "rb");
+        Add("block",     "block (do..end)",            "do |$0|\r\n  $1\r\nend",                                                                                                  "rb");
+        Add("lambda",    "lambda",                     "-> ($0) { $1 }",                                                                                                          "rb");
+        Add("attr",      "attr_accessor",              "attr_accessor :$0",                                                                                                       "rb");
+        Add("begin",     "begin-rescue",               "begin\r\n  $0\r\nrescue => e\r\n  $1\r\nend",                                                                            "rb");
+        Add("each",      "each iterator",              "$0.each do |$1|\r\n  $2\r\nend",                                                                                          "rb");
+        Add("map",       "map iterator",               "$0.map { |$1| $2 }",                                                                                                      "rb");
+        Add("test",      "RSpec it block",             "it '$0' do\r\n  $1\r\nend",                                                                                               "rb");
+
+        // ── Bash/Shell snippets ───────────────────────────────────────────────────
+        Add("strict",    "strict mode header",         "#!/usr/bin/env bash\r\nset -euo pipefail\r\nIFS=$'\\n\\t'\r\n\r\n$0",                                                    "sh");
+        Add("fn",        "function definition",        "$0() {\r\n  $1\r\n}",                                                                                                     "sh");
+        Add("if",        "if statement",               "if [[ $0 ]]; then\r\n  $1\r\nfi",                                                                                         "sh");
+        Add("ife",       "if-else",                    "if [[ $0 ]]; then\r\n  $1\r\nelse\r\n  $2\r\nfi",                                                                        "sh");
+        Add("for",       "for loop",                   "for $0 in $1; do\r\n  $2\r\ndone",                                                                                        "sh");
+        Add("while",     "while loop",                 "while [[ $0 ]]; do\r\n  $1\r\ndone",                                                                                      "sh");
+        Add("case",      "case statement",             "case $0 in\r\n  $1)\r\n    $2\r\n    ;;\r\n  *)\r\n    $3\r\n    ;;\r\nesac",                                             "sh");
+        Add("args",      "positional args check",      "if [[ $# -lt $0 ]]; then\r\n  echo \"Usage: $0 <arg>\" >&2\r\n  exit 1\r\nfi",                                          "sh");
+        Add("trap",      "trap signal",                "trap '$0' EXIT INT TERM",                                                                                                  "sh");
+        Add("log",       "logging functions",          "log()  { echo \"[INFO]  $*\"; }\r\nwarn() { echo \"[WARN]  $*\" >&2; }\r\nerr()  { echo \"[ERROR] $*\" >&2; exit 1; }", "sh");
+        Add("chkdep",    "check dependency",           "command -v $0 &>/dev/null || { echo \"$0 not found\" >&2; exit 1; }",                                                    "sh");
+        Add("readonly",  "readonly variable",          "readonly $0=$1",                                                                                                           "sh");
+
+        // ── YAML snippets ─────────────────────────────────────────────────────────
+        Add("doc",       "YAML document",              "---\r\n$0",                                                                                                                "yaml");
+        Add("list",      "YAML list",                  "- $0\r\n- $1",                                                                                                            "yaml");
+        Add("map",       "YAML map",                   "$0:\r\n  $1: $2",                                                                                                          "yaml");
+        Add("anchor",    "anchor & alias",             "&$0\r\n  $1: $2\r\n\r\n<<: *$0",                                                                                          "yaml");
+        Add("ghaction",  "GitHub Actions workflow",    "name: $0\r\non:\r\n  push:\r\n    branches: [main]\r\n  pull_request:\r\n    branches: [main]\r\njobs:\r\n  build:\r\n    runs-on: ubuntu-latest\r\n    steps:\r\n      - uses: actions/checkout@v4\r\n      - name: $1\r\n        run: $2", "yaml");
+        Add("step",      "GH Actions step",            "- name: $0\r\n  run: $1",                                                                                                 "yaml");
+        Add("k8sdeploy", "Kubernetes Deployment",      "apiVersion: apps/v1\r\nkind: Deployment\r\nmetadata:\r\n  name: $0\r\nspec:\r\n  replicas: $1\r\n  selector:\r\n    matchLabels:\r\n      app: $0\r\n  template:\r\n    metadata:\r\n      labels:\r\n        app: $0\r\n    spec:\r\n      containers:\r\n        - name: $0\r\n          image: $2\r\n          ports:\r\n            - containerPort: $3", "yaml");
+        Add("k8ssvc",    "Kubernetes Service",         "apiVersion: v1\r\nkind: Service\r\nmetadata:\r\n  name: $0\r\nspec:\r\n  selector:\r\n    app: $0\r\n  ports:\r\n    - port: $1\r\n      targetPort: $2\r\n  type: ClusterIP", "yaml");
+        Add("dcompose",  "docker-compose service",     "services:\r\n  $0:\r\n    image: $1\r\n    ports:\r\n      - \"$2:$3\"\r\n    environment:\r\n      $4: $5\r\n    volumes:\r\n      - $6:$7", "yaml");
+
+        // ── PowerShell snippets ───────────────────────────────────────────────────
+        Add("fn",        "function",                   "function $0 {\r\n    param(\r\n        [Parameter(Mandatory)]\r\n        [string]$$1\r\n    )\r\n    $2\r\n}",            "ps");
+        Add("param",     "param block",                "param(\r\n    [Parameter(Mandatory)]\r\n    [string]$$0\r\n)",                                                            "ps");
+        Add("if",        "if statement",               "if ($0) {\r\n    $1\r\n}",                                                                                                "ps");
+        Add("foreach",   "foreach loop",               "foreach ($$0 in $1) {\r\n    $2\r\n}",                                                                                   "ps");
+        Add("switch",    "switch statement",           "switch ($0) {\r\n    '$1' { $2 }\r\n    default { $3 }\r\n}",                                                            "ps");
+        Add("try",       "try-catch",                  "try {\r\n    $0\r\n} catch {\r\n    Write-Error \"Error: $_\"\r\n}",                                                     "ps");
+        Add("pipeline",  "pipeline filter",            "process {\r\n    if ($_ $0) {\r\n        $1\r\n    }\r\n}",                                                               "ps");
+        Add("cmdlet",    "advanced function",          "[CmdletBinding()]\r\nparam(\r\n    [Parameter(Mandatory, ValueFromPipeline)]\r\n    [string]$$0\r\n)\r\nbegin {}\r\nprocess { $1 }\r\nend {}", "ps");
+        Add("test",      "Pester test",                "Describe '$0' {\r\n    It '$1' {\r\n        $2 | Should -Be $3\r\n    }\r\n}",                                           "ps");
+        Add("module",    "module manifest snippet",    "@{\r\n    ModuleVersion = '$0'\r\n    RootModule    = '$1.psm1'\r\n    FunctionsToExport = @('$2')\r\n}",                "ps");
+
+        // ── SQL snippets ──────────────────────────────────────────────────────────
+        Add("sel",       "SELECT statement",           "SELECT $0\r\nFROM $1\r\nWHERE $2;",                                                                                       "sql");
+        Add("selall",    "SELECT *",                   "SELECT *\r\nFROM $0\r\nWHERE $1;",                                                                                        "sql");
+        Add("join",      "INNER JOIN",                 "INNER JOIN $0 ON $1.$2 = $3.$4",                                                                                          "sql");
+        Add("ljoin",     "LEFT JOIN",                  "LEFT JOIN $0 ON $1.$2 = $3.$4",                                                                                           "sql");
+        Add("cte",       "Common Table Expression",    "WITH $0 AS (\r\n    SELECT $1\r\n    FROM $2\r\n    WHERE $3\r\n)\r\nSELECT *\r\nFROM $0;",                              "sql");
+        Add("insert",    "INSERT INTO",                "INSERT INTO $0 ($1)\r\nVALUES ($2);",                                                                                     "sql");
+        Add("update",    "UPDATE statement",           "UPDATE $0\r\nSET $1 = $2\r\nWHERE $3;",                                                                                  "sql");
+        Add("delete",    "DELETE statement",           "DELETE FROM $0\r\nWHERE $1;",                                                                                             "sql");
+        Add("create",    "CREATE TABLE",               "CREATE TABLE $0 (\r\n    id   INT          NOT NULL PRIMARY KEY,\r\n    $1   VARCHAR(255) NOT NULL,\r\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP\r\n);", "sql");
+        Add("index",     "CREATE INDEX",               "CREATE INDEX idx_$0_$1 ON $0 ($1);",                                                                                     "sql");
+        Add("tx",        "transaction block",          "BEGIN TRANSACTION;\r\n\r\n$0\r\n\r\nCOMMIT;",                                                                            "sql");
+        Add("view",      "CREATE VIEW",                "CREATE VIEW $0 AS\r\nSELECT $1\r\nFROM $2\r\nWHERE $3;",                                                                "sql");
     }
 
     public void Add(string prefix, string description, string body, string language = "any")

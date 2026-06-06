@@ -1663,11 +1663,21 @@ private void LayoutRightPanel()
             string[] files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly);
             var fileNames = files.Select(f => Path.GetFileName(f)?.ToLowerInvariant() ?? "").ToArray();
 
-            if (fileNames.Contains("package.json")) return "node";
+            if (fileNames.Contains("package.json"))
+            {
+                // TypeScript takes priority over plain node if tsconfig.json is present
+                if (fileNames.Contains("tsconfig.json") || fileNames.Any(f => f.EndsWith(".ts") || f.EndsWith(".tsx"))) return "typescript";
+                return "node";
+            }
+            if (fileNames.Contains("tsconfig.json") || fileNames.Any(f => f.EndsWith(".ts") || f.EndsWith(".tsx"))) return "typescript";
             if (fileNames.Contains("requirements.txt") || fileNames.Contains("setup.py") || fileNames.Contains("pyproject.toml")) return "python";
+            if (fileNames.Contains("gemfile") || fileNames.Contains("gemfile.lock") || fileNames.Any(f => f.EndsWith(".gemspec"))) return "ruby";
             if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
             if (fileNames.Contains("go.mod")) return "go";
             if (fileNames.Contains("cargo.toml")) return "rust";
+            if (fileNames.Any(f => f.EndsWith(".ps1") || f.EndsWith(".psm1") || f.EndsWith(".psd1"))) return "powershell";
+            if (fileNames.Any(f => f.EndsWith(".sh") || f.EndsWith(".bash"))) return "bash";
+            if (fileNames.Any(f => f.EndsWith(".sql"))) return "sql";
             // IaC: check before generic C/C++ so main.bicep is not confused with C headers
             if (fileNames.Any(f => f.EndsWith(".bicep"))) return "bicep";
             if (fileNames.Any(f => f.EndsWith(".tf") || f.EndsWith(".tfvars"))) return "terraform";
@@ -1706,17 +1716,22 @@ private void LayoutRightPanel()
     private static (string Build, string Run, string Test) ResolveBuildCommandsForType(string? projectType)
         => projectType switch
         {
-            "cpp"       => ("cmake --build build", "./build/app", "ctest --test-dir build"),
-            "make"      => ("make", "./app", "make test"),
-            "c"         => ("make", "./app", "make test"),
-            "node"      => ("npm run build", "npm start", "npm test"),
-            "python"    => ("python -m compileall .", "python main.py", "python -m pytest"),
-            "rust"      => ("cargo build", "cargo run", "cargo test"),
-            "java"      => ("mvn package", "java -jar target/*.jar", "mvn test"),
-            "go"        => ("go build ./...", "go run .", "go test ./..."),
-            "bicep"     => ("az bicep build --file main.bicep", "az deployment group create --template-file main.bicep --parameters @parameters.json", "az bicep lint --file main.bicep"),
-            "terraform" => ("terraform validate", "terraform plan", "terraform validate && tflint"),
-            _           => ("dotnet build", "dotnet run", "dotnet test")   // dotnet or unknown
+            "cpp"        => ("cmake --build build", "./build/app", "ctest --test-dir build"),
+                "make"       => ("make", "./app", "make test"),
+                "c"          => ("make", "./app", "make test"),
+                "node"       => ("npm run build", "npm start", "npm test"),
+                "typescript" => ("npx tsc", "node dist/index.js", "npm test"),
+                "python"     => ("python -m compileall .", "python main.py", "python -m pytest"),
+                "ruby"       => ("bundle install", "ruby main.rb", "bundle exec rspec"),
+                "bash"       => ("bash -n *.sh", "bash main.sh", "bats tests/"),
+                "powershell" => ("pwsh -NonInteractive -Command \"Get-ChildItem *.ps1 | ForEach-Object { . $_.FullName }\"", "pwsh -File main.ps1", "pwsh -Command \"Invoke-Pester\""),
+                "sql"        => ("sqlfluff lint .", "sqlite3 < schema.sql", "sqlfluff lint ."),
+                "rust"       => ("cargo build", "cargo run", "cargo test"),
+                "java"       => ("mvn package", "java -jar target/*.jar", "mvn test"),
+                "go"         => ("go build ./...", "go run .", "go test ./..."),
+                "bicep"      => ("az bicep build --file main.bicep", "az deployment group create --template-file main.bicep --parameters @parameters.json", "az bicep lint --file main.bicep"),
+                "terraform"  => ("terraform validate", "terraform plan", "terraform validate && tflint"),
+                _            => ("dotnet build", "dotnet run", "dotnet test")   // dotnet or unknown
         };
 
 
