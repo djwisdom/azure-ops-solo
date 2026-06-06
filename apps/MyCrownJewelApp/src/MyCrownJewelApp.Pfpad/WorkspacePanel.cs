@@ -671,17 +671,6 @@ internal sealed class WorkspacePanel : UserControl
                         RefreshNodeRecursive(existing, d);
                 }
             }
-
-            // Add new files
-            foreach (var f in actualFiles)
-            {
-                if (!currentFiles.Contains(f))
-                {
-                    var fn = CreateFileNode(f);
-                    int insertIdx = FindSortedInsertIndex(node.Nodes, Path.GetFileName(f));
-                    node.Nodes.Insert(insertIdx, fn);
-                }
-            }
         }
         catch { }
     }
