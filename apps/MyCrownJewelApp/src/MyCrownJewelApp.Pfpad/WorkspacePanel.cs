@@ -615,7 +615,7 @@ internal sealed class WorkspacePanel : UserControl
             {
                 if (!actualDirs.Contains(d))
                 {
-                    var toRemove = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(n.Tag as string, d, StringComparison.OrdinalIgnoreCase));
+                    var toRemove = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(GetNodePath(n), d, StringComparison.OrdinalIgnoreCase));
                     toRemove?.Remove();
                 }
             }
@@ -625,7 +625,7 @@ internal sealed class WorkspacePanel : UserControl
             {
                 if (!actualFiles.Contains(f))
                 {
-                    var toRemove = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(n.Tag as string, f, StringComparison.OrdinalIgnoreCase));
+                    var toRemove = node.Nodes.Cast<TreeNode>().FirstOrDefault(n => string.Equals(GetNodePath(n), f, StringComparison.OrdinalIgnoreCase));
                     toRemove?.Remove();
                 }
             }
@@ -645,7 +645,7 @@ internal sealed class WorkspacePanel : UserControl
             foreach (var d in actualDirs)
             {
                 TreeNode? existing = node.Nodes.Cast<TreeNode>()
-                    .FirstOrDefault(n => string.Equals(n.Tag as string, d, StringComparison.OrdinalIgnoreCase));
+                    .FirstOrDefault(n => string.Equals(GetNodePath(n), d, StringComparison.OrdinalIgnoreCase));
 
                 if (existing is null)
                 {
