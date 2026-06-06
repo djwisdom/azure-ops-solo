@@ -113,6 +113,8 @@ using Microsoft.Extensions.DependencyInjection;
         // Workspace / folder tree state
         private SplitContainer? _workspaceSplitContainer;
         private WorkspacePanel? _workspacePanel;
+        private SolutionExplorerPanel? _solutionExplorerPanel;
+        private TabControl? _sideTopTabs;
         private bool _workspaceVisible;
         private int _workspaceWidth = 200;
         private string _workspaceRoot = "";
@@ -1285,6 +1287,46 @@ using Microsoft.Extensions.DependencyInjection;
                   _botSidebarSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
                   _botSidebarSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
 
+                  _solutionExplorerPanel = new SolutionExplorerPanel();
+                  _solutionExplorerPanel.FileOpenRequested += (path) =>
+                  {
+                      if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                          OpenFileInNewTab(path);
+                  };
+                  _solutionExplorerPanel.CloseRequested += () => ToggleSolutionExplorer();
+                  _solutionExplorerPanel.SolutionLoaded += (slnPath) =>
+                  {
+                      string? slnDir = Path.GetDirectoryName(slnPath);
+                      if (!string.IsNullOrEmpty(slnDir))
+                      {
+                          _workspaceRoot = slnDir;
+                          _workspacePanel?.SetRoot(slnDir);
+                      }
+                  };
+                  _solutionExplorerPanel.SetTheme(_themeManager.CurrentTheme);
+
+                  _sideTopTabs = new TabControl
+                  {
+                      Dock = DockStyle.Fill,
+                      DrawMode = TabDrawMode.OwnerDrawFixed,
+                      SizeMode = TabSizeMode.Fixed,
+                      ItemSize = new Size(0, 24),
+                      Font = new Font("Segoe UI", 8f),
+                      Padding = new Point(8, 3)
+                  };
+                  _sideTopTabs.DrawItem += SideTopTabs_DrawItem;
+
+                  var explorerTab = new TabPage("Explorer") { BackColor = _themeManager.CurrentTheme.MenuBackground };
+                  explorerTab.Controls.Add(_workspacePanel);
+                  _workspacePanel.Dock = DockStyle.Fill;
+
+                  var solutionTab = new TabPage("Solution") { BackColor = _themeManager.CurrentTheme.MenuBackground };
+                  solutionTab.Controls.Add(_solutionExplorerPanel);
+                  _solutionExplorerPanel.Dock = DockStyle.Fill;
+
+                  _sideTopTabs.TabPages.Add(explorerTab);
+                  _sideTopTabs.TabPages.Add(solutionTab);
+
                   _sidebarSplit = new SplitContainer
                   {
                       Dock = DockStyle.Fill,
@@ -1296,8 +1338,7 @@ using Microsoft.Extensions.DependencyInjection;
                       BorderStyle = BorderStyle.None,
                       Panel2Collapsed = !_gitPanelVisible && !_symbolPanelVisible
                   };
-                  _sidebarSplit.Panel1.Controls.Add(_workspacePanel);
-                  _workspacePanel.Dock = DockStyle.Fill;
+                  _sidebarSplit.Panel1.Controls.Add(_sideTopTabs);
                   _sidebarSplit.Panel2.Controls.Add(_botSidebarSplit);
                   _sidebarSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
                   _sidebarSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
@@ -2627,6 +2668,15 @@ internal void ToggleGutter()
             }
             if (_workspacePanel != null)
                 _workspacePanel.SetTheme(theme);
+            if (_solutionExplorerPanel != null)
+                _solutionExplorerPanel.SetTheme(theme);
+            if (_sideTopTabs != null)
+            {
+                _sideTopTabs.BackColor = theme.MenuBackground;
+                foreach (TabPage page in _sideTopTabs.TabPages)
+                    page.BackColor = theme.MenuBackground;
+                _sideTopTabs.Invalidate();
+            }
             if (_symbolPanel != null)
                 _symbolPanel.SetTheme(theme);
             if (_problemsPanel != null)
@@ -3722,6 +3772,22 @@ private void NewWindow_Click(object? sender, EventArgs e)
         }
         private void Open_Click(object? sender, EventArgs e) => OpenFile();
 
+        private void OpenSolution_Click(object? sender, EventArgs e)
+        {
+            using var ofd = new OpenFileDialog();
+            ofd.Title = "Open Solution or Project";
+            ofd.Filter = "Solution Files|*.sln|Project Files|*.csproj;*.vbproj;*.fsproj|All Files|*.*";
+            if (ofd.ShowThemed() == DialogResult.OK)
+            {
+                string path = ofd.FileName;
+                if (_solutionExplorerPanel == null) return;
+                if (_sideTopTabs != null) _sideTopTabs.SelectedIndex = 1;
+                if (_workspaceSplitContainer?.Panel1Collapsed == true)
+                    ToggleWorkspace();
+                _solutionExplorerPanel.LoadSolution(path);
+            }
+        }
+
         private void CloneRepository_Click(object? sender, EventArgs e)
         {
             using var dlg = new CloneRepositoryDialog(this);
@@ -4071,6 +4137,34 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 textEditor?.Focus();
             }
             SaveSettings();
+        }
+
+        private void ToggleSolutionExplorer()
+        {
+            _workspaceVisible = true;
+            workspaceMenuItem.Checked = true;
+            if (_workspaceSplitContainer != null)
+            {
+                _workspaceSplitContainer.Panel1Collapsed = false;
+                _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+                _workspaceSplitContainer.PerformLayout();
+            }
+            if (_sideTopTabs != null)
+                _sideTopTabs.SelectedIndex = 1;
+            SaveSettings();
+        }
+
+        private void SideTopTabs_DrawItem(object? sender, DrawItemEventArgs e)
+        {
+            if (_sideTopTabs == null) return;
+            var tab = _sideTopTabs.TabPages[e.Index];
+            Theme t = _themeManager.CurrentTheme;
+            bool selected = e.Index == _sideTopTabs.SelectedIndex;
+            using var bgBrush = new SolidBrush(selected ? t.EditorBackground : t.MenuBackground);
+            using var fgBrush = new SolidBrush(selected ? t.Text : t.Muted);
+            e.Graphics.FillRectangle(bgBrush, e.Bounds);
+            StringFormat sf = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            e.Graphics.DrawString(tab.Text, e.Font ?? Font, fgBrush, e.Bounds, sf);
         }
 
         private void ToggleWorkspace_Click(object? sender, EventArgs e)

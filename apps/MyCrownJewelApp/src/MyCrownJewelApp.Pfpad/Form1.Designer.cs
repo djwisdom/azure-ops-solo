@@ -10,6 +10,7 @@ partial class Form1
     private ToolStripMenuItem newWindowMenuItem;
     private ToolStripMenuItem newProjectMenuItem;
     private ToolStripMenuItem openMenuItem;
+    private ToolStripMenuItem openSolutionMenuItem;
     private ToolStripMenuItem recentMenuItem;
     private ToolStripMenuItem recentWorkspacesMenuItem;
     private ToolStripMenuItem preferencesMenuItem;
@@ -189,6 +190,7 @@ partial class Form1
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
         newProjectMenuItem = new ToolStripMenuItem("New &Project...", null, NewProject_Click, Keys.Control | Keys.Shift | Keys.N);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
+        openSolutionMenuItem = new ToolStripMenuItem("Open &Solution...", null, OpenSolution_Click, Keys.Control | Keys.Shift | Keys.O);
         recentMenuItem = new ToolStripMenuItem("Recent Files");
         recentWorkspacesMenuItem = new ToolStripMenuItem("Recent Workspaces");
         cloneRepositoryMenuItem = new ToolStripMenuItem("Clone &Repository...", null, CloneRepository_Click, Keys.Control | Keys.Shift | Keys.C);
@@ -206,6 +208,7 @@ partial class Form1
         fileMenu.DropDownItems.Add(newWindowMenuItem);
         fileMenu.DropDownItems.Add(newProjectMenuItem);
         fileMenu.DropDownItems.Add(openMenuItem);
+        fileMenu.DropDownItems.Insert(fileMenu.DropDownItems.IndexOf(openMenuItem) + 1, openSolutionMenuItem);
         fileMenu.DropDownItems.Add(recentMenuItem);
         fileMenu.DropDownItems.Add(recentWorkspacesMenuItem);
         fileMenu.DropDownItems.Add(cloneRepositoryMenuItem);

@@ -124,6 +124,21 @@ public static class FileIconProvider
         return _defaultIndex;
     }
 
+    public static string GetIconChar(string filePath)
+    {
+        string name = Path.GetFileName(filePath);
+        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return (name.ToUpperInvariant(), ext) switch
+        {
+            ("README", _) or ("README.MD", _) => "📘",
+            (_, ".cs") or (_, ".vb") or (_, ".fs") => "📄",
+            (_, ".json") or (_, ".xml") or (_, ".config") => "🧾",
+            (_, ".md") or (_, ".txt") => "📝",
+            (_, ".csproj") or (_, ".vbproj") or (_, ".fsproj") => "⚙",
+            _ => "📄"
+        };
+    }
+
     private static Bitmap CreateIcon(string label)
     {
         var bmp = new Bitmap(16, 16, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
