@@ -1449,10 +1449,16 @@ using Microsoft.Extensions.DependencyInjection;
             };
             editorPanel.SizeChanged += (s, e) =>
             {
-                if (_pendingMinimapVisible)
-                    PositionMinimap();
-                if (stickyScrollPanel.Visible)
-                    stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
+                // Defer: editorPanel.ClientSize reflects the new size immediately, but
+                // child controls (textEditor) may not have been laid out yet. Deferring
+                // via BeginInvoke ensures all children are settled before we position.
+                BeginInvoke((Action)(() =>
+                {
+                    if (_pendingMinimapVisible)
+                        PositionMinimap();
+                    if (stickyScrollPanel.Visible)
+                        stickyScrollPanel.SyncWidth(editorPanel.ClientSize.Width);
+                }));
             };
          }
 
@@ -7093,12 +7099,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
             minimapControl.BringToFront();
             minimapControl.AttachEditor(textEditor);
 
-            // Always use the full declared minimap width — no artificial shrinkage.
-            // Use textEditor.Width (= editorPanel.ClientSize.Width for Dock=Fill) as the
-            // panel width reference; it reflects the already-committed resize bounds
-            // and is more reliable than editorPanel.ClientSize during deferred calls.
+            // Use editorPanel.ClientSize.Width as the panel width reference — this is the
+            // true current width of the parent panel at call time (correct even when called
+            // from editorPanel.SizeChanged, where textEditor.Width may still be stale).
             int mw = minimapControl.MinimapWidth;
-            int panelW = textEditor.Width;
+            int panelW = editorPanel.ClientSize.Width;
+            if (panelW <= 0) return;   // panel not yet laid out; will be called again shortly
             int x = Math.Max(0, panelW - mw);
 
             // ClientSize.Height already excludes the horizontal scrollbar.

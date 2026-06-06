@@ -64,7 +64,7 @@ namespace MyCrownJewelApp.Pfpad
         public Color BorderColor { get; set; } = Color.FromArgb(60, 60, 60);
 
         private bool _mouseHovering;
-        private float _opacity = 0.80f;
+        private float _opacity = 0.50f;
 
         /// <summary>Opacity of the minimap overlay (0.0 = invisible, 1.0 = fully opaque). Default 80%.</summary>
         [Category("Appearance")]
@@ -481,6 +481,7 @@ namespace MyCrownJewelApp.Pfpad
         {
             base.OnResize(e);
             MarkDirty();
+            Invalidate();
         }
 
         protected override void Dispose(bool disposing)
