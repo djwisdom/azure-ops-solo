@@ -7103,13 +7103,21 @@ private void NewWindow_Click(object? sender, EventArgs e)
             int mw = minimapControl.MinimapWidth;
             int panelW = editorPanel.ClientSize.Width;
             if (panelW <= 0) return;   // panel not yet laid out; will be called again shortly
-            int x = Math.Max(0, panelW - mw);
+
+            // RichTextBox.ClientSize excludes non-client elements (vertical scrollbar).
+            // Position the minimap within the text area so it never overlaps the scrollbar.
+            // Fall back to panelW if textEditor hasn't completed its first layout pass.
+            int textAreaW = textEditor.IsHandleCreated && textEditor.ClientSize.Width > 0
+                ? textEditor.ClientSize.Width
+                : panelW;
+
+            int x = Math.Max(0, textAreaW - mw);
 
             // ClientSize.Height already excludes the horizontal scrollbar.
             int h = textEditor.ClientSize.Height;
 
             minimapControl.Location = new Point(x, textEditor.Top);
-            minimapControl.Size = new Size(Math.Max(1, Math.Min(mw, panelW)), Math.Max(1, h));
+            minimapControl.Size = new Size(Math.Max(1, Math.Min(mw, textAreaW)), Math.Max(1, h));
         }
 
         #endregion
