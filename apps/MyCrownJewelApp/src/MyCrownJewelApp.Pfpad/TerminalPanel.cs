@@ -161,6 +161,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private readonly ToolStripLabel _shellLabel;
     private readonly ToolStripButton _closeButton;
     private readonly ToolStripButton _clearButton;
+    private readonly ToolStripButton _copyButton;
     private readonly ToolStripButton _stopButton;
 
     // Output that arrives before the window handle is created (early-init terminal) is buffered
@@ -255,6 +256,18 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         };
         _clearButton.Click += (s, e) => ClearOutput();
 
+        _copyButton = new ToolStripButton
+        {
+            Text = "\uD83D\uDCCB",  // 📋
+            Font = new Font("Segoe UI", 9),
+            DisplayStyle = ToolStripItemDisplayStyle.Text,
+            AutoSize = false,
+            Width = 22,
+            Height = 22,
+            ToolTipText = "Copy selection (or all if nothing selected)"
+        };
+        _copyButton.Click += (s, e) => CopyOutputSelection();
+
         _stopButton = new ToolStripButton
         {
             Text = "\u25A0",
@@ -280,8 +293,26 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         _headerStrip.Items.Add(_shellLabel);
         _headerStrip.Items.Add(_stopButton);
         _headerStrip.Items.Add(new ToolStripSeparator { Alignment = ToolStripItemAlignment.Right });
+        _headerStrip.Items.Add(_copyButton);
         _headerStrip.Items.Add(_clearButton);
         _headerStrip.Items.Add(_closeButton);
+
+        // Right-click context menu on the output box
+        var outputMenu = new ContextMenuStrip();
+        var menuCopySelection = new ToolStripMenuItem("Copy Selection\tCtrl+Shift+C");
+        var menuCopyAll = new ToolStripMenuItem("Copy All");
+        var menuSelectAll = new ToolStripMenuItem("Select All\tCtrl+A");
+        var menuClear = new ToolStripMenuItem("Clear Terminal");
+        menuCopySelection.Click += (_, _) => { if (_outputBox.SelectionLength > 0) Clipboard.SetText(_outputBox.SelectedText); };
+        menuCopyAll.Click += (_, _) => { if (_outputBox.TextLength > 0) Clipboard.SetText(_outputBox.Text); };
+        menuSelectAll.Click += (_, _) => _outputBox.SelectAll();
+        menuClear.Click += (_, _) => ClearOutput();
+        outputMenu.Items.AddRange(new ToolStripItem[] { menuCopySelection, menuCopyAll, new ToolStripSeparator(), menuSelectAll, new ToolStripSeparator(), menuClear });
+        outputMenu.Opening += (_, _) => menuCopySelection.Enabled = _outputBox.SelectionLength > 0;
+        _outputBox.ContextMenuStrip = outputMenu;
+
+        // Ctrl+Shift+C when input box is focused copies selected output text
+        _inputBox.KeyDown += InputBox_CopyShortcut;
 
         Controls.Add(_outputBox);
         Controls.Add(_inputContainer);
@@ -334,7 +365,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
         _closeButton.ForeColor = fg;
         _clearButton.ForeColor = mutedFg;
+        _copyButton.ForeColor = mutedFg;
         _stopButton.ForeColor = theme.IsLight ? Color.FromArgb(200, 50, 50) : Color.FromArgb(255, 100, 100);
+
+        if (_outputBox.ContextMenuStrip is { } menu)
+        {
+            menu.BackColor = theme.MenuBackground;
+            menu.ForeColor = fg;
+        }
     }
 
     private void StartShell()
@@ -945,6 +983,24 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     {
         _outputBox.Clear();
         ResetAnsiState();
+    }
+
+    private void CopyOutputSelection()
+    {
+        if (_outputBox.SelectionLength > 0)
+            Clipboard.SetText(_outputBox.SelectedText);
+        else if (_outputBox.TextLength > 0)
+            Clipboard.SetText(_outputBox.Text);
+    }
+
+    private void InputBox_CopyShortcut(object? sender, KeyEventArgs e)
+    {
+        if (e.Control && e.Shift && e.KeyCode == Keys.C)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            CopyOutputSelection();
+        }
     }
 
     public void SendInput(string text)
