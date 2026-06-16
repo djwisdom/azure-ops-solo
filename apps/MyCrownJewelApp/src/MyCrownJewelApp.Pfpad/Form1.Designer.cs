@@ -165,7 +165,7 @@ partial class Form1
      internal ToolStripStatusLabel charCountLabel;
      internal ToolStripStatusLabel lockKeysLabel;
     private ToolStripDropDownButton tabSizeDropDown;
-    private ToolStripComboBox _buildConfigCombo;
+    private ToolStripDropDownButton _buildConfigCombo;
     internal ToolStripStatusLabel linePositionLabel;
     internal ToolStripStatusLabel zoomLabel;
     private ToolStripStatusLabel lineEndingsLabel;
@@ -728,13 +728,13 @@ partial class Form1
         tabSizeDropDown.DropDownItems.Add("10", null, TabSize10_Click);
         tabSizeDropDown.DropDownItems.Add("12", null, TabSize12_Click);
         // Build configuration selector
-        _buildConfigCombo = new ToolStripComboBox();
-        _buildConfigCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-        _buildConfigCombo.Items.Add("Debug");
-        _buildConfigCombo.Items.Add("Release");
+        _buildConfigCombo = new ToolStripDropDownButton();
+        _buildConfigCombo.Text = "Debug";
         _buildConfigCombo.Width = 80;
         _buildConfigCombo.Padding = new Padding(4, 1, 4, 1);
-        _buildConfigCombo.SelectedIndexChanged += BuildConfigCombo_SelectedIndexChanged;
+        _buildConfigCombo.DropDownDirection = ToolStripDropDownDirection.AboveLeft;
+        _buildConfigCombo.DropDownItems.Add("Debug",   null, BuildConfigCombo_SelectedIndexChanged);
+        _buildConfigCombo.DropDownItems.Add("Release", null, BuildConfigCombo_SelectedIndexChanged);
         // Git status labels (inserted after tab section)
         gitBranchLabel = new ToolStripStatusLabel("");
         gitBranchLabel.AutoSize = true;

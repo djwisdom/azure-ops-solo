@@ -491,9 +491,10 @@ namespace MyCrownJewelApp.Pfpad
 
         private void BuildConfigCombo_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            if (_buildConfigCombo.SelectedItem is string config && !string.IsNullOrEmpty(config))
+            if (sender is ToolStripMenuItem item && !string.IsNullOrEmpty(item.Text))
             {
-                _activeConfiguration = config;
+                _activeConfiguration = item.Text;
+                _buildConfigCombo.Text = item.Text;
                 SaveSettings();
             }
         }

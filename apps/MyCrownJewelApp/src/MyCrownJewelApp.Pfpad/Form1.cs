@@ -1792,9 +1792,8 @@ using Microsoft.Extensions.DependencyInjection;
                         Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
               UpdateWorkspaceProjectLabel();
               _workspaceProjectLabel.Click += WorkspaceProjectLabel_Click;
-              // Set initial build config combo selection
-              if (_buildConfigCombo.Items.Contains(_activeConfiguration))
-                  _buildConfigCombo.SelectedItem = _activeConfiguration;
+              // Set initial build config button text
+              _buildConfigCombo.Text = _activeConfiguration;
               workspaceMenuItem.Checked = _workspaceVisible;
               symbolsMenuItem.Checked = _symbolPanelVisible;
               problemsMenuItem.Checked = _problemsPanelVisible;
