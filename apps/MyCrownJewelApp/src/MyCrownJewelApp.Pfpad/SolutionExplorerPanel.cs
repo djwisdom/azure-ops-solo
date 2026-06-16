@@ -33,6 +33,15 @@ internal sealed class SolutionExplorerPanel : UserControl
     public event Action? CloseRequested;
     public event Action<string>? SolutionLoaded;
 
+    /// <summary>Fires when a build starts. Argument is the target path being built.</summary>
+    public event Action<string>? BuildStarted;
+    /// <summary>Fires for each line of build output. (line, isStdErr)</summary>
+    public event Action<string, bool>? BuildOutputLine;
+    /// <summary>Fires when the build finishes.</summary>
+    public event Action<BuildResult>? BuildFinished;
+
+    private CancellationTokenSource? _buildCts;
+
     public string? CurrentSolutionPath { get; private set; }
 
     public SolutionExplorerPanel()
@@ -403,6 +412,10 @@ internal sealed class SolutionExplorerPanel : UserControl
         if (e.Node == null)
             return;
 
+        // Prevent the system from rendering the label a second time at the default position.
+        // With OwnerDrawText, e.DrawDefault defaults to true which causes double-painted text.
+        e.DrawDefault = false;
+
         Theme theme = ThemeManager.Instance.CurrentTheme;
         bool selected = (e.State & TreeNodeStates.Selected) != 0;
         Color backColor = selected ? theme.Highlight : theme.MenuBackground;
@@ -411,7 +424,7 @@ internal sealed class SolutionExplorerPanel : UserControl
         using SolidBrush bg = new(backColor);
         e.Graphics.FillRectangle(bg, new Rectangle(0, e.Bounds.Top, _tree.Width, e.Bounds.Height));
 
-        Rectangle textBounds = new(e.Bounds.X, e.Bounds.Y + 2, _tree.Width - e.Bounds.X, e.Bounds.Height);
+        Rectangle textBounds = new(e.Bounds.X, e.Bounds.Y, _tree.Width - e.Bounds.X, e.Bounds.Height);
         TextRenderer.DrawText(
             e.Graphics,
             e.Node.Text,
@@ -557,7 +570,8 @@ internal sealed class SolutionExplorerPanel : UserControl
         }
     }
 
-    private async Task BuildCurrentSolutionAsync()
+    /// <summary>Starts an async build of the current solution. No-op if no solution is loaded.</summary>
+    public async Task BuildCurrentSolutionAsync()
     {
         if (string.IsNullOrWhiteSpace(CurrentSolutionPath))
             return;
@@ -576,45 +590,38 @@ internal sealed class SolutionExplorerPanel : UserControl
 
     private async Task RunBuildAsync(string targetPath, string title)
     {
+        _buildCts?.Cancel();
+        _buildCts = new CancellationTokenSource();
+        var token = _buildCts.Token;
+
+        BuildStarted?.Invoke(targetPath);
+
+        var svc = new BuildService();
+        svc.OutputLine += (line, isErr) => BuildOutputLine?.Invoke(line, isErr);
+
         try
         {
             UseWaitCursor = true;
-            using Process process = new();
-            process.StartInfo = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"build \"{targetPath}\" -nologo",
-                WorkingDirectory = Path.GetDirectoryName(targetPath) ?? Environment.CurrentDirectory,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            process.Start();
-            string output = await process.StandardOutput.ReadToEndAsync();
-            string error = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            string combined = string.Join(Environment.NewLine, new[] { output, error }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-            if (process.ExitCode == 0)
-            {
-                ThemedMessageBox.Show(this, string.IsNullOrWhiteSpace(combined) ? "Build succeeded." : $"Build succeeded.{Environment.NewLine}{Environment.NewLine}{Truncate(combined)}", title, MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            else
-            {
-                ThemedMessageBox.Show(this, string.IsNullOrWhiteSpace(combined) ? "Build failed." : Truncate(combined), title, MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            var result = await svc.RunAsync(targetPath, cancellationToken: token);
+            BuildFinished?.Invoke(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // cancellation fires result via BuildService internally
         }
         catch (Exception ex)
         {
-            ThemedMessageBox.Show(this, $"Build failed: {ex.Message}", title, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            BuildOutputLine?.Invoke($"Build error: {ex.Message}", true);
+            BuildFinished?.Invoke(new BuildResult(false, 1, 0, TimeSpan.Zero));
         }
         finally
         {
             UseWaitCursor = false;
         }
     }
+
+    /// <summary>Cancels any in-progress build launched from this panel.</summary>
+    public void CancelBuild() => _buildCts?.Cancel();
 
     private void OpenCurrentSolutionFolder()
     {
@@ -975,7 +982,7 @@ internal sealed class SolutionExplorerPanel : UserControl
             TabStop = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderSize = 0;
         button.Click += onClick;
         return button;
     }

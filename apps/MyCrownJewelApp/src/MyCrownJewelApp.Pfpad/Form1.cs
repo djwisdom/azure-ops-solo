@@ -102,6 +102,7 @@ using Microsoft.Extensions.DependencyInjection;
         private VimEngine? vimEngine;
 
         // Terminal state
+        private BuildOutputPanel? _buildOutputPanel;
         private TabControl? _terminalTabControl;
         private SplitContainer? _terminalSplitContainer;
         private Button? _terminalNewTabButton;
@@ -183,9 +184,7 @@ using Microsoft.Extensions.DependencyInjection;
         private string _lastHoveredWord = "";
 
         private TerminalPanel? ActiveTerminal =>
-            _terminalTabs.Count > 0 && _terminalTabControl?.SelectedIndex >= 0
-                ? _terminalTabs[_terminalTabControl.SelectedIndex]
-                : null;
+            _terminalTabControl?.SelectedTab?.Tag as TerminalPanel;
 
         // Minimap state
         private ToolStripMenuItem minimapMenuItem = null!;
@@ -1218,6 +1217,21 @@ using Microsoft.Extensions.DependencyInjection;
              _terminalSplitContainer.Panel2.Controls.Add(_terminalTabControl);
              _terminalSplitContainer.Panel2.Controls.Add(_terminalNewTabButton);
 
+             // Add the persistent "Output" tab (Build Output) at index 0
+             _buildOutputPanel = new BuildOutputPanel();
+             _buildOutputPanel.SetTheme(_themeManager.CurrentTheme);
+             _buildOutputPanel.DiagnosticNavigated += (path, line) => { OpenFileInNewTab(path); GoToLine(line); };
+             _buildOutputPanel.BuildRequested += () => { if (_solutionExplorerPanel != null) _ = _solutionExplorerPanel.BuildCurrentSolutionAsync(); };
+             _buildOutputPanel.CancelRequested += () => _solutionExplorerPanel?.CancelBuild();
+             var buildOutputPage = new TabPage("Output")
+             {
+                 BackColor = _themeManager.CurrentTheme.EditorBackground,
+                 Tag = "output"
+             };
+             _buildOutputPanel.Dock = DockStyle.Fill;
+             buildOutputPage.Controls.Add(_buildOutputPanel);
+             _terminalTabControl?.TabPages.Insert(0, buildOutputPage);
+
              // Insert split container into row 2, shift status up
              mainLayout.Controls.Add(_terminalSplitContainer, 0, 2);
              mainLayout.SetRow(statusStrip, 3);
@@ -1335,6 +1349,23 @@ using Microsoft.Extensions.DependencyInjection;
                           _workspaceRoot = slnDir;
                           _workspacePanel?.SetRoot(slnDir);
                       }
+                  };
+                  _solutionExplorerPanel.BuildStarted += (targetPath) =>
+                  {
+                      _buildOutputPanel?.Clear();
+                      _buildOutputPanel?.SetBusy(true);
+                      _buildOutputPanel?.AppendLine($"Build started: {Path.GetFileName(targetPath)}", false);
+                      if (_terminalTabControl != null)
+                          foreach (TabPage tp in _terminalTabControl.TabPages)
+                              if (tp.Tag as string == "output") { _terminalTabControl.SelectedTab = tp; break; }
+                      ShowTerminal();
+                  };
+                  _solutionExplorerPanel.BuildOutputLine += (line, isErr) => _buildOutputPanel?.AppendLine(line, isErr);
+                  _solutionExplorerPanel.BuildFinished += (result) =>
+                  {
+                      _buildOutputPanel?.ShowResult(result);
+                      if (!result.Success && _problemsPanel != null)
+                          BeginInvoke(() => _problemsPanelVisible = true);
                   };
                   _solutionExplorerPanel.SetTheme(_themeManager.CurrentTheme);
 
@@ -2755,6 +2786,7 @@ internal void ToggleGutter()
                 _aiopsRunbookPanel.SetTheme(theme);
             if (_editorSplitContainer != null)
                 _editorSplitContainer.BackColor = theme.EditorBackground;
+            _buildOutputPanel?.SetTheme(theme);
         }
 
         private TerminalPanel AddTerminalTab(string? shellPath)
@@ -2766,14 +2798,14 @@ internal void ToggleGutter()
             var page = new TabPage($"Terminal {tabNumber}")
             {
                 BackColor = _themeManager.CurrentTheme.EditorBackground,
-                ToolTipText = shellPath ?? "Default shell"
+                ToolTipText = shellPath ?? "Default shell",
+                Tag = terminal
             };
             terminal.Dock = DockStyle.Fill;
             terminal.HideTerminalRequested += () => CloseTerminalTab(terminal);
             page.Controls.Add(terminal);
 
-            _terminalTabControl?.TabPages.Insert(
-                _terminalTabControl.TabPages.Count, page);
+            _terminalTabControl?.TabPages.Add(page);
             _terminalTabs.Add(terminal);
             if (_terminalTabControl != null)
                 _terminalTabControl.SelectedTab = page;
@@ -2787,12 +2819,17 @@ internal void ToggleGutter()
 
         private void CloseTerminalTab(TerminalPanel terminal)
         {
-            int index = _terminalTabs.IndexOf(terminal);
-            if (index < 0) return;
+            if (_terminalTabControl == null) return;
+            TabPage? page = null;
+            foreach (TabPage tp in _terminalTabControl.TabPages)
+            {
+                if (tp.Tag == terminal) { page = tp; break; }
+            }
+            if (page == null) return;
 
             terminal.Kill();
-            _terminalTabControl?.TabPages.RemoveAt(index);
-            _terminalTabs.RemoveAt(index);
+            _terminalTabControl.TabPages.Remove(page);
+            _terminalTabs.Remove(terminal);
             terminal.Dispose();
 
             if (_terminalTabs.Count == 0)
@@ -2842,9 +2879,9 @@ internal void ToggleGutter()
             {
                 var bounds = tc.GetTabRect(i);
                 var closeRect = new Rectangle(bounds.Right - 17, bounds.Y + 5, 14, 14);
-                if (closeRect.Contains(e.Location) && i < _terminalTabs.Count)
+                if (closeRect.Contains(e.Location) && tc.TabPages[i].Tag is TerminalPanel tp)
                 {
-                    CloseTerminalTab(_terminalTabs[i]);
+                    CloseTerminalTab(tp);
                     return;
                 }
             }
@@ -9397,6 +9434,14 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (keyData == (Keys.Control | Keys.Shift | Keys.F))
             {
                 GlobalSearch_Click(null, EventArgs.Empty);
+                return true;
+            }
+
+            // Build solution: Ctrl+Shift+B
+            if (keyData == (Keys.Control | Keys.Shift | Keys.B))
+            {
+                if (_solutionExplorerPanel != null)
+                    _ = _solutionExplorerPanel.BuildCurrentSolutionAsync();
                 return true;
             }
 
