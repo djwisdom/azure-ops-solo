@@ -64,6 +64,22 @@ public record AppSettings
     public bool ShowGutterBreakpoints { get; init; } = true;
     public bool ShowGutterBookmarks { get; init; } = true;
 
+    // ── Git configuration ──────────────────────────────────────────────────────
+    public string GitAuthorName { get; init; } = "";
+    public string GitAuthorEmail { get; init; } = "";
+    public string GitDefaultBranch { get; init; } = "main";
+    public bool GitConfirmRemoveRepo { get; init; } = true;
+    public bool GitConfirmDiscardChanges { get; init; } = true;
+    public bool GitConfirmDiscardPermanent { get; init; } = true;
+    public bool GitConfirmDiscardStash { get; init; } = true;
+    public bool GitConfirmCheckoutCommit { get; init; } = false;
+    public bool GitConfirmForcePush { get; init; } = true;
+    public bool GitConfirmUndoCommit { get; init; } = true;
+    public bool GitConfirmOverrideCommitMsg { get; init; } = false;
+    public bool GitConfirmHiddenChanges { get; init; } = false;
+    public string GitBranchSwitchBehavior { get; init; } = "ask";
+    public bool GitCommitLengthWarning { get; init; } = false;
+
     // ── AIOps configuration ────────────────────────────────────────────────────
     /// <summary>
     /// AIOps engine settings: connector endpoints, auth, polling intervals.

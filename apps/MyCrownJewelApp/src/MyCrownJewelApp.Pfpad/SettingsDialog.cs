@@ -341,6 +341,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddExtensionsSettingsUI(_contentPanel, y);
         }
+        else if (category == "features.git")
+        {
+            y = AddGitSettingsUI(_contentPanel, y);
+        }
         else
         {
             var settings = GetSettingsForCategory(category);
@@ -642,6 +646,20 @@ internal sealed class SettingsDialog : Form
             TerminalPadding = GetSettingValue<int>("features.terminal.padding", _mainForm.CurrentTerminalPadding),
             TerminalMaxScrollback = GetSettingValue<int>("features.terminal.maxScrollback", _mainForm.CurrentTerminalMaxScrollback),
             TerminalTabTitle = GetSettingValue<string>("features.terminal.tabTitle", _mainForm.CurrentTerminalTabTitle),
+            GitAuthorName = GetSettingValue<string>("features.git.authorName", _mainForm.CurrentGitAuthorName),
+            GitAuthorEmail = GetSettingValue<string>("features.git.authorEmail", _mainForm.CurrentGitAuthorEmail),
+            GitDefaultBranch = GetSettingValue<string>("features.git.defaultBranch", _mainForm.CurrentGitDefaultBranch),
+            GitConfirmRemoveRepo = GetSettingValue<bool>("features.git.confirmRemoveRepo", _mainForm.CurrentGitConfirmRemoveRepo),
+            GitConfirmDiscardChanges = GetSettingValue<bool>("features.git.confirmDiscardChanges", _mainForm.CurrentGitConfirmDiscardChanges),
+            GitConfirmDiscardPermanent = GetSettingValue<bool>("features.git.confirmDiscardPermanent", _mainForm.CurrentGitConfirmDiscardPermanent),
+            GitConfirmDiscardStash = GetSettingValue<bool>("features.git.confirmDiscardStash", _mainForm.CurrentGitConfirmDiscardStash),
+            GitConfirmCheckoutCommit = GetSettingValue<bool>("features.git.confirmCheckoutCommit", _mainForm.CurrentGitConfirmCheckoutCommit),
+            GitConfirmForcePush = GetSettingValue<bool>("features.git.confirmForcePush", _mainForm.CurrentGitConfirmForcePush),
+            GitConfirmUndoCommit = GetSettingValue<bool>("features.git.confirmUndoCommit", _mainForm.CurrentGitConfirmUndoCommit),
+            GitConfirmOverrideCommitMsg = GetSettingValue<bool>("features.git.confirmOverrideCommitMsg", _mainForm.CurrentGitConfirmOverrideCommitMsg),
+            GitConfirmHiddenChanges = GetSettingValue<bool>("features.git.confirmHiddenChanges", _mainForm.CurrentGitConfirmHiddenChanges),
+            GitBranchSwitchBehavior = GetSettingValue<string>("features.git.branchSwitchBehavior", _mainForm.CurrentGitBranchSwitchBehavior),
+            GitCommitLengthWarning = GetSettingValue<bool>("features.git.commitLengthWarning", _mainForm.CurrentGitCommitLengthWarning),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
         };
@@ -705,7 +723,23 @@ internal sealed class SettingsDialog : Form
             ["features.terminal.scrollbar"] = _mainForm.CurrentTerminalScrollbarVisible,
             ["features.terminal.padding"] = _mainForm.CurrentTerminalPadding,
             ["features.terminal.maxScrollback"] = _mainForm.CurrentTerminalMaxScrollback,
-            ["features.terminal.tabTitle"] = _mainForm.CurrentTerminalTabTitle
+            ["features.terminal.tabTitle"] = _mainForm.CurrentTerminalTabTitle,
+
+            // Features - Git
+            ["features.git.authorName"] = _mainForm.CurrentGitAuthorName,
+            ["features.git.authorEmail"] = _mainForm.CurrentGitAuthorEmail,
+            ["features.git.defaultBranch"] = _mainForm.CurrentGitDefaultBranch,
+            ["features.git.confirmRemoveRepo"] = _mainForm.CurrentGitConfirmRemoveRepo,
+            ["features.git.confirmDiscardChanges"] = _mainForm.CurrentGitConfirmDiscardChanges,
+            ["features.git.confirmDiscardPermanent"] = _mainForm.CurrentGitConfirmDiscardPermanent,
+            ["features.git.confirmDiscardStash"] = _mainForm.CurrentGitConfirmDiscardStash,
+            ["features.git.confirmCheckoutCommit"] = _mainForm.CurrentGitConfirmCheckoutCommit,
+            ["features.git.confirmForcePush"] = _mainForm.CurrentGitConfirmForcePush,
+            ["features.git.confirmUndoCommit"] = _mainForm.CurrentGitConfirmUndoCommit,
+            ["features.git.confirmOverrideCommitMsg"] = _mainForm.CurrentGitConfirmOverrideCommitMsg,
+            ["features.git.confirmHiddenChanges"] = _mainForm.CurrentGitConfirmHiddenChanges,
+            ["features.git.branchSwitchBehavior"] = _mainForm.CurrentGitBranchSwitchBehavior,
+            ["features.git.commitLengthWarning"] = _mainForm.CurrentGitCommitLengthWarning
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -878,8 +912,304 @@ internal sealed class SettingsDialog : Form
             "features.terminal.padding" => "Padding (px) inside the terminal output area. 0–20.",
             "features.terminal.maxScrollback" => "Maximum lines to keep in scrollback. 500–50000.",
             "features.terminal.tabTitle" => "Custom tab title for terminal tabs. Empty = \"Terminal N\".",
+            "features.git.authorName" => "Overrides git config user.name for commits made in Pfpad.",
+            "features.git.authorEmail" => "Overrides git config user.email for commits made in Pfpad.",
+            "features.git.defaultBranch" => "Branch name used when initialising a new repository.",
             _ => "No description available."
         };
+    }
+
+    private int AddGitSettingsUI(Panel parent, int y)
+    {
+        y = AddGitSectionHeader(parent, y, "Accounts");
+
+        foreach (var (provider, url) in new[]
+        {
+            ("GitHub.com", "https://github.com/login"),
+            ("GitHub Enterprise", "https://github.com/enterprise"),
+            ("GitLab", "https://gitlab.com/users/sign_in"),
+            ("Azure DevOps", "https://dev.azure.com/")
+        })
+        {
+            y = AddAccountRow(parent, y, provider, url);
+        }
+
+        y += 16;
+        y = AddGitSectionHeader(parent, y, "Git");
+
+        y = AddGitTextRow(parent, y, "Author Name",
+            "Overrides git config user.name for commits made in Pfpad. Leave empty to use global git config.",
+            "features.git.authorName");
+
+        y = AddGitTextRow(parent, y, "Author Email",
+            "Overrides git config user.email for commits made in Pfpad. Leave empty to use global git config.",
+            "features.git.authorEmail");
+
+        y = AddGitRadioRow(parent, y, "Default Branch",
+            "Branch name used when initialising a new repository.",
+            "features.git.defaultBranch",
+            new[] { ("main", "main"), ("master", "master") });
+
+        y += 16;
+        y = AddGitSectionHeader(parent, y, "Prompts");
+
+        var promptLabel = new Label
+        {
+            Text = "Show a confirmation dialog before...",
+            Location = new Point(0, y),
+            AutoSize = true,
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 8.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(promptLabel);
+        y += 22;
+
+        var confirmChecks = new[]
+        {
+            ("Removing repositories", "features.git.confirmRemoveRepo"),
+            ("Discarding changes", "features.git.confirmDiscardChanges"),
+            ("Discarding changes permanently", "features.git.confirmDiscardPermanent"),
+            ("Discarding stash", "features.git.confirmDiscardStash"),
+            ("Checking out a commit", "features.git.confirmCheckoutCommit"),
+            ("Force pushing", "features.git.confirmForcePush"),
+            ("Undo commit", "features.git.confirmUndoCommit"),
+            ("Overriding commit message with generated message", "features.git.confirmOverrideCommitMsg"),
+            ("Committing changes hidden by filter", "features.git.confirmHiddenChanges"),
+        };
+
+        foreach (var (label, key) in confirmChecks)
+        {
+            y = AddGitCheckRow(parent, y, label, key);
+        }
+
+        y += 16;
+
+        var switchLabel = new Label
+        {
+            Text = "If I have changes and I switch branches...",
+            Location = new Point(0, y),
+            AutoSize = true,
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 8.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(switchLabel);
+        y += 22;
+
+        var switchOptions = new[]
+        {
+            ("ask", "Ask me where I want the changes to go"),
+            ("bring", "Always bring my changes to my new branch"),
+            ("stash", "Always stash and leave my changes on the current branch"),
+        };
+
+        string currentSwitch = _currentValues.TryGetValue("features.git.branchSwitchBehavior", out var sv)
+            ? sv.ToString()! : "ask";
+
+        foreach (var (value, text) in switchOptions)
+        {
+            var rb = new RadioButton
+            {
+                Text = text,
+                Location = new Point(16, y),
+                AutoSize = true,
+                Checked = currentSwitch == value,
+                ForeColor = _theme.Text,
+                BackColor = Color.Transparent,
+                Tag = (ValueTuple<string, string>)("features.git.branchSwitchBehavior", value)
+            };
+            rb.CheckedChanged += (s, e) =>
+            {
+                if (rb.Checked && rb.Tag is ValueTuple<string, string> t)
+                {
+                    _currentValues[t.Item1] = t.Item2;
+                }
+            };
+            parent.Controls.Add(rb);
+            y += 22;
+        }
+
+        y += 16;
+        y = AddGitSectionHeader(parent, y, "Commit Length");
+
+        y = AddGitCheckRow(parent, y, "Show commit length warning (≤50 subject line is recommended)", "features.git.commitLengthWarning");
+
+        y += 16;
+        return y;
+    }
+
+    private int AddGitSectionHeader(Panel parent, int y, string title)
+    {
+        var lbl = new Label
+        {
+            Text = title,
+            Location = new Point(0, y),
+            Size = new Size(parent.Width, 24),
+            ForeColor = _theme.Accent,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        lbl.Paint += (s, e) =>
+        {
+            using var pen = new Pen(_theme.Border);
+            e.Graphics.DrawLine(pen, 0, lbl.Height - 1, lbl.Width, lbl.Height - 1);
+        };
+        parent.Controls.Add(lbl);
+        return y + 30;
+    }
+
+    private int AddAccountRow(Panel parent, int y, string providerName, string authUrl)
+    {
+        var nameLbl = new Label
+        {
+            Text = providerName,
+            Location = new Point(0, y + 4),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(nameLbl);
+
+        var statusLbl = new Label
+        {
+            Text = "Not connected",
+            Location = new Point(180, y + 4),
+            AutoSize = true,
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 8.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(statusLbl);
+
+        var signInBtn = new Button
+        {
+            Text = "Sign In",
+            Location = new Point(parent.Width - 80, y),
+            Size = new Size(72, 24),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 8.5f)
+        };
+        signInBtn.FlatAppearance.BorderColor = _theme.Border;
+        signInBtn.Click += (s, e) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(authUrl) { UseShellExecute = true });
+        parent.Controls.Add(signInBtn);
+
+        return y + 32;
+    }
+
+    private int AddGitTextRow(Panel parent, int y, string displayName, string description, string key)
+    {
+        var lbl = new Label
+        {
+            Text = displayName,
+            Location = new Point(0, y + 4),
+            Size = new Size(160, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var descLbl = new Label
+        {
+            Text = description,
+            Location = new Point(0, y + 22),
+            Size = new Size(parent.Width - 280, 32),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(descLbl);
+
+        string current = _currentValues.TryGetValue(key, out var v) ? v.ToString()! : "";
+        var txt = new TextBox
+        {
+            Text = current,
+            Location = new Point(parent.Width - 260, y + 4),
+            Size = new Size(252, 22),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Tag = key
+        };
+        txt.TextChanged += (s, e) => _currentValues[key] = txt.Text;
+        parent.Controls.Add(txt);
+
+        return y + 58;
+    }
+
+    private int AddGitRadioRow(Panel parent, int y, string displayName, string description, string key, (string value, string label)[] options)
+    {
+        var lbl = new Label
+        {
+            Text = displayName,
+            Location = new Point(0, y + 4),
+            Size = new Size(160, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var descLbl = new Label
+        {
+            Text = description,
+            Location = new Point(0, y + 22),
+            Size = new Size(parent.Width - 280, 32),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(descLbl);
+
+        string current = _currentValues.TryGetValue(key, out var v) ? v.ToString()! : options[0].value;
+
+        int rx = parent.Width - 260;
+        foreach (var (value, label) in options)
+        {
+            var rb = new RadioButton
+            {
+                Text = label,
+                Location = new Point(rx, y + 2),
+                AutoSize = true,
+                Checked = current == value,
+                ForeColor = _theme.Text,
+                BackColor = Color.Transparent,
+                Tag = (ValueTuple<string, string>)(key, value)
+            };
+            rb.CheckedChanged += (s, e) =>
+            {
+                if (rb.Checked && rb.Tag is ValueTuple<string, string> t)
+                {
+                    _currentValues[t.Item1] = t.Item2;
+                }
+            };
+            parent.Controls.Add(rb);
+            rx += rb.Width + 16;
+        }
+
+        return y + 58;
+    }
+
+    private int AddGitCheckRow(Panel parent, int y, string label, string key)
+    {
+        bool current = _currentValues.TryGetValue(key, out var v) && v is bool b && b;
+        var cb = new CheckBox
+        {
+            Text = label,
+            Location = new Point(16, y),
+            AutoSize = true,
+            Checked = current,
+            ForeColor = _theme.Text,
+            BackColor = Color.Transparent,
+            Tag = key
+        };
+        cb.CheckedChanged += (s, e) => _currentValues[key] = cb.Checked;
+        parent.Controls.Add(cb);
+        return y + 24;
     }
 
     private int AddCategoryHeader(Panel parent, int y, string title)

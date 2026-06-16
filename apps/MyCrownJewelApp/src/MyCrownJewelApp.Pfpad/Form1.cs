@@ -120,6 +120,22 @@ using Microsoft.Extensions.DependencyInjection;
         private string _terminalStartingDirectory = "";
         private string _terminalTabTitle = "";
 
+        // Git settings
+        private string _gitAuthorName = "";
+        private string _gitAuthorEmail = "";
+        private string _gitDefaultBranch = "main";
+        private bool _gitConfirmRemoveRepo = true;
+        private bool _gitConfirmDiscardChanges = true;
+        private bool _gitConfirmDiscardPermanent = true;
+        private bool _gitConfirmDiscardStash = true;
+        private bool _gitConfirmCheckoutCommit = false;
+        private bool _gitConfirmForcePush = true;
+        private bool _gitConfirmUndoCommit = true;
+        private bool _gitConfirmOverrideCommitMsg = false;
+        private bool _gitConfirmHiddenChanges = false;
+        private string _gitBranchSwitchBehavior = "ask";
+        private bool _gitCommitLengthWarning = false;
+
         // Workspace / folder tree state
         private SplitContainer? _workspaceSplitContainer;
         private WorkspacePanel? _workspacePanel;
@@ -479,6 +495,20 @@ using Microsoft.Extensions.DependencyInjection;
         public int CurrentTerminalMaxScrollback => _terminalMaxScrollback;
         public string CurrentTerminalStartingDirectory => _terminalStartingDirectory;
         public string CurrentTerminalTabTitle => _terminalTabTitle;
+        public string CurrentGitAuthorName => _gitAuthorName;
+        public string CurrentGitAuthorEmail => _gitAuthorEmail;
+        public string CurrentGitDefaultBranch => _gitDefaultBranch;
+        public bool CurrentGitConfirmRemoveRepo => _gitConfirmRemoveRepo;
+        public bool CurrentGitConfirmDiscardChanges => _gitConfirmDiscardChanges;
+        public bool CurrentGitConfirmDiscardPermanent => _gitConfirmDiscardPermanent;
+        public bool CurrentGitConfirmDiscardStash => _gitConfirmDiscardStash;
+        public bool CurrentGitConfirmCheckoutCommit => _gitConfirmCheckoutCommit;
+        public bool CurrentGitConfirmForcePush => _gitConfirmForcePush;
+        public bool CurrentGitConfirmUndoCommit => _gitConfirmUndoCommit;
+        public bool CurrentGitConfirmOverrideCommitMsg => _gitConfirmOverrideCommitMsg;
+        public bool CurrentGitConfirmHiddenChanges => _gitConfirmHiddenChanges;
+        public string CurrentGitBranchSwitchBehavior => _gitBranchSwitchBehavior;
+        public bool CurrentGitCommitLengthWarning => _gitCommitLengthWarning;
         public bool CurrentVimMode => vimModeEnabled;
         public bool CurrentStickyScroll => _stickyScrollEnabled;
         public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
@@ -1284,6 +1314,7 @@ using Microsoft.Extensions.DependencyInjection;
  
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
+                  ApplyGitSettings();
                   _gitPanel.FileOpenRequested += (path) =>
                   {
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
@@ -2329,6 +2360,20 @@ using Microsoft.Extensions.DependencyInjection;
                 TerminalPadding = _terminalPadding,
                 TerminalMaxScrollback = _terminalMaxScrollback,
                 TerminalTabTitle = _terminalTabTitle,
+                GitAuthorName = _gitAuthorName,
+                GitAuthorEmail = _gitAuthorEmail,
+                GitDefaultBranch = _gitDefaultBranch,
+                GitConfirmRemoveRepo = _gitConfirmRemoveRepo,
+                GitConfirmDiscardChanges = _gitConfirmDiscardChanges,
+                GitConfirmDiscardPermanent = _gitConfirmDiscardPermanent,
+                GitConfirmDiscardStash = _gitConfirmDiscardStash,
+                GitConfirmCheckoutCommit = _gitConfirmCheckoutCommit,
+                GitConfirmForcePush = _gitConfirmForcePush,
+                GitConfirmUndoCommit = _gitConfirmUndoCommit,
+                GitConfirmOverrideCommitMsg = _gitConfirmOverrideCommitMsg,
+                GitConfirmHiddenChanges = _gitConfirmHiddenChanges,
+                GitBranchSwitchBehavior = _gitBranchSwitchBehavior,
+                GitCommitLengthWarning = _gitCommitLengthWarning,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2429,6 +2474,23 @@ using Microsoft.Extensions.DependencyInjection;
             _terminalMaxScrollback = Math.Clamp(settings.TerminalMaxScrollback, 500, 50000);
             _terminalTabTitle = settings.TerminalTabTitle ?? "";
             ApplyTerminalSettingsToAll();
+
+            // Apply git settings
+            _gitAuthorName = settings.GitAuthorName;
+            _gitAuthorEmail = settings.GitAuthorEmail;
+            _gitDefaultBranch = settings.GitDefaultBranch;
+            _gitConfirmRemoveRepo = settings.GitConfirmRemoveRepo;
+            _gitConfirmDiscardChanges = settings.GitConfirmDiscardChanges;
+            _gitConfirmDiscardPermanent = settings.GitConfirmDiscardPermanent;
+            _gitConfirmDiscardStash = settings.GitConfirmDiscardStash;
+            _gitConfirmCheckoutCommit = settings.GitConfirmCheckoutCommit;
+            _gitConfirmForcePush = settings.GitConfirmForcePush;
+            _gitConfirmUndoCommit = settings.GitConfirmUndoCommit;
+            _gitConfirmOverrideCommitMsg = settings.GitConfirmOverrideCommitMsg;
+            _gitConfirmHiddenChanges = settings.GitConfirmHiddenChanges;
+            _gitBranchSwitchBehavior = settings.GitBranchSwitchBehavior;
+            _gitCommitLengthWarning = settings.GitCommitLengthWarning;
+            ApplyGitSettings();
 
             // Advanced
             _analyzersEnabled = settings.AnalyzersEnabled;
@@ -2847,6 +2909,27 @@ internal void ToggleGutter()
             }
 
             RefreshTerminalTabTitles();
+        }
+
+        private void ApplyGitSettings()
+        {
+            if (_gitPanel == null) return;
+            _gitPanel.ApplyGitSettings(new GitPanel.GitSettings(
+                AuthorName: _gitAuthorName,
+                AuthorEmail: _gitAuthorEmail,
+                DefaultBranch: _gitDefaultBranch,
+                ConfirmRemoveRepo: _gitConfirmRemoveRepo,
+                ConfirmDiscardChanges: _gitConfirmDiscardChanges,
+                ConfirmDiscardPermanent: _gitConfirmDiscardPermanent,
+                ConfirmDiscardStash: _gitConfirmDiscardStash,
+                ConfirmCheckoutCommit: _gitConfirmCheckoutCommit,
+                ConfirmForcePush: _gitConfirmForcePush,
+                ConfirmUndoCommit: _gitConfirmUndoCommit,
+                ConfirmOverrideCommitMsg: _gitConfirmOverrideCommitMsg,
+                ConfirmHiddenChanges: _gitConfirmHiddenChanges,
+                BranchSwitchBehavior: _gitBranchSwitchBehavior,
+                CommitLengthWarning: _gitCommitLengthWarning
+            ));
         }
 
         private string ResolveTerminalStartingDirectory()

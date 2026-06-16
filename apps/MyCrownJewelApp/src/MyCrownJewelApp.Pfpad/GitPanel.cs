@@ -20,6 +20,7 @@ internal sealed class GitOperationsPanel : Panel
     private readonly Button _newBranchBtn;
     private readonly Button _stashBtn;
     private readonly Button _tagBtn;
+    private bool _confirmDiscardStash = true;
 
     public GitOperationsPanel(GitService git)
     {
@@ -30,7 +31,7 @@ internal sealed class GitOperationsPanel : Panel
 
         _branchLabel = new Label
         {
-            Text = "🌿 main",
+            Text = "⎇ main",
             Font = new Font("Segoe UI", 9, FontStyle.Bold),
             AutoSize = true,
             Location = new Point(0, 4)
@@ -86,7 +87,7 @@ internal sealed class GitOperationsPanel : Panel
 
         _pushBtn = new Button
         {
-            Text = "⬆️ Push",
+            Text = "↑ Push",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
             Size = new Size(70, 26),
@@ -108,7 +109,7 @@ internal sealed class GitOperationsPanel : Panel
 
         _newBranchBtn = new Button
         {
-            Text = "🌿 New Branch",
+            Text = "⎇ New Branch",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
             Size = new Size(90, 26),
@@ -119,7 +120,7 @@ internal sealed class GitOperationsPanel : Panel
 
         _stashBtn = new Button
         {
-            Text = "📦 Stash",
+            Text = "⊡ Stash",
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8),
             Size = new Size(70, 26),
@@ -152,7 +153,7 @@ internal sealed class GitOperationsPanel : Panel
     {
         if (_git.IsActive)
         {
-            _branchLabel.Text = $"🌿 {_git.CurrentBranch ?? "detached"}";
+            _branchLabel.Text = $"⎇ {_git.CurrentBranch ?? "detached"}";
 
             try
             {
@@ -176,9 +177,20 @@ internal sealed class GitOperationsPanel : Panel
         }
         else
         {
-            _branchLabel.Text = "🌿 (no repo)";
+            _branchLabel.Text = "⎇ (no repo)";
             _remoteLabel.Text = "🔄 (no remote)";
         }
+    }
+
+    public void ApplyGitSettings(GitPanel.GitSettings settings)
+    {
+        _confirmDiscardStash = settings.ConfirmDiscardStash;
+    }
+
+    private static bool ConfirmIfEnabled(bool enabled, string message, string title)
+    {
+        if (!enabled) return true;
+        return ThemedMessageBox.Show(message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
     }
 
     private void NewBranch_Click(object? sender, EventArgs e)
@@ -253,7 +265,7 @@ internal sealed class GitOperationsPanel : Panel
 
         menu.Items.Add("Drop Stash", null, (s, args) =>
         {
-            if (ThemedMessageBox.Show("Drop the most recent stash?", "Drop Stash", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            if (ConfirmIfEnabled(_confirmDiscardStash, "Drop the most recent stash?", "Drop Stash"))
             {
                 // Note: No DropStash method in existing API, would need to implement
                 ThemedMessageBox.Show("Drop stash not implemented yet.", "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -766,6 +778,7 @@ internal sealed class GitOperationsPanel : Panel
     private readonly ListBox _statusList;
     private readonly ListBox _commitList;
     private readonly TextBox _commitMessage;
+    private Label _commitLengthLabel = null!;
     private readonly Button _commitBtn;
     private readonly Button _amendBtn;
     private readonly Button _commitPushBtn;
@@ -782,6 +795,15 @@ internal sealed class GitOperationsPanel : Panel
     private readonly Label _commitHeader;
     private readonly Label _noRepoLabel;
     private readonly ContextMenuStrip _statusContextMenu;
+    private GitSettings _gitSettings = new(
+        AuthorName: "", AuthorEmail: "", DefaultBranch: "main",
+        ConfirmRemoveRepo: true, ConfirmDiscardChanges: true,
+        ConfirmDiscardPermanent: true, ConfirmDiscardStash: true,
+        ConfirmCheckoutCommit: false, ConfirmForcePush: true,
+        ConfirmUndoCommit: true, ConfirmOverrideCommitMsg: false,
+        ConfirmHiddenChanges: false, BranchSwitchBehavior: "ask",
+        CommitLengthWarning: false
+    );
 
     private List<StatusEntry> _staged = new();
     private List<StatusEntry> _unstaged = new();
@@ -797,6 +819,24 @@ internal sealed class GitOperationsPanel : Panel
 
     [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+
+    /// <summary>Git settings pushed from the settings dialog.</summary>
+    public record GitSettings(
+        string AuthorName,
+        string AuthorEmail,
+        string DefaultBranch,
+        bool ConfirmRemoveRepo,
+        bool ConfirmDiscardChanges,
+        bool ConfirmDiscardPermanent,
+        bool ConfirmDiscardStash,
+        bool ConfirmCheckoutCommit,
+        bool ConfirmForcePush,
+        bool ConfirmUndoCommit,
+        bool ConfirmOverrideCommitMsg,
+        bool ConfirmHiddenChanges,
+        string BranchSwitchBehavior,
+        bool CommitLengthWarning
+    );
 
     public GitPanel(GitService git)
     {
@@ -878,24 +918,19 @@ internal sealed class GitOperationsPanel : Panel
         var unstageItem = new ToolStripMenuItem("Unstage", null, (s, e) => ToggleStageForSelected());
         var discardItem = new ToolStripMenuItem("Discard Changes", null, (s, e) =>
         {
-            if (_statusList?.SelectedIndices?.Count > 0)
+            if (_statusList!.SelectedIndices.Count == 0) return;
+            if (!ConfirmIfEnabled(_gitSettings.ConfirmDiscardChanges,
+                $"Discard changes for {_statusList.SelectedIndices.Count} selected file(s)?\nThis cannot be undone.",
+                "Discard Changes")) return;
+            foreach (int index in _statusList.SelectedIndices)
             {
-                var result = ThemedMessageBox.Show(
-                    $"Discard changes for {_statusList.SelectedIndices.Count} selected file(s)?\nThis cannot be undone.",
-                    "Discard Changes", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-                if (result == DialogResult.Yes)
+                var path = GetStatusPathAtIndex(index);
+                if (path != null)
                 {
-                    foreach (int index in _statusList.SelectedIndices)
-                    {
-                        var path = GetStatusPathAtIndex(index);
-                        if (path != null)
-                        {
-                            _git.DiscardFile(path);
-                        }
-                    }
-                    RefreshStatus();
+                    _git.DiscardFile(path);
                 }
             }
+            RefreshStatus();
         });
         var diffItem = new ToolStripMenuItem("View Diff", null, (s, e) =>
         {
@@ -1033,6 +1068,16 @@ internal sealed class GitOperationsPanel : Panel
             Text = ""
         };
 
+        _commitLengthLabel = new Label
+        {
+            Text = "",
+            Location = new Point(90, _commitMessage.Bottom + 2),
+            Size = new Size(200, 16),
+            Font = new Font("Segoe UI", 7.5f),
+            ForeColor = Color.Gray,
+            BackColor = Color.Transparent
+        };
+
         _templatesBtn = new Button
         {
             Text = "📝",
@@ -1052,9 +1097,10 @@ internal sealed class GitOperationsPanel : Panel
             _commitBtn.Enabled = hasMessage && hasStaged;
             _amendBtn.Enabled = hasMessage && hasLastCommit;
             _commitPushBtn.Enabled = hasMessage && hasStaged;
+            UpdateCommitMessageIndicator();
         };
 
-        y += 32;
+        y += 50;
         _commitHeader = new Label
         {
             Text = "Recent Commits",
@@ -1139,7 +1185,7 @@ internal sealed class GitOperationsPanel : Panel
         };
 
         _topPanel.Controls.AddRange(new Control[] {
-            _statusHeader, _stageAllBtn, _unstageAllBtn, _statusList, _commitMessage, _templatesBtn, _commitBtn, _amendBtn, _commitPushBtn,
+            _statusHeader, _stageAllBtn, _unstageAllBtn, _statusList, _commitMessage, _commitLengthLabel, _templatesBtn, _commitBtn, _amendBtn, _commitPushBtn,
             _commitHeader, _commitList, _fetchBtn, _pullBtn, _pushBtn
         });
 
@@ -1178,7 +1224,21 @@ internal sealed class GitOperationsPanel : Panel
         _git.OnError += (msg) => BeginInvoke(() => ThemedMessageBox.Show(msg, "Git", MessageBoxButtons.OK, MessageBoxIcon.Warning));
 
         SetTheme(theme);
+        UpdateCommitMessageIndicator();
         RefreshStatus();
+    }
+
+    public void ApplyGitSettings(GitSettings settings)
+    {
+        _gitSettings = settings;
+        _operationsPanel.ApplyGitSettings(settings);
+        UpdateCommitMessageIndicator();
+    }
+
+    private static bool ConfirmIfEnabled(bool enabled, string message, string title)
+    {
+        if (!enabled) return true;
+        return ThemedMessageBox.Show(message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
     }
 
     private void ToggleStageForSelected()
@@ -1490,6 +1550,7 @@ internal sealed class GitOperationsPanel : Panel
             var log = _git.GetLog(30);
             _commitList.Items.Clear();
             foreach (var c in log) _commitList.Items.Add(c);
+            UpdateCommitMessageIndicator();
 
             // Update panels
             _operationsPanel.UpdateStatus();
@@ -1532,6 +1593,16 @@ internal sealed class GitOperationsPanel : Panel
         StatusChanged?.Invoke();
     }
 
+    private void UpdateCommitMessageIndicator()
+    {
+        if (_commitLengthLabel == null) return;
+        if (!_gitSettings.CommitLengthWarning) { _commitLengthLabel.Text = ""; return; }
+        string firstLine = _commitMessage.Text.Split('\n')[0];
+        int len = firstLine.Length;
+        _commitLengthLabel.Text = $"Subject: {len} chars{(len > 72 ? " ⚠ >72" : len > 50 ? " ≈ long" : "")}";
+        _commitLengthLabel.ForeColor = len > 72 ? Color.OrangeRed : len > 50 ? Color.DarkOrange : Color.Gray;
+    }
+
     private int FindStatusIndexByPath(string? path)
     {
         if (path is null) return -1;
@@ -1572,6 +1643,8 @@ internal sealed class GitOperationsPanel : Panel
 
         _statusList.Size = new Size(w, Math.Min(_statusList.Items.Count * 24 + 4, 300));
         _commitMessage.Size = new Size(w - 200, 24); // Adjust for templates button and extra buttons
+        _commitLengthLabel.Location = new Point(_commitMessage.Left, _commitMessage.Bottom + 2);
+        _commitLengthLabel.Size = new Size(Math.Max(120, _commitMessage.Width), 16);
         _commitList.Location = new Point(4, _commitList.Location.Y);
         _commitList.Size = new Size(w, Math.Max(60, _topPanel.ClientSize.Height - _commitList.Top - 4));
 
@@ -1731,6 +1804,7 @@ internal sealed class GitOperationsPanel : Panel
         _commitList.ForeColor = theme.Text;
         _commitMessage.BackColor = theme.EditorBackground;
         _commitMessage.ForeColor = theme.Text;
+        UpdateCommitMessageIndicator();
         _commitBtn.BackColor = theme.Accent;
         _commitBtn.ForeColor = FlatUiHelper.BadgeForeground(theme);
         _commitBtn.FlatAppearance.BorderSize = 0;
