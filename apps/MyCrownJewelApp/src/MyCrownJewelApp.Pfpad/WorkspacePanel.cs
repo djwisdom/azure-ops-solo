@@ -68,6 +68,11 @@ internal sealed partial class WorkspacePanel : UserControl
     private List<string> _gitignorePatterns = [];
     private TreeNode? _favoritesRoot;
 
+    // Configurable via ApplyWorkspaceSettings()
+    private HashSet<string> _additionalExcludedDirs = new(StringComparer.OrdinalIgnoreCase);
+    private bool _autoCollapse = false;
+    private bool _disableFileWatcher = false;
+
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
     public event Action? ScanStarted;
@@ -488,6 +493,7 @@ internal sealed partial class WorkspacePanel : UserControl
 
 
             // Start FileSystemWatcher for instant refresh on file/dir changes
+            if (!_disableFileWatcher)
             try
             {
                 _fileWatcher = new FileSystemWatcher(path)
@@ -928,7 +934,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
         }
     }
 
-    private static bool IsIgnoredDirectory(string name)
+    private bool IsIgnoredDirectory(string name)
     {
         return name.Equals("node_modules", StringComparison.OrdinalIgnoreCase)
             || name.Equals(".git", StringComparison.OrdinalIgnoreCase)
@@ -937,7 +943,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
             || name.Equals("bin", StringComparison.OrdinalIgnoreCase)
             || name.Equals("obj", StringComparison.OrdinalIgnoreCase)
             || name.Equals(".vs", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("packages", StringComparison.OrdinalIgnoreCase);
+            || name.Equals("packages", StringComparison.OrdinalIgnoreCase)
+            || _additionalExcludedDirs.Contains(name);
     }
 
     /// <summary>Reads the top-level .gitignore and returns the pattern lines.</summary>
@@ -1420,7 +1427,11 @@ private TreeNode CreateDirectoryNode(string dirPath)
         if (path != null)
         {
             if (File.Exists(path))
+            {
+                if (_autoCollapse)
+                    CollapseOtherFolders(node);
                 FileOpenRequested?.Invoke(path);
+            }
             else if (Directory.Exists(path))
             {
                 if (node.IsExpanded)
@@ -1429,6 +1440,51 @@ private TreeNode CreateDirectoryNode(string dirPath)
                     node.Expand();
             }
         }
+    }
+
+    private void CollapseOtherFolders(TreeNode openedNode)
+    {
+        // Walk up to find the top-level ancestor of the opened node
+        var ancestor = openedNode;
+        while (ancestor.Parent != null && ancestor.Parent.Parent != null)
+            ancestor = ancestor.Parent;
+
+        // Collapse all top-level folder nodes except the ancestor (and Favorites)
+        foreach (TreeNode top in _tree.Nodes)
+        {
+            if (top == _favoritesRoot || top == ancestor || top == ancestor.Parent) continue;
+            if (top.IsExpanded) top.Collapse();
+        }
+    }
+
+    /// <summary>Apply workspace explorer settings without restarting the app.</summary>
+    public void ApplyWorkspaceSettings(
+        bool showAllFiles, string excludedDirs,
+        int itemHeight, int indent,
+        bool autoCollapse, int watcherDebounceMs, bool disableFileWatcher)
+    {
+        bool filterChanged = _showAllFiles != showAllFiles
+            || _disableFileWatcher != disableFileWatcher;
+
+        _showAllFiles = showAllFiles;
+        _additionalExcludedDirs = new HashSet<string>(
+            excludedDirs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.OrdinalIgnoreCase);
+        _tree.ItemHeight = Math.Clamp(itemHeight, 16, 40);
+        _tree.Indent = Math.Clamp(indent, 8, 48);
+        _autoCollapse = autoCollapse;
+        _refreshTimer.Interval = Math.Clamp(watcherDebounceMs, 100, 5000);
+
+        if (disableFileWatcher && !_disableFileWatcher)
+        {
+            _fileWatcher?.Dispose();
+            _fileWatcher = null;
+        }
+        _disableFileWatcher = disableFileWatcher;
+
+        UpdateShowAllFilesVisual();
+        if (filterChanged && !string.IsNullOrEmpty(_rootPath))
+            RefreshTree();
     }
 
     private void OpenContainingFolder()

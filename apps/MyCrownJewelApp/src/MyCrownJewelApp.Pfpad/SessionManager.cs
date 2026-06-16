@@ -27,8 +27,8 @@ public sealed record SessionData
 
 public sealed class SessionManager
 {
-    public const int MaxRecentWorkspaces = 10;
-    public const int MaxRecentFiles = 10;
+    public int MaxRecentWorkspaces { get; set; } = 10;
+    public int MaxRecentFiles { get; set; } = 10;
 
     private readonly string _sessionPath;
     private readonly string _recentWorkspacesPath;

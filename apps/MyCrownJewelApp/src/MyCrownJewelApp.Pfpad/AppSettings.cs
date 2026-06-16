@@ -76,6 +76,26 @@ public record AppSettings
     /// <summary>Main window opacity 50–100 %. 100 = fully opaque.</summary>
     public int WinOpacity { get; init; } = 100;
 
+    // ── Workspace configuration ────────────────────────────────────────────────
+    /// <summary>Show all files in the workspace tree by default (not just recognized text types).</summary>
+    public bool WsShowAllFiles { get; init; } = false;
+    /// <summary>Comma-separated directory names to hide in addition to the built-in exclusion list.</summary>
+    public string WsExcludedDirs { get; init; } = "";
+    /// <summary>Workspace tree row height in pixels (16–40). Default 26.</summary>
+    public int WsTreeItemHeight { get; init; } = 26;
+    /// <summary>Workspace tree indent per level in pixels (8–48). Default 24.</summary>
+    public int WsTreeIndent { get; init; } = 24;
+    /// <summary>Collapse sibling folders when a file is opened.</summary>
+    public bool WsAutoCollapse { get; init; } = false;
+    /// <summary>Milliseconds to wait after a file-system change before refreshing the tree.</summary>
+    public int WsWatcherDebounceMs { get; init; } = 500;
+    /// <summary>Disable the FileSystemWatcher and fall back to manual refresh only.</summary>
+    public bool WsDisableFileWatcher { get; init; } = false;
+    /// <summary>Maximum number of recent workspaces to remember (5–50).</summary>
+    public int WsMaxRecentWorkspaces { get; init; } = 10;
+    /// <summary>Maximum number of recent files to remember (5–50).</summary>
+    public int WsMaxRecentFiles { get; init; } = 10;
+
     // ── Git configuration ──────────────────────────────────────────────────────
     public string GitAuthorName { get; init; } = "";
     public string GitAuthorEmail { get; init; } = "";

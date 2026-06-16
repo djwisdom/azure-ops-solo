@@ -103,6 +103,16 @@ using Microsoft.Extensions.DependencyInjection;
             }
         }
 
+        private void ApplyWorkspaceSettings()
+        {
+            _workspacePanel?.ApplyWorkspaceSettings(
+                _wsShowAllFiles, _wsExcludedDirs,
+                _wsTreeItemHeight, _wsTreeIndent,
+                _wsAutoCollapse, _wsWatcherDebounceMs, _wsDisableFileWatcher);
+            _sessionManager.MaxRecentWorkspaces = Math.Clamp(_wsMaxRecentWorkspaces, 5, 50);
+            _sessionManager.MaxRecentFiles = Math.Clamp(_wsMaxRecentFiles, 5, 50);
+        }
+
         // State
         private static readonly HashSet<int> _emptySet = new();
         internal bool gutterVisible = true;
@@ -191,6 +201,17 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _workspaceVisible;
         private int _workspaceWidth = 200;
         private string _workspaceRoot = "";
+
+        // Workspace settings
+        private bool _wsShowAllFiles = false;
+        private string _wsExcludedDirs = "";
+        private int _wsTreeItemHeight = 26;
+        private int _wsTreeIndent = 24;
+        private bool _wsAutoCollapse = false;
+        private int _wsWatcherDebounceMs = 500;
+        private bool _wsDisableFileWatcher = false;
+        private int _wsMaxRecentWorkspaces = 10;
+        private int _wsMaxRecentFiles = 10;
 
         // AIOps
         private MyCrownJewelApp.Pfpad.AIOps.AIOpsEngine? _aiopsEngine;
@@ -585,6 +606,15 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentWinRestoreSession => _winRestoreSession;
         public string CurrentWinDarkTitleBar => _winDarkTitleBar;
         public int CurrentWinOpacity => _winOpacity;
+        public bool CurrentWsShowAllFiles => _wsShowAllFiles;
+        public string CurrentWsExcludedDirs => _wsExcludedDirs;
+        public int CurrentWsTreeItemHeight => _wsTreeItemHeight;
+        public int CurrentWsTreeIndent => _wsTreeIndent;
+        public bool CurrentWsAutoCollapse => _wsAutoCollapse;
+        public int CurrentWsWatcherDebounceMs => _wsWatcherDebounceMs;
+        public bool CurrentWsDisableFileWatcher => _wsDisableFileWatcher;
+        public int CurrentWsMaxRecentWorkspaces => _wsMaxRecentWorkspaces;
+        public int CurrentWsMaxRecentFiles => _wsMaxRecentFiles;
 
     public Form1()
         : this(skipInitialDocument: false, services: null)
@@ -2329,6 +2359,16 @@ using Microsoft.Extensions.DependencyInjection;
                 _winRestoreSession = settings.WinRestoreSession;
                 _winDarkTitleBar = settings.WinDarkTitleBar;
                 _winOpacity = settings.WinOpacity;
+                // Workspace settings
+                _wsShowAllFiles = settings.WsShowAllFiles;
+                _wsExcludedDirs = settings.WsExcludedDirs;
+                _wsTreeItemHeight = settings.WsTreeItemHeight;
+                _wsTreeIndent = settings.WsTreeIndent;
+                _wsAutoCollapse = settings.WsAutoCollapse;
+                _wsWatcherDebounceMs = settings.WsWatcherDebounceMs;
+                _wsDisableFileWatcher = settings.WsDisableFileWatcher;
+                _wsMaxRecentWorkspaces = settings.WsMaxRecentWorkspaces;
+                _wsMaxRecentFiles = settings.WsMaxRecentFiles;
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2497,6 +2537,15 @@ using Microsoft.Extensions.DependencyInjection;
                 WinRestoreSession = _winRestoreSession,
                 WinDarkTitleBar = _winDarkTitleBar,
                 WinOpacity = _winOpacity,
+                WsShowAllFiles = _wsShowAllFiles,
+                WsExcludedDirs = _wsExcludedDirs,
+                WsTreeItemHeight = _wsTreeItemHeight,
+                WsTreeIndent = _wsTreeIndent,
+                WsAutoCollapse = _wsAutoCollapse,
+                WsWatcherDebounceMs = _wsWatcherDebounceMs,
+                WsDisableFileWatcher = _wsDisableFileWatcher,
+                WsMaxRecentWorkspaces = _wsMaxRecentWorkspaces,
+                WsMaxRecentFiles = _wsMaxRecentFiles,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2646,6 +2695,18 @@ using Microsoft.Extensions.DependencyInjection;
             DisableMinimapForLargeFiles = settings.DisableMinimapForLargeFiles;
             DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
             ApplyWindowSettings();
+
+            // Workspace settings
+            _wsShowAllFiles = settings.WsShowAllFiles;
+            _wsExcludedDirs = settings.WsExcludedDirs;
+            _wsTreeItemHeight = settings.WsTreeItemHeight;
+            _wsTreeIndent = settings.WsTreeIndent;
+            _wsAutoCollapse = settings.WsAutoCollapse;
+            _wsWatcherDebounceMs = settings.WsWatcherDebounceMs;
+            _wsDisableFileWatcher = settings.WsDisableFileWatcher;
+            _wsMaxRecentWorkspaces = settings.WsMaxRecentWorkspaces;
+            _wsMaxRecentFiles = settings.WsMaxRecentFiles;
+            ApplyWorkspaceSettings();
 
             // Advanced
             _analyzersEnabled = settings.AnalyzersEnabled;

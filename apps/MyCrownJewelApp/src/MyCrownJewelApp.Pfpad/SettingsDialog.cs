@@ -708,6 +708,15 @@ internal sealed class SettingsDialog : Form
             DisableSyntaxHighlightingForLargeFiles = GetSettingValue<bool>("application.window.disableSyntaxForLargeFiles", _mainForm.CurrentDisableSyntaxHighlightingForLargeFiles),
             DisableMinimapForLargeFiles = GetSettingValue<bool>("application.window.disableMinimapForLargeFiles", _mainForm.CurrentDisableMinimapForLargeFiles),
             DisableWordWrapForLargeFiles = GetSettingValue<bool>("application.window.disableWordWrapForLargeFiles", _mainForm.CurrentDisableWordWrapForLargeFiles),
+            WsShowAllFiles = GetSettingValue<bool>("application.workspace.showAllFiles", _mainForm.CurrentWsShowAllFiles),
+            WsExcludedDirs = GetSettingValue<string>("application.workspace.excludedDirs", _mainForm.CurrentWsExcludedDirs),
+            WsTreeItemHeight = GetSettingValue<int>("application.workspace.treeItemHeight", _mainForm.CurrentWsTreeItemHeight),
+            WsTreeIndent = GetSettingValue<int>("application.workspace.treeIndent", _mainForm.CurrentWsTreeIndent),
+            WsAutoCollapse = GetSettingValue<bool>("application.workspace.autoCollapse", _mainForm.CurrentWsAutoCollapse),
+            WsWatcherDebounceMs = GetSettingValue<int>("application.workspace.watcherDebounceMs", _mainForm.CurrentWsWatcherDebounceMs),
+            WsDisableFileWatcher = GetSettingValue<bool>("application.workspace.disableFileWatcher", _mainForm.CurrentWsDisableFileWatcher),
+            WsMaxRecentWorkspaces = GetSettingValue<int>("application.workspace.maxRecentWorkspaces", _mainForm.CurrentWsMaxRecentWorkspaces),
+            WsMaxRecentFiles = GetSettingValue<int>("application.workspace.maxRecentFiles", _mainForm.CurrentWsMaxRecentFiles),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
         };
@@ -817,7 +826,18 @@ internal sealed class SettingsDialog : Form
             ["application.window.asyncFileWarningMB"] = _mainForm.CurrentAsyncFileWarningMB,
             ["application.window.disableSyntaxForLargeFiles"] = _mainForm.CurrentDisableSyntaxHighlightingForLargeFiles,
             ["application.window.disableMinimapForLargeFiles"] = _mainForm.CurrentDisableMinimapForLargeFiles,
-            ["application.window.disableWordWrapForLargeFiles"] = _mainForm.CurrentDisableWordWrapForLargeFiles
+            ["application.window.disableWordWrapForLargeFiles"] = _mainForm.CurrentDisableWordWrapForLargeFiles,
+
+            // Application Workspace
+            ["application.workspace.showAllFiles"] = _mainForm.CurrentWsShowAllFiles,
+            ["application.workspace.excludedDirs"] = _mainForm.CurrentWsExcludedDirs,
+            ["application.workspace.treeItemHeight"] = _mainForm.CurrentWsTreeItemHeight,
+            ["application.workspace.treeIndent"] = _mainForm.CurrentWsTreeIndent,
+            ["application.workspace.autoCollapse"] = _mainForm.CurrentWsAutoCollapse,
+            ["application.workspace.watcherDebounceMs"] = _mainForm.CurrentWsWatcherDebounceMs,
+            ["application.workspace.disableFileWatcher"] = _mainForm.CurrentWsDisableFileWatcher,
+            ["application.workspace.maxRecentWorkspaces"] = _mainForm.CurrentWsMaxRecentWorkspaces,
+            ["application.workspace.maxRecentFiles"] = _mainForm.CurrentWsMaxRecentFiles
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -2160,46 +2180,127 @@ internal sealed class SettingsDialog : Form
 
     private int AddWorkspaceSettingsUI(Panel parent, int y)
     {
-        // Header
-        var header = new Label
+        // ── Explorer Behavior ─────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Explorer Behavior");
+
+        y = AddSecCheckRow(parent, y,
+            "Show all files by default",
+            "Display every file, not just recognized text/code types. Equivalent to the toolbar toggle.",
+            "application.workspace.showAllFiles");
+
+        // Excluded directories text row
+        var exLbl = new Label
         {
-            Text = "Workspace Settings",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Accent,
-            Font = new Font("Segoe UI", 14, FontStyle.Bold),
+            Text = "Additional excluded directories",
+            Location = new Point(0, y + 4),
+            Size = new Size(260, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
             BackColor = Color.Transparent
         };
-        parent.Controls.Add(header);
-        y += 40;
+        parent.Controls.Add(exLbl);
+        var exDesc = new Label
+        {
+            Text = "Comma-separated names (e.g. dist,__pycache__,.cache). Added on top of the built-in list (bin, obj, node_modules, .vs…).",
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 20, 28),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(exDesc);
+        string curEx = _currentValues.TryGetValue("application.workspace.excludedDirs", out var exv) ? exv.ToString()! : "";
+        var exTxt = new TextBox
+        {
+            Width = parent.Width - 20,
+            Height = 22,
+            Location = new Point(0, y + 54),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Text = curEx,
+            Tag = "application.workspace.excludedDirs"
+        };
+        exTxt.TextChanged += (s, e) => _currentValues["application.workspace.excludedDirs"] = exTxt.Text;
+        parent.Controls.Add(exTxt);
+        y += 82;
 
-        // Workspace path
+        y = AddSecCheckRow(parent, y,
+            "Auto-collapse folders when opening a file",
+            "Collapse other open top-level folders when you open a file, keeping the tree tidy.",
+            "application.workspace.autoCollapse");
+
+        // Tree item height
+        y = AddWinNumericRow(parent, y,
+            "Tree row height (px)",
+            "Height of each row in the workspace tree. 20 = compact, 26 = normal, 32 = spacious.",
+            "application.workspace.treeItemHeight", min: 16, max: 40, step: 2, defaultVal: 26);
+
+        // Tree indent
+        y = AddWinNumericRow(parent, y,
+            "Tree indent per level (px)",
+            "Horizontal indentation per nesting level. Default 24.",
+            "application.workspace.treeIndent", min: 8, max: 48, step: 4, defaultVal: 24);
+
+        y += 8;
+        // ── File Watcher ──────────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "File Watcher");
+
+        y = AddSecCheckRow(parent, y,
+            "Disable file watcher (manual refresh only)",
+            "Stop watching the workspace folder for changes. Use the ↺ refresh button instead. Reduces CPU on large repos.",
+            "application.workspace.disableFileWatcher");
+
+        y = AddWinNumericRow(parent, y,
+            "Refresh debounce (ms)",
+            "How long to wait after a file-system event before refreshing the tree. Default 500 ms.",
+            "application.workspace.watcherDebounceMs", min: 100, max: 5000, step: 100, defaultVal: 500);
+
+        y += 8;
+        // ── Recent Lists ──────────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Recent Lists");
+
+        y = AddWinNumericRow(parent, y,
+            "Maximum recent workspaces",
+            "How many folders appear in File > Recent Workspaces.",
+            "application.workspace.maxRecentWorkspaces", min: 5, max: 50, step: 5, defaultVal: 10);
+
+        y = AddWinNumericRow(parent, y,
+            "Maximum recent files",
+            "How many files appear in File > Recent Files.",
+            "application.workspace.maxRecentFiles", min: 5, max: 50, step: 5, defaultVal: 10);
+
+        y += 16;
+        // ── Workspace Root ────────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Workspace Root");
+
         var pathLabel = new Label
         {
-            Text = "Workspace Root:",
+            Text = "Current root:",
             Location = new Point(0, y + 3),
             AutoSize = true,
             ForeColor = _theme.Text,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 9)
         };
         parent.Controls.Add(pathLabel);
 
         _workspacePathText = new TextBox
         {
-            Location = new Point(120, y),
-            Size = new Size(parent.Width - 152, 25),
+            Location = new Point(100, y),
+            Size = new Size(parent.Width - 200, 25),
             Text = _mainForm.WorkspaceRoot ?? "",
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.None,
+            BorderStyle = BorderStyle.FixedSingle,
             ReadOnly = true
         };
         parent.Controls.Add(_workspacePathText);
 
         var browseBtn = new Button
         {
-            Text = "Browse...",
-            Location = new Point(parent.Width - 32 - 80, y - 1),
+            Text = "Browse…",
+            Location = new Point(parent.Width - 90, y - 1),
             Size = new Size(80, 27),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
@@ -2210,7 +2311,6 @@ internal sealed class SettingsDialog : Form
         parent.Controls.Add(browseBtn);
         y += 35;
 
-        // Settings file status
         var statusLabel = new Label
         {
             Text = GetWorkspaceSettingsStatus(),
@@ -2223,44 +2323,30 @@ internal sealed class SettingsDialog : Form
         parent.Controls.Add(statusLabel);
         y += 25;
 
-        // Workspace settings list
-        var settingsLabel = new Label
-        {
-            Text = "Workspace-Specific Settings:",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Text,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold)
-        };
-        parent.Controls.Add(settingsLabel);
-        y += 25;
+        // ── Workspace-specific overrides (JSON list) ──────────────────────────
+        y = AddSecSectionHeader(parent, y, "Per-workspace Overrides (.pfpad/settings.json)");
 
         _workspaceSettingsList = new ThemeAwareListView(_theme)
         {
             Location = new Point(0, y),
-            Size = new Size(parent.Width - 32, 200),
+            Size = new Size(parent.Width - 20, 160),
             View = View.Details,
             FullRowSelect = true,
             GridLines = true
         };
-
         _workspaceSettingsList.Columns.Add("Setting", 200);
         _workspaceSettingsList.Columns.Add("Value", 150);
         _workspaceSettingsList.Columns.Add("Description", 200);
-
         LoadWorkspaceSettings();
         PopulateWorkspaceSettingsList();
-
         parent.Controls.Add(_workspaceSettingsList);
-        y += 210;
+        y += 170;
 
-        // Buttons
         var addBtn = new Button
         {
             Text = "Add Setting",
             Location = new Point(0, y),
-            Size = new Size(100, 30),
+            Size = new Size(100, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
@@ -2272,8 +2358,8 @@ internal sealed class SettingsDialog : Form
         var removeBtn = new Button
         {
             Text = "Remove",
-            Location = new Point(110, y),
-            Size = new Size(80, 30),
+            Location = new Point(108, y),
+            Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
             ForeColor = _theme.Text,
@@ -2285,8 +2371,8 @@ internal sealed class SettingsDialog : Form
         _saveWorkspaceSettingsButton = new Button
         {
             Text = "Save to Workspace",
-            Location = new Point(parent.Width - 32 - 140, y),
-            Size = new Size(140, 30),
+            Location = new Point(parent.Width - 160, y),
+            Size = new Size(140, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.Accent,
             ForeColor = Color.White,
@@ -2295,9 +2381,7 @@ internal sealed class SettingsDialog : Form
         _saveWorkspaceSettingsButton.Click += SaveWorkspaceSettingsButton_Click;
         parent.Controls.Add(_saveWorkspaceSettingsButton);
 
-        y += 40;
-
-        return y;
+        return y + 40;
     }
 
     private string GetWorkspaceSettingsStatus()
