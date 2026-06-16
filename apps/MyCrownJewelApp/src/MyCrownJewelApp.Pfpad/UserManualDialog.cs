@@ -45,9 +45,11 @@ public sealed partial class UserManualDialog : Form
     private readonly WebBrowser _browser;
     private readonly Button     _manualTab;
     private readonly Button     _archTab;
+    private readonly Button     _terminalTab;
     private readonly Button     _closeBtn;
     private readonly Panel      _titleBar;
-    private bool _showingArch;
+    private enum ActiveTab { Manual, Architecture, Terminal }
+    private ActiveTab _activeTab = ActiveTab.Manual;
     private Theme _theme;
 
     public UserManualDialog()
@@ -115,28 +117,38 @@ public sealed partial class UserManualDialog : Form
             BackColor = _theme.MenuBackground,
         };
 
-        _manualTab = CreateTabButton("📖  User Manual",           active: true);
-        _archTab   = CreateTabButton("🏗  Architecture & Design",  active: false);
-        _manualTab.Location = new Point(0, 0);
-        _archTab.Location   = new Point(_manualTab.Width, 0);
-        _manualTab.Height = _archTab.Height = 32;
+        _manualTab   = CreateTabButton("📖  User Manual",           active: true);
+        _archTab     = CreateTabButton("🏗  Architecture & Design",  active: false);
+        _terminalTab = CreateTabButton("🖥  Terminal Guide",          active: false);
+        _manualTab.Location   = new Point(0, 0);
+        _archTab.Location     = new Point(_manualTab.Width, 0);
+        _terminalTab.Location = new Point(_manualTab.Width + _archTab.Width, 0);
+        _manualTab.Height = _archTab.Height = _terminalTab.Height = 32;
 
-        _manualTab.Click += (_, _) => { if (_showingArch)  { _showingArch = false; UpdateTabState(); RenderContent(); } };
-        _archTab.Click   += (_, _) => { if (!_showingArch) { _showingArch = true;  UpdateTabState(); RenderContent(); } };
+        _manualTab.Click   += (_, _) => SwitchTab(ActiveTab.Manual);
+        _archTab.Click     += (_, _) => SwitchTab(ActiveTab.Architecture);
+        _terminalTab.Click += (_, _) => SwitchTab(ActiveTab.Terminal);
 
         tabStrip.Controls.Add(_manualTab);
         tabStrip.Controls.Add(_archTab);
+        tabStrip.Controls.Add(_terminalTab);
 
         // Draw active-tab underline
         tabStrip.Paint += (_, e) =>
         {
-            var activeBtn = _showingArch ? _archTab : _manualTab;
+            var activeBtn = _activeTab switch
+            {
+                ActiveTab.Architecture => _archTab,
+                ActiveTab.Terminal     => _terminalTab,
+                _                     => _manualTab,
+            };
             using var pen = new Pen(_theme.Accent, 2);
             int y = tabStrip.Height - 2;
             e.Graphics.DrawLine(pen, activeBtn.Left, y, activeBtn.Right, y);
         };
-        _manualTab.Click += (_, _) => tabStrip.Invalidate();
-        _archTab.Click   += (_, _) => tabStrip.Invalidate();
+        _manualTab.Click   += (_, _) => tabStrip.Invalidate();
+        _archTab.Click     += (_, _) => tabStrip.Invalidate();
+        _terminalTab.Click += (_, _) => tabStrip.Invalidate();
 
         // ── Resize grip (bottom-right corner) ─────────────────────────────────
         var grip = new Panel
@@ -249,19 +261,36 @@ public sealed partial class UserManualDialog : Form
         FlatAppearance = { BorderSize = 0, MouseOverBackColor = Color.Transparent }
     };
 
+    private void SwitchTab(ActiveTab tab)
+    {
+        if (_activeTab == tab) return;
+        _activeTab = tab;
+        UpdateTabState();
+        RenderContent();
+    }
+
     private void UpdateTabState()
     {
-        _manualTab.ForeColor = _showingArch ? _theme.Muted : _theme.Text;
-        _manualTab.Font = new Font("Segoe UI", 9f, _showingArch ? FontStyle.Regular : FontStyle.Bold);
+        SetTabActive(_manualTab,   _activeTab == ActiveTab.Manual);
+        SetTabActive(_archTab,     _activeTab == ActiveTab.Architecture);
+        SetTabActive(_terminalTab, _activeTab == ActiveTab.Terminal);
+    }
 
-        _archTab.ForeColor = _showingArch ? _theme.Text : _theme.Muted;
-        _archTab.Font = new Font("Segoe UI", 9f, _showingArch ? FontStyle.Bold : FontStyle.Regular);
+    private void SetTabActive(Button btn, bool active)
+    {
+        btn.ForeColor = active ? _theme.Text : _theme.Muted;
+        btn.Font = new Font("Segoe UI", 9f, active ? FontStyle.Bold : FontStyle.Regular);
     }
 
     private void RenderContent()
     {
-        string markdown = _showingArch ? LoadArchitectureMarkdown() : LoadManualMarkdown();
-        string html     = MarkdownRenderer.ConvertToHtml(markdown, _theme);
+        string markdown = _activeTab switch
+        {
+            ActiveTab.Architecture => LoadArchitectureMarkdown(),
+            ActiveTab.Terminal     => LoadTerminalMarkdown(),
+            _                     => LoadManualMarkdown(),
+        };
+        string html = MarkdownRenderer.ConvertToHtml(markdown, _theme);
         _browser.DocumentText = html;
     }
 
@@ -283,6 +312,16 @@ public sealed partial class UserManualDialog : Form
             try { return File.ReadAllText(localPath); } catch { }
 #endif
         return LoadEmbeddedResource("MyCrownJewelApp.Pfpad.Resources.ARCHITECTURE.md");
+    }
+
+    private static string LoadTerminalMarkdown()
+    {
+#if DEBUG
+        string localPath = Path.Combine(AppContext.BaseDirectory, "TERMINAL.md");
+        if (File.Exists(localPath))
+            try { return File.ReadAllText(localPath); } catch { }
+#endif
+        return LoadEmbeddedResource("MyCrownJewelApp.Pfpad.Resources.TERMINAL.md");
     }
 
     private static string LoadEmbeddedResource(string resourceName)

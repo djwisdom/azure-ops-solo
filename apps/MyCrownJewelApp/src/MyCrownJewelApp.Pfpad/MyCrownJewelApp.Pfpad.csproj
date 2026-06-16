@@ -48,6 +48,9 @@
     <EmbeddedResource Include="Resources\ARCHITECTURE.md">
       <LogicalName>MyCrownJewelApp.Pfpad.Resources.ARCHITECTURE.md</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TERMINAL.md">
+      <LogicalName>MyCrownJewelApp.Pfpad.Resources.TERMINAL.md</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <Target Name="GenerateBuildMetadata" BeforeTargets="CoreCompile">
