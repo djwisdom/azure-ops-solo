@@ -1017,12 +1017,16 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             e.Handled = true;
             e.SuppressKeyPress = true;
 
+            // PTY mode: \r is correct (line discipline translates to \r\n).
+            // Pipe mode: stdin is a raw pipe; .NET ReadLine() requires \n or \r\n.
+            string nl = _conPtyMode ? "\r" : "\n";
+
             string cmd = _inputBox.Text;
             _inputBox.Clear();
 
             if (string.IsNullOrEmpty(cmd))
             {
-                SendInput("\r");
+                SendInput(nl);
                 return;
             }
 
@@ -1037,14 +1041,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             if (cmd.Equals("exit", StringComparison.OrdinalIgnoreCase))
             {
-                SendInput("exit\r");
+                SendInput("exit" + nl);
                 HideTerminalRequested?.Invoke();
                 return;
             }
 
             _commandHistory.Add(cmd);
             _historyIndex = _commandHistory.Count;
-            SendInput(cmd + "\r");
+            SendInput(cmd + nl);
             return;
         }
 
