@@ -365,6 +365,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddTextEditorSettingsUI(_contentPanel, y);
         }
+        else if (category == "workbench.appearance")
+        {
+            y = AddWorkbenchAppearanceUI(_contentPanel, y);
+        }
         else if (category is "editor" or "workbench" or "features" or "application")
         {
             // Parent node — redirect to the appropriate first child with settings
@@ -670,6 +674,11 @@ internal sealed class SettingsDialog : Form
             CtrlWheelZoom = GetSettingValue<bool>("editor.text.ctrlWheelZoom", _mainForm.CurrentCtrlWheelZoom),
             MouseWheelScrollLines = GetSettingValue<int>("editor.text.mouseWheelScrollLines", _mainForm.CurrentMouseWheelScrollLines),
             AutoSaveIntervalSeconds = GetSettingValue<int>("editor.text.autoSaveIntervalSeconds", _mainForm.CurrentAutoSaveIntervalSeconds),
+            ShowLineNumbers = GetSettingValue<bool>("workbench.appearance.showLineNumbers", _mainForm.CurrentShowLineNumbers),
+            RelativeLineNumbers = GetSettingValue<bool>("workbench.appearance.relativeLineNumbers", _mainForm.CurrentRelativeLineNumbers),
+            MinimapWidth = GetSettingValue<int>("workbench.appearance.minimapWidth", _mainForm.CurrentMinimapWidth),
+            ShowGitStatusBar = GetSettingValue<bool>("workbench.appearance.showGitStatusBar", _mainForm.CurrentShowGitStatusBar),
+            ShowRoslynStatusBar = GetSettingValue<bool>("workbench.appearance.showRoslynStatusBar", _mainForm.CurrentShowRoslynStatusBar),
             WorkspaceVisible = true,
             SymbolPanelVisible = false,
             ProblemsPanelVisible = false,
@@ -807,6 +816,12 @@ internal sealed class SettingsDialog : Form
 
             // Workbench - Appearance
             ["workbench.appearance.theme"] = _mainForm.CurrentThemeName,
+            ["workbench.appearance.statusBar"] = _mainForm.CurrentStatusBarVisible,
+            ["workbench.appearance.showLineNumbers"] = _mainForm.CurrentShowLineNumbers,
+            ["workbench.appearance.relativeLineNumbers"] = _mainForm.CurrentRelativeLineNumbers,
+            ["workbench.appearance.minimapWidth"] = _mainForm.CurrentMinimapWidth,
+            ["workbench.appearance.showGitStatusBar"] = _mainForm.CurrentShowGitStatusBar,
+            ["workbench.appearance.showRoslynStatusBar"] = _mainForm.CurrentShowRoslynStatusBar,
 
             // Features - Behavior
             ["features.behavior.vimMode"] = _mainForm.CurrentVimMode,
@@ -1062,6 +1077,12 @@ internal sealed class SettingsDialog : Form
             "editor.appearance.rainbowBrackets" => "Color-code matching brackets with different colors.",
             "editor.appearance.breadcrumbs" => "Show navigation breadcrumbs at the top of the editor.",
             "workbench.appearance.theme" => "Color theme for the entire application.",
+            "workbench.appearance.statusBar" => "Show the status bar at the bottom of the window.",
+            "workbench.appearance.showLineNumbers" => "Show line numbers in the gutter alongside the editor.",
+            "workbench.appearance.relativeLineNumbers" => "Show line numbers as distance from the current cursor line (Vim-style).",
+            "workbench.appearance.minimapWidth" => "Width of the minimap panel in pixels (60–200).",
+            "workbench.appearance.showGitStatusBar" => "Show git branch, dirty indicator and sync status in the status bar.",
+            "workbench.appearance.showRoslynStatusBar" => "Show the Roslyn workspace indicator and analyzer toggle in the status bar.",
             "features.behavior.vimMode" => "Enable Vim-style keyboard navigation and editing.",
             "features.behavior.autoSave" => "Automatically save files after 30 seconds of inactivity.",
             "features.behavior.analyzers" => "Enable Roslyn analyzers for code analysis and suggestions.",
@@ -2579,6 +2600,79 @@ internal sealed class SettingsDialog : Form
             ThemedMessageBox.Show($"Failed to save workspace settings: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private int AddWorkbenchAppearanceUI(Panel parent, int y)
+    {
+        // Theme — render with the full generic preview renderer
+        y = AddSettingRow(parent, y, "workbench.appearance.theme",
+            GetSettingValue<string>("workbench.appearance.theme", _mainForm.CurrentThemeName));
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Editor Chrome");
+
+        y = AddSecCheckRow(parent, y,
+            "Show line numbers",
+            "Show line numbers in the gutter alongside the editor.",
+            "workbench.appearance.showLineNumbers");
+
+        y = AddSecCheckRow(parent, y,
+            "Relative line numbers",
+            "Show each line's distance from the current cursor line instead of its absolute number (useful with Vim mode).",
+            "workbench.appearance.relativeLineNumbers");
+
+        y = AddSecCheckRow(parent, y,
+            "Show ruler",
+            "Show the character-position ruler bar between the breadcrumb and the editor surface.",
+            "editor.text.columnGuide");
+
+        y = AddSecCheckRow(parent, y,
+            "Minimap visible",
+            "Show a scaled-down overview of the file on the right edge of the editor.",
+            "editor.appearance.minimap");
+
+        y = AddWinNumericRow(parent, y,
+            "Minimap width (px)",
+            "Width of the minimap panel in pixels.",
+            "workbench.appearance.minimapWidth", 60, 200, 10, 100);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Navigation Overlays");
+
+        y = AddSecCheckRow(parent, y,
+            "Breadcrumbs",
+            "Show the file path and scope breadcrumb bar at the top of the editor.",
+            "editor.appearance.breadcrumbs");
+
+        y = AddSecCheckRow(parent, y,
+            "Sticky scroll",
+            "Keep the enclosing scope header visible at the top of the editor while scrolling.",
+            "editor.appearance.stickyScroll");
+
+        y = AddSecCheckRow(parent, y,
+            "Rainbow brackets",
+            "Colorize matching bracket pairs with distinct colors.",
+            "editor.appearance.rainbowBrackets");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Status Bar");
+
+        y = AddSecCheckRow(parent, y,
+            "Show status bar",
+            "Show the status bar at the bottom of the window.",
+            "workbench.appearance.statusBar");
+
+        y = AddSecCheckRow(parent, y,
+            "Show git status",
+            "Show git branch, dirty indicator and sync status in the status bar.",
+            "workbench.appearance.showGitStatusBar");
+
+        y = AddSecCheckRow(parent, y,
+            "Show Roslyn indicator",
+            "Show the Roslyn workspace dropdown and analyzer toggle in the status bar.",
+            "workbench.appearance.showRoslynStatusBar");
+
+        return y + 16;
     }
 
     private int AddTextEditorSettingsUI(Panel parent, int y)

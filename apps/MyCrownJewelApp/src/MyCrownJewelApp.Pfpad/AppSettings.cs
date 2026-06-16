@@ -78,6 +78,18 @@ public record AppSettings
     /// <summary>Seconds between auto-save writes when Auto Save is enabled (10–300).</summary>
     public int AutoSaveIntervalSeconds { get; init; } = 30;
 
+    // ── Workbench Appearance configuration ────────────────────────────────────
+    /// <summary>Show line numbers in the gutter.</summary>
+    public bool ShowLineNumbers { get; init; } = true;
+    /// <summary>Show relative line numbers (distance from current line) instead of absolute numbers.</summary>
+    public bool RelativeLineNumbers { get; init; } = false;
+    /// <summary>Width of the minimap in pixels (60–200).</summary>
+    public int MinimapWidth { get; init; } = 100;
+    /// <summary>Show git branch / dirty / sync indicators in the status bar.</summary>
+    public bool ShowGitStatusBar { get; init; } = true;
+    /// <summary>Show the Roslyn workspace indicator in the status bar.</summary>
+    public bool ShowRoslynStatusBar { get; init; } = true;
+
     // ── Window configuration ───────────────────────────────────────────────────
     /// <summary>Re-apply saved window position and size on next launch.</summary>
     public bool WinRememberBounds { get; init; } = true;

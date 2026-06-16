@@ -137,6 +137,29 @@ using Microsoft.Extensions.DependencyInjection;
             }
         }
 
+        private void ApplyAppearanceSettings()
+        {
+            if (gutterPanel != null)
+            {
+                gutterPanel.ShowLineNumbers = _showLineNumbers;
+                gutterPanel.RelativeNumbers = _relativeLineNumbers;
+                gutterPanel.UpdateLineNumberWidth();
+            }
+            if (minimapControl != null)
+                minimapControl.MinimapWidth = Math.Clamp(_minimapWidth, 60, 200);
+            if (gitBranchLabel != null)
+            {
+                gitBranchLabel.Visible = _showGitStatusBar;
+                gitDirtyLabel.Visible  = _showGitStatusBar;
+                gitSyncLabel.Visible   = _showGitStatusBar;
+            }
+            if (roslynDropDown != null)
+            {
+                roslynDropDown.Visible    = _showRoslynStatusBar;
+                roslynToggleLabel.Visible = _showRoslynStatusBar;
+            }
+        }
+
         private void ApplyTextEditorSettings()
         {
             _autoSaveTimer.Interval = _autoSaveIntervalSeconds * 1000;
@@ -543,6 +566,12 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _ctrlWheelZoom = true;
         private int _mouseWheelScrollLines;
         private int _autoSaveIntervalSeconds = 30;
+        // Workbench Appearance
+        private bool _showLineNumbers = true;
+        private bool _relativeLineNumbers;
+        private int _minimapWidth = 100;
+        private bool _showGitStatusBar = true;
+        private bool _showRoslynStatusBar = true;
 
         // Workspace scan state
         private Color _originalStatusBarColor;
@@ -670,6 +699,11 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentCtrlWheelZoom => _ctrlWheelZoom;
         public int CurrentMouseWheelScrollLines => _mouseWheelScrollLines;
         public int CurrentAutoSaveIntervalSeconds => _autoSaveIntervalSeconds;
+        public bool CurrentShowLineNumbers => _showLineNumbers;
+        public bool CurrentRelativeLineNumbers => _relativeLineNumbers;
+        public int CurrentMinimapWidth => _minimapWidth;
+        public bool CurrentShowGitStatusBar => _showGitStatusBar;
+        public bool CurrentShowRoslynStatusBar => _showRoslynStatusBar;
         public bool CurrentWorkspaceVisible => _workspaceVisible;
         public bool CurrentSymbolPanelVisible => _symbolPanelVisible;
         public bool CurrentProblemsPanelVisible => _problemsPanelVisible;
@@ -2539,6 +2573,12 @@ using Microsoft.Extensions.DependencyInjection;
                 _ctrlWheelZoom = settings.CtrlWheelZoom;
                 _mouseWheelScrollLines = Math.Clamp(settings.MouseWheelScrollLines, 0, 20);
                 _autoSaveIntervalSeconds = Math.Clamp(settings.AutoSaveIntervalSeconds, 10, 300);
+                // Workbench Appearance settings
+                _showLineNumbers = settings.ShowLineNumbers;
+                _relativeLineNumbers = settings.RelativeLineNumbers;
+                _minimapWidth = Math.Clamp(settings.MinimapWidth, 60, 200);
+                _showGitStatusBar = settings.ShowGitStatusBar;
+                _showRoslynStatusBar = settings.ShowRoslynStatusBar;
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2741,6 +2781,11 @@ using Microsoft.Extensions.DependencyInjection;
                 CtrlWheelZoom = _ctrlWheelZoom,
                 MouseWheelScrollLines = _mouseWheelScrollLines,
                 AutoSaveIntervalSeconds = _autoSaveIntervalSeconds,
+                ShowLineNumbers = _showLineNumbers,
+                RelativeLineNumbers = _relativeLineNumbers,
+                MinimapWidth = _minimapWidth,
+                ShowGitStatusBar = _showGitStatusBar,
+                ShowRoslynStatusBar = _showRoslynStatusBar,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2936,6 +2981,14 @@ using Microsoft.Extensions.DependencyInjection;
             _mouseWheelScrollLines = Math.Clamp(settings.MouseWheelScrollLines, 0, 20);
             _autoSaveIntervalSeconds = Math.Clamp(settings.AutoSaveIntervalSeconds, 10, 300);
             ApplyTextEditorSettings();
+
+            // Workbench Appearance settings
+            _showLineNumbers = settings.ShowLineNumbers;
+            _relativeLineNumbers = settings.RelativeLineNumbers;
+            _minimapWidth = Math.Clamp(settings.MinimapWidth, 60, 200);
+            _showGitStatusBar = settings.ShowGitStatusBar;
+            _showRoslynStatusBar = settings.ShowRoslynStatusBar;
+            ApplyAppearanceSettings();
             vimModeEnabled = settings.VimModeEnabled;
             if (vimModeMenuItem != null) vimModeMenuItem.Checked = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;
