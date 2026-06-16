@@ -526,38 +526,62 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             uint exitCode = 0;
             GetExitCodeProcess(processHandle, out exitCode);
 
-            // Detect security-agent-caused crash: process dies in < 1s with STATUS_DLL_INIT_FAILED or similar
-            bool earlyBlocked = (DateTime.UtcNow - launchTime).TotalMilliseconds < 1200
+            // Detect security-agent-caused crash: process dies in < 1.5s with STATUS_DLL_INIT_FAILED or similar.
+            bool earlyBlocked = (DateTime.UtcNow - launchTime).TotalMilliseconds < 1500
                              && exitCode is 0xC0000142 or 0xC0000005 or 0xC0000034;
+
+            if (earlyBlocked)
+            {
+                // Write flag file and set blocked flag from background thread — no UI handle needed.
+                // This ensures the state is persisted even when handle isn't created yet (early-init case).
+                s_conPtyBlocked = true;
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(_conPtyBlockedFlagPath)!);
+                    File.WriteAllText(_conPtyBlockedFlagPath, "ConPTY blocked by security agent");
+                }
+                catch { }
+
+                // UI work: show message and start legacy shell.
+                // If the handle exists, do it now; otherwise defer to HandleCreated.
+                if (IsHandleCreated && !_disposed)
+                {
+                    BeginInvoke(FallbackToLegacy);
+                }
+                else if (!_disposed)
+                {
+                    // Control hasn't been shown yet — subscribe to HandleCreated so we can
+                    // start the legacy shell as soon as the control has a window handle.
+                    HandleCreated += ConPtyBlockedHandleCreated;
+                }
+                return;
+            }
 
             if (!IsHandleCreated || _disposed)
                 return;
 
             BeginInvoke(() =>
             {
-                if (earlyBlocked)
-                {
-                    s_conPtyBlocked = true;
-                    // Persist the block so on next app launch we skip ConPTY entirely
-                    // (the 0xC0000142 dialog cannot be suppressed at OS level — avoid retrying).
-                    try
-                    {
-                        Directory.CreateDirectory(Path.GetDirectoryName(_conPtyBlockedFlagPath)!);
-                        File.WriteAllText(_conPtyBlockedFlagPath, "ConPTY blocked by security agent");
-                    }
-                    catch { }
-                    AppendAnsiText("\x1B[93m[Terminal] ConPTY blocked by security software on this system.\x1B[0m\n");
-                    AppendAnsiText("\x1B[93m[Terminal] Switching to compatibility mode (some interactive CLIs may open in a separate window).\x1B[0m\n");
-                    KillConPty();
-                    _shellStarted = false;
-                    StartLegacyShell();
-                    return;
-                }
-
                 AppendAnsiText($"\x1B[90m[Process exited (code: {exitCode})]\x1B[0m");
                 ProcessExited?.Invoke();
             });
         });
+    }
+
+    private void ConPtyBlockedHandleCreated(object? sender, EventArgs e)
+    {
+        HandleCreated -= ConPtyBlockedHandleCreated;
+        if (!_disposed)
+            BeginInvoke(FallbackToLegacy);
+    }
+
+    private void FallbackToLegacy()
+    {
+        AppendAnsiText("\x1B[93m[Terminal] ConPTY blocked by security software on this system.\x1B[0m\n");
+        AppendAnsiText("\x1B[93m[Terminal] Switching to compatibility mode (some interactive CLIs may open in a separate window).\x1B[0m\n");
+        KillConPty();
+        _shellStarted = false;
+        StartLegacyShell();
     }
 
     private void OnLegacyOutputData(object? sender, DataReceivedEventArgs e)
