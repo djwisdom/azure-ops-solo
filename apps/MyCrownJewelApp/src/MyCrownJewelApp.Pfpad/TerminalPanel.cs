@@ -15,6 +15,17 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private static readonly IntPtr PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = (IntPtr)0x00020016;
     private static readonly bool _conPtyAvailable = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763);
 
+    // Path to a flag file written when ConPTY is permanently blocked on this machine (e.g. by
+    // enterprise security software that crashes DLL injection under EXTENDED_STARTUPINFO_PRESENT).
+    private static readonly string _conPtyBlockedFlagPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "MyCrownJewelApp", "TextEditor", ".conpty-blocked");
+
+    private static bool s_conPtyBlocked = File.Exists(
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MyCrownJewelApp", "TextEditor", ".conpty-blocked"));
+
     [StructLayout(LayoutKind.Sequential)]
     private struct COORD
     {
@@ -117,9 +128,8 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr hObject);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SetThreadErrorMode(uint dwNewMode, out uint lpOldMode);
+    [DllImport("kernel32.dll")]
+    private static extern uint SetErrorMode(uint uMode);
 
     private const uint SEM_FAILCRITICALERRORS = 0x0001;
     private const uint SEM_NOGPFAULTERRORBOX = 0x0002;
@@ -141,7 +151,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private bool _disposed;
     private bool _shellStarted;
     private DateTime _conPtyLaunchTime;
-    private static bool s_conPtyBlocked;  // once blocked by security agent, stay in legacy mode
     private bool _isDark = true;
     private Color _inputBg;
     private Color _inputBgFocused;
@@ -421,11 +430,13 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             StringBuilder commandLine = new($"\"{_shellPath}\"");
 
-            // Suppress WER crash dialog for the child process: if security software (e.g. SIPAgent)
-            // causes the child to crash immediately, we handle it via exit-code detection below.
-            SetThreadErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX, out uint prevErrorMode);
+            // Suppress the OS hard-error dialog in the child process. SetErrorMode is inherited
+            // by child processes (unlike SetThreadErrorMode which is thread-local only).
+            // This prevents the "application was unable to start (0xC0000142)" popup when
+            // security software DLL injection fails under EXTENDED_STARTUPINFO_PRESENT.
+            uint prevErrorMode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
             bool procCreated = CreateProcess(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref si, out PROCESS_INFORMATION pi);
-            SetThreadErrorMode(prevErrorMode, out _);
+            SetErrorMode(prevErrorMode);
 
             if (!procCreated)
                 ThrowLastWin32Exception("CreateProcess");
@@ -527,6 +538,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
                 if (earlyBlocked)
                 {
                     s_conPtyBlocked = true;
+                    // Persist the block so on next app launch we skip ConPTY entirely
+                    // (the 0xC0000142 dialog cannot be suppressed at OS level — avoid retrying).
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(_conPtyBlockedFlagPath)!);
+                        File.WriteAllText(_conPtyBlockedFlagPath, "ConPTY blocked by security agent");
+                    }
+                    catch { }
                     AppendAnsiText("\x1B[93m[Terminal] ConPTY blocked by security software on this system.\x1B[0m\n");
                     AppendAnsiText("\x1B[93m[Terminal] Switching to compatibility mode (some interactive CLIs may open in a separate window).\x1B[0m\n");
                     KillConPty();
