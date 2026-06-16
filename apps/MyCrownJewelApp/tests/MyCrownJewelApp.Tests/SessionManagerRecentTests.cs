@@ -51,7 +51,7 @@ public class SessionManagerRecentTests : IDisposable
         _sm.AddRecent(@"C:\Workspace\Alpha");
         _sm.AddRecent(@"C:\workspace\alpha");
 
-        Assert.Equal(1, _sm.RecentWorkspaces.Count);
+        Assert.Single(_sm.RecentWorkspaces);
     }
 
     [Fact]

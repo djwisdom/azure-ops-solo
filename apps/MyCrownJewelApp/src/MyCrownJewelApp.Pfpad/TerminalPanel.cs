@@ -132,6 +132,8 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private bool _conPtyMode;
     private bool _disposed;
     private bool _shellStarted;
+    private DateTime _conPtyLaunchTime;
+    private static bool s_conPtyBlocked;  // once blocked by security agent, stay in legacy mode
     private bool _isDark = true;
     private Color _inputBg;
     private Color _inputBgFocused;
@@ -312,7 +314,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void StartShell()
     {
-        if (_conPtyAvailable)
+        if (_conPtyAvailable && !s_conPtyBlocked)
         {
             try
             {
@@ -417,6 +419,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             _hThread = pi.hThread;
             _processExited = false;
             _conPtyMode = true;
+            _conPtyLaunchTime = DateTime.UtcNow;
 
             StartConPtyReader();
             StartConPtyExitWatcher();
@@ -485,6 +488,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private void StartConPtyExitWatcher()
     {
         IntPtr processHandle = _hProcess;
+        DateTime launchTime = _conPtyLaunchTime;
         Task.Run(() =>
         {
             if (processHandle == IntPtr.Zero)
@@ -496,14 +500,29 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             uint exitCode = 0;
             GetExitCodeProcess(processHandle, out exitCode);
 
-            if (IsHandleCreated && !_disposed)
+            // Detect security-agent-caused crash: process dies in < 1s with STATUS_DLL_INIT_FAILED or similar
+            bool earlyBlocked = (DateTime.UtcNow - launchTime).TotalMilliseconds < 1200
+                             && exitCode is 0xC0000142 or 0xC0000005 or 0xC0000034;
+
+            if (!IsHandleCreated || _disposed)
+                return;
+
+            BeginInvoke(() =>
             {
-                BeginInvoke(() =>
+                if (earlyBlocked)
                 {
-                    AppendAnsiText($"\x1B[90m[Process exited (code: {exitCode})]\x1B[0m");
-                    ProcessExited?.Invoke();
-                });
-            }
+                    s_conPtyBlocked = true;
+                    AppendAnsiText("\x1B[93m[Terminal] ConPTY blocked by security software on this system.\x1B[0m\n");
+                    AppendAnsiText("\x1B[93m[Terminal] Switching to compatibility mode (some interactive CLIs may open in a separate window).\x1B[0m\n");
+                    KillConPty();
+                    _shellStarted = false;
+                    StartLegacyShell();
+                    return;
+                }
+
+                AppendAnsiText($"\x1B[90m[Process exited (code: {exitCode})]\x1B[0m");
+                ProcessExited?.Invoke();
+            });
         });
     }
 

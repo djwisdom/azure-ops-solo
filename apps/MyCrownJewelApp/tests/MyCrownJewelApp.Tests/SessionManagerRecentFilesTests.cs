@@ -45,7 +45,7 @@ public class SessionManagerRecentFilesTests : IDisposable
         _sm.AddRecentFile(@"C:\Code\Alpha.CS");
         _sm.AddRecentFile(@"C:\code\alpha.cs");
 
-        Assert.Equal(1, _sm.RecentFiles.Count);
+        Assert.Single(_sm.RecentFiles);
     }
 
     [Fact]
