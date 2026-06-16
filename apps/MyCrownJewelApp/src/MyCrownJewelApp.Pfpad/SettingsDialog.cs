@@ -956,7 +956,8 @@ internal sealed class SettingsDialog : Form
 
         // Control based on setting type
         Control control = CreateControlForSetting(key, value);
-        control.Location = new Point(parent.Width - control.Width - 16, y + 4);
+        // Leave 44px gap at the right for the reset button (24px wide + 8px gap + 12px margin)
+        control.Location = new Point(parent.Width - control.Width - 48, y + 4);
         parent.Controls.Add(control);
 
         // Reset button
@@ -1947,18 +1948,40 @@ internal sealed class SettingsDialog : Form
                 themeCombo.SelectedIndexChanged += SettingControl_ValueChanged;
                 return themeCombo;
 
-            case var k when k.Contains("shell") || k.Contains("startingDirectory") || k.Contains("fontFace") || k.Contains("tabTitle"):
-                var shellText = new TextBox
+            case var k when k.Contains("terminal.fontFace"):
+                var fontFaceCombo = new ComboBox
                 {
-                    Width = 200,
+                    Width = 220,
+                    DropDownStyle = ComboBoxStyle.DropDownList,
                     BackColor = _theme.EditorBackground,
                     ForeColor = _theme.Text,
-                    BorderStyle = BorderStyle.None,
-                    Text = value.ToString()
+                    FlatStyle = FlatStyle.Flat
                 };
-                shellText.Tag = key;
-                shellText.TextChanged += SettingControl_ValueChanged;
-                return shellText;
+                fontFaceCombo.Items.Add("(default)");
+                fontFaceCombo.Items.AddRange(new[]
+                {
+                    "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New",
+                    "DejaVu Sans Mono", "Fira Code", "Hack", "Inconsolata",
+                    "JetBrains Mono", "Lucida Console", "Monaco", "Source Code Pro"
+                });
+                fontFaceCombo.Text = string.IsNullOrEmpty(value?.ToString()) ? "(default)" : value.ToString()!;
+                fontFaceCombo.Tag = key;
+                fontFaceCombo.SelectedIndexChanged += SettingControl_ValueChanged;
+                return fontFaceCombo;
+
+            case var k when k.Contains("shell") || k.Contains("startingDirectory") || k.Contains("tabTitle"):
+                var pathText = new TextBox
+                {
+                    Width = 220,
+                    Height = 22,
+                    BackColor = _theme.EditorBackground,
+                    ForeColor = _theme.Text,
+                    BorderStyle = BorderStyle.FixedSingle,
+                    Text = value?.ToString() ?? string.Empty
+                };
+                pathText.Tag = key;
+                pathText.TextChanged += SettingControl_ValueChanged;
+                return pathText;
 
             default:
                 return new Label { Text = "Not implemented", ForeColor = _theme.Text };
@@ -1972,6 +1995,7 @@ internal sealed class SettingsDialog : Form
             object? value = control switch
             {
                 ToggleSwitch ts => ts.Checked,
+                ComboBox cb when key.Contains("terminal.fontFace") => cb.Text == "(default)" ? "" : cb.Text,
                 ComboBox cb => cb.Text,
                 NumericUpDown nud when _currentValues.TryGetValue(key, out var currentValue) && currentValue is int => decimal.ToInt32(nud.Value),
                 NumericUpDown nud => (float)nud.Value,

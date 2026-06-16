@@ -150,6 +150,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private bool _conPtyMode;
     private bool _disposed;
     private bool _shellStarted;
+    private bool _explicitFontSet;   // true once we've applied our own font (safe to dispose old one)
     private DateTime _conPtyLaunchTime;
     private bool _isDark = true;
     private Color _inputBg;
@@ -332,13 +333,17 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     public void ApplyTerminalSettings(string fontFace, float fontSize, bool fontBold, bool wordWrap, bool scrollbarVisible, int padding)
     {
-        var outputOldFont = _outputBox.Font;
-        var inputOldFont = _inputBox.Font;
+        // Track whether we previously set an explicit font so we only dispose fonts WE created.
         Font terminalFont = CreateTerminalFont(fontFace, fontSize, fontBold);
+        Font? oldOutput = _explicitFontSet ? _outputBox.Font : null;
+        Font? oldInput  = _explicitFontSet ? _inputBox.Font  : null;
+        _explicitFontSet = true;
+
         _outputBox.Font = terminalFont;
-        _inputBox.Font = (Font)terminalFont.Clone();
-        outputOldFont?.Dispose();
-        inputOldFont?.Dispose();
+        _inputBox.Font  = (Font)terminalFont.Clone();
+
+        oldOutput?.Dispose();
+        oldInput?.Dispose();
 
         _outputBox.WordWrap = wordWrap;
         _outputBox.ScrollBars = scrollbarVisible ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.None;
