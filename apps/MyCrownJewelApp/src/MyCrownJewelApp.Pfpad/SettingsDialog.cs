@@ -2918,6 +2918,7 @@ internal sealed class CustomSplitter : Control
 
     public void SetLeftPanel(Panel panel)
     {
+        panel.Cursor = Cursors.Default;
         _leftPanel = panel;
         Controls.Add(panel);
         UpdateLayout();
@@ -2925,6 +2926,7 @@ internal sealed class CustomSplitter : Control
 
     public void SetRightPanel(Panel panel)
     {
+        panel.Cursor = Cursors.Default;
         _rightPanel = panel;
         Controls.Add(panel);
         UpdateLayout();
