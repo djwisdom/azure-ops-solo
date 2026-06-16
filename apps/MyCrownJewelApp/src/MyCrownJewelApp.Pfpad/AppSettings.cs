@@ -96,6 +96,30 @@ public record AppSettings
     /// <summary>Maximum number of recent files to remember (5–50).</summary>
     public int WsMaxRecentFiles { get; init; } = 10;
 
+    // ── Editor Management (Tab) configuration ─────────────────────────────────
+    /// <summary>Editor tab width in pixels (60–300). Default 140.</summary>
+    public int TabWidth { get; init; } = 140;
+    /// <summary>Editor tab height in pixels (22–40). Default 26.</summary>
+    public int TabHeight { get; init; } = 26;
+    /// <summary>Show file-type icons in editor tabs.</summary>
+    public bool TabShowFileIcons { get; init; } = true;
+    /// <summary>How to mark unsaved tabs: "asterisk" (*prefix), "dot" (●suffix), "both", or "none".</summary>
+    public string TabDirtyIndicator { get; init; } = "asterisk";
+    /// <summary>When to show the × close button: "always", "active", "hover", or "never".</summary>
+    public string TabCloseButtonVisibility { get; init; } = "always";
+    /// <summary>Close the tab under the cursor on middle-mouse click.</summary>
+    public bool TabMiddleClickClose { get; init; } = true;
+    /// <summary>Scroll between editor tabs on mouse wheel over the tab bar.</summary>
+    public bool TabMouseWheelScroll { get; init; } = true;
+    /// <summary>Maximum simultaneously open editor tabs. 0 = unlimited.</summary>
+    public int TabMaxOpen { get; init; } = 0;
+    /// <summary>Show a save/discard prompt when closing a tab with unsaved changes.</summary>
+    public bool TabConfirmCloseUnsaved { get; init; } = true;
+    /// <summary>Remember recently closed tabs for Ctrl+Shift+T reopen.</summary>
+    public bool TabRememberRecentlyClosed { get; init; } = false;
+    /// <summary>How many recently closed tabs to remember (5–20).</summary>
+    public int TabMaxRecentlyClosed { get; init; } = 10;
+
     // ── Git configuration ──────────────────────────────────────────────────────
     public string GitAuthorName { get; init; } = "";
     public string GitAuthorEmail { get; init; } = "";

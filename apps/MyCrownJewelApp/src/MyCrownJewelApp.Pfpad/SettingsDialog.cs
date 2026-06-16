@@ -353,6 +353,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddWindowSettingsUI(_contentPanel, y);
         }
+        else if (category == "workbench.editor")
+        {
+            y = AddEditorManagementUI(_contentPanel, y);
+        }
         else if (category is "editor" or "workbench" or "features" or "application")
         {
             // Parent node — redirect to the appropriate first child with settings
@@ -719,6 +723,17 @@ internal sealed class SettingsDialog : Form
             WsMaxRecentFiles = GetSettingValue<int>("application.workspace.maxRecentFiles", _mainForm.CurrentWsMaxRecentFiles),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
+            TabWidth = GetSettingValue<int>("workbench.editor.tabWidth", _mainForm.CurrentTabWidth),
+            TabHeight = GetSettingValue<int>("workbench.editor.tabHeight", _mainForm.CurrentTabHeight),
+            TabShowFileIcons = GetSettingValue<bool>("workbench.editor.showFileIcons", _mainForm.CurrentTabShowFileIcons),
+            TabDirtyIndicator = GetSettingValue<string>("workbench.editor.dirtyIndicator", _mainForm.CurrentTabDirtyIndicator),
+            TabCloseButtonVisibility = GetSettingValue<string>("workbench.editor.closeButtonVisibility", _mainForm.CurrentTabCloseButtonVisibility),
+            TabMiddleClickClose = GetSettingValue<bool>("workbench.editor.middleClickClose", _mainForm.CurrentTabMiddleClickClose),
+            TabMouseWheelScroll = GetSettingValue<bool>("workbench.editor.mouseWheelScroll", _mainForm.CurrentTabMouseWheelScroll),
+            TabMaxOpen = GetSettingValue<int>("workbench.editor.maxOpenTabs", _mainForm.CurrentTabMaxOpen),
+            TabConfirmCloseUnsaved = GetSettingValue<bool>("workbench.editor.confirmCloseUnsaved", _mainForm.CurrentTabConfirmCloseUnsaved),
+            TabRememberRecentlyClosed = GetSettingValue<bool>("workbench.editor.rememberRecentlyClosed", _mainForm.CurrentTabRememberRecentlyClosed),
+            TabMaxRecentlyClosed = GetSettingValue<int>("workbench.editor.maxRecentlyClosed", _mainForm.CurrentTabMaxRecentlyClosed),
         };
         _mainForm.ApplySettings(settings);
     }
@@ -837,7 +852,20 @@ internal sealed class SettingsDialog : Form
             ["application.workspace.watcherDebounceMs"] = _mainForm.CurrentWsWatcherDebounceMs,
             ["application.workspace.disableFileWatcher"] = _mainForm.CurrentWsDisableFileWatcher,
             ["application.workspace.maxRecentWorkspaces"] = _mainForm.CurrentWsMaxRecentWorkspaces,
-            ["application.workspace.maxRecentFiles"] = _mainForm.CurrentWsMaxRecentFiles
+            ["application.workspace.maxRecentFiles"] = _mainForm.CurrentWsMaxRecentFiles,
+
+            // Workbench - Editor Management
+            ["workbench.editor.tabWidth"] = _mainForm.CurrentTabWidth,
+            ["workbench.editor.tabHeight"] = _mainForm.CurrentTabHeight,
+            ["workbench.editor.showFileIcons"] = _mainForm.CurrentTabShowFileIcons,
+            ["workbench.editor.dirtyIndicator"] = _mainForm.CurrentTabDirtyIndicator,
+            ["workbench.editor.closeButtonVisibility"] = _mainForm.CurrentTabCloseButtonVisibility,
+            ["workbench.editor.middleClickClose"] = _mainForm.CurrentTabMiddleClickClose,
+            ["workbench.editor.mouseWheelScroll"] = _mainForm.CurrentTabMouseWheelScroll,
+            ["workbench.editor.maxOpenTabs"] = _mainForm.CurrentTabMaxOpen,
+            ["workbench.editor.confirmCloseUnsaved"] = _mainForm.CurrentTabConfirmCloseUnsaved,
+            ["workbench.editor.rememberRecentlyClosed"] = _mainForm.CurrentTabRememberRecentlyClosed,
+            ["workbench.editor.maxRecentlyClosed"] = _mainForm.CurrentTabMaxRecentlyClosed
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -2514,6 +2542,132 @@ internal sealed class SettingsDialog : Form
             ThemedMessageBox.Show($"Failed to save workspace settings: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private int AddEditorManagementUI(Panel parent, int y)
+    {
+        y = AddSecSectionHeader(parent, y, "Tab Appearance");
+
+        y = AddWinNumericRow(parent, y,
+            "Tab width (px)",
+            "Width of each editor tab in pixels (60–300). Default: 140.",
+            "workbench.editor.tabWidth", 60, 300, 10, 140);
+
+        y = AddWinNumericRow(parent, y,
+            "Tab height (px)",
+            "Height of the editor tab bar in pixels (22–40). Default: 26.",
+            "workbench.editor.tabHeight", 22, 40, 1, 26);
+
+        y = AddSecCheckRow(parent, y,
+            "Show file-type icons in tabs",
+            "Display a small file-type icon to the left of the filename in each editor tab.",
+            "workbench.editor.showFileIcons");
+
+        y = AddEditorComboRow(parent, y,
+            "Dirty (unsaved) indicator",
+            "How to mark a tab that contains unsaved changes.",
+            "workbench.editor.dirtyIndicator",
+            new[] { ("asterisk", "* Asterisk prefix"), ("dot", "● Dot suffix"), ("both", "Both"), ("none", "None") });
+
+        y = AddEditorComboRow(parent, y,
+            "Close button visibility",
+            "When to show the × close button on each tab.",
+            "workbench.editor.closeButtonVisibility",
+            new[] { ("always", "Always"), ("active", "Active tab only"), ("hover", "On hover"), ("never", "Never") });
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Tab Behavior");
+
+        y = AddSecCheckRow(parent, y,
+            "Close tab on middle-mouse click",
+            "Click the mouse wheel button on a tab to close it.",
+            "workbench.editor.middleClickClose");
+
+        y = AddSecCheckRow(parent, y,
+            "Scroll through tabs on mouse wheel",
+            "Roll the mouse wheel over the tab bar to cycle between editor tabs.",
+            "workbench.editor.mouseWheelScroll");
+
+        y = AddWinNumericRow(parent, y,
+            "Maximum open tabs (0 = unlimited)",
+            "When the limit is reached, the oldest clean tab is closed automatically to make room.",
+            "workbench.editor.maxOpenTabs", 0, 100, 1, 0);
+
+        y = AddSecCheckRow(parent, y,
+            "Confirm when closing a tab with unsaved changes",
+            "Show a save/discard dialog before closing a modified tab. Uncheck to silently discard.",
+            "workbench.editor.confirmCloseUnsaved");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Tab History");
+
+        y = AddSecCheckRow(parent, y,
+            "Remember recently closed tabs (Ctrl+Shift+T to reopen)",
+            "Keep a stack of recently closed tabs so you can reopen the last-closed tab.",
+            "workbench.editor.rememberRecentlyClosed");
+
+        y = AddWinNumericRow(parent, y,
+            "Max recently closed to remember",
+            "How many closed tabs to keep in the reopen history (5–20).",
+            "workbench.editor.maxRecentlyClosed", 5, 20, 1, 10);
+
+        return y + 16;
+    }
+
+    private int AddEditorComboRow(Panel parent, int y, string labelText, string description,
+        string key, (string value, string label)[] options)
+    {
+        var lbl = new Label
+        {
+            Text = labelText,
+            Location = new Point(0, y + 4),
+            Size = new Size(260, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var desc = new Label
+        {
+            Text = description,
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 204, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+
+        string current = _currentValues.TryGetValue(key, out var v) ? v.ToString()! : options[0].value;
+        var combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Location = new Point(parent.Width - 200, y + 2),
+            Width = 196,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            FlatStyle = FlatStyle.Flat,
+            Tag = key
+        };
+        foreach (var (val, lbl2) in options)
+            combo.Items.Add(new ComboItem(val, lbl2));
+        combo.SelectedItem = combo.Items.Cast<ComboItem>().FirstOrDefault(x => x.Value == current) ?? combo.Items[0];
+        combo.SelectedIndexChanged += (s, e) =>
+        {
+            if (combo.SelectedItem is ComboItem item)
+                _currentValues[key] = item.Value;
+        };
+        parent.Controls.Add(combo);
+        return y + 54;
+    }
+
+    private sealed class ComboItem
+    {
+        public string Value { get; }
+        private string Label { get; }
+        public ComboItem(string value, string label) { Value = value; Label = label; }
+        public override string ToString() => Label;
     }
 
     private int AddExtensionsSettingsUI(Panel parent, int y)

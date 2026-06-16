@@ -113,6 +113,53 @@ using Microsoft.Extensions.DependencyInjection;
             _sessionManager.MaxRecentFiles = Math.Clamp(_wsMaxRecentFiles, 5, 50);
         }
 
+        private void ApplyTabSettings()
+        {
+            if (tabControl == null) return;
+            tabControl.ItemSize = new Size(Math.Clamp(_tabWidth, 60, 300), Math.Clamp(_tabHeight, 22, 40));
+            // Trim recently closed stack to new limit
+            while (_recentlyClosed.Count > _tabMaxRecentlyClosed)
+                _recentlyClosed.RemoveAt(_recentlyClosed.Count - 1);
+            // Refresh all tab titles so dirty indicator style takes effect immediately
+            for (int i = 0; i < documents.Count; i++)
+                UpdateTabTitle(i);
+            tabControl.Invalidate();
+        }
+
+        internal void ReopenLastClosedTab()
+        {
+            if (!_tabRememberRecentlyClosed || _recentlyClosed.Count == 0) return;
+            var (filePath, content, displayName) = _recentlyClosed[0];
+            _recentlyClosed.RemoveAt(0);
+
+            var syntax = filePath != null
+                ? SyntaxDefinition.GetDefinitionForFile(filePath)
+                : SyntaxDefinition.GetDefinitionForFile(".txt");
+
+            SaveCurrentDocument();
+            var doc = new EditorDocument
+            {
+                FilePath = filePath,
+                Content = content,
+                IsDirty = filePath == null,
+                ModifiedLines = new HashSet<int>(),
+                Bookmarks = new HashSet<int>(),
+                CollapsedRegions = new HashSet<int>(),
+                SavedHash = "",
+                Syntax = syntax
+            };
+            _docManager.Add(doc);
+            int newIndex = documents.Count - 1;
+            var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
+            tabControl.TabPages.Add(tabPage);
+            tabControl.SelectedIndex = newIndex;
+            activeDocIndex = newIndex;
+            LoadDocument(doc);
+            UpdateWindowTitle();
+            UpdateTabTitle(newIndex);
+            EnsureSelectedTabVisible();
+        }
+
         // State
         private static readonly HashSet<int> _emptySet = new();
         internal bool gutterVisible = true;
@@ -201,6 +248,20 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _workspaceVisible;
         private int _workspaceWidth = 200;
         private string _workspaceRoot = "";
+
+        // Editor Management (tab) settings
+        private int _tabWidth = 140;
+        private int _tabHeight = 26;
+        private bool _tabShowFileIcons = true;
+        private string _tabDirtyIndicator = "asterisk";
+        private string _tabCloseButtonVisibility = "always";
+        private bool _tabMiddleClickClose = true;
+        private bool _tabMouseWheelScroll = true;
+        private int _tabMaxOpen = 0;
+        private bool _tabConfirmCloseUnsaved = true;
+        private bool _tabRememberRecentlyClosed = false;
+        private int _tabMaxRecentlyClosed = 10;
+        private readonly List<(string? FilePath, string Content, string DisplayName)> _recentlyClosed = new();
 
         // Workspace settings
         private bool _wsShowAllFiles = false;
@@ -615,6 +676,17 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentWsDisableFileWatcher => _wsDisableFileWatcher;
         public int CurrentWsMaxRecentWorkspaces => _wsMaxRecentWorkspaces;
         public int CurrentWsMaxRecentFiles => _wsMaxRecentFiles;
+        public int CurrentTabWidth => _tabWidth;
+        public int CurrentTabHeight => _tabHeight;
+        public bool CurrentTabShowFileIcons => _tabShowFileIcons;
+        public string CurrentTabDirtyIndicator => _tabDirtyIndicator;
+        public string CurrentTabCloseButtonVisibility => _tabCloseButtonVisibility;
+        public bool CurrentTabMiddleClickClose => _tabMiddleClickClose;
+        public bool CurrentTabMouseWheelScroll => _tabMouseWheelScroll;
+        public int CurrentTabMaxOpen => _tabMaxOpen;
+        public bool CurrentTabConfirmCloseUnsaved => _tabConfirmCloseUnsaved;
+        public bool CurrentTabRememberRecentlyClosed => _tabRememberRecentlyClosed;
+        public int CurrentTabMaxRecentlyClosed => _tabMaxRecentlyClosed;
 
     public Form1()
         : this(skipInitialDocument: false, services: null)
@@ -2369,6 +2441,18 @@ using Microsoft.Extensions.DependencyInjection;
                 _wsDisableFileWatcher = settings.WsDisableFileWatcher;
                 _wsMaxRecentWorkspaces = settings.WsMaxRecentWorkspaces;
                 _wsMaxRecentFiles = settings.WsMaxRecentFiles;
+                // Editor Management settings
+                _tabWidth = Math.Clamp(settings.TabWidth, 60, 300);
+                _tabHeight = Math.Clamp(settings.TabHeight, 22, 40);
+                _tabShowFileIcons = settings.TabShowFileIcons;
+                _tabDirtyIndicator = settings.TabDirtyIndicator ?? "asterisk";
+                _tabCloseButtonVisibility = settings.TabCloseButtonVisibility ?? "always";
+                _tabMiddleClickClose = settings.TabMiddleClickClose;
+                _tabMouseWheelScroll = settings.TabMouseWheelScroll;
+                _tabMaxOpen = Math.Max(0, settings.TabMaxOpen);
+                _tabConfirmCloseUnsaved = settings.TabConfirmCloseUnsaved;
+                _tabRememberRecentlyClosed = settings.TabRememberRecentlyClosed;
+                _tabMaxRecentlyClosed = Math.Clamp(settings.TabMaxRecentlyClosed, 5, 20);
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2546,6 +2630,17 @@ using Microsoft.Extensions.DependencyInjection;
                 WsDisableFileWatcher = _wsDisableFileWatcher,
                 WsMaxRecentWorkspaces = _wsMaxRecentWorkspaces,
                 WsMaxRecentFiles = _wsMaxRecentFiles,
+                TabWidth = _tabWidth,
+                TabHeight = _tabHeight,
+                TabShowFileIcons = _tabShowFileIcons,
+                TabDirtyIndicator = _tabDirtyIndicator,
+                TabCloseButtonVisibility = _tabCloseButtonVisibility,
+                TabMiddleClickClose = _tabMiddleClickClose,
+                TabMouseWheelScroll = _tabMouseWheelScroll,
+                TabMaxOpen = _tabMaxOpen,
+                TabConfirmCloseUnsaved = _tabConfirmCloseUnsaved,
+                TabRememberRecentlyClosed = _tabRememberRecentlyClosed,
+                TabMaxRecentlyClosed = _tabMaxRecentlyClosed,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2708,8 +2803,19 @@ using Microsoft.Extensions.DependencyInjection;
             _wsMaxRecentFiles = settings.WsMaxRecentFiles;
             ApplyWorkspaceSettings();
 
-            // Advanced
-            _analyzersEnabled = settings.AnalyzersEnabled;
+            // Editor Management settings
+            _tabWidth = Math.Clamp(settings.TabWidth, 60, 300);
+            _tabHeight = Math.Clamp(settings.TabHeight, 22, 40);
+            _tabShowFileIcons = settings.TabShowFileIcons;
+            _tabDirtyIndicator = settings.TabDirtyIndicator ?? "asterisk";
+            _tabCloseButtonVisibility = settings.TabCloseButtonVisibility ?? "always";
+            _tabMiddleClickClose = settings.TabMiddleClickClose;
+            _tabMouseWheelScroll = settings.TabMouseWheelScroll;
+            _tabMaxOpen = Math.Max(0, settings.TabMaxOpen);
+            _tabConfirmCloseUnsaved = settings.TabConfirmCloseUnsaved;
+            _tabRememberRecentlyClosed = settings.TabRememberRecentlyClosed;
+            _tabMaxRecentlyClosed = Math.Clamp(settings.TabMaxRecentlyClosed, 5, 20);
+            ApplyTabSettings();
 
             // Vim mode
             vimModeEnabled = settings.VimModeEnabled;
@@ -5358,6 +5464,13 @@ internal void ToggleGutter()
             if (keyData == (Keys.Control | Keys.Shift | Keys.W) && _splitEditor != null)
             {
                 CloseSplit();
+                return true;
+            }
+
+            // Reopen last closed tab: Ctrl+Shift+T
+            if (keyData == (Keys.Control | Keys.Shift | Keys.T))
+            {
+                ReopenLastClosedTab();
                 return true;
             }
 

@@ -85,6 +85,7 @@ namespace MyCrownJewelApp.Pfpad
                 new("Save All", "Ctrl+Shift+S", () => SaveAllFiles()),
                 new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
                 new("Close Split", "Ctrl+Shift+W", () => CloseSplit()),
+                new("Reopen Closed Tab", "Ctrl+Shift+T", () => ReopenLastClosedTab()),
                 new("Close All Tabs", "", () => CloseAllTabs()),
                 new("Toggle Header/Source", "Alt+O", () => ToggleHeaderSource()),
                 new("Exit", "Alt+F4", () => Close()),

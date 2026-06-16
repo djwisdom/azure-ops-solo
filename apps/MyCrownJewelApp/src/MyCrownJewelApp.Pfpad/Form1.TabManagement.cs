@@ -71,6 +71,7 @@ namespace MyCrownJewelApp.Pfpad
             }
 
             var newDoc = CreateNewDocument();
+            EnforceMaxOpenTabs();
             _docManager.Add(newDoc);
             int newIndex = documents.Count - 1;
 
@@ -127,6 +128,7 @@ namespace MyCrownJewelApp.Pfpad
                 // Apply feature degradation for large files
                 ApplyLargeFileDegradation(doc, fileInfo.Length);
 
+                EnforceMaxOpenTabs();
                 _docManager.Add(doc);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
@@ -184,6 +186,7 @@ namespace MyCrownJewelApp.Pfpad
             // Apply feature degradation for large files
             ApplyLargeFileDegradation(doc, fileInfo.Length);
 
+            EnforceMaxOpenTabs();
             _docManager.Add(doc);
             int newIndex = documents.Count - 1;
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
@@ -255,13 +258,44 @@ namespace MyCrownJewelApp.Pfpad
         }
 
         // Close current tab
+        // If a max tab limit is set, close the oldest clean tab to stay within the limit.
+        private void EnforceMaxOpenTabs()
+        {
+            if (_tabMaxOpen <= 0 || documents.Count < _tabMaxOpen) return;
+            for (int i = 0; i < documents.Count; i++)
+            {
+                if (i == activeDocIndex) continue;
+                if (!documents[i].IsDirty)
+                {
+                    CloseTabAt(i);
+                    return;
+                }
+            }
+        }
+
         internal void CloseCurrentTab()
         {
             if (documents.Count <= 1) return; // always keep at least one tab
             if (activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
 
-            var result = PromptSaveChanges();
-            if (result == DialogResult.Cancel) return;
+            if (!_tabConfirmCloseUnsaved && isModified)
+            {
+                // Discard unsaved changes without prompting
+            }
+            else
+            {
+                var result = PromptSaveChanges();
+                if (result == DialogResult.Cancel) return;
+            }
+
+            // Push to recently closed before removal
+            if (_tabRememberRecentlyClosed)
+            {
+                var closingDoc = documents[activeDocIndex];
+                _recentlyClosed.Insert(0, (closingDoc.FilePath, closingDoc.Content ?? "", closingDoc.DisplayName));
+                while (_recentlyClosed.Count > _tabMaxRecentlyClosed)
+                    _recentlyClosed.RemoveAt(_recentlyClosed.Count - 1);
+            }
 
             // Remove current EditorDocument and its tab
             int closeIndex = activeDocIndex;
@@ -301,7 +335,7 @@ namespace MyCrownJewelApp.Pfpad
             if (index == activeDocIndex) { CloseCurrentTab(); return; }
 
             var doc = documents[index];
-            if (doc.IsDirty)
+            if (doc.IsDirty && _tabConfirmCloseUnsaved)
             {
                 var result = ThemedMessageBox.Show(
                     $"Save changes to \"{doc.DisplayName}\"?",
@@ -311,6 +345,14 @@ namespace MyCrownJewelApp.Pfpad
                 {
                     try { File.WriteAllText(doc.FilePath!, doc.Content); } catch { }
                 }
+            }
+
+            // Push to recently closed before removal
+            if (_tabRememberRecentlyClosed)
+            {
+                _recentlyClosed.Insert(0, (doc.FilePath, doc.Content ?? "", doc.DisplayName));
+                while (_recentlyClosed.Count > _tabMaxRecentlyClosed)
+                    _recentlyClosed.RemoveAt(_recentlyClosed.Count - 1);
             }
 
             // Suspend layout to prevent flicker during tab removal
@@ -412,11 +454,23 @@ namespace MyCrownJewelApp.Pfpad
         {
             if (docIndex < 0 || docIndex >= documents.Count) return;
             var doc = documents[docIndex];
-            // The corresponding TabPage is at same index in tabControl.TabPages (excluding + page)
             if (docIndex < tabControl.TabPages.Count)
             {
                 var tabPage = tabControl.TabPages[docIndex];
-                tabPage.Text = doc.IsDirty ? "*" + doc.DisplayName : doc.DisplayName;
+                if (doc.IsDirty)
+                {
+                    tabPage.Text = _tabDirtyIndicator switch
+                    {
+                        "dot" => doc.DisplayName + " ●",
+                        "both" => "* " + doc.DisplayName + " ●",
+                        "none" => doc.DisplayName,
+                        _ => "*" + doc.DisplayName   // "asterisk" (default)
+                    };
+                }
+                else
+                {
+                    tabPage.Text = doc.DisplayName;
+                }
             }
         }
 
@@ -456,7 +510,7 @@ namespace MyCrownJewelApp.Pfpad
 
         private void TabControl_MouseDown(object? sender, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Middle)
+            if (e.Button == MouseButtons.Middle && _tabMiddleClickClose)
             {
                 CloseTabAtLocation(e.Location);
             }
@@ -472,7 +526,15 @@ namespace MyCrownJewelApp.Pfpad
                         int btnX = rect.Right - 22;
                         int btnY = rect.Top + 3;
                         var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
-                        if (btnRect.Contains(e.Location))
+                        // Respect close button visibility setting
+                        bool closeVisible = _tabCloseButtonVisibility switch
+                        {
+                            "active" => i == tabControl.SelectedIndex,
+                            "hover" => i == (hoveredTabIndex ?? -1) || i == tabControl.SelectedIndex,
+                            "never" => false,
+                            _ => true
+                        };
+                        if (closeVisible && btnRect.Contains(e.Location))
                         {
                             CloseTabAt(i);
                             return;
@@ -517,6 +579,7 @@ namespace MyCrownJewelApp.Pfpad
 
         private void TabControl_MouseWheel(object? sender, MouseEventArgs e)
         {
+            if (!_tabMouseWheelScroll) return;
             if (tabControl.TabCount <= 1) return;
             int dir = e.Delta > 0 ? -1 : 1;
             int next = tabControl.SelectedIndex + dir;
@@ -1140,7 +1203,7 @@ namespace MyCrownJewelApp.Pfpad
 
             // Tab icon
             var doc = e.Index < documents.Count ? documents[e.Index] : null;
-            if (doc?.FilePath != null)
+            if (_tabShowFileIcons && doc?.FilePath != null)
             {
                 int iconIdx = FileIconProvider.GetIconIndex(doc.FilePath);
                 if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
@@ -1152,10 +1215,18 @@ namespace MyCrownJewelApp.Pfpad
 
             // Tab text
             string text = tabControl.TabPages[e.Index].Text;
-            int textOffset = doc?.FilePath != null ? 28 : 8;
+            bool showClose = _tabCloseButtonVisibility switch
+            {
+                "active" => isSelected,
+                "hover" => isSelected || isHovered,
+                "never" => false,
+                _ => true   // "always"
+            };
+            int textOffset = (_tabShowFileIcons && doc?.FilePath != null) ? 28 : 8;
+            int textRightMargin = showClose ? 22 : 6;
             var textRect = new Rectangle(
                 tabRect.X + textOffset, tabRect.Y + 3,
-                tabRect.Right - 22 - tabRect.X - textOffset, tabRect.Height - 4);
+                tabRect.Right - textRightMargin - tabRect.X - textOffset, tabRect.Height - 4);
 
             TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
                 isSelected ? theme.Text : theme.Muted,
@@ -1183,10 +1254,11 @@ namespace MyCrownJewelApp.Pfpad
                 e.Graphics.DrawLine(accentPen, tabRect.Left, tabRect.Bottom - 2, tabRect.Right, tabRect.Bottom - 2);
             }
 
-            // Close button (×)
-            var closeRect = new Rectangle(tabRect.Right - 22, tabRect.Y + 3, 16, 16);
-            using (var xFont = new Font("Segoe UI", 11, FontStyle.Bold))
+            // Close button (×) — visibility controlled by setting
+            if (showClose)
             {
+                var closeRect = new Rectangle(tabRect.Right - 22, tabRect.Y + 3, 16, 16);
+                using var xFont = new Font("Segoe UI", 11, FontStyle.Bold);
                 TextRenderer.DrawText(e.Graphics, "\u00D7", xFont, closeRect, theme.Muted,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
             }
