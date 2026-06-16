@@ -117,6 +117,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr hObject);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetThreadErrorMode(uint dwNewMode, out uint lpOldMode);
+
+    private const uint SEM_FAILCRITICALERRORS = 0x0001;
+    private const uint SEM_NOGPFAULTERRORBOX = 0x0002;
+    private const uint SEM_NOOPENFILEERRORBOX = 0x8000;
+
     private readonly RichTextBox _outputBox;
     private readonly TextBox _inputBox;
     private readonly Panel _inputContainer;
@@ -412,7 +420,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             si.lpAttributeList = attrList;
 
             StringBuilder commandLine = new($"\"{_shellPath}\"");
-            if (!CreateProcess(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref si, out PROCESS_INFORMATION pi))
+
+            // Suppress WER crash dialog for the child process: if security software (e.g. SIPAgent)
+            // causes the child to crash immediately, we handle it via exit-code detection below.
+            SetThreadErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX, out uint prevErrorMode);
+            bool procCreated = CreateProcess(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref si, out PROCESS_INFORMATION pi);
+            SetThreadErrorMode(prevErrorMode, out _);
+
+            if (!procCreated)
                 ThrowLastWin32Exception("CreateProcess");
 
             _hProcess = pi.hProcess;
