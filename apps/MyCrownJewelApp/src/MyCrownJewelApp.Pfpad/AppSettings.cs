@@ -203,6 +203,26 @@ public record AppSettings
     /// </summary>
     public AIOps.AIOpsSettings? AIOpsConfig { get; init; } = null;
 
+    // ── Extensions configuration ───────────────────────────────────────────────
+    /// <summary>Enable Tab-triggered snippet expansion for all built-in snippet languages.</summary>
+    public bool SnippetsEnabled { get; init; } = true;
+    /// <summary>Key to trigger snippet expansion: "Tab" or "CtrlSpace".</summary>
+    public string SnippetTriggerKey { get; init; } = "Tab";
+    /// <summary>Enable the regex-based lint engine (line length, magic numbers, naming conventions, etc.).</summary>
+    public bool LintEnabled { get; init; } = true;
+    /// <summary>Maximum line length before the LineTooLong rule fires (60–300). Default 120.</summary>
+    public int LintMaxLineLength { get; init; } = 120;
+    /// <summary>Flag hardcoded numeric literals (magic numbers) as lint warnings.</summary>
+    public bool LintFlagMagicNumbers { get; init; } = true;
+    /// <summary>Flag naming convention violations as lint hints.</summary>
+    public bool LintFlagNamingConventions { get; init; } = true;
+    /// <summary>Use Tree-sitter for symbol indexing in JS/TS/Python/Go/Rust and other non-C# files.</summary>
+    public bool TreeSitterEnabled { get; init; } = true;
+    /// <summary>Scan files for TODO/FIXME/HACK comments and show them in the Problems panel.</summary>
+    public bool TodoScanEnabled { get; init; } = true;
+    /// <summary>Comma-separated comment tags to scan for (case-insensitive).</summary>
+    public string TodoScanPatterns { get; init; } = "TODO, FIXME, HACK, NOTE, BUG, WORKAROUND";
+
     // ── Debug adapter configuration ────────────────────────────────────────────
     /// <summary>
     /// Which debug adapter to use. Defaults to NetCoreDbg (C#/.NET).

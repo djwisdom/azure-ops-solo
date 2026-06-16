@@ -170,6 +170,26 @@ using Microsoft.Extensions.DependencyInjection;
             }
         }
 
+        // Extensions Current* properties
+        public bool CurrentSnippetsEnabled => _snippetsEnabled;
+        public string CurrentSnippetTriggerKey => _snippetTriggerKey;
+        public bool CurrentLintEnabled => _lintEnabled;
+        public int CurrentLintMaxLineLength => _lintMaxLineLength;
+        public bool CurrentLintFlagMagicNumbers => _lintFlagMagicNumbers;
+        public bool CurrentLintFlagNamingConventions => _lintFlagNamingConventions;
+        public bool CurrentTreeSitterEnabled => _treeSitterEnabled;
+        public bool CurrentTodoScanEnabled => _todoScanEnabled;
+        public string CurrentTodoScanPatterns => _todoScanPatterns;
+
+        private void ApplyExtensionsSettings()
+        {
+            // Lint — separate from SAST (Roslyn); regex rules controlled by LintEnabled
+            _lintEngine.Configure(_lintEnabled, _lintMaxLineLength, _lintFlagMagicNumbers, _lintFlagNamingConventions);
+
+            // TreeSitter symbol index — null disables non-C# symbol scanning
+            _symbolIndex.SetTreeSitterService(_treeSitterEnabled ? _treeSitter : null);
+        }
+
         private System.Windows.Forms.Timer? _findNotFoundResetTimer;
 
         internal void NotifyNotFound(string text)
@@ -572,6 +592,16 @@ using Microsoft.Extensions.DependencyInjection;
         private int _minimapWidth = 100;
         private bool _showGitStatusBar = true;
         private bool _showRoslynStatusBar = true;
+        // Extensions
+        private bool _snippetsEnabled = true;
+        private string _snippetTriggerKey = "Tab";
+        private bool _lintEnabled = true;
+        private int _lintMaxLineLength = 120;
+        private bool _lintFlagMagicNumbers = true;
+        private bool _lintFlagNamingConventions = true;
+        private bool _treeSitterEnabled = true;
+        private bool _todoScanEnabled = true;
+        private string _todoScanPatterns = "TODO, FIXME, HACK, NOTE, BUG, WORKAROUND";
 
         // Workspace scan state
         private Color _originalStatusBarColor;
@@ -2578,6 +2608,16 @@ using Microsoft.Extensions.DependencyInjection;
                 _minimapWidth = Math.Clamp(settings.MinimapWidth, 60, 200);
                 _showGitStatusBar = settings.ShowGitStatusBar;
                 _showRoslynStatusBar = settings.ShowRoslynStatusBar;
+                // Extensions settings
+                _snippetsEnabled = settings.SnippetsEnabled;
+                _snippetTriggerKey = settings.SnippetTriggerKey ?? "Tab";
+                _lintEnabled = settings.LintEnabled;
+                _lintMaxLineLength = Math.Clamp(settings.LintMaxLineLength, 60, 300);
+                _lintFlagMagicNumbers = settings.LintFlagMagicNumbers;
+                _lintFlagNamingConventions = settings.LintFlagNamingConventions;
+                _treeSitterEnabled = settings.TreeSitterEnabled;
+                _todoScanEnabled = settings.TodoScanEnabled;
+                _todoScanPatterns = string.IsNullOrWhiteSpace(settings.TodoScanPatterns) ? _todoScanPatterns : settings.TodoScanPatterns;
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2626,6 +2666,7 @@ using Microsoft.Extensions.DependencyInjection;
                 SyntaxHighlightingThresholdBytes = Math.Max(1024, settings.SyntaxHighlightingThresholdBytes);
                 ApplyTerminalSettingsToAll();
                 ApplySecuritySettings();
+                ApplyExtensionsSettings();
             }
             catch { /* ignore settings load errors */ }
         }
@@ -2785,6 +2826,15 @@ using Microsoft.Extensions.DependencyInjection;
                 MinimapWidth = _minimapWidth,
                 ShowGitStatusBar = _showGitStatusBar,
                 ShowRoslynStatusBar = _showRoslynStatusBar,
+                SnippetsEnabled = _snippetsEnabled,
+                SnippetTriggerKey = _snippetTriggerKey,
+                LintEnabled = _lintEnabled,
+                LintMaxLineLength = _lintMaxLineLength,
+                LintFlagMagicNumbers = _lintFlagMagicNumbers,
+                LintFlagNamingConventions = _lintFlagNamingConventions,
+                TreeSitterEnabled = _treeSitterEnabled,
+                TodoScanEnabled = _todoScanEnabled,
+                TodoScanPatterns = _todoScanPatterns,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2988,8 +3038,20 @@ using Microsoft.Extensions.DependencyInjection;
             _showGitStatusBar = settings.ShowGitStatusBar;
             _showRoslynStatusBar = settings.ShowRoslynStatusBar;
             ApplyAppearanceSettings();
+
+            // Extensions settings
+            _snippetsEnabled = settings.SnippetsEnabled;
+            _snippetTriggerKey = settings.SnippetTriggerKey ?? "Tab";
+            _lintEnabled = settings.LintEnabled;
+            _lintMaxLineLength = Math.Clamp(settings.LintMaxLineLength, 60, 300);
+            _lintFlagMagicNumbers = settings.LintFlagMagicNumbers;
+            _lintFlagNamingConventions = settings.LintFlagNamingConventions;
+            _treeSitterEnabled = settings.TreeSitterEnabled;
+            _todoScanEnabled = settings.TodoScanEnabled;
+            _todoScanPatterns = string.IsNullOrWhiteSpace(settings.TodoScanPatterns) ? _todoScanPatterns : settings.TodoScanPatterns;
+            ApplyExtensionsSettings();
+
             vimModeEnabled = settings.VimModeEnabled;
-            if (vimModeMenuItem != null) vimModeMenuItem.Checked = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;
             if (!settings.VimModeEnabled) vimModeLabel.Text = "";
 
@@ -3426,7 +3488,7 @@ internal void ToggleGutter()
 
         private void ApplySecuritySettings()
         {
-            _lintEngine.Enabled = _secSastEnabled;
+            _lintEngine.SastEnabled = _secSastEnabled;
             _lintEngine.HighlightHardcodedSecrets = _secHighlightHardcodedSecrets;
 
             foreach (var terminal in _terminalTabs)
@@ -4047,7 +4109,14 @@ internal void ToggleGutter()
                 }
                 else
                 {
-                     if (smartTabsEnabled)
+                    // Try snippet navigation (next tab stop) then snippet expansion before falling back to indent
+                    if (_snippetsEnabled && _snippetEngine != null)
+                    {
+                        if (_snippetEngine.TryNavigateNextTabStop()) return;
+                        if (_snippetTriggerKey == "Tab" && _snippetEngine.TryExpand()) return;
+                    }
+
+                    if (smartTabsEnabled)
                      {
                          // Check if caret is at line start or only whitespace before it
                          int lineIdx = textEditor.GetLineFromCharIndex(textEditor.SelectionStart);

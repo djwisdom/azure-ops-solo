@@ -10,9 +10,10 @@ namespace MyCrownJewelApp.Pfpad;
 
 public sealed class LintEngine : IDisposable
 {
-    private readonly List<LintRule> _rules;
+    private List<LintRule> _rules;
     private CancellationTokenSource? _cts;
     private bool _enabled = true;
+    private bool _sastEnabled = true;
     private System.Windows.Forms.Timer? _debounceTimer;
     private IRoslynWorkspace? _roslynWorkspace;
     private string? _currentFilePath;
@@ -33,18 +34,13 @@ public sealed class LintEngine : IDisposable
         }
     }
 
+    public bool SastEnabled { get => _sastEnabled; set => _sastEnabled = value; }
+
     public bool HighlightHardcodedSecrets { get; set; } = true;
 
     public LintEngine()
     {
-        _rules = new List<LintRule>
-        {
-            new TrailingWhitespaceRule(),
-            new LineTooLongRule(120),
-            new MagicNumberRule(),
-            new MissingSemicolonRule(),
-            new NamingConventionRule()
-        };
+        _rules = BuildRules(120, flagMagicNumbers: true, flagNamingConventions: true);
 
         _debounceTimer = new System.Windows.Forms.Timer { Interval = 400 };
         _debounceTimer.Tick += (s, e) =>
@@ -52,6 +48,26 @@ public sealed class LintEngine : IDisposable
             _debounceTimer.Stop();
             // Run is triggered externally via ScheduleLint
         };
+    }
+
+    /// <summary>Reconfigures the lint engine at runtime; rebuilds the rule list immediately.</summary>
+    public void Configure(bool enabled, int maxLineLength, bool flagMagicNumbers, bool flagNamingConventions)
+    {
+        _rules = BuildRules(Math.Clamp(maxLineLength, 60, 300), flagMagicNumbers, flagNamingConventions);
+        Enabled = enabled;
+    }
+
+    private static List<LintRule> BuildRules(int maxLineLength, bool flagMagicNumbers, bool flagNamingConventions)
+    {
+        var rules = new List<LintRule>
+        {
+            new TrailingWhitespaceRule(),
+            new LineTooLongRule(maxLineLength),
+            new MissingSemicolonRule(),
+        };
+        if (flagMagicNumbers)      rules.Add(new MagicNumberRule());
+        if (flagNamingConventions) rules.Add(new NamingConventionRule());
+        return rules;
     }
 
     public void ScheduleLint(string text, string filePath)
@@ -68,7 +84,7 @@ public sealed class LintEngine : IDisposable
         _cts = cts;
         var token = cts.Token;
 
-        bool useRoslyn = _roslynWorkspace is not null &&
+        bool useRoslyn = _sastEnabled && _roslynWorkspace is not null &&
             filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
 
         Task.Run(() =>

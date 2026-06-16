@@ -768,6 +768,15 @@ internal sealed class SettingsDialog : Form
             FindInFilesFilter = GetSettingValue<string>("editor.find.inFilesFilter", _mainForm.CurrentFindInFilesFilter),
             FindInFilesExclude = GetSettingValue<string>("editor.find.inFilesExclude", _mainForm.CurrentFindInFilesExclude),
             FindInFilesMaxResults = GetSettingValue<int>("editor.find.inFilesMaxResults", _mainForm.CurrentFindInFilesMaxResults),
+            SnippetsEnabled = GetSettingValue<bool>("features.extensions.snippetsEnabled", _mainForm.CurrentSnippetsEnabled),
+            SnippetTriggerKey = GetSettingValue<string>("features.extensions.snippetTriggerKey", _mainForm.CurrentSnippetTriggerKey),
+            LintEnabled = GetSettingValue<bool>("features.extensions.lintEnabled", _mainForm.CurrentLintEnabled),
+            LintMaxLineLength = GetSettingValue<int>("features.extensions.lintMaxLineLength", _mainForm.CurrentLintMaxLineLength),
+            LintFlagMagicNumbers = GetSettingValue<bool>("features.extensions.lintFlagMagicNumbers", _mainForm.CurrentLintFlagMagicNumbers),
+            LintFlagNamingConventions = GetSettingValue<bool>("features.extensions.lintFlagNamingConventions", _mainForm.CurrentLintFlagNamingConventions),
+            TreeSitterEnabled = GetSettingValue<bool>("features.extensions.treeSitterEnabled", _mainForm.CurrentTreeSitterEnabled),
+            TodoScanEnabled = GetSettingValue<bool>("features.extensions.todoScanEnabled", _mainForm.CurrentTodoScanEnabled),
+            TodoScanPatterns = GetSettingValue<string>("features.extensions.todoScanPatterns", _mainForm.CurrentTodoScanPatterns),
         };
         _mainForm.ApplySettings(settings);
     }
@@ -920,7 +929,18 @@ internal sealed class SettingsDialog : Form
             ["editor.find.notFoundNotification"] = _mainForm.CurrentFindNotFoundNotification,
             ["editor.find.inFilesFilter"] = _mainForm.CurrentFindInFilesFilter,
             ["editor.find.inFilesExclude"] = _mainForm.CurrentFindInFilesExclude,
-            ["editor.find.inFilesMaxResults"] = _mainForm.CurrentFindInFilesMaxResults
+            ["editor.find.inFilesMaxResults"] = _mainForm.CurrentFindInFilesMaxResults,
+
+            // Features - Extensions
+            ["features.extensions.snippetsEnabled"] = _mainForm.CurrentSnippetsEnabled,
+            ["features.extensions.snippetTriggerKey"] = _mainForm.CurrentSnippetTriggerKey,
+            ["features.extensions.lintEnabled"] = _mainForm.CurrentLintEnabled,
+            ["features.extensions.lintMaxLineLength"] = _mainForm.CurrentLintMaxLineLength,
+            ["features.extensions.lintFlagMagicNumbers"] = _mainForm.CurrentLintFlagMagicNumbers,
+            ["features.extensions.lintFlagNamingConventions"] = _mainForm.CurrentLintFlagNamingConventions,
+            ["features.extensions.treeSitterEnabled"] = _mainForm.CurrentTreeSitterEnabled,
+            ["features.extensions.todoScanEnabled"] = _mainForm.CurrentTodoScanEnabled,
+            ["features.extensions.todoScanPatterns"] = _mainForm.CurrentTodoScanPatterns
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -1102,6 +1122,15 @@ internal sealed class SettingsDialog : Form
             "features.git.authorName" => "Overrides git config user.name for commits made in Pfpad.",
             "features.git.authorEmail" => "Overrides git config user.email for commits made in Pfpad.",
             "features.git.defaultBranch" => "Branch name used when initialising a new repository.",
+            "features.extensions.snippetsEnabled" => "Expand built-in code snippets by typing a prefix then pressing Tab.",
+            "features.extensions.snippetTriggerKey" => "Key that triggers snippet expansion: Tab or Ctrl+Space.",
+            "features.extensions.lintEnabled" => "Run the regex-based lint rules (line length, magic numbers, naming). Does not affect Roslyn/SAST.",
+            "features.extensions.lintMaxLineLength" => "Lines exceeding this character count are flagged by the LineTooLong rule.",
+            "features.extensions.lintFlagMagicNumbers" => "Warn when a hardcoded number appears outside a constant or enum declaration.",
+            "features.extensions.lintFlagNamingConventions" => "Hint when identifiers do not follow common naming conventions.",
+            "features.extensions.treeSitterEnabled" => "Use Tree-sitter for symbol indexing in JS/TS/Python/Go/Rust and other non-C# files.",
+            "features.extensions.todoScanEnabled" => "Scan files for TODO/FIXME/HACK comments and show them in the Problems panel.",
+            "features.extensions.todoScanPatterns" => "Comma-separated comment tags to scan for (case-insensitive).",
             _ => "No description available."
         };
     }
@@ -2904,145 +2933,70 @@ internal sealed class SettingsDialog : Form
 
     private int AddExtensionsSettingsUI(Panel parent, int y)
     {
-        // Header
-        var header = new Label
-        {
-            Text = "Extensions",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Accent,
-            Font = new Font("Segoe UI", 14, FontStyle.Bold),
-            BackColor = Color.Transparent
-        };
-        parent.Controls.Add(header);
-        y += 40;
+        // ── Section 1: Snippets ───────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Snippets");
 
-        // Status message
-        var statusLabel = new Label
-        {
-            Text = "Extension settings allow you to configure installed plugins and add-ons.",
-            Location = new Point(0, y),
-            Size = new Size(parent.Width - 32, 40),
-            ForeColor = _theme.Muted,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 8)
-        };
-        parent.Controls.Add(statusLabel);
-        y += 50;
+        y = AddSecCheckRow(parent, y,
+            "Enable snippets",
+            "Expand built-in code snippets by typing a prefix then pressing the trigger key.",
+            "features.extensions.snippetsEnabled");
 
-        // Installed extensions list
-        var extensionsLabel = new Label
-        {
-            Text = "Installed Extensions:",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Text,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold)
-        };
-        parent.Controls.Add(extensionsLabel);
-        y += 25;
+        y = AddEditorComboRow(parent, y,
+            "Trigger key",
+            "Key that expands a snippet prefix. Tab fires when the cursor is right after a known prefix.",
+            "features.extensions.snippetTriggerKey",
+            new[] { ("Tab", "Tab"), ("CtrlSpace", "Ctrl+Space") });
 
-        var extensionsList = new ThemeAwareListView(_theme)
-        {
-            Location = new Point(0, y),
-            Size = new Size(parent.Width - 32, 200),
-            View = View.Details,
-            FullRowSelect = true,
-            GridLines = true
-        };
+        y += 8;
+        // ── Section 2: Linting ────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Linting");
 
-        extensionsList.Columns.Add("Extension", 150);
-        extensionsList.Columns.Add("Version", 80);
-        extensionsList.Columns.Add("Description", 250);
-        extensionsList.Columns.Add("Settings", 80);
+        y = AddSecCheckRow(parent, y,
+            "Enable linting",
+            "Run the regex-based lint rules (line length, magic numbers, naming). " +
+            "Does not affect Roslyn/SAST diagnostics (controlled under Security settings).",
+            "features.extensions.lintEnabled");
 
-        // Add some sample extensions (in a real implementation, this would come from a plugin system)
-        var sampleExtensions = new[]
-        {
-            new { Name = "C# Language Support", Version = "1.0.0", Description = "Provides C# syntax highlighting and IntelliSense", HasSettings = true },
-            new { Name = "Git Integration", Version = "1.2.0", Description = "Git source control integration", HasSettings = true },
-            new { Name = "Terminal", Version = "1.1.0", Description = "Integrated terminal support", HasSettings = false },
-            new { Name = "File Explorer", Version = "1.0.5", Description = "File and folder navigation", HasSettings = false }
-        };
+        y = AddWinNumericRow(parent, y,
+            "Max line length",
+            "Lines exceeding this character count are flagged by the LineTooLong rule. Range: 60–300.",
+            "features.extensions.lintMaxLineLength", 60, 300, 10, 120);
 
-        foreach (var ext in sampleExtensions)
-        {
-            var item = new ListViewItem(ext.Name);
-            item.SubItems.Add(ext.Version);
-            item.SubItems.Add(ext.Description);
-            item.SubItems.Add(ext.HasSettings ? "Available" : "None");
-            extensionsList.Items.Add(item);
-        }
+        y = AddSecCheckRow(parent, y,
+            "Flag magic numbers",
+            "Warn when a hardcoded numeric literal appears outside a constant or enum declaration.",
+            "features.extensions.lintFlagMagicNumbers");
 
-        parent.Controls.Add(extensionsList);
-        y += 210;
+        y = AddSecCheckRow(parent, y,
+            "Flag naming convention violations",
+            "Show hints when public members or parameters do not follow common naming conventions.",
+            "features.extensions.lintFlagNamingConventions");
 
-        // Extension settings area
-        var extSettingsLabel = new Label
-        {
-            Text = "Extension Settings:",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Text,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold)
-        };
-        parent.Controls.Add(extSettingsLabel);
-        y += 25;
+        y += 8;
+        // ── Section 3: Syntax Analysis ────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Syntax Analysis");
 
-        var extSettingsPanel = new Panel
-        {
-            Location = new Point(0, y),
-            Size = new Size(parent.Width - 32, 150),
-            BackColor = _theme.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle
-        };
+        y = AddSecCheckRow(parent, y,
+            "Enable Tree-sitter symbol indexing",
+            "Use Tree-sitter for go-to-definition and symbol indexing in JS, TS, Python, Go, " +
+            "Rust, Ruby, Java, and other non-C# files. Disable to fall back to regex-only scanning.",
+            "features.extensions.treeSitterEnabled");
 
-        var placeholderLabel = new Label
-        {
-            Text = "Select an extension from the list above to view its settings.\n\nExtension settings will appear here in a future update.",
-            Location = new Point(20, 20),
-            Size = new Size(extSettingsPanel.Width - 40, 100),
-            ForeColor = _theme.Muted,
-            BackColor = Color.Transparent,
-            TextAlign = ContentAlignment.MiddleCenter
-        };
-        extSettingsPanel.Controls.Add(placeholderLabel);
+        y += 8;
+        // ── Section 4: TODO Scanner ───────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "TODO Scanner");
 
-        parent.Controls.Add(extSettingsPanel);
-        y += 160;
+        y = AddSecCheckRow(parent, y,
+            "Enable TODO scanner",
+            "Scan open files for tagged comments and surface them in the Problems panel.",
+            "features.extensions.todoScanEnabled");
 
-        // Buttons
-        var installBtn = new Button
-        {
-            Text = "Install Extension",
-            Location = new Point(0, y),
-            Size = new Size(120, 30),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        installBtn.Click += (s, e) => ThemedMessageBox.Show("Extension marketplace coming soon!", "Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        parent.Controls.Add(installBtn);
+        y = AddSecTextRow(parent, y,
+            "Scan patterns",
+            "Comma-separated comment tags to scan for (case-insensitive).",
+            "features.extensions.todoScanPatterns", 280);
 
-        var manageBtn = new Button
-        {
-            Text = "Manage Extensions",
-            Location = new Point(130, y),
-            Size = new Size(130, 30),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        manageBtn.Click += (s, e) => ThemedMessageBox.Show("Extension manager coming soon!", "Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        parent.Controls.Add(manageBtn);
-
-        y += 40;
-
-        return y;
+        return y + 16;
     }
 
     private Control CreateFontPreview()

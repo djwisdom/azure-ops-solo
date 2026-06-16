@@ -36,7 +36,7 @@ public sealed class SymbolIndexService : IDisposable
         _roslynWorkspace = workspace;
     }
 
-    public void SetTreeSitterService(TreeSitter.TreeSitterService service)
+    public void SetTreeSitterService(TreeSitter.TreeSitterService? service)
     {
         _treeSitterService = service;
     }
