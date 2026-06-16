@@ -163,6 +163,11 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private readonly ToolStripButton _clearButton;
     private readonly ToolStripButton _stopButton;
 
+    // Output that arrives before the window handle is created (early-init terminal) is buffered
+    // here and flushed once the handle becomes available.
+    private readonly List<string> _preHandleOutputBuffer = new();
+    private readonly object _preHandleBufferLock = new();
+
     public event Action? ProcessExited;
     public event Action? HideTerminalRequested;
 
@@ -281,6 +286,9 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         Controls.Add(_outputBox);
         Controls.Add(_inputContainer);
         Controls.Add(_headerStrip);
+
+        // Flush any output buffered before the window handle was available.
+        HandleCreated += (_, _) => FlushPreHandleOutputBuffer();
 
         SetTheme(Theme.Dark);
     }
@@ -586,14 +594,38 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void OnLegacyOutputData(object? sender, DataReceivedEventArgs e)
     {
-        if (e.Data != null && IsHandleCreated)
-            BeginInvoke(() => AppendAnsiText(e.Data + "\n"));
+        if (e.Data == null) return;
+        BufferOrAppend(e.Data + "\n");
     }
 
     private void OnLegacyErrorData(object? sender, DataReceivedEventArgs e)
     {
-        if (e.Data != null && IsHandleCreated)
-            BeginInvoke(() => AppendAnsiText($"\x1B[91m{e.Data}\x1B[0m" + "\n"));
+        if (e.Data == null) return;
+        BufferOrAppend($"\x1B[91m{e.Data}\x1B[0m\n");
+    }
+
+    private void BufferOrAppend(string text)
+    {
+        if (IsHandleCreated && !_disposed)
+        {
+            BeginInvoke(() => AppendAnsiText(text));
+            return;
+        }
+
+        lock (_preHandleBufferLock)
+            _preHandleOutputBuffer.Add(text);
+    }
+
+    private void FlushPreHandleOutputBuffer()
+    {
+        string[] lines;
+        lock (_preHandleBufferLock)
+        {
+            if (_preHandleOutputBuffer.Count == 0) return;
+            lines = _preHandleOutputBuffer.ToArray();
+            _preHandleOutputBuffer.Clear();
+        }
+        BeginInvoke(() => { foreach (var line in lines) AppendAnsiText(line); });
     }
 
     private void OnLegacyProcessExited(object? sender, EventArgs e)
