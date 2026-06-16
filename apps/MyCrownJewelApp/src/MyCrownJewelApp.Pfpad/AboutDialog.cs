@@ -156,6 +156,9 @@ public sealed partial class AboutDialog : Form
         // --- App info ---
         AddLine("Personal Flip Pad", FontStyle.Bold, theme.Text, 6);
         AddLine($"Version {version}", FontStyle.Regular, theme.Muted);
+        // Highlight the target framework prominently
+        string runtimeLabel = $".NET {Environment.Version.Major} (net{Environment.Version.Major}.0-windows)  •  {arch}";
+        AddLine(runtimeLabel, FontStyle.Bold, theme.Accent);
         if (!string.IsNullOrEmpty(description))
             AddLine(description, FontStyle.Regular, theme.Muted, 0, wordWrap: true);
         AddLine($"Commit: {commit}", FontStyle.Regular, theme.Muted);
@@ -209,7 +212,7 @@ public sealed partial class AboutDialog : Form
             Font = new Font("Consolas", 9),
             ScrollBars = RichTextBoxScrollBars.Vertical,
             Location = new Point(margin, y),
-            Size = new Size(contentWidth, 200),
+            Size = new Size(contentWidth, 240),
             WordWrap = true
         };
 
@@ -230,6 +233,17 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Language support: C#, C/C++, Python, JS/TS, Go, Rust, Terraform, Bicep, YAML");
         featuresText.AppendLine("• 23 built-in themes with full flat, theme-aware UI");
         featuresText.AppendLine("• Unicode, BOM detection, RTL text support");
+        featuresText.AppendLine("• Streaming build pipeline with MSBuild diagnostic parsing (Ctrl+Shift+B)");
+        featuresText.AppendLine("• Notification center with PeriodicTimer feed polling and live toasts");
+        featuresText.AppendLine();
+        featuresText.AppendLine(".NET 10 Modernisation:");
+        featuresText.AppendLine($"• Target framework: net{Environment.Version.Major}.0-windows  •  CLR {clrVersion}");
+        featuresText.AppendLine("• [LibraryImport] source-generated P/Invoke (42 converted, trim/AOT safe)");
+        featuresText.AppendLine("• Form1 partial-class decomposition — 9 522 → 4 972 lines in core file");
+        featuresText.AppendLine("• DocumentManager with events (DocumentAdded/Removed/ActiveChanged)");
+        featuresText.AppendLine("• SettingsService with atomic write and corrupt-backup recovery");
+        featuresText.AppendLine("• Task.WhenEach (.NET 9+) for progressive feed updates");
+        featuresText.AppendLine("• PeriodicTimer for drift-free background polling");
         featuresText.AppendLine();
         featuresText.AppendLine("NuGet Dependencies:");
 
@@ -244,7 +258,7 @@ public sealed partial class AboutDialog : Form
             featuresText.AppendLine($"  {name}  {ver}");
         }
 
-        featuresText.AppendLine($"  .NET Runtime  {clrVersion}  ({arch})");
+        featuresText.AppendLine($"  .NET Runtime  {clrVersion}  ({arch})  — net{Environment.Version.Major}.0-windows");
 
         featuresBox.Text = featuresText.ToString();
         content.Controls.Add(featuresBox);
