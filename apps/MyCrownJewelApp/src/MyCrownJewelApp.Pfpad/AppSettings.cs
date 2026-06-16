@@ -64,6 +64,18 @@ public record AppSettings
     public bool ShowGutterBreakpoints { get; init; } = true;
     public bool ShowGutterBookmarks { get; init; } = true;
 
+    // ── Window configuration ───────────────────────────────────────────────────
+    /// <summary>Re-apply saved window position and size on next launch.</summary>
+    public bool WinRememberBounds { get; init; } = true;
+    /// <summary>Always start maximized (takes priority over remembered bounds).</summary>
+    public bool WinLaunchMaximized { get; init; } = false;
+    /// <summary>Restore the previous editing session (open files, cursors) on launch.</summary>
+    public bool WinRestoreSession { get; init; } = true;
+    /// <summary>"auto" follows the theme; "on" forces dark; "off" forces light title bar.</summary>
+    public string WinDarkTitleBar { get; init; } = "auto";
+    /// <summary>Main window opacity 50–100 %. 100 = fully opaque.</summary>
+    public int WinOpacity { get; init; } = 100;
+
     // ── Git configuration ──────────────────────────────────────────────────────
     public string GitAuthorName { get; init; } = "";
     public string GitAuthorEmail { get; init; } = "";

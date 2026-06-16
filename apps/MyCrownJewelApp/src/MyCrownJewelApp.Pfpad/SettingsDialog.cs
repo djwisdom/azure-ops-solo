@@ -349,6 +349,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddSecuritySettingsUI(_contentPanel, y);
         }
+        else if (category == "application.window")
+        {
+            y = AddWindowSettingsUI(_contentPanel, y);
+        }
         else if (category is "editor" or "workbench" or "features" or "application")
         {
             // Parent node — redirect to the appropriate first child with settings
@@ -693,6 +697,17 @@ internal sealed class SettingsDialog : Form
             SecWriteStartupLog = GetSettingValue<bool>("application.security.writeStartupLog", _mainForm.CurrentSecWriteStartupLog),
             SecLogRetentionDays = GetSettingValue<int>("application.security.logRetentionDays", _mainForm.CurrentSecLogRetentionDays),
             SecHighlightHardcodedSecrets = GetSettingValue<bool>("application.security.highlightSecrets", _mainForm.CurrentSecHighlightHardcodedSecrets),
+            WinRememberBounds = GetSettingValue<bool>("application.window.rememberBounds", _mainForm.CurrentWinRememberBounds),
+            WinLaunchMaximized = GetSettingValue<bool>("application.window.launchMaximized", _mainForm.CurrentWinLaunchMaximized),
+            WinRestoreSession = GetSettingValue<bool>("application.window.restoreSession", _mainForm.CurrentWinRestoreSession),
+            WinDarkTitleBar = GetSettingValue<string>("application.window.darkTitleBar", _mainForm.CurrentWinDarkTitleBar),
+            WinOpacity = GetSettingValue<int>("application.window.opacity", _mainForm.CurrentWinOpacity),
+            MaxFileSizeMB = GetSettingValue<int>("application.window.maxFileSizeMB", _mainForm.CurrentMaxFileSizeMB),
+            LargeFileWarningMB = GetSettingValue<int>("application.window.largeFileWarningMB", _mainForm.CurrentLargeFileWarningMB),
+            AsyncFileWarningMB = GetSettingValue<int>("application.window.asyncFileWarningMB", _mainForm.CurrentAsyncFileWarningMB),
+            DisableSyntaxHighlightingForLargeFiles = GetSettingValue<bool>("application.window.disableSyntaxForLargeFiles", _mainForm.CurrentDisableSyntaxHighlightingForLargeFiles),
+            DisableMinimapForLargeFiles = GetSettingValue<bool>("application.window.disableMinimapForLargeFiles", _mainForm.CurrentDisableMinimapForLargeFiles),
+            DisableWordWrapForLargeFiles = GetSettingValue<bool>("application.window.disableWordWrapForLargeFiles", _mainForm.CurrentDisableWordWrapForLargeFiles),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
         };
@@ -789,7 +804,20 @@ internal sealed class SettingsDialog : Form
             ["application.security.writeCrashLog"] = _mainForm.CurrentSecWriteCrashLog,
             ["application.security.writeStartupLog"] = _mainForm.CurrentSecWriteStartupLog,
             ["application.security.logRetentionDays"] = _mainForm.CurrentSecLogRetentionDays,
-            ["application.security.highlightSecrets"] = _mainForm.CurrentSecHighlightHardcodedSecrets
+            ["application.security.highlightSecrets"] = _mainForm.CurrentSecHighlightHardcodedSecrets,
+
+            // Application Window
+            ["application.window.rememberBounds"] = _mainForm.CurrentWinRememberBounds,
+            ["application.window.launchMaximized"] = _mainForm.CurrentWinLaunchMaximized,
+            ["application.window.restoreSession"] = _mainForm.CurrentWinRestoreSession,
+            ["application.window.darkTitleBar"] = _mainForm.CurrentWinDarkTitleBar,
+            ["application.window.opacity"] = _mainForm.CurrentWinOpacity,
+            ["application.window.maxFileSizeMB"] = _mainForm.CurrentMaxFileSizeMB,
+            ["application.window.largeFileWarningMB"] = _mainForm.CurrentLargeFileWarningMB,
+            ["application.window.asyncFileWarningMB"] = _mainForm.CurrentAsyncFileWarningMB,
+            ["application.window.disableSyntaxForLargeFiles"] = _mainForm.CurrentDisableSyntaxHighlightingForLargeFiles,
+            ["application.window.disableMinimapForLargeFiles"] = _mainForm.CurrentDisableMinimapForLargeFiles,
+            ["application.window.disableWordWrapForLargeFiles"] = _mainForm.CurrentDisableWordWrapForLargeFiles
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -1260,6 +1288,187 @@ internal sealed class SettingsDialog : Form
         cb.CheckedChanged += (s, e) => _currentValues[key] = cb.Checked;
         parent.Controls.Add(cb);
         return y + 24;
+    }
+
+    private int AddWindowSettingsUI(Panel parent, int y)
+    {
+        y = AddSecSectionHeader(parent, y, "Startup");
+
+        y = AddSecCheckRow(parent, y,
+            "Remember window size and position",
+            "Re-apply the last saved window bounds on next launch.",
+            "application.window.rememberBounds");
+
+        y = AddSecCheckRow(parent, y,
+            "Launch maximized",
+            "Always start the editor in a maximized window (overrides remembered bounds).",
+            "application.window.launchMaximized");
+
+        y = AddSecCheckRow(parent, y,
+            "Restore previous session on launch",
+            "Re-open files, cursor positions and scroll state from the last editing session.",
+            "application.window.restoreSession");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Appearance");
+
+        // Dark title bar — combo Auto / Always On / Always Off
+        var dtbLbl = new Label
+        {
+            Text = "Dark title bar",
+            Location = new Point(0, y + 4),
+            Size = new Size(220, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(dtbLbl);
+        var dtbDesc = new Label
+        {
+            Text = "Override the title bar colour. \"Auto\" follows the active theme.",
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 174, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(dtbDesc);
+        string curDtb = _currentValues.TryGetValue("application.window.darkTitleBar", out var dtbv) ? dtbv.ToString()! : "auto";
+        var dtbCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 120,
+            Location = new Point(parent.Width - 174, y + 2),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            FlatStyle = FlatStyle.Flat,
+            Tag = "application.window.darkTitleBar"
+        };
+        dtbCombo.Items.AddRange(new[] { "auto", "on", "off" });
+        dtbCombo.Text = curDtb;
+        dtbCombo.SelectedIndexChanged += (s, e) => _currentValues["application.window.darkTitleBar"] = dtbCombo.Text;
+        parent.Controls.Add(dtbCombo);
+        y += 50;
+
+        // Opacity — NumericUpDown 50–100
+        var opLbl = new Label
+        {
+            Text = "Window opacity (%)",
+            Location = new Point(0, y + 4),
+            Size = new Size(220, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(opLbl);
+        var opDesc = new Label
+        {
+            Text = "Transparency of the main window. 100 = fully opaque. Min 50.",
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 124, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(opDesc);
+        int curOp = _currentValues.TryGetValue("application.window.opacity", out var opv) && opv is int opi ? opi : 100;
+        var opSpinner = new NumericUpDown
+        {
+            Width = 70,
+            Minimum = 50,
+            Maximum = 100,
+            Increment = 5,
+            Value = Math.Clamp(curOp, 50, 100),
+            Location = new Point(parent.Width - 124, y),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            Tag = "application.window.opacity"
+        };
+        opSpinner.ValueChanged += (s, e) => _currentValues["application.window.opacity"] = decimal.ToInt32(opSpinner.Value);
+        parent.Controls.Add(opSpinner);
+        y += 50;
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Large File Handling");
+
+        // Max file size
+        y = AddWinNumericRow(parent, y,
+            "Maximum file size (MB)",
+            "Files larger than this are refused. Prevents out-of-memory crashes on huge logs.",
+            "application.window.maxFileSizeMB", min: 10, max: 2000, step: 50,
+            defaultVal: 500);
+
+        // Warn threshold
+        y = AddWinNumericRow(parent, y,
+            "Warn before opening (MB)",
+            "Show a warning dialog before opening files larger than this threshold.",
+            "application.window.largeFileWarningMB", min: 1, max: 500, step: 10,
+            defaultVal: 50);
+
+        // Async load threshold
+        y = AddWinNumericRow(parent, y,
+            "Load asynchronously above (MB)",
+            "Files above this size are streamed in on a background thread to keep the UI responsive.",
+            "application.window.asyncFileWarningMB", min: 1, max: 200, step: 5,
+            defaultVal: 20);
+
+        y = AddSecCheckRow(parent, y,
+            "Disable syntax highlighting for large files",
+            "Prevents the highlighter from tokenising very large files where it would be too slow.",
+            "application.window.disableSyntaxForLargeFiles");
+
+        y = AddSecCheckRow(parent, y,
+            "Disable minimap for large files",
+            "Skip the minimap pixel-render pass for files that exceed the async-load threshold.",
+            "application.window.disableMinimapForLargeFiles");
+
+        y = AddSecCheckRow(parent, y,
+            "Disable word wrap for large files",
+            "Word wrap is expensive on wide files; disabling it avoids layout recalculation.",
+            "application.window.disableWordWrapForLargeFiles");
+
+        return y + 16;
+    }
+
+    private int AddWinNumericRow(Panel parent, int y, string labelText, string description,
+        string key, int min, int max, int step, int defaultVal)
+    {
+        var lbl = new Label
+        {
+            Text = labelText,
+            Location = new Point(0, y + 4),
+            Size = new Size(260, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+        var desc = new Label
+        {
+            Text = description,
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 124, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+        int current = _currentValues.TryGetValue(key, out var v) && v is int iv ? iv : defaultVal;
+        var spinner = new NumericUpDown
+        {
+            Width = 80,
+            Minimum = min,
+            Maximum = max,
+            Increment = step,
+            Value = Math.Clamp(current, min, max),
+            Location = new Point(parent.Width - 124, y),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            Tag = key
+        };
+        spinner.ValueChanged += (s, e) => _currentValues[key] = decimal.ToInt32(spinner.Value);
+        parent.Controls.Add(spinner);
+        return y + 50;
     }
 
     private int AddSecuritySettingsUI(Panel parent, int y)

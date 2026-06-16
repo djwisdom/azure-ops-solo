@@ -80,6 +80,29 @@ using Microsoft.Extensions.DependencyInjection;
             catch { /* DWM not available or attribute not supported */ }
         }
 
+        private void ApplyWindowSettings()
+        {
+            // Opacity
+            int opacityPct = Math.Clamp(_winOpacity, 50, 100);
+            try { this.Opacity = opacityPct / 100.0; } catch { }
+
+            // Dark title bar override
+            if (this.IsHandleCreated)
+            {
+                try
+                {
+                    int v = _winDarkTitleBar switch
+                    {
+                        "on" => 1,
+                        "off" => 0,
+                        _ => isDarkTheme ? 1 : 0  // "auto": follow theme
+                    };
+                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref v, sizeof(int));
+                }
+                catch { }
+            }
+        }
+
         // State
         private static readonly HashSet<int> _emptySet = new();
         internal bool gutterVisible = true;
@@ -152,6 +175,13 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _secWriteStartupLog = true;
         private int _secLogRetentionDays = 30;
         private bool _secHighlightHardcodedSecrets = true;
+
+        // Window settings
+        private bool _winRememberBounds = true;
+        private bool _winLaunchMaximized = false;
+        private bool _winRestoreSession = true;
+        private string _winDarkTitleBar = "auto";
+        private int _winOpacity = 100;
 
         // Workspace / folder tree state
         private SplitContainer? _workspaceSplitContainer;
@@ -544,6 +574,17 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentVimMode => vimModeEnabled;
         public bool CurrentStickyScroll => _stickyScrollEnabled;
         public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
+        public int CurrentMaxFileSizeMB => MaxFileSizeMB;
+        public int CurrentLargeFileWarningMB => LargeFileWarningMB;
+        public int CurrentAsyncFileWarningMB => AsyncFileWarningMB;
+        public bool CurrentDisableSyntaxHighlightingForLargeFiles => DisableSyntaxHighlightingForLargeFiles;
+        public bool CurrentDisableMinimapForLargeFiles => DisableMinimapForLargeFiles;
+        public bool CurrentDisableWordWrapForLargeFiles => DisableWordWrapForLargeFiles;
+        public bool CurrentWinRememberBounds => _winRememberBounds;
+        public bool CurrentWinLaunchMaximized => _winLaunchMaximized;
+        public bool CurrentWinRestoreSession => _winRestoreSession;
+        public string CurrentWinDarkTitleBar => _winDarkTitleBar;
+        public int CurrentWinOpacity => _winOpacity;
 
     public Form1()
         : this(skipInitialDocument: false, services: null)
@@ -613,7 +654,7 @@ using Microsoft.Extensions.DependencyInjection;
 
               // Don't restore session if CLI args were provided OR if there are already documents loaded
               // (which could happen from CLI args or if user already opened files)
-              if (!_cliArgsProvided && documents.Count <= 1)
+              if (!_cliArgsProvided && documents.Count <= 1 && _winRestoreSession)
               {
                   Debug.WriteLine("Restoring session because no CLI args provided and no documents loaded");
                   RestoreSession();
@@ -2282,6 +2323,12 @@ using Microsoft.Extensions.DependencyInjection;
                 _secWriteStartupLog = settings.SecWriteStartupLog;
                 _secLogRetentionDays = settings.SecLogRetentionDays;
                 _secHighlightHardcodedSecrets = settings.SecHighlightHardcodedSecrets;
+                // Window settings
+                _winRememberBounds = settings.WinRememberBounds;
+                _winLaunchMaximized = settings.WinLaunchMaximized;
+                _winRestoreSession = settings.WinRestoreSession;
+                _winDarkTitleBar = settings.WinDarkTitleBar;
+                _winOpacity = settings.WinOpacity;
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2339,6 +2386,14 @@ using Microsoft.Extensions.DependencyInjection;
 
         private void RestoreWindowBounds()
         {
+            if (_winLaunchMaximized)
+            {
+                WindowState = FormWindowState.Maximized;
+                return;
+            }
+
+            if (!_winRememberBounds) return;
+
             if (!string.IsNullOrEmpty(_savedWindowState))
             {
                 try
@@ -2437,6 +2492,11 @@ using Microsoft.Extensions.DependencyInjection;
                 SecWriteStartupLog = _secWriteStartupLog,
                 SecLogRetentionDays = _secLogRetentionDays,
                 SecHighlightHardcodedSecrets = _secHighlightHardcodedSecrets,
+                WinRememberBounds = _winRememberBounds,
+                WinLaunchMaximized = _winLaunchMaximized,
+                WinRestoreSession = _winRestoreSession,
+                WinDarkTitleBar = _winDarkTitleBar,
+                WinOpacity = _winOpacity,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2572,6 +2632,20 @@ using Microsoft.Extensions.DependencyInjection;
             _secLogRetentionDays = settings.SecLogRetentionDays;
             _secHighlightHardcodedSecrets = settings.SecHighlightHardcodedSecrets;
             ApplySecuritySettings();
+
+            // Window settings
+            _winRememberBounds = settings.WinRememberBounds;
+            _winLaunchMaximized = settings.WinLaunchMaximized;
+            _winRestoreSession = settings.WinRestoreSession;
+            _winDarkTitleBar = settings.WinDarkTitleBar;
+            _winOpacity = Math.Clamp(settings.WinOpacity, 50, 100);
+            MaxFileSizeMB = Math.Max(10, settings.MaxFileSizeMB);
+            LargeFileWarningMB = Math.Max(1, settings.LargeFileWarningMB);
+            AsyncFileWarningMB = Math.Max(1, settings.AsyncFileWarningMB);
+            DisableSyntaxHighlightingForLargeFiles = settings.DisableSyntaxHighlightingForLargeFiles;
+            DisableMinimapForLargeFiles = settings.DisableMinimapForLargeFiles;
+            DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
+            ApplyWindowSettings();
 
             // Advanced
             _analyzersEnabled = settings.AnalyzersEnabled;
