@@ -113,9 +113,10 @@ internal sealed class SettingsDialog : Form
 
         // Custom splitter for reliable layout control
         yOffset += 40;
+        const int buttonPanelHeight = 50;
         _customSplitter = new CustomSplitter(_theme);
         _customSplitter.Location = new Point(0, yOffset);
-        _customSplitter.Size = new Size(Width, Height - yOffset);
+        _customSplitter.Size = new Size(ClientSize.Width, ClientSize.Height - yOffset - buttonPanelHeight);
         _customSplitter.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
         _customSplitter.SplitterMoved += (s, e) => UpdateLayout();
         Controls.Add(_customSplitter);
@@ -216,6 +217,8 @@ internal sealed class SettingsDialog : Form
         buttonPanel.Controls.Add(_okButton);
         buttonPanel.Controls.Add(_cancelButton);
         Controls.Add(buttonPanel);
+        buttonPanel.BringToFront();  // Must be in front of the splitter
+        Shown += (s, e) => UpdateLayout();  // Re-run once the form is fully laid out
 
         UpdateLayout();
     }
@@ -946,11 +949,11 @@ internal sealed class SettingsDialog : Form
 
     private void UpdateLayout()
     {
-        if (_okButton != null && _cancelButton != null && _okButton.Parent != null)
+        if (_okButton != null && _cancelButton != null && _okButton.Parent is Panel panel)
         {
-            var panel = _okButton.Parent;
-            _okButton.Location = new Point(panel.Width - 176, 8);
-            _cancelButton.Location = new Point(panel.Width - 88, 8);
+            int w = panel.Width > 0 ? panel.Width : ClientSize.Width;
+            _okButton.Location    = new Point(w - 176, 8);
+            _cancelButton.Location = new Point(w - 88,  8);
         }
     }
 
