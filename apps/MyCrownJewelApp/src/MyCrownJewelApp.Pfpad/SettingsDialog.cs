@@ -349,6 +349,20 @@ internal sealed class SettingsDialog : Form
         {
             y = AddSecuritySettingsUI(_contentPanel, y);
         }
+        else if (category is "editor" or "workbench" or "features" or "application")
+        {
+            // Parent node — redirect to the appropriate first child with settings
+            string redirect = category switch
+            {
+                "editor" => "editor.text",
+                "workbench" => "workbench.appearance",
+                "features" => "features.terminal",
+                "application" => "application.security",
+                _ => category
+            };
+            ShowCategory(redirect);
+            return;
+        }
         else
         {
             var settings = GetSettingsForCategory(category);
@@ -2655,8 +2669,40 @@ internal sealed class SettingsDialog : Form
                 pathText.TextChanged += SettingControl_ValueChanged;
                 return pathText;
 
+            // Catch-all: bool → toggle, int → numeric, string → text
+            case var k when value is bool bv:
+                return new ToggleSwitch(_theme) { Checked = bv, Tag = k };
+
+            case var k when value is int iv:
+                var intSpinner = new NumericUpDown
+                {
+                    Width = 80,
+                    Minimum = 0,
+                    Maximum = 9999,
+                    Value = iv,
+                    BackColor = _theme.EditorBackground,
+                    ForeColor = _theme.Text,
+                    Tag = k
+                };
+                intSpinner.ValueChanged += SettingControl_ValueChanged;
+                return intSpinner;
+
+            case var k when value is string sv:
+                var genericText = new TextBox
+                {
+                    Width = 220,
+                    Height = 22,
+                    BackColor = _theme.EditorBackground,
+                    ForeColor = _theme.Text,
+                    BorderStyle = BorderStyle.FixedSingle,
+                    Text = sv,
+                    Tag = k
+                };
+                genericText.TextChanged += SettingControl_ValueChanged;
+                return genericText;
+
             default:
-                return new Label { Text = "Not implemented", ForeColor = _theme.Text };
+                return new Label { Text = "Not implemented", AutoSize = true, ForeColor = _theme.Text };
         }
     }
 
