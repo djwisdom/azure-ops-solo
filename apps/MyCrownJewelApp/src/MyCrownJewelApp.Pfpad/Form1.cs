@@ -137,6 +137,16 @@ using Microsoft.Extensions.DependencyInjection;
             }
         }
 
+        private void ApplyTextEditorSettings()
+        {
+            _autoSaveTimer.Interval = _autoSaveIntervalSeconds * 1000;
+            if (textEditor != null)
+            {
+                textEditor.CtrlWheelZoomEnabled = _ctrlWheelZoom;
+                textEditor.MouseWheelScrollLines = _mouseWheelScrollLines;
+            }
+        }
+
         private System.Windows.Forms.Timer? _findNotFoundResetTimer;
 
         internal void NotifyNotFound(string text)
@@ -527,6 +537,12 @@ using Microsoft.Extensions.DependencyInjection;
         // Auto-save
         private readonly System.Windows.Forms.Timer _autoSaveTimer = new() { Interval = 30000 };
         private bool _autoSaveEnabled;
+        private bool _trimTrailingWhitespace;
+        private bool _insertFinalNewline;
+        private string _defaultLineEnding = "auto";
+        private bool _ctrlWheelZoom = true;
+        private int _mouseWheelScrollLines;
+        private int _autoSaveIntervalSeconds = 30;
 
         // Workspace scan state
         private Color _originalStatusBarColor;
@@ -648,6 +664,12 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentRainbowBrackets => _rainbowBracketsEnabled;
         public bool CurrentBreadcrumbs => _breadcrumbsEnabled;
         public bool CurrentAutoSave => _autoSaveEnabled;
+        public bool CurrentTrimTrailingWhitespace => _trimTrailingWhitespace;
+        public bool CurrentInsertFinalNewline => _insertFinalNewline;
+        public string CurrentDefaultLineEnding => _defaultLineEnding;
+        public bool CurrentCtrlWheelZoom => _ctrlWheelZoom;
+        public int CurrentMouseWheelScrollLines => _mouseWheelScrollLines;
+        public int CurrentAutoSaveIntervalSeconds => _autoSaveIntervalSeconds;
         public bool CurrentWorkspaceVisible => _workspaceVisible;
         public bool CurrentSymbolPanelVisible => _symbolPanelVisible;
         public bool CurrentProblemsPanelVisible => _problemsPanelVisible;
@@ -2510,6 +2532,13 @@ using Microsoft.Extensions.DependencyInjection;
                 _findInFilesFilter = string.IsNullOrWhiteSpace(settings.FindInFilesFilter) ? _findInFilesFilter : settings.FindInFilesFilter;
                 _findInFilesExclude = string.IsNullOrWhiteSpace(settings.FindInFilesExclude) ? _findInFilesExclude : settings.FindInFilesExclude;
                 _findInFilesMaxResults = Math.Max(0, settings.FindInFilesMaxResults);
+                // Text Editor settings
+                _trimTrailingWhitespace = settings.TrimTrailingWhitespace;
+                _insertFinalNewline = settings.InsertFinalNewline;
+                _defaultLineEnding = settings.DefaultLineEnding ?? "auto";
+                _ctrlWheelZoom = settings.CtrlWheelZoom;
+                _mouseWheelScrollLines = Math.Clamp(settings.MouseWheelScrollLines, 0, 20);
+                _autoSaveIntervalSeconds = Math.Clamp(settings.AutoSaveIntervalSeconds, 10, 300);
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2706,6 +2735,12 @@ using Microsoft.Extensions.DependencyInjection;
                 FindInFilesFilter = _findInFilesFilter,
                 FindInFilesExclude = _findInFilesExclude,
                 FindInFilesMaxResults = _findInFilesMaxResults,
+                TrimTrailingWhitespace = _trimTrailingWhitespace,
+                InsertFinalNewline = _insertFinalNewline,
+                DefaultLineEnding = _defaultLineEnding,
+                CtrlWheelZoom = _ctrlWheelZoom,
+                MouseWheelScrollLines = _mouseWheelScrollLines,
+                AutoSaveIntervalSeconds = _autoSaveIntervalSeconds,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2892,6 +2927,15 @@ using Microsoft.Extensions.DependencyInjection;
             _findInFilesExclude = string.IsNullOrWhiteSpace(settings.FindInFilesExclude) ? _findInFilesExclude : settings.FindInFilesExclude;
             _findInFilesMaxResults = Math.Max(0, settings.FindInFilesMaxResults);
             ApplyFindSettings();
+
+            // Text Editor settings
+            _trimTrailingWhitespace = settings.TrimTrailingWhitespace;
+            _insertFinalNewline = settings.InsertFinalNewline;
+            _defaultLineEnding = settings.DefaultLineEnding ?? "auto";
+            _ctrlWheelZoom = settings.CtrlWheelZoom;
+            _mouseWheelScrollLines = Math.Clamp(settings.MouseWheelScrollLines, 0, 20);
+            _autoSaveIntervalSeconds = Math.Clamp(settings.AutoSaveIntervalSeconds, 10, 300);
+            ApplyTextEditorSettings();
             vimModeEnabled = settings.VimModeEnabled;
             if (vimModeMenuItem != null) vimModeMenuItem.Checked = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;

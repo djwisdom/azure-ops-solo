@@ -361,6 +361,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddFindSettingsUI(_contentPanel, y);
         }
+        else if (category == "editor.text")
+        {
+            y = AddTextEditorSettingsUI(_contentPanel, y);
+        }
         else if (category is "editor" or "workbench" or "features" or "application")
         {
             // Parent node — redirect to the appropriate first child with settings
@@ -660,6 +664,12 @@ internal sealed class SettingsDialog : Form
             BreadcrumbsEnabled = GetSettingValue<bool>("editor.appearance.breadcrumbs", _mainForm.CurrentBreadcrumbs),
             HoverLineHighlightEnabled = GetSettingValue<bool>("editor.cursor.hoverLineHighlight", _mainForm.CurrentHoverLineHighlight),
             AutoSaveEnabled = GetSettingValue<bool>("features.behavior.autoSave", _mainForm.CurrentAutoSave),
+            TrimTrailingWhitespace = GetSettingValue<bool>("editor.text.trimTrailingWhitespace", _mainForm.CurrentTrimTrailingWhitespace),
+            InsertFinalNewline = GetSettingValue<bool>("editor.text.insertFinalNewline", _mainForm.CurrentInsertFinalNewline),
+            DefaultLineEnding = GetSettingValue<string>("editor.text.defaultLineEnding", _mainForm.CurrentDefaultLineEnding),
+            CtrlWheelZoom = GetSettingValue<bool>("editor.text.ctrlWheelZoom", _mainForm.CurrentCtrlWheelZoom),
+            MouseWheelScrollLines = GetSettingValue<int>("editor.text.mouseWheelScrollLines", _mainForm.CurrentMouseWheelScrollLines),
+            AutoSaveIntervalSeconds = GetSettingValue<int>("editor.text.autoSaveIntervalSeconds", _mainForm.CurrentAutoSaveIntervalSeconds),
             WorkspaceVisible = true,
             SymbolPanelVisible = false,
             ProblemsPanelVisible = false,
@@ -766,6 +776,12 @@ internal sealed class SettingsDialog : Form
             ["editor.text.guideColumn"] = _mainForm.CurrentGuideColumn,
             ["editor.text.gutter"] = _mainForm.CurrentGutterVisible,
             ["editor.text.statusBar"] = _mainForm.CurrentStatusBarVisible,
+            ["editor.text.trimTrailingWhitespace"] = _mainForm.CurrentTrimTrailingWhitespace,
+            ["editor.text.insertFinalNewline"] = _mainForm.CurrentInsertFinalNewline,
+            ["editor.text.defaultLineEnding"] = _mainForm.CurrentDefaultLineEnding,
+            ["editor.text.ctrlWheelZoom"] = _mainForm.CurrentCtrlWheelZoom,
+            ["editor.text.mouseWheelScrollLines"] = _mainForm.CurrentMouseWheelScrollLines,
+            ["editor.text.autoSaveIntervalSeconds"] = _mainForm.CurrentAutoSaveIntervalSeconds,
 
             // Editor - Cursor
             ["editor.cursor.lineHighlight"] = _mainForm.CurrentLineHighlightName,
@@ -2563,6 +2579,50 @@ internal sealed class SettingsDialog : Form
             ThemedMessageBox.Show($"Failed to save workspace settings: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private int AddTextEditorSettingsUI(Panel parent, int y)
+    {
+        y = AddSecSectionHeader(parent, y, "On Save");
+
+        y = AddSecCheckRow(parent, y,
+            "Trim trailing whitespace",
+            "Remove trailing spaces and tabs from every line when the file is saved.",
+            "editor.text.trimTrailingWhitespace");
+
+        y = AddSecCheckRow(parent, y,
+            "Insert final newline",
+            "Append a newline at the end of the file when saved if one is not already present.",
+            "editor.text.insertFinalNewline");
+
+        y = AddEditorComboRow(parent, y,
+            "Line ending style",
+            "Normalize line endings on save. 'Auto' preserves the file's existing endings.",
+            "editor.text.defaultLineEnding",
+            new[] { ("auto", "Auto (preserve existing)"), ("CRLF", "CRLF (Windows \\r\\n)"), ("LF", "LF (Unix \\n)"), ("CR", "CR (Classic Mac \\r)") });
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Auto Save");
+
+        y = AddWinNumericRow(parent, y,
+            "Auto-save interval (seconds)",
+            "How often to write the current file when Auto Save is enabled (File → Auto Save). Range: 10–300.",
+            "editor.text.autoSaveIntervalSeconds", 10, 300, 10, 30);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Mouse Interaction");
+
+        y = AddSecCheckRow(parent, y,
+            "Ctrl+Wheel font zoom",
+            "Allow Ctrl+MouseWheel to zoom the editor font size. Disable to prevent accidental zoom.",
+            "editor.text.ctrlWheelZoom");
+
+        y = AddWinNumericRow(parent, y,
+            "Mouse wheel scroll lines (0 = system default)",
+            "Number of lines to scroll per mouse wheel tick. Set to 0 to use the Windows system setting.",
+            "editor.text.mouseWheelScrollLines", 0, 20, 1, 3);
+
+        return y + 16;
     }
 
     private int AddFindSettingsUI(Panel parent, int y)

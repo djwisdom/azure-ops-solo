@@ -804,6 +804,14 @@ namespace MyCrownJewelApp.Pfpad
 
     // ── Whitespace glyph rendering ────────────────────────────────────────────
 
+    [Category("Behavior")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool CtrlWheelZoomEnabled { get; set; } = true;
+
+    [Category("Behavior")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public int MouseWheelScrollLines { get; set; } = 0;
+
     [Category("Appearance")]
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool ShowWhitespace
@@ -1088,12 +1096,31 @@ namespace MyCrownJewelApp.Pfpad
                 }
             case WM_VSCROLL:
             case WM_HSCROLL:
-            case WM_MOUSEWHEEL:
                 _scrollInProgress = true;
                 _scrollDebounceTimer?.Stop();
                 _scrollDebounceTimer?.Start();
                 base.WndProc(ref m);
                 return;
+            case WM_MOUSEWHEEL:
+                {
+                    _scrollInProgress = true;
+                    _scrollDebounceTimer?.Stop();
+                    _scrollDebounceTimer?.Start();
+                    int keyState = (int)(m.WParam.ToInt64() & 0xFFFF);
+                    bool ctrlDown = (keyState & 0x0008) != 0;
+                    if (ctrlDown && !CtrlWheelZoomEnabled)
+                        return; // suppress Ctrl+Wheel font zoom
+                    if (!ctrlDown && MouseWheelScrollLines > 0)
+                    {
+                        int rawDelta = (short)((m.WParam.ToInt64() >> 16) & 0xFFFF);
+                        int clicks = Math.Abs(rawDelta) / 120;
+                        int lines = clicks * MouseWheelScrollLines;
+                        SendMessage(Handle, EM_LINESCROLL, 0, rawDelta > 0 ? -lines : lines);
+                        return;
+                    }
+                    base.WndProc(ref m);
+                    return;
+                }
 
             case WM_SIZE:
             case WM_KEYUP:

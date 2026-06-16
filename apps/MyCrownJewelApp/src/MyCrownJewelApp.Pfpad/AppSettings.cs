@@ -64,6 +64,20 @@ public record AppSettings
     public bool ShowGutterBreakpoints { get; init; } = true;
     public bool ShowGutterBookmarks { get; init; } = true;
 
+    // ── Text Editor on-save and interaction configuration ─────────────────────
+    /// <summary>Remove trailing spaces and tabs from every line when the file is saved.</summary>
+    public bool TrimTrailingWhitespace { get; init; } = false;
+    /// <summary>Append a newline at the end of the file on save if not already present.</summary>
+    public bool InsertFinalNewline { get; init; } = false;
+    /// <summary>Line ending style when saving: "CRLF", "LF", "CR", or "auto" (preserve as-is).</summary>
+    public string DefaultLineEnding { get; init; } = "auto";
+    /// <summary>Allow Ctrl+MouseWheel to zoom the editor font size.</summary>
+    public bool CtrlWheelZoom { get; init; } = true;
+    /// <summary>Lines to scroll per mouse wheel tick (1–20). 0 = Windows system default.</summary>
+    public int MouseWheelScrollLines { get; init; } = 0;
+    /// <summary>Seconds between auto-save writes when Auto Save is enabled (10–300).</summary>
+    public int AutoSaveIntervalSeconds { get; init; } = 30;
+
     // ── Window configuration ───────────────────────────────────────────────────
     /// <summary>Re-apply saved window position and size on next launch.</summary>
     public bool WinRememberBounds { get; init; } = true;

@@ -116,8 +116,9 @@ namespace MyCrownJewelApp.Pfpad
             {
                 try
                 {
-                    UnicodeFileHelper.WriteAllText(currentFilePath, textEditor.Text);
-                    _profilerDialog?.Log($"Saved file: {currentFilePath} ({textEditor.Text.Length} chars)");
+                    string saved = ApplySaveTransforms(textEditor.Text);
+                    UnicodeFileHelper.WriteAllText(currentFilePath, saved);
+                    _profilerDialog?.Log($"Saved file: {currentFilePath} ({saved.Length} chars)");
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
                     _docManager.GetActive()?.ModifiedLines.Clear();
@@ -141,8 +142,9 @@ namespace MyCrownJewelApp.Pfpad
             {
                 try
                 {
-                    UnicodeFileHelper.WriteAllText(sfd.FileName, textEditor.Text);
-                    _profilerDialog?.Log($"Saved as file: {sfd.FileName} ({textEditor.Text.Length} chars)");
+                    string saved = ApplySaveTransforms(textEditor.Text);
+                    UnicodeFileHelper.WriteAllText(sfd.FileName, saved);
+                    _profilerDialog?.Log($"Saved as file: {sfd.FileName} ({saved.Length} chars)");
                     currentFilePath = sfd.FileName;
                     lastFileWriteTime = File.GetLastWriteTimeUtc(currentFilePath);
                     ClearDirtyAfterSave();
@@ -365,6 +367,36 @@ private void NewWindow_Click(object? sender, EventArgs e)
         private void Save_Click(object? sender, EventArgs e) => SaveFile();
         private void SaveAs_Click(object? sender, EventArgs e) => SaveAsFile();
         private void SaveAll_Click(object? sender, EventArgs e) => SaveAllFiles();
+
+        private string ApplySaveTransforms(string content)
+        {
+            if (_trimTrailingWhitespace)
+            {
+                var sb = new System.Text.StringBuilder(content.Length);
+                int i = 0;
+                while (i <= content.Length)
+                {
+                    int nl = content.IndexOf('\n', i);
+                    string seg = nl >= 0 ? content[i..nl] : content[i..];
+                    sb.Append(seg.TrimEnd(' ', '\t', '\r'));
+                    if (nl >= 0) { sb.Append('\n'); i = nl + 1; }
+                    else break;
+                }
+                content = sb.ToString();
+            }
+
+            if (_insertFinalNewline && content.Length > 0 && content[^1] != '\n')
+                content += "\n";
+
+            content = _defaultLineEnding switch
+            {
+                "CRLF" => content.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n"),
+                "CR"   => content.Replace("\r\n", "\n").Replace("\n", "\r"),
+                _      => content,  // "LF" or "auto" — preserve as-is
+            };
+
+            return content;
+        }
         private void ToggleAutoSave_Click(object? sender, EventArgs e) { _autoSaveEnabled = autoSaveMenuItem.Checked; if (_autoSaveEnabled) _autoSaveTimer.Start(); else _autoSaveTimer.Stop(); SaveSettings(); }
         private void CloseTab_Click(object? sender, EventArgs e) => CloseCurrentTab();
         private void CloseWindow_Click(object? sender, EventArgs e) => this.Close();
