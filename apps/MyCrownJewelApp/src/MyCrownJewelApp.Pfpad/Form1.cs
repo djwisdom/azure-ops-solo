@@ -761,7 +761,7 @@ using Microsoft.Extensions.DependencyInjection;
 
             // Initialize toggles to match loaded/default settings
             gutterMenuItem.Checked = gutterVisible;
-            columnGuideMenuItem.Checked = textEditor.ShowGuide;
+            columnGuideMenuItem.Checked = textEditor?.ShowGuide ?? false;
             minimapMenuItem.Checked = _pendingMinimapVisible;
             syntaxHighlightingMenuItem.Checked = syntaxHighlightingEnabled;
             wordWrapMenuItem.Checked = wordWrapEnabled;
@@ -785,7 +785,7 @@ using Microsoft.Extensions.DependencyInjection;
 
             // Apply visibility states
             gutterPanel.Visible = gutterVisible;
-            textEditor.ShowWhitespace = whitespaceMenuItem.Checked;
+            if (textEditor != null) textEditor.ShowWhitespace = whitespaceMenuItem.Checked;
             statusStrip.Visible = statusBarVisible;
             
             // Set initial column widths for visible state
@@ -974,6 +974,7 @@ using Microsoft.Extensions.DependencyInjection;
                        vimEngine.ShowLineNumbers = false;
                        vimEngine.RelativeNumbers = false;
                    }
+                   ApplyGutterLineNumberState();
                };
                relativeLineNumberToolStripMenuItem.Click += (s, e) => {
                    bool isChecked = relativeLineNumberToolStripMenuItem.Checked;
@@ -989,6 +990,7 @@ using Microsoft.Extensions.DependencyInjection;
                            vimEngine.ShowLineNumbers = false;
                        }
                    }
+                   ApplyGutterLineNumberState();
                };
               textEditor.Enter += (s, e) => { if (vimModeEnabled) vimEngine?.SetEditor(textEditor); };
                _snippetEngine = new SnippetEngine(textEditor!);
@@ -1235,7 +1237,14 @@ using Microsoft.Extensions.DependencyInjection;
                        if (!string.IsNullOrEmpty(path) && File.Exists(path))
                            OpenFileInNewTab(path);
                    };
-                  _workspacePanel.CloseRequested += () => ToggleWorkspace();
+                  _workspacePanel.CloseRequested += () =>
+                  {
+                      _workspaceVisible = false;
+                      workspaceMenuItem.Checked = false;
+                      _workspaceWidth = Math.Max(80, Math.Min(600, _workspaceSplitContainer?.SplitterDistance ?? 250));
+                      UpdateSidebarLayout();
+                      SaveSettings();
+                  };
                   _workspacePanel.ScanStarted += OnWorkspaceScanStarted;
                   _workspacePanel.ScanCompleted += OnWorkspaceScanCompleted;
                    _workspacePanel.ScanProgressChanged += OnWorkspaceScanProgressChanged;
@@ -2814,6 +2823,12 @@ internal void ToggleGutter()
                 isSelected ? theme.Text : theme.Muted,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
 
+            if (isSelected)
+            {
+                using var accentPen = new Pen(theme.Accent, 2);
+                e.Graphics.DrawLine(accentPen, bounds.Left, bounds.Bottom - 2, bounds.Right, bounds.Bottom - 2);
+            }
+
             var closeRect = new Rectangle(bounds.Right - 17, bounds.Y + 5, 14, 14);
             TextRenderer.DrawText(e.Graphics, "\u00D7", e.Font ?? tc.Font,
                 closeRect, theme.Muted,
@@ -2965,18 +2980,13 @@ internal void ToggleGutter()
             SaveSettings();
         }
 
-        // Current line highlight mode cycling
+        // Current line highlight mode — set directly from which menu item was clicked
         private void CurrentLineHighlightMode_Click(object? sender, EventArgs e)
         {
-            // Cycle: Off -> NumberOnly -> WholeLine -> Off
-            currentLineHighlightMode = currentLineHighlightMode switch
-            {
-                CurrentLineHighlightMode.Off => CurrentLineHighlightMode.NumberOnly,
-                CurrentLineHighlightMode.NumberOnly => CurrentLineHighlightMode.WholeLine,
-                CurrentLineHighlightMode.WholeLine => CurrentLineHighlightMode.NumberAndWholeLine,
-                CurrentLineHighlightMode.NumberAndWholeLine => CurrentLineHighlightMode.Off,
-                _ => CurrentLineHighlightMode.Off
-            };
+            if      (sender == currentLineOffMenuItem)                currentLineHighlightMode = CurrentLineHighlightMode.Off;
+            else if (sender == currentLineNumberOnlyMenuItem)         currentLineHighlightMode = CurrentLineHighlightMode.NumberOnly;
+            else if (sender == currentLineWholeLineMenuItem)          currentLineHighlightMode = CurrentLineHighlightMode.WholeLine;
+            else if (sender == currentLineNumberAndWholeLineMenuItem) currentLineHighlightMode = CurrentLineHighlightMode.NumberAndWholeLine;
             
             UpdateCurrentLineHighlightMenu();
 
@@ -3950,6 +3960,12 @@ private void NewWindow_Click(object? sender, EventArgs e)
             dlg.ShowDialog(this);
         }
 
+        private void UserManual_Click(object? sender, EventArgs e)
+        {
+            using var dlg = new UserManualDialog();
+            dlg.ShowDialog(this);
+        }
+
         private void ShowPerformanceProfiler()
         {
             try
@@ -4157,38 +4173,36 @@ private void NewWindow_Click(object? sender, EventArgs e)
             workspaceMenuItem.Checked = _workspaceVisible;
             if (_workspaceVisible)
             {
-                if (_workspaceSplitContainer != null)
+                if (_workspaceSplitContainer != null && !string.IsNullOrEmpty(_workspaceRoot))
                 {
-                    _workspaceSplitContainer.Panel1Collapsed = false;
-                    _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
-                    _workspaceSplitContainer.PerformLayout();
-                    if (!string.IsNullOrEmpty(_workspaceRoot))
+                    // Check if workspace is too large for smooth operation
+                    try
                     {
-                        // Check if workspace is too large for smooth operation
-                        try
+                        var fileCount = Directory.EnumerateFiles(_workspaceRoot, "*", SearchOption.AllDirectories).Count();
+                        if (fileCount > 1000) // Arbitrary limit
                         {
-                            var fileCount = Directory.EnumerateFiles(_workspaceRoot, "*", SearchOption.AllDirectories).Count();
-                            if (fileCount > 1000) // Arbitrary limit
-                            {
-                                BeginInvoke(() => ThemedMessageBox.Show($"Workspace has {fileCount} files, which may cause performance issues. Consider using a smaller project folder.", "Large Workspace", MessageBoxButtons.OK, MessageBoxIcon.Warning));
-                                return; // Don't enable workspace
-                            }
+                            _workspaceVisible = false;
+                            workspaceMenuItem.Checked = false;
+                            BeginInvoke(() => ThemedMessageBox.Show($"Workspace has {fileCount} files, which may cause performance issues. Consider using a smaller project folder.", "Large Workspace", MessageBoxButtons.OK, MessageBoxIcon.Warning));
+                            return;
                         }
-                        catch { }
-                        Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
                     }
+                    catch { }
+                    Task.Run(() => BeginInvoke(() => _workspacePanel?.SetRoot(_workspaceRoot)));
                 }
             }
             else
             {
                 if (_workspaceSplitContainer != null)
-                {
                     _workspaceWidth = Math.Max(80, Math.Min(600, _workspaceSplitContainer.SplitterDistance));
-                    _workspaceSplitContainer.Panel1Collapsed = true;
-                    _workspaceSplitContainer.PerformLayout();
-                }
-                textEditor?.Focus();
+
+                // Only return focus to editor if no AIOps panels are keeping the sidebar open.
+                if (!AnyAIOpsPanelVisible)
+                    textEditor?.Focus();
             }
+
+            // Let UpdateSidebarLayout decide what to collapse — AIOps panels may still need the sidebar.
+            UpdateSidebarLayout();
             SaveSettings();
         }
 
@@ -5260,6 +5274,46 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 mainTable.ColumnStyles[0].Width = gutterPanel.Width;
                 mainTable.PerformLayout();
             }
+        }
+
+        /// <summary>
+        /// Directly applies VimEngine's ShowLineNumbers / RelativeNumbers / GutterVisible state to
+        /// the gutter panel. Must be called after setting VimEngine properties from UI, because the
+        /// VimEngine property setters are plain auto-properties that do not fire the On*Changed events.
+        /// </summary>
+        private void ApplyGutterLineNumberState()
+        {
+            if (gutterPanel == null) return;
+
+            if (!(vimEngine?.GutterVisible ?? true))
+            {
+                gutterPanel.Visible = false;
+                gutterPanel.ShowLineNumbers = false;
+                gutterPanel.RelativeNumbers = false;
+                gutterPanel.Width = 0;
+                if (mainTable != null)
+                {
+                    mainTable.ColumnStyles[0].SizeType = SizeType.Absolute;
+                    mainTable.ColumnStyles[0].Width = 0;
+                    mainTable.PerformLayout();
+                }
+            }
+            else
+            {
+                gutterPanel.ShowLineNumbers = vimEngine?.ShowLineNumbers ?? false;
+                gutterPanel.RelativeNumbers = vimEngine?.RelativeNumbers ?? false;
+                gutterPanel.UpdateLineNumberWidth();
+                gutterPanel.Visible = true;
+                if (mainTable != null)
+                {
+                    mainTable.ColumnStyles[0].SizeType = SizeType.Absolute;
+                    mainTable.ColumnStyles[0].Width = gutterPanel.Width;
+                    mainTable.PerformLayout();
+                }
+            }
+
+            gutterPanel.MarkDataDirty();
+            if (gutterMenuItem != null) gutterMenuItem.Checked = vimEngine?.GutterVisible ?? false;
         }
 
         private void StatusBar_Click(object? sender, EventArgs e) => ToggleStatusBar();
@@ -6719,6 +6773,9 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 {
                     e.Graphics.DrawLine(pen, tabRect.Left, tabRect.Top, tabRect.Right - 1, tabRect.Top);
                 }
+                // Accent underline
+                using var accentPen = new Pen(theme.Accent, 2);
+                e.Graphics.DrawLine(accentPen, tabRect.Left, tabRect.Bottom - 2, tabRect.Right, tabRect.Bottom - 2);
             }
 
             // Close button (×)
@@ -8112,8 +8169,28 @@ private void NewWindow_Click(object? sender, EventArgs e)
             if (_aiopsEngine == null || _aiopsTelemetryPanel == null)
                 return;
 
-            var connector = _aiopsEngine.Connectors.FirstOrDefault(c => c.Status == MyCrownJewelApp.Pfpad.AIOps.ConnectorStatus.Connected)
-                ?? _aiopsEngine.Connectors.FirstOrDefault();
+            var connectors = _aiopsEngine.Connectors;
+
+            // Prefer real connectors (non-mock) over mock data, regardless of current connection status.
+            // Mock data is used only as a last resort when no real connectors are configured.
+            // Real connectors auto-connect in the background after settings are saved;
+            // TelemetryPanel will attempt ConnectAsync before the first query.
+            var connector =
+                // 1. Real connected connector with service discovery (e.g. AzureMonitorConnector)
+                connectors.FirstOrDefault(c => c is not MyCrownJewelApp.Pfpad.AIOps.MockDataConnector
+                                               && c.Status == MyCrownJewelApp.Pfpad.AIOps.ConnectorStatus.Connected
+                                               && c is MyCrownJewelApp.Pfpad.AIOps.IServiceDiscoveryCapable) ??
+                // 2. Any real connected connector
+                connectors.FirstOrDefault(c => c is not MyCrownJewelApp.Pfpad.AIOps.MockDataConnector
+                                               && c.Status == MyCrownJewelApp.Pfpad.AIOps.ConnectorStatus.Connected) ??
+                // 3. Real connector not yet connected (will auto-connect on first use)
+                connectors.FirstOrDefault(c => c is not MyCrownJewelApp.Pfpad.AIOps.MockDataConnector
+                                               && c.Status != MyCrownJewelApp.Pfpad.AIOps.ConnectorStatus.Error) ??
+                // 4. Any real connector (even in error state — user can retry)
+                connectors.FirstOrDefault(c => c is not MyCrownJewelApp.Pfpad.AIOps.MockDataConnector) ??
+                // 5. Mock data (last resort: no real connectors configured)
+                connectors.FirstOrDefault();
+
             _aiopsTelemetryPanel.SetConnector(connector);
 
             string? serviceName = Path.GetFileNameWithoutExtension(currentFilePath);
@@ -8278,7 +8355,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             string functionName = Path.GetFileNameWithoutExtension(fp);
             string serviceName = _aiopsEngine.ServiceContextEngine.ResolveServiceName(fp) ?? functionName;
             string code = _aiopsEngine.GenerateOTelCode(lang, functionName, serviceName);
-            MessageBox.Show(code, $"OTel Code for {functionName}", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedMessageBox.Show(code, $"OTel Code for {functionName}", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void AiopsScanFile_Click(object? sender, EventArgs e) => _ = ScanActiveFileForAIOpsAsync();
@@ -8720,22 +8797,23 @@ private void NewWindow_Click(object? sender, EventArgs e)
             bool aiopsAny = AnyAIOpsPanelVisible;
             bool botAny = _gitPanelVisible || _symbolPanelVisible || _problemsPanelVisible || aiopsAny;
             bool innerAny = _symbolPanelVisible || _problemsPanelVisible || aiopsAny;
+
+            // Collapse each sub-panel when its content is not visible.
+            _botSidebarSplit.Panel1Collapsed = !_gitPanelVisible;
             _botSidebarSplit.Panel2Collapsed = !innerAny;
             _problemsSplit.Panel2Collapsed = !_problemsPanelVisible;
             _sidebarSplit.Panel2Collapsed = !botAny;
 
-            if (innerAny)
+            // Collapse the workspace/explorer pane whenever workspace is not explicitly open.
+            _sidebarSplit.Panel1Collapsed = !_workspaceVisible;
+
+            if (_gitPanelVisible && innerAny)
             {
                 int totalH = _botSidebarSplit.Height - _botSidebarSplit.SplitterWidth;
-                if (_gitPanelVisible && (_symbolPanelVisible || _problemsPanelVisible || aiopsAny))
-                    _botSidebarSplit.SplitterDistance = Math.Max(60, totalH / 2);
-                else if (_gitPanelVisible)
-                    _botSidebarSplit.SplitterDistance = Math.Max(60, totalH - 60);
-                else
-                    _botSidebarSplit.SplitterDistance = 60;
+                _botSidebarSplit.SplitterDistance = Math.Max(60, totalH / 2);
             }
 
-            if (botAny)
+            if (botAny && !_sidebarSplit.Panel1Collapsed)
             {
                 int totalH = _sidebarSplit.Height - _sidebarSplit.SplitterWidth;
                 if (_gitPanelVisible && innerAny)
@@ -8744,7 +8822,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     _sidebarSplit.SplitterDistance = Math.Max(60, totalH - 60);
             }
 
-            bool anyVisible = (_workspacePanel?.Visible == true) || botAny;
+            bool anyVisible = _workspaceVisible || botAny;
             _workspaceSplitContainer.Panel1Collapsed = !anyVisible;
             if (anyVisible)
                 _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
@@ -9393,26 +9471,6 @@ private void NewWindow_Click(object? sender, EventArgs e)
         #endregion
 
         #endregion
-
-        // Tab measurement cache for elastic tab stops
-        // Custom renderer for menu theming
-        private class ThemeColorTable : ProfessionalColorTable
-        {
-            private readonly bool _isDark;
-            public ThemeColorTable(bool isDark) => _isDark = isDark;
-
-            public override Color MenuStripGradientBegin => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.MenuBar;
-            public override Color MenuStripGradientEnd => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.MenuBar;
-            public override Color MenuItemSelected => _isDark ? Color.FromArgb(0, 120, 215) : SystemColors.Highlight;
-            public override Color MenuItemSelectedGradientBegin => _isDark ? Color.FromArgb(0, 120, 215) : SystemColors.Highlight;
-            public override Color MenuItemSelectedGradientEnd => _isDark ? Color.FromArgb(0, 120, 215) : SystemColors.Highlight;
-            public override Color MenuItemBorder => _isDark ? Color.FromArgb(0, 120, 215) : SystemColors.Highlight;
-            public override Color ToolStripDropDownBackground => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.Window;
-            public override Color ImageMarginGradientBegin => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.MenuBar;
-            public override Color ImageMarginGradientEnd => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.MenuBar;
-            public override Color ImageMarginGradientMiddle => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.MenuBar;
-            public override Color MenuBorder => _isDark ? Color.FromArgb(45, 45, 45) : SystemColors.MenuBar;
-        }
 
     }
 }

@@ -23,6 +23,8 @@ public sealed class DeploymentPanel : UserControl
     private readonly ListView _deploymentsList;
     private readonly List<Pipeline> _pipelines = [];
     private readonly List<Deployment> _deployments = [];
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     private Theme _theme;
     private bool _showPipelines = true;
@@ -61,6 +63,9 @@ public sealed class DeploymentPanel : UserControl
         _pipelinesTabButton.Click += (s, e) => ShowTab(true);
         _deploymentsTabButton.Click += (s, e) => ShowTab(false);
         _tabStrip.Controls.AddRange([_pipelinesTabButton, _deploymentsTabButton]);
+        AIOpsUiHelper.AttachTabStripAccent(_tabStrip,
+            () => _showPipelines ? _pipelinesTabButton : _deploymentsTabButton,
+            () => _theme.Accent);
 
         _contentPanel = new Panel { Dock = DockStyle.Fill };
 
@@ -111,6 +116,8 @@ public sealed class DeploymentPanel : UserControl
 
         Controls.Add(_contentPanel);
         Controls.Add(_tabStrip);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Powered by Azure DevOps · GitHub Actions. Configure connectors in AIOps > Settings (Ctrl+Alt+,).");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -169,7 +176,7 @@ public sealed class DeploymentPanel : UserControl
         _theme = theme;
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.MenuBackground;
-        _tabStrip.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _contentPanel.BackColor = theme.MenuBackground;
         _pipelinesPanel.BackColor = theme.MenuBackground;
         _deploymentsPanel.BackColor = theme.MenuBackground;
@@ -179,8 +186,7 @@ public sealed class DeploymentPanel : UserControl
         _refreshButton.ForeColor = theme.Text;
         _closeButton.BackColor = Color.Transparent;
         _closeButton.ForeColor = theme.Text;
-        _environmentFilter.BackColor = theme.EditorBackground;
-        _environmentFilter.ForeColor = theme.Text;
+        _environmentFilter.ApplyTheme(theme);
         ApplyTabButtonTheme(_pipelinesTabButton, _showPipelines);
         ApplyTabButtonTheme(_deploymentsTabButton, !_showPipelines);
         AIOpsUiHelper.ApplyTreeTheme(_pipelinesTree, theme);
@@ -203,6 +209,7 @@ public sealed class DeploymentPanel : UserControl
         _deploymentsPanel.Visible = !pipelines;
         ApplyTabButtonTheme(_pipelinesTabButton, pipelines);
         ApplyTabButtonTheme(_deploymentsTabButton, !pipelines);
+        _tabStrip.Invalidate();
     }
 
     private void ApplyTabButtonTheme(Button button, bool selected)
@@ -310,6 +317,7 @@ public sealed class DeploymentPanel : UserControl
 
     private void PipelinesTree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
     {
+        if (e.Node is null) return;
         e.DrawDefault = false;
         Color backColor = e.Node.IsSelected ? AIOpsUiHelper.CurrentLineBackground(_theme) : _pipelinesTree.BackColor;
         using SolidBrush backBrush = new(backColor);
@@ -317,7 +325,7 @@ public sealed class DeploymentPanel : UserControl
         TextRenderer.DrawText(e.Graphics, e.Node.Text, _pipelinesTree.Font, e.Bounds, e.Node.ForeColor.IsEmpty ? _theme.Text : e.Node.ForeColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 
-    private void PipelinesTree_NodeMouseDoubleClick(object? sender, TreeNodeMouseClickEventArgs e) => AIOpsUiHelper.OpenUrl(e.Node.Tag as string);
+    private void PipelinesTree_NodeMouseDoubleClick(object? sender, TreeNodeMouseClickEventArgs e) => AIOpsUiHelper.OpenUrl(e.Node?.Tag as string);
 
     private void DeploymentsList_DoubleClick(object? sender, EventArgs e)
     {

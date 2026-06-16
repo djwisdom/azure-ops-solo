@@ -34,6 +34,8 @@ public sealed class SecurityPanel : UserControl
     private readonly TextBox _remediationBox;
     private readonly LinkLabel _linkLabel;
     private readonly List<SecurityRow> _rows = [];
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     private Theme _theme;
 
@@ -102,9 +104,9 @@ public sealed class SecurityPanel : UserControl
 
         Panel detailPanel = new() { Dock = DockStyle.Fill, Padding = new Padding(8) };
         _descriptionTitle = new Label { AutoSize = true, Text = "Description", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Dock = DockStyle.Top };
-        _descriptionBox = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Top, Height = 44, BorderStyle = BorderStyle.FixedSingle };
+        _descriptionBox = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Top, Height = 44, BorderStyle = BorderStyle.None };
         _remediationTitle = new Label { AutoSize = true, Text = "Remediation", Font = new Font("Segoe UI", 9f, FontStyle.Bold), Dock = DockStyle.Top, Padding = new Padding(0, 6, 0, 0) };
-        _remediationBox = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle };
+        _remediationBox = new TextBox { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, BorderStyle = BorderStyle.None };
         _linkLabel = new LinkLabel { Dock = DockStyle.Bottom, Height = 22, Text = "", TextAlign = ContentAlignment.MiddleLeft };
         _linkLabel.LinkClicked += (s, e) => AIOpsUiHelper.OpenUrl(_linkLabel.Tag as string);
         detailPanel.Controls.AddRange([_remediationBox, _remediationTitle, _descriptionBox, _descriptionTitle, _linkLabel]);
@@ -112,6 +114,8 @@ public sealed class SecurityPanel : UserControl
 
         Controls.Add(_splitContainer);
         Controls.Add(_filterBar);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Scans run locally — no connector required. Open a file or use Scan Active File (Ctrl+Alt+S) to populate findings.");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -157,7 +161,7 @@ public sealed class SecurityPanel : UserControl
         _theme = theme;
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.MenuBackground;
-        _filterBar.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _splitContainer.BackColor = theme.MenuBackground;
         _titleLabel.ForeColor = theme.Text;
         _descriptionTitle.ForeColor = theme.Text;
@@ -170,14 +174,10 @@ public sealed class SecurityPanel : UserControl
         _clearFiltersButton.BackColor = theme.PanelBackground;
         _clearFiltersButton.ForeColor = theme.Text;
         _clearFiltersButton.FlatAppearance.BorderColor = theme.Border;
-        _severityFilter.BackColor = theme.EditorBackground;
-        _severityFilter.ForeColor = theme.Text;
-        _categoryFilter.BackColor = theme.EditorBackground;
-        _categoryFilter.ForeColor = theme.Text;
-        _descriptionBox.BackColor = theme.EditorBackground;
-        _descriptionBox.ForeColor = theme.Text;
-        _remediationBox.BackColor = theme.EditorBackground;
-        _remediationBox.ForeColor = theme.Text;
+        _severityFilter.ApplyTheme(theme);
+        _categoryFilter.ApplyTheme(theme);
+        _descriptionBox.ApplyTheme(theme);
+        _remediationBox.ApplyTheme(theme);
         AIOpsUiHelper.ApplyListTheme(_findingsList, theme);
         _findingsList.Invalidate();
     }
@@ -251,11 +251,12 @@ public sealed class SecurityPanel : UserControl
         using SolidBrush backBrush = new(_theme.MenuBackground);
         using SolidBrush textBrush = new(_theme.Text);
         e.Graphics.FillRectangle(backBrush, e.Bounds);
-        TextRenderer.DrawText(e.Graphics, e.Header.Text, e.Font, e.Bounds, _theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+        TextRenderer.DrawText(e.Graphics, e.Header?.Text, e.Font ?? _findingsList.Font, e.Bounds, _theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
     }
 
     private void FindingsList_DrawSubItem(object? sender, DrawListViewSubItemEventArgs e)
     {
+        if (e.Item is null) return;
         SecurityRow? row = e.Item.Tag as SecurityRow;
         Color backColor = e.Item.Selected ? AIOpsUiHelper.CurrentLineBackground(_theme) : _theme.EditorBackground;
         Color foreColor = _theme.Text;
@@ -283,7 +284,7 @@ public sealed class SecurityPanel : UserControl
         using SolidBrush backBrush = new(backColor);
         e.Graphics.FillRectangle(backBrush, e.Bounds);
         Rectangle textBounds = Rectangle.Inflate(e.Bounds, -4, 0);
-        TextRenderer.DrawText(e.Graphics, e.SubItem.Text, _findingsList.Font, textBounds, foreColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+        TextRenderer.DrawText(e.Graphics, e.SubItem?.Text, _findingsList.Font, textBounds, foreColor, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 
     private void UpdateDetailPanel()

@@ -14,6 +14,7 @@ public sealed class TelemetryPanel : UserControl
     private readonly Button _closeButton;
     private readonly Panel _filterBar;
     private readonly TextBox _serviceTextBox;
+    private readonly Button _browseServicesButton;
     private readonly ComboBox _timeRangeCombo;
     private readonly Button _queryButton;
     private readonly Panel _tabStrip;
@@ -31,6 +32,8 @@ public sealed class TelemetryPanel : UserControl
     private Theme _theme;
     private IAIOpsConnector? _connector;
     private string _selectedTab = "Logs";
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     /// <summary>
     /// Raised when the panel should be closed.
@@ -62,13 +65,15 @@ public sealed class TelemetryPanel : UserControl
         _header.Controls.AddRange([_titleLabel, _serviceLabel, _refreshButton, _closeButton]);
 
         _filterBar = new Panel { Dock = DockStyle.Top, Height = 34, Padding = new Padding(6, 4, 6, 4) };
-        _serviceTextBox = new TextBox { Location = new Point(6, 5), Width = 180, PlaceholderText = "Service name" };
-        _timeRangeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(194, 5), Width = 110 };
+        _serviceTextBox = new TextBox { Location = new Point(6, 5), Width = 160, PlaceholderText = "Service name" };
+        _browseServicesButton = new Button { Text = "Browse…", Width = 64, Height = 24, Location = new Point(174, 4), FlatStyle = FlatStyle.Flat };
+        _browseServicesButton.Click += async (s, e) => await BrowseServicesAsync();
+        _timeRangeCombo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Location = new Point(246, 5), Width = 110 };
         _timeRangeCombo.Items.AddRange(["Last 1h", "Last 6h", "Last 24h", "Last 7d"]);
         _timeRangeCombo.SelectedIndex = 1;
-        _queryButton = new Button { Text = "Query", Width = 70, Height = 24, Location = new Point(312, 4), FlatStyle = FlatStyle.Flat };
+        _queryButton = new Button { Text = "Query", Width = 70, Height = 24, Location = new Point(364, 4), FlatStyle = FlatStyle.Flat };
         _queryButton.Click += async (s, e) => await QueryAsync();
-        _filterBar.Controls.AddRange([_serviceTextBox, _timeRangeCombo, _queryButton]);
+        _filterBar.Controls.AddRange([_serviceTextBox, _browseServicesButton, _timeRangeCombo, _queryButton]);
 
         _tabStrip = new Panel { Dock = DockStyle.Top, Height = 34, Padding = new Padding(6, 5, 6, 5) };
         _logsTabButton = new Button { Text = "Logs", Width = 70, Height = 24, FlatStyle = FlatStyle.Flat, Location = new Point(6, 5) };
@@ -78,6 +83,9 @@ public sealed class TelemetryPanel : UserControl
         _metricsTabButton.Click += (s, e) => ShowTab("Metrics");
         _tracesTabButton.Click += (s, e) => ShowTab("Traces");
         _tabStrip.Controls.AddRange([_logsTabButton, _metricsTabButton, _tracesTabButton]);
+        AIOpsUiHelper.AttachTabStripAccent(_tabStrip,
+            () => _selectedTab switch { "Metrics" => _metricsTabButton, "Traces" => _tracesTabButton, _ => _logsTabButton },
+            () => _theme.Accent);
 
         _contentPanel = new Panel { Dock = DockStyle.Fill };
 
@@ -116,6 +124,8 @@ public sealed class TelemetryPanel : UserControl
         Controls.Add(_contentPanel);
         Controls.Add(_tabStrip);
         Controls.Add(_filterBar);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Powered by Azure Monitor · Application Insights · Prometheus. Select a service, set a range, then click Query.");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -131,6 +141,8 @@ public sealed class TelemetryPanel : UserControl
         _connector = connector;
         if (_connector is null)
             ShowNotConfigured();
+        else if (_connector.Status != ConnectorStatus.Connected)
+            ShowMessage($"Telemetry connector: {_connector.Name} (connecting…)\nIf this persists, verify settings in AIOps > Settings (Ctrl+Alt+,).");
     }
 
     /// <summary>
@@ -150,7 +162,7 @@ public sealed class TelemetryPanel : UserControl
         _theme = theme;
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.MenuBackground;
-        _filterBar.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _tabStrip.BackColor = theme.MenuBackground;
         _contentPanel.BackColor = theme.MenuBackground;
         _logsPanel.BackColor = theme.MenuBackground;
@@ -169,6 +181,9 @@ public sealed class TelemetryPanel : UserControl
         _queryButton.BackColor = theme.PanelBackground;
         _queryButton.ForeColor = theme.Text;
         _queryButton.FlatAppearance.BorderColor = theme.Border;
+        _browseServicesButton.BackColor = theme.PanelBackground;
+        _browseServicesButton.ForeColor = theme.Text;
+        _browseServicesButton.FlatAppearance.BorderColor = theme.Border;
         ApplyTabTheme();
         _logsBox.BackColor = theme.EditorBackground;
         _logsBox.ForeColor = theme.Text;
@@ -185,6 +200,106 @@ public sealed class TelemetryPanel : UserControl
         base.Dispose(disposing);
     }
 
+    private async Task BrowseServicesAsync()
+    {
+        if (_connector is null) { ShowNotConfigured(); return; }
+        if (_connector is not IServiceDiscoveryCapable discovery)
+        {
+            MessageBox.Show($"{_connector.Name} does not support service discovery.\nType the service name manually.",
+                "Browse Services", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        _browseServicesButton.Enabled = false;
+        _browseServicesButton.Text = "…";
+        try
+        {
+            // Auto-connect if not yet connected (connectors connect in background after settings save).
+            if (_connector.Status != ConnectorStatus.Connected)
+            {
+                ShowMessage($"Connecting to {_connector.Name}…");
+                var state = await _connector.ConnectAsync().ConfigureAwait(true);
+                if (_connector.Status != ConnectorStatus.Connected)
+                {
+                    MessageBox.Show($"Could not connect to {_connector.Name}:\n{state.ErrorMessage}\n\nVerify settings in AIOps > Settings.",
+                        "Browse Services", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+
+            IReadOnlyList<string> services;
+            try
+            {
+                services = await discovery.GetObservableServicesAsync(7).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Service discovery failed:\n{ex.Message}", "Browse Services", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (services.Count == 0)
+            {
+                MessageBox.Show(
+                    "No services found in the last 7 days.\n\n" +
+                    "Check that:\n" +
+                    "• Application Insights App ID is set (Settings → Azure Monitor → App Insights App ID)\n" +
+                    "• OR a Log Analytics Workspace ID is set\n" +
+                    "• Application Insights SDK is sending telemetry\n" +
+                    "• az login / Service Principal has Reader access",
+                    "Browse Services", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Single service — just fill it in
+            if (services.Count == 1)
+            {
+                _serviceTextBox.Text = services[0];
+                _serviceLabel.Text = $"Service: {services[0]}";
+                return;
+            }
+
+            // Multiple services — show picker
+            using var dlg = new Form
+            {
+                Text            = "Select Service",
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition   = FormStartPosition.CenterParent,
+                ClientSize      = new Size(420, 340),
+                MinimizeBox     = false,
+                MaximizeBox     = false,
+            };
+            var lbl = new Label { Text = $"{services.Count} services observed in the last 7 days:", AutoSize = true, Location = new Point(12, 12) };
+            var listBox = new ListBox
+            {
+                Location    = new Point(12, 34),
+                Size        = new Size(396, 240),
+                BorderStyle = BorderStyle.FixedSingle,
+                Font        = new Font("Segoe UI", 9f),
+            };
+            foreach (var svc in services) listBox.Items.Add(svc);
+            if (listBox.Items.Count > 0) listBox.SelectedIndex = 0;
+
+            var okBtn     = new Button { Text = "Select", Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK,     Location = new Point(dlg.ClientSize.Width - 196, 288) };
+            var cancelBtn = new Button { Text = "Cancel", Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.Cancel, Location = new Point(dlg.ClientSize.Width - 100, 288) };
+            dlg.AcceptButton = okBtn;
+            dlg.CancelButton = cancelBtn;
+            dlg.Controls.AddRange([lbl, listBox, okBtn, cancelBtn]);
+            listBox.DoubleClick += (_, _) => { dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+
+            if (dlg.ShowDialog() == DialogResult.OK && listBox.SelectedItem is string chosen)
+            {
+                _serviceTextBox.Text = chosen;
+                _serviceLabel.Text = $"Service: {chosen}";
+            }
+        }
+        finally
+        {
+            _browseServicesButton.Enabled = true;
+            _browseServicesButton.Text = "Browse…";
+        }
+    }
+
     private async Task QueryAsync()
     {
         if (_connector is null)
@@ -196,7 +311,7 @@ public sealed class TelemetryPanel : UserControl
         string serviceName = _serviceTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(serviceName))
         {
-            ShowMessage("Enter a service name to query telemetry.");
+            ShowMessage("Enter a service name or click Browse… to pick from observed services.");
             return;
         }
 
@@ -247,6 +362,7 @@ public sealed class TelemetryPanel : UserControl
         _metricsPanel.Visible = string.Equals(tabName, "Metrics", StringComparison.OrdinalIgnoreCase);
         _tracesPanel.Visible = string.Equals(tabName, "Traces", StringComparison.OrdinalIgnoreCase);
         ApplyTabTheme();
+        _tabStrip.Invalidate();
     }
 
     private void ApplyTabTheme()
@@ -263,7 +379,7 @@ public sealed class TelemetryPanel : UserControl
         button.FlatAppearance.BorderColor = _theme.Border;
     }
 
-    private TimeSpan ParseRange() => _timeRangeCombo.SelectedItem as string switch
+    private TimeSpan ParseRange() => (_timeRangeCombo.SelectedItem as string) switch
     {
         "Last 1h" => TimeSpan.FromHours(1),
         "Last 6h" => TimeSpan.FromHours(6),
@@ -382,6 +498,7 @@ public sealed class TelemetryPanel : UserControl
 
     private void TracesTree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
     {
+        if (e.Node is null) return;
         e.DrawDefault = false;
         Color backColor = e.Node.IsSelected ? AIOpsUiHelper.CurrentLineBackground(_theme) : _tracesTree.BackColor;
         using SolidBrush backBrush = new(backColor);
@@ -397,7 +514,8 @@ public sealed class TelemetryPanel : UserControl
         _ => _theme.Text
     };
 
-    private void ShowNotConfigured() => ShowMessage("Not configured.");
+    private void ShowNotConfigured() =>
+        ShowMessage("Telemetry connector not configured.\nEnable a connector in AIOps > Settings (Ctrl+Alt+,) and ensure it shows Status: Connected.");
 
     private void ShowMessage(string message)
     {

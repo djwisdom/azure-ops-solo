@@ -18,10 +18,10 @@ public sealed class CorrelationEngine
         AddEvents(groupedEvents, commits.Select(commit => (InferService(commit.ChangedFiles, commit.Message), new CorrelationEvent("commit", commit.Sha, $"Commit {commit.ShortSha}: {commit.Message}", commit.Timestamp, commit.Url))));
         AddEvents(groupedEvents, prs.Select(pr => (InferService(pr.ChangedFiles, $"{pr.Title} {pr.Description}"), new CorrelationEvent("pullrequest", pr.Id, pr.Title, pr.CreatedAt, pr.Url))));
         AddEvents(groupedEvents, builds.Select(build => (InferService([], $"{build.Name} {build.Branch}"), new CorrelationEvent("build", build.Id, $"Pipeline {build.Name} on {build.Branch} is {build.Status}", build.StartedAt, build.Url, ToSeverity(build.Status)))));
-        AddEvents(groupedEvents, deployments.Select(deployment => (deployment.Service, new CorrelationEvent("deployment", deployment.Id, $"Deployment {deployment.Version} to {deployment.Environment} is {deployment.Status}", deployment.DeployedAt, deployment.PipelineUrl, ToSeverity(deployment.Status)))));
-        AddEvents(groupedEvents, incidents.Select(incident => (incident.AffectedService, new CorrelationEvent("incident", incident.Id, incident.Title, incident.StartedAt, incident.PostMortemUrl, incident.Severity))));
-        AddEvents(groupedEvents, alerts.Select(alert => (alert.ServiceName, new CorrelationEvent("alert", alert.Id, alert.RuleName, alert.FiredAt, alert.Url, alert.Severity))));
-        AddEvents(groupedEvents, anomalies.Select(anomaly => (anomaly.ServiceName, new CorrelationEvent("anomaly", anomaly.Id, anomaly.Description, anomaly.DetectedAt, null, anomaly.Severity))));
+        AddEvents(groupedEvents, deployments.Select(deployment => ((string?)deployment.Service, new CorrelationEvent("deployment", deployment.Id, $"Deployment {deployment.Version} to {deployment.Environment} is {deployment.Status}", deployment.DeployedAt, deployment.PipelineUrl, ToSeverity(deployment.Status)))));
+        AddEvents(groupedEvents, incidents.Select(incident => ((string?)incident.AffectedService, new CorrelationEvent("incident", incident.Id, incident.Title, incident.StartedAt, incident.PostMortemUrl, incident.Severity))));
+        AddEvents(groupedEvents, alerts.Select(alert => ((string?)alert.ServiceName, new CorrelationEvent("alert", alert.Id, alert.RuleName, alert.FiredAt, alert.Url, alert.Severity))));
+        AddEvents(groupedEvents, anomalies.Select(anomaly => ((string?)anomaly.ServiceName, new CorrelationEvent("anomaly", anomaly.Id, anomaly.Description, anomaly.DetectedAt, null, anomaly.Severity))));
 
         var chains = new List<CorrelationChain>();
         foreach (var group in groupedEvents)
