@@ -1,6 +1,8 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -8,14 +10,126 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 {
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
     private const int EM_SETLINKCOLOR = 0x0423;
+    private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+    private const uint INFINITE = 0xFFFFFFFF;
+    private static readonly IntPtr PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = (IntPtr)0x00020016;
+    private static readonly bool _conPtyAvailable = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 17763);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct COORD
+    {
+        public short X;
+        public short Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public IntPtr lpReserved;
+        public IntPtr lpDesktop;
+        public IntPtr lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFOEX
+    {
+        public STARTUPINFO StartupInfo;
+        public IntPtr lpAttributeList;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public int dwProcessId;
+        public int dwThreadId;
+    }
 
     [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreatePipe(out SafeFileHandle hReadPipe, out SafeFileHandle hWritePipe, IntPtr lpPipeAttributes, int nSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern int CreatePseudoConsole(COORD size, IntPtr hInput, IntPtr hOutput, uint dwFlags, out IntPtr phPC);
+
+    [DllImport("kernel32.dll")]
+    private static extern void ClosePseudoConsole(IntPtr hPC);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern int ResizePseudoConsole(IntPtr hPC, COORD size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool InitializeProcThreadAttributeList(IntPtr lpAttributeList, int dwAttributeCount, int dwFlags, ref IntPtr lpSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UpdateProcThreadAttribute(IntPtr lpAttributeList, uint dwFlags, IntPtr attribute, ref IntPtr lpValue, IntPtr cbSize, IntPtr lpPreviousValue, IntPtr lpReturnSize);
+
+    [DllImport("kernel32.dll")]
+    private static extern void DeleteProcThreadAttributeList(IntPtr lpAttributeList);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcess(
+        string? lpApplicationName,
+        StringBuilder? lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool bInheritHandles,
+        uint dwCreationFlags,
+        IntPtr lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFOEX lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateProcess(IntPtr hProcess, uint uExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetExitCodeProcess(IntPtr hProcess, out uint lpExitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
     private readonly RichTextBox _outputBox;
     private readonly TextBox _inputBox;
     private readonly Panel _inputContainer;
-    private Process? _process;
-    private StreamWriter? _stdin;
+    private Process? _legacyProcess;
+    private StreamWriter? _legacyStdin;
+    private FileStream? _ptyIn;
+    private FileStream? _ptyOut;
+    private Thread? _ptyReadThread;
+    private IntPtr _hPC;
+    private IntPtr _hProcess;
+    private IntPtr _hThread;
+    private volatile bool _processExited;
+    private bool _conPtyMode;
     private bool _disposed;
     private bool _shellStarted;
     private bool _isDark = true;
@@ -33,7 +147,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public event Action? ProcessExited;
     public event Action? HideTerminalRequested;
 
-    public bool IsRunning => _process is { HasExited: false };
+    public bool IsRunning => _conPtyMode ? (_hProcess != IntPtr.Zero && !_processExited) : (_legacyProcess is { HasExited: false });
 
     public string ShellName => Path.GetFileNameWithoutExtension(_shellPath);
 
@@ -198,6 +312,25 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void StartShell()
     {
+        if (_conPtyAvailable)
+        {
+            try
+            {
+                StartConPtyShell();
+                return;
+            }
+            catch (Exception ex)
+            {
+                AppendAnsiText($"\x1B[93m[Terminal] ConPTY unavailable, falling back to pipes: {ex.Message}\x1B[0m\n");
+                KillConPty();
+            }
+        }
+
+        StartLegacyShell();
+    }
+
+    private void StartLegacyShell()
+    {
         try
         {
             var psi = new ProcessStartInfo
@@ -215,15 +348,17 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             psi.Environment["TERM"] = "xterm-256color";
 
-            _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            _process.OutputDataReceived += OnOutputData;
-            _process.ErrorDataReceived += OnErrorData;
-            _process.Exited += OnProcessExited;
-            _process.Start();
+            _legacyProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            _legacyProcess.OutputDataReceived += OnLegacyOutputData;
+            _legacyProcess.ErrorDataReceived += OnLegacyErrorData;
+            _legacyProcess.Exited += OnLegacyProcessExited;
+            _legacyProcess.Start();
 
-            _stdin = _process.StandardInput;
-            _process.BeginOutputReadLine();
-            _process.BeginErrorReadLine();
+            _legacyStdin = _legacyProcess.StandardInput;
+            _legacyProcess.BeginOutputReadLine();
+            _legacyProcess.BeginErrorReadLine();
+            _conPtyMode = false;
+            _processExited = false;
         }
         catch (Exception ex)
         {
@@ -231,30 +366,169 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         }
     }
 
-    private void OnOutputData(object? sender, DataReceivedEventArgs e)
+    private void StartConPtyShell()
+    {
+        SafeFileHandle? inRead = null;
+        SafeFileHandle? inWrite = null;
+        SafeFileHandle? outRead = null;
+        SafeFileHandle? outWrite = null;
+        IntPtr attrList = IntPtr.Zero;
+
+        try
+        {
+            if (!CreatePipe(out inRead, out inWrite, IntPtr.Zero, 0))
+                ThrowLastWin32Exception("CreatePipe(stdin)");
+            if (!CreatePipe(out outRead, out outWrite, IntPtr.Zero, 0))
+                ThrowLastWin32Exception("CreatePipe(stdout)");
+
+            int hr = CreatePseudoConsole(GetTerminalSize(), inRead.DangerousGetHandle(), outWrite.DangerousGetHandle(), 0, out _hPC);
+            if (hr < 0)
+                Marshal.ThrowExceptionForHR(hr);
+
+            inRead.Dispose();
+            inRead = null;
+            outWrite.Dispose();
+            outWrite = null;
+
+            _ptyIn = new FileStream(inWrite, FileAccess.Write, 1, false);
+            inWrite = null;
+            _ptyOut = new FileStream(outRead, FileAccess.Read, 4096, false);
+            outRead = null;
+
+            IntPtr attrSize = IntPtr.Zero;
+            InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attrSize);
+            attrList = Marshal.AllocHGlobal(attrSize);
+            if (!InitializeProcThreadAttributeList(attrList, 1, 0, ref attrSize))
+                ThrowLastWin32Exception("InitializeProcThreadAttributeList");
+
+            IntPtr hPcValue = _hPC;
+            if (!UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, ref hPcValue, (IntPtr)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
+                ThrowLastWin32Exception("UpdateProcThreadAttribute");
+
+            STARTUPINFOEX si = default;
+            si.StartupInfo.cb = Marshal.SizeOf<STARTUPINFOEX>();
+            si.lpAttributeList = attrList;
+
+            StringBuilder commandLine = new($"\"{_shellPath}\"");
+            if (!CreateProcess(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref si, out PROCESS_INFORMATION pi))
+                ThrowLastWin32Exception("CreateProcess");
+
+            _hProcess = pi.hProcess;
+            _hThread = pi.hThread;
+            _processExited = false;
+            _conPtyMode = true;
+
+            StartConPtyReader();
+            StartConPtyExitWatcher();
+        }
+        catch
+        {
+            _processExited = true;
+            throw;
+        }
+        finally
+        {
+            if (attrList != IntPtr.Zero)
+            {
+                DeleteProcThreadAttributeList(attrList);
+                Marshal.FreeHGlobal(attrList);
+            }
+
+            inRead?.Dispose();
+            inWrite?.Dispose();
+            outRead?.Dispose();
+            outWrite?.Dispose();
+        }
+    }
+
+    private void StartConPtyReader()
+    {
+        var stream = _ptyOut;
+        if (stream == null)
+            return;
+
+        _ptyReadThread = new Thread(() => ReadConPtyOutput(stream))
+        {
+            IsBackground = true,
+            Name = "TerminalPanel-ConPTY-Read"
+        };
+        _ptyReadThread.Start();
+    }
+
+    private void ReadConPtyOutput(FileStream stream)
+    {
+        byte[] buffer = new byte[4096];
+        char[] chars = new char[Encoding.UTF8.GetMaxCharCount(buffer.Length)];
+        Decoder decoder = Encoding.UTF8.GetDecoder();
+
+        try
+        {
+            while (true)
+            {
+                int read = stream.Read(buffer, 0, buffer.Length);
+                if (read <= 0)
+                    break;
+
+                int charCount = decoder.GetChars(buffer, 0, read, chars, 0, flush: false);
+                if (charCount <= 0)
+                    continue;
+
+                string text = new(chars, 0, charCount);
+                if (IsHandleCreated && !_disposed)
+                    BeginInvoke(() => AppendAnsiText(text));
+            }
+        }
+        catch (ObjectDisposedException) { }
+        catch (IOException) { }
+    }
+
+    private void StartConPtyExitWatcher()
+    {
+        IntPtr processHandle = _hProcess;
+        Task.Run(() =>
+        {
+            if (processHandle == IntPtr.Zero)
+                return;
+
+            WaitForSingleObject(processHandle, INFINITE);
+            _processExited = true;
+
+            uint exitCode = 0;
+            GetExitCodeProcess(processHandle, out exitCode);
+
+            if (IsHandleCreated && !_disposed)
+            {
+                BeginInvoke(() =>
+                {
+                    AppendAnsiText($"\x1B[90m[Process exited (code: {exitCode})]\x1B[0m");
+                    ProcessExited?.Invoke();
+                });
+            }
+        });
+    }
+
+    private void OnLegacyOutputData(object? sender, DataReceivedEventArgs e)
     {
         if (e.Data != null && IsHandleCreated)
             BeginInvoke(() => AppendAnsiText(e.Data + "\n"));
     }
 
-    private void OnErrorData(object? sender, DataReceivedEventArgs e)
+    private void OnLegacyErrorData(object? sender, DataReceivedEventArgs e)
     {
         if (e.Data != null && IsHandleCreated)
             BeginInvoke(() => AppendAnsiText($"\x1B[91m{e.Data}\x1B[0m" + "\n"));
     }
 
-    private void OnProcessExited(object? sender, EventArgs e)
+    private void OnLegacyProcessExited(object? sender, EventArgs e)
     {
         if (!IsHandleCreated) return;
         BeginInvoke(() =>
         {
-            AppendAnsiText($"\x1B[90m[Process exited (code: {(_process?.ExitCode.ToString() ?? "unknown")})]\x1B[0m");
-            _stdin = null;
+            AppendAnsiText($"\x1B[90m[Process exited (code: {(_legacyProcess?.ExitCode.ToString() ?? "unknown")})]\x1B[0m");
+            _legacyStdin = null;
             ProcessExited?.Invoke();
         });
     }
-
-    // ANSI escape sequence support
 
     private static readonly Color[] _ansiColors = new[]
     {
@@ -284,7 +558,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     {
         if (string.IsNullOrEmpty(text)) return;
 
-        // Handle carriage returns for progress bars / overwriting lines
         int crPos = text.IndexOf('\r');
         if (crPos >= 0)
         {
@@ -318,23 +591,13 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         int pos = 0;
         while (pos < text.Length)
         {
-            if (text[pos] == '\x1B' && pos + 1 < text.Length && text[pos + 1] == '[')
+            if (text[pos] == '\x1B')
             {
-                int end = pos + 2;
-                while (end < text.Length && !@"ABCDEFGHJKSTfhilmnrsu".Contains(text[end]))
-                    end++;
-
-                if (end < text.Length)
-                {
-                    string param = text.Substring(pos + 2, end - pos - 2);
-                    char cmd = text[end];
-                    if (cmd == 'm')
-                        ProcessAnsiSgr(param);
-                    else if (cmd == 'K')
-                        HandleAnsiEraseLine();
-                    pos = end + 1;
+                if (TryHandleAnsiEscape(text, ref pos))
                     continue;
-                }
+
+                pos++;
+                continue;
             }
 
             if (text[pos] == '\b' && _outputBox.TextLength > 0)
@@ -346,10 +609,8 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
                 continue;
             }
 
-            int nextEsc = text.IndexOf('\x1B', pos);
-            if (nextEsc < 0) nextEsc = text.Length;
-            int len = nextEsc - pos;
-
+            int nextSpecial = FindNextSpecial(text, pos);
+            int len = nextSpecial - pos;
             if (len > 0)
             {
                 string segment = text.Substring(pos, len);
@@ -357,12 +618,121 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
                 _outputBox.AppendText(segment);
             }
 
-            pos = nextEsc;
+            pos = nextSpecial;
         }
 
         _outputBox.SelectionColor = _outputBox.ForeColor;
         _outputBox.SelectionBackColor = _outputBox.BackColor;
     }
+
+    private bool TryHandleAnsiEscape(string text, ref int pos)
+    {
+        if (pos + 1 >= text.Length)
+            return false;
+
+        char kind = text[pos + 1];
+        switch (kind)
+        {
+            case '[':
+                return TryHandleCsi(text, ref pos);
+            case ']':
+                return TrySkipOsc(text, ref pos);
+            case 'O':
+                pos = Math.Min(text.Length, pos + 3);
+                return true;
+            case '(':
+            case ')':
+                pos = Math.Min(text.Length, pos + 3);
+                return true;
+            case 'J':
+                ClearOutput();
+                pos += 2;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private bool TryHandleCsi(string text, ref int pos)
+    {
+        int end = pos + 2;
+        while (end < text.Length && !IsCsiFinalByte(text[end]))
+            end++;
+
+        if (end >= text.Length)
+        {
+            pos = text.Length;
+            return true;
+        }
+
+        string param = text.Substring(pos + 2, end - pos - 2);
+        char cmd = text[end];
+        pos = end + 1;
+
+        if (param.Length > 0 && param[0] == '?')
+            return true;
+
+        if (cmd == 'm')
+        {
+            ProcessAnsiSgr(param);
+            return true;
+        }
+
+        if (cmd == 'K')
+        {
+            HandleAnsiEraseLine();
+            return true;
+        }
+
+        if (cmd == 'J')
+        {
+            if (string.IsNullOrEmpty(param) || param == "0")
+                return true;
+
+            if (param == "2")
+                ClearOutput();
+
+            return true;
+        }
+
+        return true;
+    }
+
+    private bool TrySkipOsc(string text, ref int pos)
+    {
+        int i = pos + 2;
+        while (i < text.Length)
+        {
+            if (text[i] == '\a')
+            {
+                pos = i + 1;
+                return true;
+            }
+
+            if (text[i] == '\x1B' && i + 1 < text.Length && text[i + 1] == '\\')
+            {
+                pos = i + 2;
+                return true;
+            }
+
+            i++;
+        }
+
+        pos = text.Length;
+        return true;
+    }
+
+    private static int FindNextSpecial(string text, int start)
+    {
+        int nextEsc = text.IndexOf('\x1B', start);
+        int nextBackspace = text.IndexOf('\b', start);
+
+        if (nextEsc < 0) return nextBackspace < 0 ? text.Length : nextBackspace;
+        if (nextBackspace < 0) return nextEsc;
+        return Math.Min(nextEsc, nextBackspace);
+    }
+
+    private static bool IsCsiFinalByte(char ch) => ch >= 0x40 && ch <= 0x7E;
 
     private void GoToLineStart()
     {
@@ -395,10 +765,10 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             else if (code == 22) _ansiBold = false;
             else if (code >= 30 && code <= 37) _ansiFg = code - 30;
             else if (code == 38 && i + 2 < codes.Length && codes[i + 1] == "5") { _ansiFg = int.TryParse(codes[i + 2], out int c256) ? ClampAnsi(c256) : _ansiFg; i += 2; }
-            else if (code == 38) { } // truecolor skip
+            else if (code == 38) { }
             else if (code == 39) _ansiFg = -1;
             else if (code >= 40 && code <= 47) _ansiBg = code - 40;
-            else if (code == 48) { } // extended bg skip
+            else if (code == 48) { }
             else if (code == 49) _ansiBg = -1;
             else if (code >= 90 && code <= 97) _ansiFg = code - 90 + 8;
             else if (code >= 100 && code <= 107) _ansiBg = code - 100 + 8;
@@ -407,12 +777,8 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void HandleAnsiEraseLine()
     {
-        // Erase from cursor to end of line
         int pos = _outputBox.TextLength;
         if (pos == 0) return;
-        int lineStart = _outputBox.Text.LastIndexOf('\n', pos - 1);
-        if (lineStart < 0) lineStart = 0;
-        else lineStart++;
         _outputBox.SelectionStart = pos;
         _outputBox.SelectionLength = 0;
     }
@@ -474,7 +840,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     public void SendInput(string text)
     {
-        if (_stdin == null || _process == null || _process.HasExited)
+        if (!IsRunning)
         {
             AppendAnsiText("\x1B[93m[Terminal] Not running.\x1B[0m");
             return;
@@ -482,8 +848,28 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
         try
         {
-            _stdin.Write(text);
-            _stdin.Flush();
+            if (_conPtyMode)
+            {
+                if (_ptyIn == null)
+                {
+                    AppendAnsiText("\x1B[93m[Terminal] Not running.\x1B[0m");
+                    return;
+                }
+
+                byte[] bytes = Encoding.UTF8.GetBytes(text);
+                _ptyIn.Write(bytes, 0, bytes.Length);
+                _ptyIn.Flush();
+                return;
+            }
+
+            if (_legacyStdin == null)
+            {
+                AppendAnsiText("\x1B[93m[Terminal] Not running.\x1B[0m");
+                return;
+            }
+
+            _legacyStdin.Write(text);
+            _legacyStdin.Flush();
         }
         catch (Exception ex)
         {
@@ -493,6 +879,62 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void InputBox_KeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Control && e.KeyCode == Keys.C)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\x03");
+            return;
+        }
+
+        if (e.Control && e.KeyCode == Keys.D)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\x04");
+            return;
+        }
+
+        if (e.Control && e.KeyCode == Keys.L)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\x0C");
+            return;
+        }
+
+        if (e.KeyCode == Keys.Tab && !e.Shift)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\t");
+            return;
+        }
+
+        if (e.KeyCode == Keys.Escape)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\x1B");
+            return;
+        }
+
+        if (e.KeyCode == Keys.Left && _inputBox.TextLength == 0 && IsRunning)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\x1B[D");
+            return;
+        }
+
+        if (e.KeyCode == Keys.Right && _inputBox.TextLength == 0 && IsRunning)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            SendInput("\x1B[C");
+            return;
+        }
+
         if (e.KeyCode == Keys.Enter)
         {
             e.Handled = true;
@@ -503,7 +945,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             if (string.IsNullOrEmpty(cmd))
             {
-                SendInput(Environment.NewLine);
+                SendInput("\r");
                 return;
             }
 
@@ -518,39 +960,81 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             if (cmd.Equals("exit", StringComparison.OrdinalIgnoreCase))
             {
-                SendInput("exit" + Environment.NewLine);
+                SendInput("exit\r");
                 HideTerminalRequested?.Invoke();
                 return;
             }
 
             _commandHistory.Add(cmd);
             _historyIndex = _commandHistory.Count;
-            SendInput(cmd + Environment.NewLine);
+            SendInput(cmd + "\r");
+            return;
         }
-        else if (e.KeyCode == Keys.Up)
+
+        if (e.KeyCode == Keys.Up)
         {
-            if (_commandHistory.Count > 0 && _historyIndex > 0)
-            {
-                _historyIndex--;
-                _inputBox.Text = _commandHistory[_historyIndex];
-                _inputBox.SelectionStart = _inputBox.TextLength;
-            }
             e.Handled = true;
+            e.SuppressKeyPress = true;
+
+            if (_inputBox.TextLength > 0)
+            {
+                NavigateHistoryUp();
+                return;
+            }
+
+            if (_conPtyMode && IsRunning)
+            {
+                SendInput("\x1B[A");
+                return;
+            }
+
+            NavigateHistoryUp();
+            return;
         }
-        else if (e.KeyCode == Keys.Down)
+
+        if (e.KeyCode == Keys.Down)
         {
-            if (_commandHistory.Count > 0 && _historyIndex < _commandHistory.Count - 1)
-            {
-                _historyIndex++;
-                _inputBox.Text = _commandHistory[_historyIndex];
-                _inputBox.SelectionStart = _inputBox.TextLength;
-            }
-            else
-            {
-                _historyIndex = _commandHistory.Count;
-                _inputBox.Clear();
-            }
             e.Handled = true;
+            e.SuppressKeyPress = true;
+
+            if (_inputBox.TextLength > 0)
+            {
+                NavigateHistoryDown();
+                return;
+            }
+
+            if (_conPtyMode && IsRunning)
+            {
+                SendInput("\x1B[B");
+                return;
+            }
+
+            NavigateHistoryDown();
+        }
+    }
+
+    private void NavigateHistoryUp()
+    {
+        if (_commandHistory.Count > 0 && _historyIndex > 0)
+        {
+            _historyIndex--;
+            _inputBox.Text = _commandHistory[_historyIndex];
+            _inputBox.SelectionStart = _inputBox.TextLength;
+        }
+    }
+
+    private void NavigateHistoryDown()
+    {
+        if (_commandHistory.Count > 0 && _historyIndex < _commandHistory.Count - 1)
+        {
+            _historyIndex++;
+            _inputBox.Text = _commandHistory[_historyIndex];
+            _inputBox.SelectionStart = _inputBox.TextLength;
+        }
+        else
+        {
+            _historyIndex = _commandHistory.Count;
+            _inputBox.Clear();
         }
     }
 
@@ -574,21 +1058,100 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     public void Kill()
     {
-        if (_process != null && !_process.HasExited)
+        if (_conPtyMode)
+        {
+            KillConPty();
+            return;
+        }
+
+        KillLegacy();
+    }
+
+    private void KillLegacy()
+    {
+        if (_legacyProcess != null)
         {
             try
             {
-                SendInput("exit" + Environment.NewLine);
-                if (!_process.WaitForExit(2000))
+                if (!_legacyProcess.HasExited)
                 {
-                    _process.Kill(true);
+                    SendInput("exit" + Environment.NewLine);
+                    if (!_legacyProcess.WaitForExit(2000))
+                        _legacyProcess.Kill(true);
                 }
             }
             catch { }
-            _process.Dispose();
-            _process = null;
+            finally
+            {
+                _legacyProcess.Dispose();
+                _legacyProcess = null;
+            }
         }
-        _stdin = null;
+
+        _legacyStdin = null;
+    }
+
+    private void KillConPty()
+    {
+        _processExited = true;
+
+        var outStream = _ptyOut;
+        _ptyOut = null;
+        try { outStream?.Dispose(); } catch { }
+
+        if (_hProcess != IntPtr.Zero)
+        {
+            try
+            {
+                TerminateProcess(_hProcess, 1);
+                WaitForSingleObject(_hProcess, 2000);
+            }
+            catch { }
+        }
+
+        if (_ptyReadThread is { IsAlive: true })
+        {
+            try { _ptyReadThread.Join(250); } catch { }
+        }
+        _ptyReadThread = null;
+
+        if (_hThread != IntPtr.Zero)
+        {
+            try { CloseHandle(_hThread); } catch { }
+            _hThread = IntPtr.Zero;
+        }
+
+        if (_hProcess != IntPtr.Zero)
+        {
+            try { CloseHandle(_hProcess); } catch { }
+            _hProcess = IntPtr.Zero;
+        }
+
+        if (_hPC != IntPtr.Zero)
+        {
+            try { ClosePseudoConsole(_hPC); } catch { }
+            _hPC = IntPtr.Zero;
+        }
+
+        var inStream = _ptyIn;
+        _ptyIn = null;
+        try { inStream?.Dispose(); } catch { }
+
+        _conPtyMode = false;
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+
+        if (_conPtyMode && _hPC != IntPtr.Zero)
+        {
+            try
+            {
+                ResizePseudoConsole(_hPC, GetTerminalSize());
+            }
+            catch { }
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -605,6 +1168,25 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             }
         }
         base.Dispose(disposing);
+    }
+
+    private COORD GetTerminalSize()
+    {
+        Size size = _outputBox.ClientSize;
+        if (size.Width <= 0 || size.Height <= 0)
+            return new COORD { X = 120, Y = 30 };
+
+        Size charSize = TextRenderer.MeasureText("W", _outputBox.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
+        int charWidth = Math.Max(1, charSize.Width);
+        int charHeight = Math.Max(1, _outputBox.Font.Height);
+        int columns = Math.Max(1, size.Width / charWidth);
+        int rows = Math.Max(1, size.Height / charHeight);
+        return new COORD { X = (short)columns, Y = (short)rows };
+    }
+
+    private static void ThrowLastWin32Exception(string operation)
+    {
+        throw new Win32Exception(Marshal.GetLastWin32Error(), operation);
     }
 
     private static void OpenUrl(string? url)
