@@ -7,7 +7,7 @@ using WinFormsTimer = System.Windows.Forms.Timer;
 
 namespace MyCrownJewelApp.Pfpad
 {
-    public class HighlightRichTextBox : RichTextBox
+    public partial class HighlightRichTextBox : RichTextBox
 {
     private CurrentLineHighlightMode _highlightMode = CurrentLineHighlightMode.Off;
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
@@ -290,7 +290,7 @@ namespace MyCrownJewelApp.Pfpad
                 Marshal.StructureToPtr(cf, cfPtr, false);
 
                 SendMessage(Handle, EM_SETSEL, b.Position, b.Position + 1);
-                SendMessage(Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
+                SendMessagePtr(Handle, EM_SETCHARFORMAT, (IntPtr)SCF_SELECTION, cfPtr);
             }
         }
         finally
@@ -907,29 +907,30 @@ namespace MyCrownJewelApp.Pfpad
         catch { }
     }
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetDC(IntPtr hWnd);
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr GetDC(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
-    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [LibraryImport("user32.dll")]
+    private static partial int ReleaseDC(IntPtr hWnd, IntPtr hDC);
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial IntPtr SendMessagePtr(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("gdi32.dll")]
-    private static extern int BitBlt(IntPtr hdc, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, int rop);
+    [LibraryImport("gdi32.dll")]
+    private static partial int BitBlt(IntPtr hdc, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, int rop);
 
-    [DllImport("user32.dll")]
-    private static extern bool HideCaret(IntPtr hWnd);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool HideCaret(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int nIndex);
+    [LibraryImport("user32.dll")]
+    private static partial int GetSystemMetrics(int nIndex);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
 
     private const int GWL_STYLE = -16;
     private const int WS_VSCROLL = 0x00200000;

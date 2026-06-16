@@ -106,7 +106,7 @@ internal sealed class SettingsDialog : Form
             PlaceholderText = "Search settings...",
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
         _searchBox.TextChanged += SearchBox_TextChanged;
         Controls.Add(_searchBox);
@@ -418,13 +418,13 @@ internal sealed class SettingsDialog : Form
                         }
                     }
 
-                    MessageBox.Show("Settings imported successfully!", "Import Complete",
+                    ThemedMessageBox.Show("Settings imported successfully!", "Import Complete",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to import settings: {ex.Message}", "Import Error",
+                ThemedMessageBox.Show($"Failed to import settings: {ex.Message}", "Import Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -584,12 +584,12 @@ internal sealed class SettingsDialog : Form
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(saveFileDialog.FileName, json);
 
-                MessageBox.Show("Settings exported successfully!", "Export Complete",
+                ThemedMessageBox.Show("Settings exported successfully!", "Export Complete",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to export settings: {ex.Message}", "Export Error",
+                ThemedMessageBox.Show($"Failed to export settings: {ex.Message}", "Export Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -1124,7 +1124,7 @@ internal sealed class SettingsDialog : Form
     {
         if (_shortcutsListView.SelectedItems.Count == 0)
         {
-            MessageBox.Show("Please select a command first.", "No Selection",
+            ThemedMessageBox.Show("Please select a command first.", "No Selection",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
@@ -1190,7 +1190,7 @@ internal sealed class SettingsDialog : Form
             var conflictingBinding = _keyBindings.Values.FirstOrDefault(b => b.Key == keyString && b != binding);
             if (conflictingBinding != null)
             {
-                var result = MessageBox.Show(
+                var result = ThemedMessageBox.Show(
                     $"This shortcut is already assigned to '{conflictingBinding.Command}'. Replace it?",
                     "Shortcut Conflict",
                     MessageBoxButtons.YesNo,
@@ -1222,7 +1222,7 @@ internal sealed class SettingsDialog : Form
 
     private void ResetShortcutsButton_Click(object? sender, EventArgs e)
     {
-        var result = MessageBox.Show(
+        var result = ThemedMessageBox.Show(
             "This will reset all custom shortcuts to their defaults. Continue?",
             "Reset Shortcuts",
             MessageBoxButtons.YesNo,
@@ -1268,7 +1268,7 @@ internal sealed class SettingsDialog : Form
             Text = _mainForm.WorkspaceRoot ?? "",
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             ReadOnly = true
         };
         parent.Controls.Add(_workspacePathText);
@@ -1484,7 +1484,7 @@ internal sealed class SettingsDialog : Form
         string workspaceRoot = _workspacePathText.Text;
         if (string.IsNullOrEmpty(workspaceRoot))
         {
-            MessageBox.Show("No workspace selected.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedMessageBox.Show("No workspace selected.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -1499,12 +1499,12 @@ internal sealed class SettingsDialog : Form
             File.WriteAllText(settingsPath, json);
 
             _saveWorkspaceSettingsButton.Enabled = false;
-            MessageBox.Show("Workspace settings saved successfully!", "Success",
+            ThemedMessageBox.Show("Workspace settings saved successfully!", "Success",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to save workspace settings: {ex.Message}", "Error",
+            ThemedMessageBox.Show($"Failed to save workspace settings: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
@@ -1631,7 +1631,7 @@ internal sealed class SettingsDialog : Form
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        installBtn.Click += (s, e) => MessageBox.Show("Extension marketplace coming soon!", "Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        installBtn.Click += (s, e) => ThemedMessageBox.Show("Extension marketplace coming soon!", "Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
         parent.Controls.Add(installBtn);
 
         var manageBtn = new Button
@@ -1644,7 +1644,7 @@ internal sealed class SettingsDialog : Form
             ForeColor = _theme.Text,
             FlatAppearance = { BorderColor = _theme.Border }
         };
-        manageBtn.Click += (s, e) => MessageBox.Show("Extension manager coming soon!", "Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        manageBtn.Click += (s, e) => ThemedMessageBox.Show("Extension manager coming soon!", "Coming Soon", MessageBoxButtons.OK, MessageBoxIcon.Information);
         parent.Controls.Add(manageBtn);
 
         y += 40;
@@ -1658,7 +1658,7 @@ internal sealed class SettingsDialog : Form
         {
             Multiline = true,
             ReadOnly = true,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
             Font = new Font("Consolas", 12f),
@@ -1706,7 +1706,7 @@ internal sealed class SettingsDialog : Form
             Size = new Size(150, 20),
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
         _themePreviewPanel.Controls.Add(editor);
 
@@ -1720,7 +1720,7 @@ internal sealed class SettingsDialog : Form
         {
             Multiline = true,
             ReadOnly = true,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
             Font = new Font("Consolas", 10f)
@@ -1872,7 +1872,7 @@ internal sealed class SettingsDialog : Form
                     Width = 200,
                     BackColor = _theme.EditorBackground,
                     ForeColor = _theme.Text,
-                    BorderStyle = BorderStyle.FixedSingle,
+                    BorderStyle = BorderStyle.None,
                     Text = value.ToString()
                 };
                 shellText.Tag = key;
@@ -2594,7 +2594,7 @@ internal sealed class ThemeAwareListView : ListView
         _theme = theme;
         BackColor = _theme.EditorBackground;
         ForeColor = _theme.Text;
-        BorderStyle = BorderStyle.FixedSingle;
+        BorderStyle = BorderStyle.None;
         DoubleBuffered = true;
 
         // Enable owner drawing for custom scrollbar theming
@@ -2715,7 +2715,7 @@ internal sealed class AddWorkspaceSettingDialog : Form
             Size = new Size(240, 25),
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
         Controls.Add(_keyTextBox);
         y += 35;
@@ -2760,7 +2760,7 @@ internal sealed class AddWorkspaceSettingDialog : Form
             Size = new Size(240, 25),
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
         Controls.Add(_valueTextBox);
         y += 40;
@@ -2798,7 +2798,7 @@ internal sealed class AddWorkspaceSettingDialog : Form
     {
         if (string.IsNullOrWhiteSpace(_keyTextBox.Text))
         {
-            MessageBox.Show("Please enter a setting key.", "Validation Error",
+            ThemedMessageBox.Show("Please enter a setting key.", "Validation Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             DialogResult = DialogResult.None;
             return;
@@ -2815,7 +2815,7 @@ internal sealed class AddWorkspaceSettingDialog : Form
         }
         catch
         {
-            MessageBox.Show("Invalid value for the selected type.", "Validation Error",
+            ThemedMessageBox.Show("Invalid value for the selected type.", "Validation Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             DialogResult = DialogResult.None;
         }

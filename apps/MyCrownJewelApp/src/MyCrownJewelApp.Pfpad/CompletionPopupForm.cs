@@ -32,13 +32,15 @@ public sealed class CompletionPopupForm : Form
         Size = new Size(400, 250);
         BackColor = ThemeManager.Instance.CurrentTheme.MenuBackground;
 
+        var theme = ThemeManager.Instance.CurrentTheme;
+
         _listBox = new ListBox
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             Height = 200,
             BorderStyle = BorderStyle.None,
-            BackColor = ThemeManager.Instance.CurrentTheme.MenuBackground,
-            ForeColor = ThemeManager.Instance.CurrentTheme.Text,
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text,
             SelectionMode = SelectionMode.One
         };
 
@@ -77,9 +79,13 @@ public sealed class CompletionPopupForm : Form
 
         _descriptionPanel.Controls.Add(_descriptionLabel);
 
+        var listBoxWrapper = FlatUiHelper.WrapFlat(_listBox, theme);
+        listBoxWrapper.Dock = DockStyle.Top;
+        listBoxWrapper.Height = 200;
+
         var mainPanel = new Panel { Dock = DockStyle.Fill };
         mainPanel.Controls.Add(_descriptionPanel);
-        mainPanel.Controls.Add(_listBox);
+        mainPanel.Controls.Add(listBoxWrapper);
         Controls.Add(mainPanel);
 
         UpdateDescription();

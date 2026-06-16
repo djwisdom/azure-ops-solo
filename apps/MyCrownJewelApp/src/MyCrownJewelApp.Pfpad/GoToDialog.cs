@@ -25,9 +25,8 @@ public partial class GoToDialog : Form
         lineLabel.BackColor = Color.Transparent;
         lineLabel.ForeColor = theme.Text;
 
-        lineTextBox.BackColor = theme.EditorBackground;
-        lineTextBox.ForeColor = theme.Text;
-        lineTextBox.BorderStyle = BorderStyle.FixedSingle;
+        lineTextBox.ApplyTheme(theme);
+        lineTextBox.BorderStyle = BorderStyle.None;
 
         void StyleButton(Button btn)
         {
@@ -52,7 +51,9 @@ public partial class GoToDialog : Form
         MinimizeBox = false;
 
         lineLabel = new Label { Text = "Line &number:", Location = new Point(10, 15), AutoSize = true };
-        lineTextBox = new TextBox { Location = new Point(90, 12), Width = 150 };
+        lineTextBox = new TextBox { Location = new Point(90, 12), Width = 150, BackColor = ThemeManager.Instance.CurrentTheme.EditorBackground, ForeColor = ThemeManager.Instance.CurrentTheme.Text, BorderStyle = BorderStyle.None };
+        var lineTextBoxWrapper = FlatUiHelper.WrapFlat(lineTextBox, ThemeManager.Instance.CurrentTheme);
+        lineTextBoxWrapper.Bounds = new Rectangle(lineTextBox.Location, new Size(lineTextBox.Width, lineTextBox.Height + 4));
 #pragma warning disable CS8622 // Event subscription — sender may be null at attach time
         lineTextBox.KeyPress += LineTextBox_KeyPress;
 #pragma warning restore CS8622
@@ -65,7 +66,7 @@ public partial class GoToDialog : Form
         cancelButton = new Button { Text = "Cancel", Location = new Point(180, 50), Width = 80 };
         cancelButton.Click += (s, e) => Close();
 
-        Controls.AddRange(new Control[] { lineLabel, lineTextBox, goToButton, cancelButton });
+        Controls.AddRange(new Control[] { lineLabel, lineTextBoxWrapper, goToButton, cancelButton });
 
         AcceptButton = goToButton;
         CancelButton = cancelButton;

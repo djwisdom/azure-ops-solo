@@ -36,8 +36,10 @@ internal sealed class SimpleInputDialog : Form
             Width = 360,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
+        var inputBoxWrapper = FlatUiHelper.WrapFlat(_inputBox, theme);
+        inputBoxWrapper.Bounds = new Rectangle(_inputBox.Location, new Size(_inputBox.Width, _inputBox.Height + 4));
         _inputBox.SelectAll();
 
         Button okBtn = new()
@@ -65,7 +67,7 @@ internal sealed class SimpleInputDialog : Form
             DialogResult = DialogResult.Cancel
         };
 
-        Controls.AddRange(new Control[] { promptLabel, _inputBox, okBtn, cancelBtn });
+        Controls.AddRange(new Control[] { promptLabel, inputBoxWrapper, okBtn, cancelBtn });
         AcceptButton = okBtn;
         CancelButton = cancelBtn;
     }

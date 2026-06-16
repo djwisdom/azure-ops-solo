@@ -428,7 +428,6 @@ partial class Form1
         workspaceMenuItem.CheckOnClick = true;
         panelMenu.DropDownItems.Add(openFolderMenuItem);
         panelMenu.DropDownItems.Add(workspaceMenuItem);
-        panelMenu.DropDownItems.Add(new ToolStripSeparator());
         gitPanelMenuItem = new ToolStripMenuItem("&Source Control", null, ToggleGitPanel, Keys.Control | Keys.Alt | Keys.G);
         gitPanelMenuItem.CheckOnClick = true;
         panelMenu.DropDownItems.Add(gitPanelMenuItem);
@@ -447,7 +446,6 @@ partial class Form1
         terminalMenuItem = new ToolStripMenuItem("&Terminal", null, ToggleTerminal_Click, Keys.Control | Keys.Oemtilde);
         terminalMenuItem.Checked = false;
         panelMenu.DropDownItems.Add(terminalMenuItem);
-        panelMenu.DropDownItems.Add(new ToolStripSeparator());
         notificationCenterMenuItem = new ToolStripMenuItem("Notification &Center", null, ToggleNotificationCenter, Keys.Control | Keys.Shift | Keys.N);
         panelMenu.DropDownItems.Add(notificationCenterMenuItem);
         var notificationSettingsMenuItem = new ToolStripMenuItem("Notification &Settings...", null, ConfigureNotifications_Click);
@@ -530,7 +528,6 @@ partial class Form1
         var projectAnalysisMenuItem = new ToolStripMenuItem("&Analyze Repository", null, (s, e) => AnalyzeCurrentRepository());
         projectAnalysisMenuItem.ShortcutKeys = Keys.Control | Keys.Shift | Keys.A;
         toolsMenu.DropDownItems.Add(projectAnalysisMenuItem);
-        toolsMenu.DropDownItems.Add(new ToolStripSeparator());
         // Performance submenu
         var performanceMenu = new ToolStripMenuItem("&Performance");
         var profilerMenuItem = new ToolStripMenuItem("&Performance Profiler", null, (s, e) => ShowPerformanceProfiler());
@@ -552,12 +549,6 @@ partial class Form1
         toolsMenu.DropDownItems.Add(performanceMenu);
         toolsMenu.DropDownItems.Add(roslynMenu);
         menuStrip.Items.Add(toolsMenu);
-
-        // Help menu
-        var helpMenu = new ToolStripMenuItem("&Help");
-        var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
-        helpMenu.DropDownItems.Add(aboutMenuItem);
-        menuStrip.Items.Add(helpMenu);
 
         // AIOps menu
         aiopsMenu = new ToolStripMenuItem("&AIOps");
@@ -594,6 +585,15 @@ partial class Form1
         aiopsSettingsMenuItem = new ToolStripMenuItem("AIOps &Settings...", null, AiopsSettings_Click, Keys.Control | Keys.Alt | Keys.Oemcomma);
         aiopsMenu.DropDownItems.Add(aiopsSettingsMenuItem);
         menuStrip.Items.Add(aiopsMenu);
+
+        // Help menu — always last
+        var helpMenu = new ToolStripMenuItem("&Help");
+        var userManualMenuItem = new ToolStripMenuItem("&User Manual", null, UserManual_Click, Keys.F1);
+        var aboutMenuItem = new ToolStripMenuItem("&About Personal Flip Pad", null, About_Click);
+        helpMenu.DropDownItems.Add(userManualMenuItem);
+        helpMenu.DropDownItems.Add(new ToolStripSeparator());
+        helpMenu.DropDownItems.Add(aboutMenuItem);
+        menuStrip.Items.Add(helpMenu);
         menuStrip.Dock = DockStyle.Fill;
 
         // Tab Control for multi-file editing

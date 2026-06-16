@@ -595,10 +595,10 @@ namespace MyCrownJewelApp.Pfpad
     /// <summary>
     /// Main Vim engine class, refactored to use the State pattern.
     /// </summary>
-    public class VimEngine
+    public partial class VimEngine
     {
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int EM_REDO = 0x042D;
 
         // State pattern: current state

@@ -66,12 +66,15 @@ public sealed class StackTraceDialog : Form
             Multiline = true,
             ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Dock = DockStyle.Bottom,
+            Dock = DockStyle.Fill,
             Height = 120,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
+        var sourceBoxWrapper = FlatUiHelper.WrapFlat(sourceBox, theme);
+        sourceBoxWrapper.Dock = DockStyle.Bottom;
+        sourceBoxWrapper.Height = 120;
 
         // Populate frames
         _frameList.BeginUpdate();
@@ -109,7 +112,7 @@ public sealed class StackTraceDialog : Form
 
         Controls.Add(_frameList);
         Controls.Add(_statusLabel);
-        Controls.Add(sourceBox);
+        Controls.Add(sourceBoxWrapper);
         Controls.Add(closeBtn);
     }
 

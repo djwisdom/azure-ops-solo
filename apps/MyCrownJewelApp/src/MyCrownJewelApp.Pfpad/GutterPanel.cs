@@ -17,7 +17,7 @@ namespace MyCrownJewelApp.Pfpad;
 /// LINE_NUM  : right-aligned absolute or relative line numbers, width auto-sized to digits.
 /// FOLD      : always the rightmost column; click zone extends 8px left for usability.
 /// </summary>
-public class GutterPanel : Panel
+public partial class GutterPanel : Panel
 {
     private Form1 mainForm;
 
@@ -102,8 +102,8 @@ public class GutterPanel : Panel
     private bool _showBreakpoints = true;
 
     // ── P/Invoke ─────────────────────────────────────────────────────────────
-    [DllImport("user32.dll")]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
     private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
     private const int EM_GETLINECOUNT        = 0x00BA;
     private const int EM_LINEINDEX           = 0x00BB;

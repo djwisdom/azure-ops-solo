@@ -108,6 +108,7 @@ internal sealed class CloneRepositoryDialog : Form
             Style = ProgressBarStyle.Marquee,
             Visible = false
         };
+        _progressBar.ApplyTheme(ThemeManager.Instance.CurrentTheme);
 
         _urlTextBox.TextChanged += (s, e) => UpdateCloneButton();
         _pathTextBox.TextChanged += (s, e) => UpdateCloneButton();
@@ -144,7 +145,7 @@ internal sealed class CloneRepositoryDialog : Form
             {
                 tb.BackColor = theme.EditorBackground;
                 tb.ForeColor = theme.Text;
-                tb.BorderStyle = BorderStyle.FixedSingle;
+                tb.BorderStyle = BorderStyle.None;
             }
             else if (c is Label lbl)
             {
@@ -163,6 +164,7 @@ internal sealed class CloneRepositoryDialog : Form
         _cancelButton.ForeColor = theme.Text;
         _cancelButton.FlatAppearance.BorderColor = theme.Border;
         _cancelButton.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+        _progressBar.ApplyTheme(theme);
     }
 
     protected override void OnHandleCreated(EventArgs e)

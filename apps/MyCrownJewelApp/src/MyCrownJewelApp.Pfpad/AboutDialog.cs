@@ -7,16 +7,17 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-public sealed class AboutDialog : Form
+public sealed partial class AboutDialog : Form
 {
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 2;
 
-    [DllImport("user32.dll")]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
-    [DllImport("user32.dll")]
-    private static extern bool ReleaseCapture();
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ReleaseCapture();
 
     public AboutDialog()
     {
@@ -214,18 +215,21 @@ public sealed class AboutDialog : Form
 
         var featuresText = new System.Text.StringBuilder();
         featuresText.AppendLine("Features:");
-        featuresText.AppendLine("• Advanced code editor with syntax highlighting and minimap");
-        featuresText.AppendLine("• Vim mode with full keybindings and macros");
-        featuresText.AppendLine("• Git integration with visual status indicators");
-        featuresText.AppendLine("• Roslyn-powered IntelliSense and semantic highlighting");
-        featuresText.AppendLine("• Code folding and navigation features");
+        featuresText.AppendLine("• Flat-themed code editor with syntax highlighting and minimap");
+        featuresText.AppendLine("• AIOps intelligence layer — observability, incident, deployment, security");
+        featuresText.AppendLine("• AI-assisted root cause analysis, risk scoring, OTel code generation");
+        featuresText.AppendLine("• DPAPI-encrypted connector settings (tied to Windows user account)");
+        featuresText.AppendLine("• DevSecOps scanning: secrets, CVEs, IaC risks, policy violations");
+        featuresText.AppendLine("• Vim mode with macros, marks, visual/block selection, .vimrc support");
+        featuresText.AppendLine("• Git integration with diff, blame, history, conflict resolution");
+        featuresText.AppendLine("• Workspace panel and Visual Studio-style Solution Explorer");
+        featuresText.AppendLine("• Roslyn-powered IntelliSense and semantic highlighting for C#");
+        featuresText.AppendLine("• Code folding, elastic tabs, multi-caret, column selection");
         featuresText.AppendLine("• Performance profiler with flame graph analysis");
-        featuresText.AppendLine("• Command palette with 40+ searchable commands");
-        featuresText.AppendLine("• File associations for Infrastructure as Code (Terraform, Bicep, Ansible)");
-        featuresText.AppendLine("• DeepWiki-style repository analytics and intelligence");
-        featuresText.AppendLine("• Multi-panel workspace with cross-integration");
-        featuresText.AppendLine("• Theme support with 23 built-in themes");
-        featuresText.AppendLine("• Unicode support with BOM detection and RTL text");
+        featuresText.AppendLine("• Command palette with 40+ searchable commands (Ctrl+Shift+P)");
+        featuresText.AppendLine("• Language support: C#, C/C++, Python, JS/TS, Go, Rust, Terraform, Bicep, YAML");
+        featuresText.AppendLine("• 23 built-in themes with full flat, theme-aware UI");
+        featuresText.AppendLine("• Unicode, BOM detection, RTL text support");
         featuresText.AppendLine();
         featuresText.AppendLine("NuGet Dependencies:");
 

@@ -27,8 +27,13 @@ public sealed class AIOpsSettingsDialog : Form
     private readonly TextBox _azureSubscriptionIdTextBox;
     private readonly TextBox _azureResourceGroupTextBox;
     private readonly TextBox _azureWorkspaceIdTextBox;
+    private readonly TextBox _azureAppInsightsAppIdTextBox;
     private readonly Button _azureTestButton;
     private readonly Label _azureStatusLabel;
+    private readonly RadioButton _azureAuthSpRadio;
+    private readonly RadioButton _azureAuthCliRadio;
+    private Label _azureClientIdLabel = null!;
+    private Label _azureClientSecretLabel = null!;
 
     private readonly CheckBox _azureDevOpsEnabledCheckBox;
     private readonly TextBox _azureDevOpsOrganizationTextBox;
@@ -100,7 +105,7 @@ public sealed class AIOpsSettingsDialog : Form
         _tabs = new TabControl { Dock = DockStyle.Fill };
 
         (_enabledCheckBox, _mockDataCheckBox, _pollIntervalUpDown, _autoScanCheckBox, _requireApprovalCheckBox) = BuildGeneralTab();
-        (_azureMonitorEnabledCheckBox, _azureTenantIdTextBox, _azureClientIdTextBox, _azureClientSecretTextBox, _azureSubscriptionIdTextBox, _azureResourceGroupTextBox, _azureWorkspaceIdTextBox, _azureTestButton, _azureStatusLabel) = BuildAzureMonitorTab();
+        (_azureMonitorEnabledCheckBox, _azureTenantIdTextBox, _azureClientIdTextBox, _azureClientSecretTextBox, _azureSubscriptionIdTextBox, _azureResourceGroupTextBox, _azureWorkspaceIdTextBox, _azureAppInsightsAppIdTextBox, _azureTestButton, _azureStatusLabel, _azureAuthSpRadio, _azureAuthCliRadio) = BuildAzureMonitorTab();
         (_azureDevOpsEnabledCheckBox, _azureDevOpsOrganizationTextBox, _azureDevOpsProjectTextBox, _azureDevOpsPatTextBox, _azureDevOpsTestButton, _azureDevOpsStatusLabel) = BuildAzureDevOpsTab();
         (_kubernetesEnabledCheckBox, _kubernetesApiServerTextBox, _kubernetesBearerTokenTextBox, _kubernetesNamespaceTextBox, _kubernetesSkipTlsCheckBox, _kubernetesTestButton, _kubernetesStatusLabel) = BuildKubernetesTab();
         (_prometheusEnabledCheckBox, _prometheusBaseUrlTextBox, _prometheusUsernameTextBox, _prometheusPasswordTextBox, _prometheusBearerTokenTextBox) = BuildPrometheusTab();
@@ -189,56 +194,331 @@ public sealed class AIOpsSettingsDialog : Form
         return (enabled, mockData, pollInterval, autoScan, requireApproval);
     }
 
-    private (CheckBox enabled, TextBox tenantId, TextBox clientId, TextBox clientSecret, TextBox subscriptionId, TextBox resourceGroup, TextBox workspaceId, Button testButton, Label statusLabel) BuildAzureMonitorTab()
+    private (CheckBox enabled, TextBox tenantId, TextBox clientId, TextBox clientSecret, TextBox subscriptionId, TextBox resourceGroup, TextBox workspaceId, TextBox appInsightsAppId, Button testButton, Label statusLabel, RadioButton authSp, RadioButton authCli) BuildAzureMonitorTab()
     {
         TabPage page = new("Azure Monitor");
         TableLayoutPanel layout = CreateFormLayout();
+        InsertDpapiBannerRow(layout);
 
         CheckBox enabled = new() { Text = "Enable Azure Monitor", AutoSize = true };
+
+        // Auth mode selector
+        RadioButton authSp  = new() { Text = "Service Principal (Client ID + Secret)", AutoSize = true, Checked = true };
+        RadioButton authCli = new() { Text = "az login (current user)", AutoSize = true };
+        Button importCliButton = new() { Text = "⬇ Import from az CLI", Width = 160, Height = 24, FlatStyle = FlatStyle.Flat };
+        _secretToolTip.SetToolTip(importCliButton, "Run az account show and fill Tenant ID and Subscription ID automatically");
+
+        FlowLayoutPanel authPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        authPanel.Controls.AddRange([authSp, authCli]);
+
+        FlowLayoutPanel importPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        importPanel.Controls.Add(importCliButton);
+
         TextBox tenantId = new();
+        var clientIdLabel = new Label { Text = "Client ID", AutoSize = true };
         TextBox clientId = new();
-        TextBox clientSecret = new() { UseSystemPasswordChar = true };
+        var clientSecretLabel = new Label { Text = "Client Secret 🔒", AutoSize = true };
+        var (clientSecret, clientSecretWrapper) = CreateSecretField(_settings.AzureMonitor.EncryptedClientSecret);
         TextBox subscriptionId = new();
         TextBox resourceGroup = new();
         TextBox workspaceId = new();
+
+        Button importWsButton = new() { Text = "⬇ Import Workspaces", Width = 160, Height = 24, FlatStyle = FlatStyle.Flat };
+        _secretToolTip.SetToolTip(importWsButton, "List Log Analytics workspaces for the selected subscription and auto-fill Resource Group + Workspace ID");
+        FlowLayoutPanel importWsPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        importWsPanel.Controls.Add(importWsButton);
+
+        TextBox appInsightsAppId = new() { PlaceholderText = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" };
+        Button importAiButton = new() { Text = "⬇ Import App Insights", Width = 170, Height = 24, FlatStyle = FlatStyle.Flat };
+        _secretToolTip.SetToolTip(importAiButton, "List Application Insights components in this subscription and fill App ID");
+        FlowLayoutPanel importAiPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
+        importAiPanel.Controls.Add(importAiButton);
+
         Button testButton = new() { Text = "Test Connection", Width = 120, Height = 26, FlatStyle = FlatStyle.Flat };
         Label statusLabel = new() { Text = "Status: not tested", AutoSize = true };
         FlowLayoutPanel actionPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         actionPanel.Controls.AddRange([testButton, statusLabel]);
 
-        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
-        AddRow(layout, 1, new Label { Text = "Tenant ID", AutoSize = true }, tenantId);
-        AddRow(layout, 2, new Label { Text = "Client ID", AutoSize = true }, clientId);
-        AddRow(layout, 3, new Label { Text = "Client Secret", AutoSize = true }, clientSecret);
-        AddRow(layout, 4, new Label { Text = "Subscription ID", AutoSize = true }, subscriptionId);
-        AddRow(layout, 5, new Label { Text = "Resource Group", AutoSize = true }, resourceGroup);
-        AddRow(layout, 6, new Label { Text = "Workspace ID", AutoSize = true }, workspaceId);
-        AddRow(layout, 7, new Label { Text = "Actions", AutoSize = true }, actionPanel);
+        AddRow(layout, 1,  new Label { Text = "Connector",      AutoSize = true }, enabled);
+        AddRow(layout, 2,  new Label { Text = "Auth Mode",      AutoSize = true }, authPanel);
+        AddRow(layout, 3,  new Label { Text = "",               AutoSize = true }, importPanel);
+        AddRow(layout, 4,  new Label { Text = "Tenant ID",      AutoSize = true }, tenantId);
+        AddRow(layout, 5,  clientIdLabel,                                           clientId);
+        AddRow(layout, 6,  clientSecretLabel,                                       clientSecretWrapper);
+        AddRow(layout, 7,  new Label { Text = "Subscription ID", AutoSize = true }, subscriptionId);
+        AddRow(layout, 8,  new Label { Text = "Resource Group",  AutoSize = true }, resourceGroup);
+        AddRow(layout, 9,  new Label { Text = "Workspace ID",    AutoSize = true }, workspaceId);
+        AddRow(layout, 10, new Label { Text = "",                AutoSize = true }, importWsPanel);
+        AddRow(layout, 11, new Label { Text = "App Insights App ID", AutoSize = true }, appInsightsAppId);
+        AddRow(layout, 12, new Label { Text = "",                AutoSize = true }, importAiPanel);
+        AddRow(layout, 13, new Label { Text = "Actions",         AutoSize = true }, actionPanel);
+
+        // Store labels so Load/Save can access them
+        _azureClientIdLabel     = clientIdLabel;
+        _azureClientSecretLabel = clientSecretLabel;
+
+        // Toggle SP fields when auth mode changes
+        void ApplyAuthMode()
+        {
+            bool isSp = authSp.Checked;
+            clientIdLabel.Enabled     = isSp;
+            clientId.Enabled          = isSp;
+            clientSecretLabel.Enabled = isSp;
+            clientSecretWrapper.Enabled = isSp;
+            clientSecret.Enabled      = isSp;
+            importCliButton.Enabled   = authCli.Checked;
+        }
+        authSp.CheckedChanged  += (_, _) => ApplyAuthMode();
+        authCli.CheckedChanged += (_, _) => ApplyAuthMode();
+        ApplyAuthMode();
+
+        // Import from az CLI: list subscriptions and let user pick if multiple exist
+        importCliButton.Click += async (s, e) =>
+        {
+            statusLabel.Text = "Status: querying az CLI subscriptions…";
+            try
+            {
+                using var proc = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c az account list --output json --all")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError  = true,
+                        UseShellExecute        = false,
+                        CreateNoWindow         = true,
+                    }
+                };
+                proc.Start();
+                string output = await proc.StandardOutput.ReadToEndAsync().ConfigureAwait(true);
+                await proc.WaitForExitAsync().ConfigureAwait(true);
+
+                if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                {
+                    statusLabel.Text = "Status: az CLI import failed — run 'az login' first.";
+                    return;
+                }
+
+                // Parse subscription list
+                using var doc = System.Text.Json.JsonDocument.Parse(output);
+                var subs = new List<(string Id, string Name, string TenantId, bool IsDefault)>();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    string id       = el.TryGetProperty("id",           out var p1) ? p1.GetString() ?? "" : "";
+                    string name     = el.TryGetProperty("name",         out var p2) ? p2.GetString() ?? "" : "";
+                    string tenant   = el.TryGetProperty("tenantId",     out var p3) ? p3.GetString() ?? "" : "";
+                    bool   isDefault = el.TryGetProperty("isDefault",   out var p4) && p4.GetBoolean();
+                    if (!string.IsNullOrWhiteSpace(id))
+                        subs.Add((id, name, tenant, isDefault));
+                }
+
+                if (subs.Count == 0)
+                {
+                    statusLabel.Text = "Status: no subscriptions found — run 'az login' first.";
+                    return;
+                }
+
+                // If only one subscription, use it directly
+                var chosen = subs.Count == 1 ? subs[0] : PickSubscription(subs);
+                if (chosen == default)
+                {
+                    statusLabel.Text = "Status: import cancelled.";
+                    return;
+                }
+
+                tenantId.Text      = chosen.TenantId;
+                subscriptionId.Text = chosen.Id;
+                string label = subs.Count == 1 ? "imported" : "imported (selected)";
+                statusLabel.Text = $"Status: {label} — {chosen.Name} ✓";
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = $"Status: import error — {ex.Message}";
+            }
+        };
+
+        // Import Workspaces: list Log Analytics workspaces for the current subscription
+        importWsButton.Click += async (s, e) =>
+        {
+            string subId = subscriptionId.Text.Trim();
+            if (string.IsNullOrWhiteSpace(subId))
+            {
+                statusLabel.Text = "Status: enter or import a Subscription ID first.";
+                return;
+            }
+            statusLabel.Text = "Status: querying workspaces…";
+            try
+            {
+                using var proc = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo(
+                        "cmd.exe", $"/c az monitor log-analytics workspace list --subscription {subId} --output json")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError  = true,
+                        UseShellExecute        = false,
+                        CreateNoWindow         = true,
+                    }
+                };
+                proc.Start();
+                string output = await proc.StandardOutput.ReadToEndAsync().ConfigureAwait(true);
+                await proc.WaitForExitAsync().ConfigureAwait(true);
+
+                if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                {
+                    statusLabel.Text = "Status: workspace query failed — check subscription ID and az login.";
+                    return;
+                }
+
+                using var doc = System.Text.Json.JsonDocument.Parse(output);
+                var workspaces = new List<(string WorkspaceId, string Name, string ResourceGroup, string Location)>();
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    // customerId is the Log Analytics Workspace GUID used by the API
+                    string wsId  = el.TryGetProperty("customerId",     out var p1) ? p1.GetString() ?? "" : "";
+                    string name  = el.TryGetProperty("name",           out var p2) ? p2.GetString() ?? "" : "";
+                    string rg    = el.TryGetProperty("resourceGroup",  out var p3) ? p3.GetString() ?? "" : "";
+                    string loc   = el.TryGetProperty("location",       out var p4) ? p4.GetString() ?? "" : "";
+                    if (!string.IsNullOrWhiteSpace(wsId))
+                        workspaces.Add((wsId, name, rg, loc));
+                }
+
+                if (workspaces.Count == 0)
+                {
+                    statusLabel.Text = "Status: no Log Analytics workspaces found in this subscription.";
+                    return;
+                }
+
+                var chosen = workspaces.Count == 1 ? workspaces[0] : PickWorkspace(workspaces);
+                if (chosen == default)
+                {
+                    statusLabel.Text = "Status: workspace import cancelled.";
+                    return;
+                }
+
+                resourceGroup.Text = chosen.ResourceGroup;
+                workspaceId.Text   = chosen.WorkspaceId;
+                string lbl2 = workspaces.Count == 1 ? "imported" : "imported (selected)";
+                statusLabel.Text = $"Status: {lbl2} — {chosen.Name} ✓";
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = $"Status: workspace import error — {ex.Message}";
+            }
+        };
+
+        // Import App Insights: list Application Insights components in the subscription
+        importAiButton.Click += async (s, e) =>
+        {
+            string subId = subscriptionId.Text.Trim();
+            if (string.IsNullOrWhiteSpace(subId))
+            {
+                statusLabel.Text = "Status: enter or import a Subscription ID first.";
+                return;
+            }
+            statusLabel.Text = "Status: querying App Insights components…";
+            try
+            {
+                // Use 'az rest' against the ARM API — no extension required.
+                // az monitor app-insights component list requires the application-insights extension.
+                string armUrl = $"https://management.azure.com/subscriptions/{subId}/providers/Microsoft.Insights/components?api-version=2020-02-02";
+                using var proc = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo(
+                        "cmd.exe", $"/c az rest --method get --url \"{armUrl}\" --output json")
+                    {
+                        RedirectStandardOutput = true,
+                        RedirectStandardError  = true,
+                        UseShellExecute        = false,
+                        CreateNoWindow         = true,
+                    }
+                };
+                proc.Start();
+                string output = await proc.StandardOutput.ReadToEndAsync().ConfigureAwait(true);
+                string stderr = await proc.StandardError.ReadToEndAsync().ConfigureAwait(true);
+                await proc.WaitForExitAsync().ConfigureAwait(true);
+
+                if (proc.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                {
+                    string hint = stderr.Contains("az login", StringComparison.OrdinalIgnoreCase)
+                        ? "Run 'az login' first."
+                        : stderr.Length > 0 ? stderr.Trim().Split('\n')[0] : "Check subscription ID and az login.";
+                    statusLabel.Text = $"Status: App Insights query failed — {hint}";
+                    return;
+                }
+
+                using var doc = System.Text.Json.JsonDocument.Parse(output);
+                // ARM list response wraps items in a "value" array
+                var root = doc.RootElement;
+                var items = root.TryGetProperty("value", out var val) ? val : root;
+
+                var components = new List<(string AppId, string Name, string ResourceGroup, string Location)>();
+                foreach (var el in items.EnumerateArray())
+                {
+                    string name  = el.TryGetProperty("name",          out var p1) ? p1.GetString() ?? "" : "";
+                    string rg    = el.TryGetProperty("resourceGroup", out var p2) ? p2.GetString() ?? "" : "";
+                    string loc   = el.TryGetProperty("location",      out var p3) ? p3.GetString() ?? "" : "";
+                    string appId = "";
+                    if (el.TryGetProperty("properties", out var props) && props.TryGetProperty("AppId", out var aid))
+                        appId = aid.GetString() ?? "";
+                    if (!string.IsNullOrWhiteSpace(appId))
+                        components.Add((appId, name, rg, loc));
+                }
+
+                if (components.Count == 0)
+                {
+                    statusLabel.Text = "Status: no Application Insights components found in this subscription.";
+                    return;
+                }
+
+                var chosen = components.Count == 1 ? components[0] : PickAppInsightsComponent(components);
+                if (chosen == default)
+                {
+                    statusLabel.Text = "Status: App Insights import cancelled.";
+                    return;
+                }
+
+                appInsightsAppId.Text  = chosen.AppId;
+                if (string.IsNullOrWhiteSpace(resourceGroup.Text)) resourceGroup.Text = chosen.ResourceGroup;
+                string lbl3 = components.Count == 1 ? "imported" : "imported (selected)";
+                statusLabel.Text = $"Status: {lbl3} — {chosen.Name} ✓";
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = $"Status: App Insights import error — {ex.Message}";
+            }
+        };
+
+        layout.RowCount = 14;
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         page.Controls.Add(layout);
         _tabs.TabPages.Add(page);
-        return (enabled, tenantId, clientId, clientSecret, subscriptionId, resourceGroup, workspaceId, testButton, statusLabel);
+        return (enabled, tenantId, clientId, clientSecret, subscriptionId, resourceGroup, workspaceId, appInsightsAppId, testButton, statusLabel, authSp, authCli);
     }
 
     private (CheckBox enabled, TextBox organization, TextBox project, TextBox pat, Button testButton, Label statusLabel) BuildAzureDevOpsTab()
     {
         TabPage page = new("Azure DevOps");
         TableLayoutPanel layout = CreateFormLayout();
+        InsertDpapiBannerRow(layout);
 
         CheckBox enabled = new() { Text = "Enable Azure DevOps", AutoSize = true };
         TextBox organization = new();
         TextBox project = new();
-        TextBox pat = new() { UseSystemPasswordChar = true };
+        var (pat, patWrapper) = CreateSecretField(_settings.AzureDevOps.EncryptedPersonalAccessToken);
         Button testButton = new() { Text = "Test Connection", Width = 120, Height = 26, FlatStyle = FlatStyle.Flat };
         Label statusLabel = new() { Text = "Status: not tested", AutoSize = true };
         FlowLayoutPanel actionPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         actionPanel.Controls.AddRange([testButton, statusLabel]);
 
-        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
-        AddRow(layout, 1, new Label { Text = "Organization", AutoSize = true }, organization);
-        AddRow(layout, 2, new Label { Text = "Project", AutoSize = true }, project);
-        AddRow(layout, 3, new Label { Text = "PAT", AutoSize = true }, pat);
-        AddRow(layout, 4, new Label { Text = "Actions", AutoSize = true }, actionPanel);
+        AddRow(layout, 1, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 2, new Label { Text = "Organization", AutoSize = true }, organization);
+        AddRow(layout, 3, new Label { Text = "Project", AutoSize = true }, project);
+        AddRow(layout, 4, new Label { Text = "PAT 🔒", AutoSize = true }, patWrapper);
+        AddRow(layout, 5, new Label { Text = "Actions", AutoSize = true }, actionPanel);
 
         page.Controls.Add(layout);
         _tabs.TabPages.Add(page);
@@ -249,10 +529,11 @@ public sealed class AIOpsSettingsDialog : Form
     {
         TabPage page = new("Kubernetes");
         TableLayoutPanel layout = CreateFormLayout();
+        InsertDpapiBannerRow(layout);
 
         CheckBox enabled = new() { Text = "Enable Kubernetes", AutoSize = true };
         TextBox apiServer = new();
-        TextBox bearerToken = new() { UseSystemPasswordChar = true };
+        var (bearerToken, bearerTokenWrapper) = CreateSecretField(_settings.Kubernetes.EncryptedBearerToken);
         TextBox namespaceText = new();
         CheckBox skipTls = new() { Text = "Skip TLS verify", AutoSize = true };
         Button testButton = new() { Text = "Test Connection", Width = 120, Height = 26, FlatStyle = FlatStyle.Flat };
@@ -260,12 +541,12 @@ public sealed class AIOpsSettingsDialog : Form
         FlowLayoutPanel actionPanel = new() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false };
         actionPanel.Controls.AddRange([testButton, statusLabel]);
 
-        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
-        AddRow(layout, 1, new Label { Text = "API Server URL", AutoSize = true }, apiServer);
-        AddRow(layout, 2, new Label { Text = "Bearer Token", AutoSize = true }, bearerToken);
-        AddRow(layout, 3, new Label { Text = "Namespace", AutoSize = true }, namespaceText);
-        AddRow(layout, 4, new Label { Text = "TLS", AutoSize = true }, skipTls);
-        AddRow(layout, 5, new Label { Text = "Actions", AutoSize = true }, actionPanel);
+        AddRow(layout, 1, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 2, new Label { Text = "API Server URL", AutoSize = true }, apiServer);
+        AddRow(layout, 3, new Label { Text = "Bearer Token 🔒", AutoSize = true }, bearerTokenWrapper);
+        AddRow(layout, 4, new Label { Text = "Namespace", AutoSize = true }, namespaceText);
+        AddRow(layout, 5, new Label { Text = "TLS", AutoSize = true }, skipTls);
+        AddRow(layout, 6, new Label { Text = "Actions", AutoSize = true }, actionPanel);
 
         page.Controls.Add(layout);
         _tabs.TabPages.Add(page);
@@ -276,19 +557,20 @@ public sealed class AIOpsSettingsDialog : Form
     {
         TabPage page = new("Prometheus");
         TableLayoutPanel layout = CreateFormLayout();
+        InsertDpapiBannerRow(layout);
 
         CheckBox enabled = new() { Text = "Enable Prometheus", AutoSize = true };
         TextBox baseUrl = new() { Text = "http://localhost:9090" };
         TextBox username = new();
-        TextBox password = new() { UseSystemPasswordChar = true };
-        TextBox bearerToken = new() { UseSystemPasswordChar = true };
+        var (password, passwordWrapper) = CreateSecretField(_settings.Prometheus.EncryptedPassword);
+        var (bearerToken, bearerTokenWrapper) = CreateSecretField(_settings.Prometheus.EncryptedBearerToken);
 
-        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
-        AddRow(layout, 1, new Label { Text = "Base URL", AutoSize = true }, baseUrl);
-        AddRow(layout, 2, new Label { Text = "Username", AutoSize = true }, username);
-        AddRow(layout, 3, new Label { Text = "Password 🔒", AutoSize = true }, password);
-        AddRow(layout, 4, new Label { Text = "Bearer Token 🔒", AutoSize = true }, bearerToken);
-        AddRow(layout, 5, new Label { Text = "Auth note", AutoSize = true },
+        AddRow(layout, 1, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 2, new Label { Text = "Base URL", AutoSize = true }, baseUrl);
+        AddRow(layout, 3, new Label { Text = "Username", AutoSize = true }, username);
+        AddRow(layout, 4, new Label { Text = "Password 🔒", AutoSize = true }, passwordWrapper);
+        AddRow(layout, 5, new Label { Text = "Bearer Token 🔒", AutoSize = true }, bearerTokenWrapper);
+        AddRow(layout, 6, new Label { Text = "Auth note", AutoSize = true },
             new Label { Text = "Use Bearer Token OR Username/Password, not both.", AutoSize = true, ForeColor = Color.DimGray });
 
         page.Controls.Add(layout);
@@ -300,15 +582,16 @@ public sealed class AIOpsSettingsDialog : Form
     {
         TabPage page = new("PagerDuty");
         TableLayoutPanel layout = CreateFormLayout();
+        InsertDpapiBannerRow(layout);
 
         CheckBox enabled = new() { Text = "Enable PagerDuty", AutoSize = true };
-        TextBox apiToken = new() { UseSystemPasswordChar = true };
+        var (apiToken, apiTokenWrapper) = CreateSecretField(_settings.PagerDuty.EncryptedApiToken);
         TextBox serviceId = new();
 
-        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
-        AddRow(layout, 1, new Label { Text = "API Token 🔒", AutoSize = true }, apiToken);
-        AddRow(layout, 2, new Label { Text = "Service ID (optional)", AutoSize = true }, serviceId);
-        AddRow(layout, 3, new Label { Text = "Get token", AutoSize = true },
+        AddRow(layout, 1, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 2, new Label { Text = "API Token 🔒", AutoSize = true }, apiTokenWrapper);
+        AddRow(layout, 3, new Label { Text = "Service ID (optional)", AutoSize = true }, serviceId);
+        AddRow(layout, 4, new Label { Text = "Get token", AutoSize = true },
             new Label { Text = "User Icon → My Profile → User Settings → Create API Key", AutoSize = true, ForeColor = Color.DimGray });
 
         page.Controls.Add(layout);
@@ -320,22 +603,200 @@ public sealed class AIOpsSettingsDialog : Form
     {
         TabPage page = new("GitHub Actions");
         TableLayoutPanel layout = CreateFormLayout();
+        InsertDpapiBannerRow(layout);
 
         CheckBox enabled = new() { Text = "Enable GitHub Actions", AutoSize = true };
         TextBox owner = new();
         TextBox repository = new();
-        TextBox pat = new() { UseSystemPasswordChar = true };
+        var (pat, patWrapper) = CreateSecretField(_settings.GitHubActions.EncryptedPersonalAccessToken);
 
-        AddRow(layout, 0, new Label { Text = "Connector", AutoSize = true }, enabled);
-        AddRow(layout, 1, new Label { Text = "Owner (org or user)", AutoSize = true }, owner);
-        AddRow(layout, 2, new Label { Text = "Repository", AutoSize = true }, repository);
-        AddRow(layout, 3, new Label { Text = "Personal Access Token 🔒", AutoSize = true }, pat);
-        AddRow(layout, 4, new Label { Text = "Required scopes", AutoSize = true },
+        AddRow(layout, 1, new Label { Text = "Connector", AutoSize = true }, enabled);
+        AddRow(layout, 2, new Label { Text = "Owner (org or user)", AutoSize = true }, owner);
+        AddRow(layout, 3, new Label { Text = "Repository", AutoSize = true }, repository);
+        AddRow(layout, 4, new Label { Text = "Personal Access Token 🔒", AutoSize = true }, patWrapper);
+        AddRow(layout, 5, new Label { Text = "Required scopes", AutoSize = true },
             new Label { Text = "repo, workflow, read:org", AutoSize = true, ForeColor = Color.DimGray });
 
         page.Controls.Add(layout);
         _tabs.TabPages.Add(page);
         return (enabled, owner, repository, pat);
+    }
+
+    private static (string AppId, string Name, string ResourceGroup, string Location) PickAppInsightsComponent(
+        List<(string AppId, string Name, string ResourceGroup, string Location)> components)
+    {
+        using var dlg = new Form
+        {
+            Text            = "Select Application Insights Component",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition   = FormStartPosition.CenterParent,
+            ClientSize      = new Size(620, 300),
+            MinimizeBox     = false, MaximizeBox     = false,
+        };
+        var lbl  = new Label { Text = $"Found {components.Count} components. Select one:", AutoSize = true, Location = new Point(12, 12) };
+        var list = new ListView
+        {
+            Location = new Point(12, 36), Size = new Size(596, 180),
+            View = View.Details, FullRowSelect = true, MultiSelect = false,
+            BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 9f),
+        };
+        list.Columns.Add("Name",           200);
+        list.Columns.Add("App ID",         240);
+        list.Columns.Add("Resource Group", 110);
+        list.Columns.Add("Location",        70);
+        foreach (var c in components)
+        {
+            var item = new ListViewItem(c.Name);
+            item.SubItems.Add(c.AppId); item.SubItems.Add(c.ResourceGroup); item.SubItems.Add(c.Location);
+            item.Tag = c; list.Items.Add(item);
+        }
+        if (list.Items.Count > 0) { list.Items[0].Selected = true; list.Items[0].EnsureVisible(); }
+        var okBtn     = new Button { Text = "Select", Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK,     Location = new Point(dlg.ClientSize.Width - 196, 236) };
+        var cancelBtn = new Button { Text = "Cancel", Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.Cancel, Location = new Point(dlg.ClientSize.Width - 100, 236) };
+        dlg.AcceptButton = okBtn; dlg.CancelButton = cancelBtn;
+        dlg.Controls.AddRange([lbl, list, okBtn, cancelBtn]);
+        list.DoubleClick += (_, _) => { dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+        if (dlg.ShowDialog() != DialogResult.OK || list.SelectedItems.Count == 0) return default;
+        return ((string AppId, string Name, string ResourceGroup, string Location))list.SelectedItems[0].Tag!;
+    }
+
+    /// <summary>
+    /// Shows a flat workspace picker dialog and returns the chosen entry, or <c>default</c> if cancelled.
+    /// </summary>
+    private static (string WorkspaceId, string Name, string ResourceGroup, string Location) PickWorkspace(
+        List<(string WorkspaceId, string Name, string ResourceGroup, string Location)> workspaces)
+    {
+        using var dlg = new Form
+        {
+            Text            = "Select Log Analytics Workspace",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition   = FormStartPosition.CenterParent,
+            ClientSize      = new Size(620, 320),
+            MinimizeBox     = false,
+            MaximizeBox     = false,
+        };
+
+        var lbl = new Label
+        {
+            Text     = $"Found {workspaces.Count} workspaces. Select one:",
+            AutoSize = true,
+            Location = new Point(12, 12),
+        };
+
+        var list = new ListView
+        {
+            Location      = new Point(12, 36),
+            Size          = new Size(596, 200),
+            View          = View.Details,
+            FullRowSelect = true,
+            MultiSelect   = false,
+            BorderStyle   = BorderStyle.FixedSingle,
+            Font          = new Font("Segoe UI", 9f),
+        };
+        list.Columns.Add("Workspace Name",  180);
+        list.Columns.Add("Workspace ID (customerId)", 240);
+        list.Columns.Add("Resource Group",  120);
+        list.Columns.Add("Location",        80);
+
+        foreach (var w in workspaces)
+        {
+            var item = new ListViewItem(w.Name);
+            item.SubItems.Add(w.WorkspaceId);
+            item.SubItems.Add(w.ResourceGroup);
+            item.SubItems.Add(w.Location);
+            item.Tag = w;
+            list.Items.Add(item);
+        }
+        if (list.Items.Count > 0) { list.Items[0].Selected = true; list.Items[0].EnsureVisible(); }
+
+        var okBtn     = new Button { Text = "Select", Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK };
+        var cancelBtn = new Button { Text = "Cancel", Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.Cancel };
+        okBtn.Location     = new Point(dlg.ClientSize.Width - 196, 254);
+        cancelBtn.Location = new Point(dlg.ClientSize.Width - 100, 254);
+
+        dlg.AcceptButton = okBtn;
+        dlg.CancelButton = cancelBtn;
+        dlg.Controls.AddRange([lbl, list, okBtn, cancelBtn]);
+        list.DoubleClick += (_, _) => { dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+
+        if (dlg.ShowDialog() != DialogResult.OK || list.SelectedItems.Count == 0)
+            return default;
+
+        return ((string WorkspaceId, string Name, string ResourceGroup, string Location))list.SelectedItems[0].Tag!;
+    }
+
+    /// <summary>
+    /// Shows a flat subscription picker dialog and returns the chosen entry,
+    /// or <c>default</c> if the user cancels. The default subscription is
+    /// pre-selected in the list.
+    /// </summary>
+    private static (string Id, string Name, string TenantId, bool IsDefault) PickSubscription(
+        List<(string Id, string Name, string TenantId, bool IsDefault)> subscriptions)
+    {
+        using var dlg = new Form
+        {
+            Text            = "Select Azure Subscription",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition   = FormStartPosition.CenterParent,
+            ClientSize      = new Size(560, 340),
+            MinimizeBox     = false,
+            MaximizeBox     = false,
+        };
+
+        var lbl = new Label
+        {
+            Text      = $"Found {subscriptions.Count} subscriptions. Select one to use:",
+            AutoSize  = true,
+            Location  = new Point(12, 12),
+        };
+
+        var list = new ListView
+        {
+            Location      = new Point(12, 36),
+            Size          = new Size(536, 220),
+            View          = View.Details,
+            FullRowSelect = true,
+            MultiSelect   = false,
+            BorderStyle   = BorderStyle.FixedSingle,
+            Font          = new Font("Segoe UI", 9f),
+        };
+        list.Columns.Add("Subscription Name", 240);
+        list.Columns.Add("Subscription ID",   180);
+        list.Columns.Add("Tenant ID",         110);
+
+        int defaultIndex = 0;
+        for (int i = 0; i < subscriptions.Count; i++)
+        {
+            var s = subscriptions[i];
+            var item = new ListViewItem(s.IsDefault ? $"★ {s.Name}" : s.Name);
+            item.SubItems.Add(s.Id);
+            item.SubItems.Add(s.TenantId);
+            item.Tag = s;
+            list.Items.Add(item);
+            if (s.IsDefault) defaultIndex = i;
+        }
+        if (list.Items.Count > 0)
+        {
+            list.Items[defaultIndex].Selected = true;
+            list.Items[defaultIndex].EnsureVisible();
+        }
+
+        var okBtn     = new Button { Text = "Select",  Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.OK };
+        var cancelBtn = new Button { Text = "Cancel",  Width = 88, Height = 26, FlatStyle = FlatStyle.Flat, DialogResult = DialogResult.Cancel };
+        okBtn.Location     = new Point(dlg.ClientSize.Width - 196, 278);
+        cancelBtn.Location = new Point(dlg.ClientSize.Width - 100, 278);
+
+        dlg.AcceptButton = okBtn;
+        dlg.CancelButton = cancelBtn;
+        dlg.Controls.AddRange([lbl, list, okBtn, cancelBtn]);
+
+        // Double-click selects immediately
+        list.DoubleClick += (_, _) => { dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+
+        if (dlg.ShowDialog() != DialogResult.OK || list.SelectedItems.Count == 0)
+            return default;
+
+        return ((string Id, string Name, string TenantId, bool IsDefault))list.SelectedItems[0].Tag!;
     }
 
     private static TableLayoutPanel CreateFormLayout()
@@ -366,6 +827,90 @@ public sealed class AIOpsSettingsDialog : Form
         layout.Controls.Add(control, 1, row);
     }
 
+    /// <summary>
+    /// Inserts a DPAPI encryption notice as the first row (row 0) of a connector
+    /// tab layout. All subsequent <see cref="AddRow"/> calls in that tab should
+    /// start at row 1.
+    /// </summary>
+    private static void InsertDpapiBannerRow(TableLayoutPanel layout)
+    {
+        Panel banner = new()
+        {
+            BackColor = Color.FromArgb(232, 244, 255),
+            Dock = DockStyle.Fill,
+            Height = 28,
+            Padding = new Padding(6, 4, 0, 0),
+            Margin = new Padding(0, 0, 0, 4),
+        };
+        Label bannerLabel = new()
+        {
+            Text = "🔒  Secret fields are protected using Windows DPAPI and stored as EncryptedAuthKey — tied to your Windows user account on this machine.",
+            ForeColor = Color.FromArgb(0, 70, 140),
+            AutoSize = true,
+            Font = new Font("Segoe UI", 8f),
+        };
+        banner.Controls.Add(bannerLabel);
+
+        layout.Controls.Add(banner, 0, 0);
+        layout.SetColumnSpan(banner, 2);
+        layout.RowStyles[0] = new RowStyle(SizeType.Absolute, 36);
+    }
+
+    /// <summary>
+    /// Creates a secret text field wrapped with a live encryption-status badge.
+    /// The returned <see cref="TextBox"/> is the actual input field; the returned
+    /// <see cref="Panel"/> is the composite control to pass to <see cref="AddRow"/>.
+    /// </summary>
+    /// <param name="encryptedValue">
+    /// The current DPAPI-encrypted value stored on disk (e.g. <c>EncryptedClientSecret</c>).
+    /// An empty string means the secret has not been stored yet.
+    /// </param>
+    private static (TextBox textBox, Panel wrapper) CreateSecretField(string encryptedValue)
+    {
+        TextBox tb = new() { UseSystemPasswordChar = true, Width = 250 };
+
+        Label badge = new()
+        {
+            AutoSize = true,
+            Font = new Font("Segoe UI", 8f),
+            Padding = new Padding(6, 5, 0, 0),
+        };
+
+        void UpdateBadge()
+        {
+            if (!string.IsNullOrEmpty(tb.Text))
+            {
+                badge.Text = "🔒 Will encrypt on save";
+                badge.ForeColor = Color.FromArgb(0, 128, 0);
+            }
+            else if (!string.IsNullOrEmpty(encryptedValue))
+            {
+                badge.Text = "🔒 Encrypted";
+                badge.ForeColor = Color.FromArgb(0, 100, 0);
+            }
+            else
+            {
+                badge.Text = "🔓 Not set";
+                badge.ForeColor = Color.Gray;
+            }
+        }
+
+        tb.TextChanged += (_, _) => UpdateBadge();
+        UpdateBadge();
+
+        FlowLayoutPanel wrapper = new()
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+        };
+        wrapper.Controls.Add(tb);
+        wrapper.Controls.Add(badge);
+
+        return (tb, wrapper);
+    }
+
     private void LoadSettings()
     {
         _enabledCheckBox.Checked = _settings.Enabled;
@@ -376,12 +921,15 @@ public sealed class AIOpsSettingsDialog : Form
         _requireApprovalCheckBox.Checked = _settings.RequireApprovalForProduction;
 
         _azureMonitorEnabledCheckBox.Checked = _settings.AzureMonitor.Enabled;
+        _azureAuthSpRadio.Checked  = _settings.AzureMonitor.AuthMode == AzureAuthMode.ServicePrincipal;
+        _azureAuthCliRadio.Checked = _settings.AzureMonitor.AuthMode == AzureAuthMode.AzureCli;
         _azureTenantIdTextBox.Text = _settings.AzureMonitor.TenantId;
         _azureClientIdTextBox.Text = _settings.AzureMonitor.ClientId;
         _azureClientSecretTextBox.Text = _settings.AzureMonitor.ClientSecret;
         _azureSubscriptionIdTextBox.Text = _settings.AzureMonitor.SubscriptionId;
         _azureResourceGroupTextBox.Text = _settings.AzureMonitor.ResourceGroup;
         _azureWorkspaceIdTextBox.Text = _settings.AzureMonitor.WorkspaceId;
+        _azureAppInsightsAppIdTextBox.Text = _settings.AzureMonitor.AppInsightsAppId;
 
         _azureDevOpsEnabledCheckBox.Checked = _settings.AzureDevOps.Enabled;
         _azureDevOpsOrganizationTextBox.Text = _settings.AzureDevOps.Organization;
@@ -419,12 +967,14 @@ public sealed class AIOpsSettingsDialog : Form
         _settings.RequireApprovalForProduction = _requireApprovalCheckBox.Checked;
 
         _settings.AzureMonitor.Enabled = _azureMonitorEnabledCheckBox.Checked;
+        _settings.AzureMonitor.AuthMode = _azureAuthCliRadio.Checked ? AzureAuthMode.AzureCli : AzureAuthMode.ServicePrincipal;
         _settings.AzureMonitor.TenantId = _azureTenantIdTextBox.Text.Trim();
         _settings.AzureMonitor.ClientId = _azureClientIdTextBox.Text.Trim();
         _settings.AzureMonitor.ClientSecret = _azureClientSecretTextBox.Text;
         _settings.AzureMonitor.SubscriptionId = _azureSubscriptionIdTextBox.Text.Trim();
         _settings.AzureMonitor.ResourceGroup = _azureResourceGroupTextBox.Text.Trim();
         _settings.AzureMonitor.WorkspaceId = _azureWorkspaceIdTextBox.Text.Trim();
+        _settings.AzureMonitor.AppInsightsAppId = _azureAppInsightsAppIdTextBox.Text.Trim();
 
         _settings.AzureDevOps.Enabled = _azureDevOpsEnabledCheckBox.Checked;
         _settings.AzureDevOps.Organization = _azureDevOpsOrganizationTextBox.Text.Trim();

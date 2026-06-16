@@ -16,7 +16,8 @@ public sealed class StickyScrollPanel : Panel
     {
         SetStyle(ControlStyles.Selectable, false);
         SetStyle(ControlStyles.ResizeRedraw, true);
-        BackColor = SystemColors.Control;
+        BackColor = ThemeManager.Instance.CurrentTheme.EditorBackground;
+        ThemeManager.Instance.ThemeChanged += t => { BackColor = t.EditorBackground; Invalidate(); };
         TabStop = false;
         DoubleBuffered = true;
     }

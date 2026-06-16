@@ -1825,7 +1825,7 @@ echo ""Done.""
                 await CreateNativeProjectAsync(tpl, projectName, projectDir);
 
             _statusLabel.Text = "Project created successfully!";
-            _statusLabel.ForeColor = Color.DarkGreen;
+            _statusLabel.ForeColor = FlatUiHelper.SuccessColor(ThemeManager.Instance.CurrentTheme);
 
             _mainForm.BeginInvoke(() => _mainForm.OpenWorkspaceFolder(projectDir));
             await Task.Delay(500);
@@ -1834,7 +1834,7 @@ echo ""Done.""
         }
         catch (Exception ex)
         {
-            _statusLabel.ForeColor = Color.DarkRed;
+            _statusLabel.ForeColor = FlatUiHelper.ErrorColor(ThemeManager.Instance.CurrentTheme);
             _statusLabel.Text = $"Error: {ex.Message}";
             _creating = false;
             _createButton.Enabled = true;

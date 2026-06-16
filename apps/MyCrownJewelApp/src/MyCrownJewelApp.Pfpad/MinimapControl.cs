@@ -8,20 +8,21 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad
 {
-    public class MinimapControl : Control
+    public partial class MinimapControl : Control
     {
         public event EventHandler<ViewportChangedEventArgs>? ViewportChanged;
 
-        [DllImport("user32.dll")]
-        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
-        [DllImport("user32.dll")]
-        private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
-        [DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-        [DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+        [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial int SendMessagePtr(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
+        [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW")]
+        private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
+        [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW")]
+        private static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
         private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
         private const int EM_GETLINECOUNT = 0x00BA;
@@ -185,7 +186,7 @@ namespace MyCrownJewelApp.Pfpad
                 try
                 {
                     Marshal.WriteInt16(ptr, (short)4096);
-                    int len = SendMessage(rtb.Handle, EM_GETLINE, lineIndex, ptr);
+                    int len = SendMessagePtr(rtb.Handle, EM_GETLINE, lineIndex, ptr);
                     return len > 0 ? Marshal.PtrToStringUni(ptr, len)!.TrimEnd('\r', '\n') : string.Empty;
                 }
                 finally { Marshal.FreeCoTaskMem(ptr); }

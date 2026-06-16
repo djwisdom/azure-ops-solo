@@ -7,10 +7,10 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class ProblemsPanel : UserControl
+internal sealed partial class ProblemsPanel : UserControl
 {
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
     private readonly ToolStrip _headerStrip;

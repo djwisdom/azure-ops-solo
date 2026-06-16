@@ -119,6 +119,85 @@ internal static class AIOpsUiHelper
         return button;
     }
 
+    /// <summary>
+    /// Creates a slim contextual hint bar (DockStyle.Top) that explains what powers a panel.
+    /// Add it to Controls immediately before the header so it appears just below the title bar.
+    /// Call SetHintBarTheme in SetTheme to keep colors in sync.
+    /// </summary>
+    public static (Panel bar, Label label) CreateHintBar(string hintText)
+    {
+        var label = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = hintText,
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Italic),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(6, 0, 4, 0)
+        };
+        var bar = new Panel { Dock = DockStyle.Top, Height = 20 };
+        bar.Controls.Add(label);
+        return (bar, label);
+    }
+
+    public static void SetHintBarTheme(Panel bar, Label label, Theme theme)
+    {
+        bar.BackColor = theme.MenuBackground;
+        label.ForeColor = theme.Muted;
+    }
+
+    /// <summary>
+    /// Adds a 2 px accent underline to a hand-rolled button tab strip.
+    /// Call <c>strip.Invalidate()</c> whenever the active tab changes.
+    /// </summary>
+    public static void AttachTabStripAccent(Panel strip, Func<Button?> getActive, Func<Color> getAccent)
+    {
+        strip.Paint += (_, e) =>
+        {
+            var active = getActive();
+            if (active == null) return;
+            using var pen = new Pen(getAccent(), 2);
+            int y = strip.Height - 2;
+            e.Graphics.DrawLine(pen, active.Left, y, active.Right, y);
+        };
+    }
+
+    /// <summary>
+    /// Applies owner-draw to a TabControl so the selected tab gets the theme's
+    /// accent-colour underline and inactive tabs use the muted text colour.
+    /// </summary>
+    public static void AttachAccentTabControl(TabControl tc, Func<Theme> getTheme)
+    {
+        tc.DrawMode = TabDrawMode.OwnerDrawFixed;
+        tc.SizeMode = TabSizeMode.Normal;
+        tc.DrawItem += (s, e) =>
+        {
+            var ctrl  = (TabControl)s!;
+            var theme = getTheme();
+            if (e.Index < 0 || e.Index >= ctrl.TabPages.Count) return;
+
+            bool selected = e.Index == ctrl.SelectedIndex;
+            var bounds = ctrl.GetTabRect(e.Index);
+
+            // Background
+            using (var bg = new SolidBrush(selected ? theme.PanelBackground : theme.MenuBackground))
+                e.Graphics.FillRectangle(bg, bounds);
+
+            // Label
+            TextRenderer.DrawText(e.Graphics, ctrl.TabPages[e.Index].Text,
+                new Font(ctrl.Font, selected ? FontStyle.Bold : FontStyle.Regular),
+                new Rectangle(bounds.X + 4, bounds.Y + 2, bounds.Width - 8, bounds.Height - 4),
+                selected ? theme.Text : theme.Muted,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+
+            // Accent underline
+            if (selected)
+            {
+                using var pen = new Pen(theme.Accent, 2);
+                e.Graphics.DrawLine(pen, bounds.Left, bounds.Bottom - 2, bounds.Right, bounds.Bottom - 2);
+            }
+        };
+    }
+
     public static void ApplyListTheme(ListView listView, Theme theme)
     {
         listView.BackColor = theme.EditorBackground;
@@ -370,6 +449,8 @@ public sealed class AIOpsPanel : UserControl
     private readonly Label _footerLabel;
     private readonly Button _refreshAllButton;
     private readonly List<AIOpsEventSubscription> _subscriptions = [];
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     private Theme _theme;
     private AIOpsEngine? _engine;
@@ -499,6 +580,8 @@ public sealed class AIOpsPanel : UserControl
 
         Controls.Add(_contentPanel);
         Controls.Add(_footer);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Aggregates all configured connectors. No connector? Enable Mock Data or configure one in AIOps > Settings (Ctrl+Alt+,).");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -540,7 +623,7 @@ public sealed class AIOpsPanel : UserControl
         _theme = theme;
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.MenuBackground;
-        _footer.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);        _footer.BackColor = theme.MenuBackground;
         _contentPanel.BackColor = theme.MenuBackground;
         _titleLabel.ForeColor = theme.Text;
         _footerLabel.ForeColor = AIOpsUiHelper.SecondaryText(theme);
@@ -576,13 +659,25 @@ public sealed class AIOpsPanel : UserControl
         base.Dispose(disposing);
     }
 
-    private static Panel CreateSectionPanel(int height) => new()
+    private static Panel CreateSectionPanel(int height)
     {
-        Height = height,
-        Margin = new Padding(0, 0, 0, 8),
-        Padding = Padding.Empty,
-        BorderStyle = BorderStyle.FixedSingle
-    };
+        Panel panel = new()
+        {
+            Height = height,
+            Margin = new Padding(0, 0, 0, 8),
+            Padding = Padding.Empty,
+            BorderStyle = BorderStyle.None
+        };
+        panel.Paint += (_, e) =>
+        {
+            Rectangle bounds = panel.ClientRectangle;
+            bounds.Width -= 1;
+            bounds.Height -= 1;
+            using Pen pen = new(ThemeManager.Instance.CurrentTheme.Border);
+            e.Graphics.DrawRectangle(pen, bounds);
+        };
+        return panel;
+    }
 
     private static Label CreateSectionHeader(string text) => new()
     {

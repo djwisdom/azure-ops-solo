@@ -29,6 +29,8 @@ public sealed class PullRequestRiskPanel : UserControl
     private readonly List<SecurityFinding> _allSecurityFindings = new();
     private DeploymentRiskReport? _riskReport;
     private Theme _theme;
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     public event Action<GitPullRequest>? AnalyzeRequested;
     public event Action<string, int>? SecurityFindingNavigateRequested;
@@ -77,6 +79,7 @@ public sealed class PullRequestRiskPanel : UserControl
         _splitContainer.Panel1.Controls.Add(prDetailsPanel);
 
         _tabs = new TabControl { Dock = DockStyle.Fill };
+        AIOpsUiHelper.AttachAccentTabControl(_tabs, () => _theme);
         TabPage riskTab = new("Risk");
         TabPage securityTab = new("Security");
         TabPage commitsTab = new("Commits");
@@ -88,7 +91,7 @@ public sealed class PullRequestRiskPanel : UserControl
         _riskFactorsList.Columns.Add("Factor", 180);
         _riskFactorsList.Columns.Add("Level", 90);
         _riskFactorsList.Columns.Add("Description", 420);
-        _recommendationsBox = new TextBox { Dock = DockStyle.Bottom, Height = 84, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.FixedSingle };
+        _recommendationsBox = new TextBox { Dock = DockStyle.Bottom, Height = 84, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None };
         riskPanel.Controls.Add(_riskFactorsList);
         riskPanel.Controls.Add(_recommendationsBox);
         riskPanel.Controls.Add(_riskLevelLabel);
@@ -116,6 +119,8 @@ public sealed class PullRequestRiskPanel : UserControl
         _splitContainer.Panel2.Controls.Add(_tabs);
 
         Controls.Add(_splitContainer);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Scores PRs using changed files, test coverage, incident history, and SLO burn rate.");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -164,15 +169,13 @@ public sealed class PullRequestRiskPanel : UserControl
         _theme = theme;
         AIOpsUiHelper.ApplyControlTheme(this, theme);
         _header.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _titleLabel.ForeColor = theme.Text;
-        _prCombo.BackColor = theme.EditorBackground;
-        _prCombo.ForeColor = theme.Text;
         _analyzeButton.BackColor = Color.Transparent;
         _closeButton.BackColor = Color.Transparent;
         _analyzeButton.ForeColor = theme.Text;
         _closeButton.ForeColor = theme.Text;
-        _recommendationsBox.BackColor = theme.EditorBackground;
-        _recommendationsBox.ForeColor = theme.Text;
+        _recommendationsBox.ApplyTheme(theme);
         AIOpsUiHelper.ApplyListTheme(_changedFilesList, theme);
         AIOpsUiHelper.ApplyListTheme(_riskFactorsList, theme);
         AIOpsUiHelper.ApplyListTheme(_securityList, theme);
@@ -228,7 +231,7 @@ public sealed class PullRequestRiskPanel : UserControl
             _createdLabel.Text = $"Created: {pr.CreatedAt.LocalDateTime:g}";
             _statusBadge.Text = $" {pr.Status} ";
             _statusBadge.BackColor = StatusColor(pr.Status);
-            _statusBadge.ForeColor = Color.White;
+            _statusBadge.ForeColor = FlatUiHelper.BadgeForeground(_theme);
 
             foreach (string file in pr.ChangedFiles)
             {
@@ -273,7 +276,7 @@ public sealed class PullRequestRiskPanel : UserControl
 
             _riskScoreBadge.Text = $" Score: {_riskReport.Score} ";
             _riskScoreBadge.BackColor = AIOpsUiHelper.RiskColor(_riskReport.OverallRisk);
-            _riskScoreBadge.ForeColor = Color.White;
+            _riskScoreBadge.ForeColor = FlatUiHelper.BadgeForeground(_theme);
             _riskLevelLabel.Text = $"Overall risk: {_riskReport.OverallRisk}";
             _riskLevelLabel.ForeColor = AIOpsUiHelper.RiskColor(_riskReport.OverallRisk);
             foreach (DeploymentRiskFactor factor in _riskReport.Factors)

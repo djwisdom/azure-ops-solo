@@ -56,8 +56,11 @@ public interface IFeatureFlagCapable
     Task<IReadOnlyList<FeatureFlag>> GetFeatureFlagsAsync(string? serviceName = null, CancellationToken ct = default);
 }
 
-/// <summary>Optional: connector supports infrastructure resource data.</summary>
-public interface IInfrastructureCapable
+/// <summary>Optional: connector can enumerate observable service names.</summary>
+public interface IServiceDiscoveryCapable
 {
-    Task<IReadOnlyList<InfrastructureResource>> GetInfrastructureResourcesAsync(string? environment = null, CancellationToken ct = default);
-}
+    /// <summary>
+    /// Returns distinct service names seen in telemetry over the past <paramref name="days"/> days.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetObservableServicesAsync(int days = 7, CancellationToken ct = default);
+}

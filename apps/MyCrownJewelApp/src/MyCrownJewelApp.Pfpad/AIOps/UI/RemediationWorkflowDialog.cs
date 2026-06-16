@@ -51,11 +51,11 @@ public sealed class RemediationWorkflowDialog : Form
         layout.Controls.Add(_riskBadge);
 
         layout.Controls.Add(CreateSectionLabel("Description:"));
-        _descriptionBox = new TextBox { Multiline = true, ReadOnly = true, Width = 510, Height = 72, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.FixedSingle, Text = suggestion.Description };
+        _descriptionBox = new TextBox { Multiline = true, ReadOnly = true, Width = 510, Height = 72, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None, Text = suggestion.Description };
         layout.Controls.Add(_descriptionBox);
 
         layout.Controls.Add(CreateSectionLabel("Evidence:"));
-        _evidenceList = new ListView { Width = 510, Height = 110, View = View.Details, FullRowSelect = true, HideSelection = false, BorderStyle = BorderStyle.FixedSingle };
+        _evidenceList = new ListView { Width = 510, Height = 110, View = View.Details, FullRowSelect = true, HideSelection = false, BorderStyle = BorderStyle.None };
         _evidenceList.Columns.Add("Source", 120);
         _evidenceList.Columns.Add("Description", 360);
         foreach (Evidence evidence in suggestion.Evidence)
@@ -70,7 +70,7 @@ public sealed class RemediationWorkflowDialog : Form
         layout.Controls.Add(_impactWarningLabel);
 
         layout.Controls.Add(CreateSectionLabel("Comment:"));
-        _commentBox = new TextBox { Multiline = true, Width = 510, Height = 46, BorderStyle = BorderStyle.FixedSingle, PlaceholderText = "Optional: add approval comment..." };
+        _commentBox = new TextBox { Multiline = true, Width = 510, Height = 46, BorderStyle = BorderStyle.None, PlaceholderText = "Optional: add approval comment..." };
         _commentBox.TextChanged += (_, _) => UpdateApproveState();
         layout.Controls.Add(_commentBox);
 
@@ -109,10 +109,8 @@ public sealed class RemediationWorkflowDialog : Form
         ForeColor = theme.Text;
         AIOpsUiHelper.ApplyControlTheme(this, theme);
         _actionValueLabel.ForeColor = theme.Text;
-        _descriptionBox.BackColor = theme.EditorBackground;
-        _descriptionBox.ForeColor = theme.Text;
-        _commentBox.BackColor = theme.EditorBackground;
-        _commentBox.ForeColor = theme.Text;
+        _descriptionBox.ApplyTheme(theme);
+        _commentBox.ApplyTheme(theme);
         _approveButton.BackColor = theme.PanelBackground;
         _rejectButton.BackColor = theme.PanelBackground;
         _moreInfoButton.BackColor = theme.PanelBackground;
@@ -123,10 +121,10 @@ public sealed class RemediationWorkflowDialog : Form
         _rejectButton.FlatAppearance.BorderColor = theme.Border;
         _moreInfoButton.FlatAppearance.BorderColor = theme.Border;
         _riskBadge.BackColor = RiskColor(_suggestion.Risk);
-        _riskBadge.ForeColor = Color.White;
+        _riskBadge.ForeColor = FlatUiHelper.BadgeForeground(theme);
         _impactWarningLabel.BackColor = Color.FromArgb(40, Color.DarkOrange);
         _impactWarningLabel.ForeColor = Color.DarkOrange;
-        AIOpsUiHelper.ApplyListTheme(_evidenceList, theme);
+        _evidenceList.ApplyTheme(theme);
     }
 
     private void UpdateApproveState()

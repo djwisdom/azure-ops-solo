@@ -24,6 +24,8 @@ public sealed class IncidentTimelinePanel : UserControl
     private RootCauseAnalysis? _rootCauseAnalysis;
     private Theme _theme;
     private bool _syncingSelection;
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     public event Action<Incident>? RcaRequested;
     public event Action<string, int>? NavigateRequested;
@@ -62,12 +64,13 @@ public sealed class IncidentTimelinePanel : UserControl
         _incidentList.Columns.Add("Status", 90);
         _incidentList.Columns.Add("Time", 90);
         _incidentList.SelectedIndexChanged += IncidentList_SelectedIndexChanged;
-        _incidentDetailsBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.FixedSingle };
+        _incidentDetailsBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None };
         topPanel.Controls.Add(_incidentDetailsBox);
         topPanel.Controls.Add(_incidentList);
         _splitContainer.Panel1.Controls.Add(topPanel);
 
         _tabs = new TabControl { Dock = DockStyle.Fill };
+        AIOpsUiHelper.AttachAccentTabControl(_tabs, () => _theme);
         TabPage timelineTab = new("Timeline");
         TabPage rootCauseTab = new("Root Cause");
 
@@ -101,9 +104,9 @@ public sealed class IncidentTimelinePanel : UserControl
 
         Panel rcDetailsPanel = new() { Dock = DockStyle.Fill, Padding = new Padding(6) };
         Label relatedFilesLabel = new() { Dock = DockStyle.Top, Height = 18, Text = "Related files", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold) };
-        _relatedFilesList = new ListBox { Dock = DockStyle.Right, Width = 220, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
+        _relatedFilesList = new ListBox { Dock = DockStyle.Right, Width = 220, IntegralHeight = false, BorderStyle = BorderStyle.None };
         _relatedFilesList.DoubleClick += RelatedFilesList_DoubleClick;
-        _hypothesisDetailsBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.FixedSingle };
+        _hypothesisDetailsBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None };
         rcDetailsPanel.Controls.Add(_hypothesisDetailsBox);
         rcDetailsPanel.Controls.Add(_relatedFilesList);
         rcDetailsPanel.Controls.Add(relatedFilesLabel);
@@ -115,6 +118,8 @@ public sealed class IncidentTimelinePanel : UserControl
         _splitContainer.Panel2.Controls.Add(_tabs);
 
         Controls.Add(_splitContainer);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Powered by PagerDuty · Azure Monitor · Azure DevOps. Correlated with Git commits and CI/CD pipeline runs.");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -142,15 +147,12 @@ public sealed class IncidentTimelinePanel : UserControl
         _theme = theme;
         AIOpsUiHelper.ApplyControlTheme(this, theme);
         _header.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _titleLabel.ForeColor = theme.Text;
-        _incidentDetailsBox.BackColor = theme.EditorBackground;
-        _incidentDetailsBox.ForeColor = theme.Text;
-        _hypothesisDetailsBox.BackColor = theme.EditorBackground;
-        _hypothesisDetailsBox.ForeColor = theme.Text;
-        _relatedFilesList.BackColor = theme.EditorBackground;
-        _relatedFilesList.ForeColor = theme.Text;
-        _incidentCombo.BackColor = theme.EditorBackground;
-        _incidentCombo.ForeColor = theme.Text;
+        _incidentDetailsBox.ApplyTheme(theme);
+        _hypothesisDetailsBox.ApplyTheme(theme);
+        _relatedFilesList.ApplyTheme(theme);
+        _incidentCombo.ApplyTheme(theme);
         _analyzeButton.BackColor = Color.Transparent;
         _closeButton.BackColor = Color.Transparent;
         _analyzeButton.ForeColor = theme.Text;

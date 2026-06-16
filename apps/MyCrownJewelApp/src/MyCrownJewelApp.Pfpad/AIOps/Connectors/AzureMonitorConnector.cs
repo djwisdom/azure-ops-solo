@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -5,12 +6,12 @@ using System.Xml;
 
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public sealed class AzureMonitorConnector : IAIOpsConnector
+public sealed class AzureMonitorConnector : IAIOpsConnector, IServiceDiscoveryCapable
 {
     private readonly AzureMonitorSettings _settings;
     private readonly HttpClient _httpClient;
-    private string? _accessToken;
-    private DateTimeOffset _tokenExpiresAt;
+    // Tokens keyed by resource URI (supports both management + log analytics resources)
+    private readonly Dictionary<string, (string Token, DateTimeOffset Expiry)> _tokenCache = new(StringComparer.OrdinalIgnoreCase);
     private ConnectorStatus _status = ConnectorStatus.Disconnected;
 
     public AzureMonitorConnector(AzureMonitorSettings settings)
@@ -42,8 +43,9 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
 
             if (!string.IsNullOrWhiteSpace(_settings.WorkspaceId))
             {
+                string laToken = await GetAccessTokenAsync(ct, "https://api.loganalytics.io").ConfigureAwait(false);
                 string query = "Heartbeat | take 1";
-                using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromMinutes(5), token);
+                using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromMinutes(5), laToken);
                 using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
             }
@@ -61,8 +63,7 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
     public Task DisconnectAsync()
     {
         _status = ConnectorStatus.Disconnected;
-        _accessToken = null;
-        _tokenExpiresAt = default;
+        _tokenCache.Clear();
         return Task.CompletedTask;
     }
 
@@ -73,7 +74,7 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
 
         try
         {
-            string token = _accessToken!;
+            string token = await GetAccessTokenAsync(ct).ConfigureAwait(false);
             string url = $"https://management.azure.com/subscriptions/{Uri.EscapeDataString(_settings.SubscriptionId)}/resourceGroups/{Uri.EscapeDataString(_settings.ResourceGroup)}/providers/Microsoft.Insights/components/{Uri.EscapeDataString(serviceName)}/metrics?api-version=2018-01-01&metricnames={Uri.EscapeDataString(metricName)}&timespan={Uri.EscapeDataString(from.UtcDateTime.ToString("O"))}/{Uri.EscapeDataString(to.UtcDateTime.ToString("O"))}&interval=PT5M";
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -98,7 +99,8 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
         try
         {
             string query = $"{serviceName} | where TimeGenerated > ago(24h) | take {Math.Clamp(limit, 1, 500)}";
-            using var request = CreateLogAnalyticsRequest(query, to - from, _accessToken!);
+            string laToken = await GetAccessTokenAsync(ct, "https://api.loganalytics.io").ConfigureAwait(false);
+            using var request = CreateLogAnalyticsRequest(query, to - from, laToken);
             using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return [];
@@ -143,9 +145,10 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
 
         try
         {
+            string mgmtToken = await GetAccessTokenAsync(ct).ConfigureAwait(false);
             string url = $"https://management.azure.com/subscriptions/{Uri.EscapeDataString(_settings.SubscriptionId)}/providers/Microsoft.AlertsManagement/alerts?api-version=2019-03-01&$filter=alertState%20eq%20'New'%20or%20alertState%20eq%20'Acknowledged'";
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", mgmtToken);
             using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return [];
@@ -167,9 +170,10 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
         try
         {
             string from = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(-days).UtcDateTime.ToString("O"));
+            string mgmtToken2 = await GetAccessTokenAsync(ct).ConfigureAwait(false);
             string url = $"https://management.azure.com/subscriptions/{Uri.EscapeDataString(_settings.SubscriptionId)}/providers/Microsoft.AlertsManagement/alerts?api-version=2019-03-01&$filter=monitorCondition%20eq%20'Fired'%20and%20essentials/startDateTime%20ge%20{from}";
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", mgmtToken2);
             using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return [];
@@ -192,7 +196,8 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
         {
             string filter = string.IsNullOrWhiteSpace(service) ? string.Empty : $" | where ServiceName =~ '{EscapeKql(service)}'";
             string query = $"AppTraces {filter} | where Message has 'deployment' or Message has 'release' | project TimeGenerated, Message, ServiceName=tostring(Properties['service']), Version=tostring(Properties['version']), Environment=tostring(Properties['environment']), Commit=tostring(Properties['commitSha']) | order by TimeGenerated desc | take {Math.Clamp(count, 1, 100)}";
-            using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromDays(14), _accessToken!);
+            string laToken2 = await GetAccessTokenAsync(ct, "https://api.loganalytics.io").ConfigureAwait(false);
+            using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromDays(14), laToken2);
             using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return [];
@@ -218,7 +223,8 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
         {
             string filter = string.IsNullOrWhiteSpace(serviceName) ? string.Empty : $" | where ServiceName =~ '{EscapeKql(serviceName)}'";
             string query = $"AppMetrics {filter} | where Name in ('availability','latency') | summarize CurrentPercent=avg(Value) by ServiceName=tostring(Properties['service']), Name | take 20";
-            using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromDays(7), _accessToken!);
+            string laToken3 = await GetAccessTokenAsync(ct, "https://api.loganalytics.io").ConfigureAwait(false);
+            using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromDays(7), laToken3);
             using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return [];
@@ -234,20 +240,151 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
 
     public void Dispose() => _httpClient.Dispose();
 
+    /// <inheritdoc/>
+    public async Task<IReadOnlyList<string>> GetObservableServicesAsync(int days = 7, CancellationToken ct = default)
+    {
+        if (!await EnsureConnectedAsync(ct).ConfigureAwait(false))
+            return [];
+
+        // Try App Insights direct API first if AppInsightsAppId is configured
+        if (!string.IsNullOrWhiteSpace(_settings.AppInsightsAppId))
+        {
+            var appInsightsServices = await QueryAppInsightsServicesAsync(days, ct).ConfigureAwait(false);
+            if (appInsightsServices.Count > 0) return appInsightsServices;
+        }
+
+        // Fall back to Log Analytics workspace
+        if (string.IsNullOrWhiteSpace(_settings.WorkspaceId))
+            return [];
+
+        try
+        {
+            string query = $@"union isfuzzy=true AppRequests, AppDependencies, AppExceptions, AppTraces, AppMetrics
+| where TimeGenerated > ago({days}d)
+| extend svc = coalesce(tostring(Properties['service']), cloud_RoleName, AppRoleName)
+| where isnotempty(svc)
+| summarize by svc
+| order by svc asc
+| take 200";
+
+            string laToken = await GetAccessTokenAsync(ct, "https://api.loganalytics.io").ConfigureAwait(false);
+            using var request = CreateLogAnalyticsRequest(query, TimeSpan.FromDays(days), laToken);
+            using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return [];
+
+            return ParseSingleColumnStringTable(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+        }
+        catch { return []; }
+    }
+
+    private async Task<IReadOnlyList<string>> QueryAppInsightsServicesAsync(int days, CancellationToken ct)
+    {
+        try
+        {
+            string aiToken = await GetAccessTokenAsync(ct, "https://api.applicationinsights.io").ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(aiToken)) return [];
+
+            string query = Uri.EscapeDataString(
+                $"requests | where timestamp > ago({days}d) | summarize by cloud_RoleName | where isnotempty(cloud_RoleName) | order by cloud_RoleName asc | take 200");
+            string url = $"https://api.applicationinsights.io/v1/apps/{Uri.EscapeDataString(_settings.AppInsightsAppId)}/query?query={query}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", aiToken);
+            using var resp = await _httpClient.SendAsync(req, ct).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) return [];
+
+            return ParseSingleColumnStringTable(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+        }
+        catch { return []; }
+    }
+
+    private static IReadOnlyList<string> ParseSingleColumnStringTable(string json)
+    {
+        var results = new List<string>();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("tables", out var tables) &&
+                tables.ValueKind == JsonValueKind.Array && tables.GetArrayLength() > 0)
+            {
+                var rows = tables[0].TryGetProperty("rows", out var r) ? r : default;
+                if (rows.ValueKind == JsonValueKind.Array)
+                    foreach (var row in rows.EnumerateArray())
+                        if (row.ValueKind == JsonValueKind.Array && row.GetArrayLength() > 0)
+                        {
+                            string name = row[0].GetString() ?? "";
+                            if (!string.IsNullOrWhiteSpace(name)) results.Add(name);
+                        }
+            }
+        }
+        catch { /* ignore parse errors */ }
+        return results;
+    }
+
     private async Task<bool> EnsureConnectedAsync(CancellationToken ct)
     {
-        if (_status == ConnectorStatus.Connected && !string.IsNullOrWhiteSpace(_accessToken) && _tokenExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1))
+        if (_status == ConnectorStatus.Connected
+            && _tokenCache.TryGetValue("https://management.azure.com", out var cached)
+            && cached.Expiry > DateTimeOffset.UtcNow.AddMinutes(1))
             return true;
 
         var state = await ConnectAsync(ct).ConfigureAwait(false);
         return state.Status == ConnectorStatus.Connected;
     }
 
-    private async Task<string> GetAccessTokenAsync(CancellationToken ct)
+    private async Task<string> GetAccessTokenAsync(CancellationToken ct, string resource = "https://management.azure.com")
     {
-        if (!string.IsNullOrWhiteSpace(_accessToken) && _tokenExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1))
-            return _accessToken;
+        if (_tokenCache.TryGetValue(resource, out var cached) && cached.Expiry > DateTimeOffset.UtcNow.AddMinutes(1))
+            return cached.Token;
 
+        string token = _settings.AuthMode == AzureAuthMode.AzureCli
+            ? await GetAzureCliTokenAsync(resource, ct).ConfigureAwait(false)
+            : await GetServicePrincipalTokenAsync(ct).ConfigureAwait(false);
+
+        if (!string.IsNullOrWhiteSpace(token))
+            _tokenCache[resource] = (token, DateTimeOffset.UtcNow.AddHours(1));
+
+        return token;
+    }
+
+    /// <summary>
+    /// Obtains a token via the <c>az account get-access-token</c> command.
+    /// Requires <c>az login</c> to have been run in the current user session.
+    /// </summary>
+    private static async Task<string> GetAzureCliTokenAsync(string resource, CancellationToken ct)
+    {
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo("cmd.exe", $"/c az account get-access-token --resource {resource} --output json")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                }
+            };
+            process.Start();
+            string output = await process.StandardOutput.ReadToEndAsync(ct).ConfigureAwait(false);
+            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                return string.Empty;
+
+            using var doc = JsonDocument.Parse(output);
+            return GetString(doc.RootElement, "accessToken") ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Obtains a token via client credentials (Service Principal) flow.
+    /// </summary>
+    private async Task<string> GetServicePrincipalTokenAsync(CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(_settings.TenantId) || string.IsNullOrWhiteSpace(_settings.ClientId) || string.IsNullOrWhiteSpace(_settings.ClientSecret))
             return string.Empty;
 
@@ -258,7 +395,7 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
                 ["grant_type"] = "client_credentials",
                 ["client_id"] = _settings.ClientId,
                 ["client_secret"] = _settings.ClientSecret,
-                ["scope"] = "https://management.azure.com/.default https://api.loganalytics.io/.default"
+                ["scope"] = "https://management.azure.com/.default"
             })
         };
 
@@ -267,10 +404,11 @@ public sealed class AzureMonitorConnector : IAIOpsConnector
             return string.Empty;
 
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
-        _accessToken = GetString(doc.RootElement, "access_token");
+        string token = GetString(doc.RootElement, "access_token") ?? string.Empty;
         int expiresIn = GetInt(doc.RootElement, "expires_in", 300);
-        _tokenExpiresAt = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn - 60));
-        return _accessToken ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(token))
+            _tokenCache["https://management.azure.com"] = (token, DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn - 60)));
+        return token;
     }
 
     private HttpRequestMessage CreateLogAnalyticsRequest(string query, TimeSpan timeSpan, string token)

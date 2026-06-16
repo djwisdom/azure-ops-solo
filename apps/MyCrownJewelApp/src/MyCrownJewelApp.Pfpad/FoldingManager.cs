@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace MyCrownJewelApp.Pfpad;
 
-public sealed class FoldingManager
+public sealed partial class FoldingManager
 {
     private readonly RichTextBox _editor;
     private readonly List<FoldRegion> _regions = new();
@@ -486,8 +486,8 @@ public sealed class FoldingManager
         }
     }
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
     private const int WM_SETREDRAW = 0x000B;
 }

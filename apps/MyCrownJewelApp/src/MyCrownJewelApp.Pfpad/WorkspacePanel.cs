@@ -5,24 +5,24 @@ using LibGit2Sharp;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class WorkspacePanel : UserControl
+internal sealed partial class WorkspacePanel : UserControl
 {
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
     private const string FavoritesFile = "workspace_favorites.json";
 
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
     private readonly GitService _git;
 
     private const int TVS_LINESATROOT = 0x1000;
     private const int GWL_STYLE = -16;
 
-    [DllImport("user32.dll")]
-    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
 
-    [DllImport("user32.dll")]
-    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private static void RemoveRootLinesStyle(IntPtr hWnd)
     {
@@ -38,6 +38,7 @@ internal sealed class WorkspacePanel : UserControl
     private readonly Button _collapseButton;
     private readonly Button _closeButton;
     private readonly TextBox _searchBox;
+    private readonly Panel _searchBoxBorder;   // flat 1-px border wrapper around _searchBox
     private readonly Button _searchButton;
     private readonly Button _clearSearchButton;
 
@@ -248,26 +249,39 @@ internal sealed class WorkspacePanel : UserControl
         };
         _closeButton.Click += (s, e) => CloseRequested?.Invoke();
 
-        // Search row
+        // Search row — flat styled: BorderStyle.None textbox inside a 1-px border Panel
         _searchBox = new TextBox
         {
             Font = new Font("Segoe UI", 9),
-            Location = new Point(0, 30),
-            Size = new Size(160, 24),
-            BorderStyle = BorderStyle.FixedSingle,
-            PlaceholderText = "Search files..."
+            BorderStyle = BorderStyle.None,
+            PlaceholderText = "Search files...",
+            Dock = DockStyle.Fill,
         };
         _searchBox.TextChanged += SearchBox_TextChanged;
         _searchBox.KeyDown += SearchBox_KeyDown;
+
+        // Wrapper panel acts as the flat border around the borderless TextBox
+        _searchBoxBorder = new Panel
+        {
+            Location = new Point(0, 30),
+            Size = new Size(160, 22),
+            Padding = new Padding(3, 2, 3, 2),
+        };
+        _searchBoxBorder.Paint += (s, e) =>
+        {
+            using var pen = new Pen(ThemeManager.Instance.CurrentTheme.Border, 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, _searchBoxBorder.Width - 1, _searchBoxBorder.Height - 1);
+        };
+        _searchBoxBorder.Controls.Add(_searchBox);
 
         _searchButton = new Button
         {
             Text = "🔍",
             Font = new Font("Segoe UI", 9),
             FlatStyle = FlatStyle.Flat,
-            Size = new Size(28, 24),
+            Size = new Size(28, 22),
             Location = new Point(164, 30),
-            FlatAppearance = { BorderSize = 1 },
+            FlatAppearance = { BorderSize = 0 },
             Cursor = Cursors.Hand
         };
         _searchButton.Click += (s, e) => PerformSearch();
@@ -288,8 +302,15 @@ internal sealed class WorkspacePanel : UserControl
 
         _modernHeader.Controls.AddRange(new Control[] {
             _workspaceTitle, _refreshButton, _collapseButton, _closeButton,
-            _searchBox, _searchButton, _clearSearchButton
+            _searchBoxBorder, _searchButton, _clearSearchButton
         });
+
+        // Flat 1-px separator between header and tree — drawn on header's bottom edge
+        _modernHeader.Paint += (s, e) =>
+        {
+            using var pen = new Pen(ThemeManager.Instance.CurrentTheme.Border, 1);
+            e.Graphics.DrawLine(pen, 0, _modernHeader.Height - 1, _modernHeader.Width, _modernHeader.Height - 1);
+        };
 
         // Theme will be set by Form1 after initialization
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -393,31 +414,33 @@ internal sealed class WorkspacePanel : UserControl
 
         // Modern header theming
         _modernHeader.BackColor = theme.MenuBackground;
+        _modernHeader.Invalidate(); // repaint bottom separator line
         _workspaceTitle.ForeColor = theme.Text;
 
+        // Flat search box wrapper: background matches editor; border drawn via Paint
+        _searchBoxBorder.BackColor = theme.EditorBackground;
+        _searchBoxBorder.Invalidate();
         _searchBox.BackColor = theme.EditorBackground;
         _searchBox.ForeColor = theme.Text;
 
-        _refreshButton.BackColor = Color.Transparent;
-        _refreshButton.ForeColor = theme.Text;
+        // Subtle hover/press backgrounds for all icon buttons — flat, no glow
+        Color hoverBg = isDark
+            ? Color.FromArgb(40, 255, 255, 255)
+            : Color.FromArgb(30, 0, 0, 0);
+        Color pressBg = isDark
+            ? Color.FromArgb(70, 255, 255, 255)
+            : Color.FromArgb(55, 0, 0, 0);
 
-        _collapseButton.BackColor = Color.Transparent;
-        _collapseButton.ForeColor = theme.Text;
-
-        _closeButton.BackColor = Color.Transparent;
-        _closeButton.ForeColor = theme.Text;
-
-        _searchButton.BackColor = theme.PanelBackground;
-        _searchButton.ForeColor = theme.Text;
-
-        _clearSearchButton.BackColor = Color.Transparent;
-        _clearSearchButton.ForeColor = theme.Text;
-
-        _projectFilterButton.BackColor = Color.Transparent;
-        _projectFilterButton.ForeColor = theme.Text;
-
-        _showAllFilesButton.BackColor = Color.Transparent;
-        _showAllFilesButton.ForeColor = theme.Text;
+        foreach (var btn in new Button[] {
+            _refreshButton, _collapseButton, _closeButton,
+            _searchButton, _clearSearchButton,
+            _projectFilterButton, _showAllFilesButton })
+        {
+            btn.BackColor = Color.Transparent;
+            btn.ForeColor = theme.Text;
+            btn.FlatAppearance.MouseOverBackColor = hoverBg;
+            btn.FlatAppearance.MouseDownBackColor = pressBg;
+        }
 
         _fileContextMenu.BackColor = theme.MenuBackground;
         _fileContextMenu.ForeColor = theme.Text;
@@ -1552,21 +1575,27 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void HighlightSearchMatches(TreeNodeCollection nodes, string searchTerm)
     {
+        var theme = ThemeManager.Instance.CurrentTheme;
+        // Theme-aware highlight: warm amber on light, muted gold on dark — never raw yellow
+        Color matchBack = theme.IsLight
+            ? Color.FromArgb(255, 236, 100)
+            : Color.FromArgb(120, 80, 0);
+        Color matchFore = theme.IsLight ? Color.Black : Color.FromArgb(255, 215, 120);
+
         foreach (TreeNode node in nodes)
         {
             string nodeText = node.Text.ToLowerInvariant();
             bool matches = nodeText.Contains(searchTerm);
 
-            // Highlight matching nodes
             if (matches)
             {
-                node.BackColor = Color.Yellow;
-                node.ForeColor = Color.Black;
+                node.BackColor = matchBack;
+                node.ForeColor = matchFore;
             }
             else
             {
                 node.BackColor = Color.Transparent;
-                node.ForeColor = ThemeManager.Instance.CurrentTheme.Text;
+                node.ForeColor = theme.Text;
             }
 
             // Recursively check children
@@ -1659,7 +1688,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             string itemType = Directory.Exists(path) ? "folder" : "file";
             string itemName = Path.GetFileName(path);
 
-            var result = MessageBox.Show(
+            var result = ThemedMessageBox.Show(
                 $"Are you sure you want to delete the {itemType} '{itemName}'?",
                 "Delete Item",
                 MessageBoxButtons.YesNo,
@@ -1678,7 +1707,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to delete item: {ex.Message}", "Delete Failed",
+                    ThemedMessageBox.Show($"Failed to delete item: {ex.Message}", "Delete Failed",
                                   MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
@@ -1695,7 +1724,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             ? $"Are you sure you want to delete the {itemType} '{Path.GetFileName(items[0])}'?"
             : $"Are you sure you want to delete {items.Count} selected items?";
 
-        var result = MessageBox.Show(message, "Delete Items", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        var result = ThemedMessageBox.Show(message, "Delete Items", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
         if (result == DialogResult.Yes)
         {
@@ -1713,7 +1742,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to delete items: {ex.Message}", "Delete Failed",
+                ThemedMessageBox.Show($"Failed to delete items: {ex.Message}", "Delete Failed",
                               MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

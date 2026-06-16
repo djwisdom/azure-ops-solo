@@ -9,7 +9,7 @@ using LibGit2Sharp;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class GitForm : Form
+internal sealed partial class GitForm : Form
 {
     private readonly GitService _git;
 
@@ -41,14 +41,14 @@ internal sealed class GitForm : Form
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
-    [DllImport("user32.dll")]
-    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
 
-    [DllImport("user32.dll")]
-    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongW")]
+    private static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
     private const int GWL_STYLE = -16;
     private const int WS_BORDER = 0x00800000;
@@ -232,7 +232,7 @@ internal sealed class GitForm : Form
         _commitMessage = new TextBox
         {
             Font = new Font("Segoe UI", 9),
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Location = new Point(79, 0),
             Size = new Size(100, 60),
             Multiline = true,
@@ -392,7 +392,7 @@ internal sealed class GitForm : Form
         {
             Multiline = true,
             ReadOnly = true,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Font = new Font("Consolas", 9),
             ScrollBars = ScrollBars.Both,
             WordWrap = false,
@@ -452,6 +452,7 @@ internal sealed class GitForm : Form
             case TextBox tb:
                 tb.BackColor = theme.EditorBackground;
                 tb.ForeColor = theme.Text;
+                tb.BorderStyle = BorderStyle.None;
                 break;
             case ListBox:
                 break;
@@ -481,14 +482,14 @@ internal sealed class GitForm : Form
         if (isAccent)
         {
             btn.BackColor = theme.Accent;
-            btn.ForeColor = Color.White;
+            btn.ForeColor = FlatUiHelper.BadgeForeground(theme);
             btn.FlatAppearance.BorderSize = 0;
         }
         else
         {
             btn.BackColor = theme.Background;
             btn.ForeColor = theme.Text;
-            btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.BorderSize = 0;
         }
     }
 
@@ -511,9 +512,8 @@ internal sealed class GitForm : Form
 
         _initBtn.BackColor = theme.Background;
         _initBtn.ForeColor = theme.Text;
-        _initBtn.FlatAppearance.BorderColor = theme.Muted;
         _initBtn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
-        _initBtn.FlatAppearance.BorderSize = 1;
+        _initBtn.FlatAppearance.BorderSize = 0;
 
         StyleButton(_stageAllBtn, theme, false);
         StyleButton(_unstageAllBtn, theme, false);

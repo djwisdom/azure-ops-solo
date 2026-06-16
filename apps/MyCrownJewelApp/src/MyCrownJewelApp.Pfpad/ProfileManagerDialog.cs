@@ -130,7 +130,7 @@ internal sealed class ProfileManagerDialog : Form
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[ProfileManager] Initialization failed: {ex.Message}\n{ex.StackTrace}");
-            MessageBox.Show($"Failed to initialize Profile Manager: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedMessageBox.Show($"Failed to initialize Profile Manager: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             throw;
         }
     }
@@ -169,7 +169,7 @@ internal sealed class ProfileManagerDialog : Form
             PlaceholderText = "Search profiles...",
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
 
         // Profile list (owner-drawn)
@@ -268,14 +268,14 @@ internal sealed class ProfileManagerDialog : Form
         // Name
         var nameLbl = new Label { Text = "Name:", Location = new Point(0, y + 4), AutoSize = true, ForeColor = _theme.Text };
         _rightPanel.Controls.Add(nameLbl);
-        _nameBox = new TextBox { Location = new Point(70, y), Width = 300, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+        _nameBox = new TextBox { Location = new Point(70, y), Width = 300, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
         _rightPanel.Controls.Add(_nameBox);
         y += 30;
 
         // Description
         var descLbl = new Label { Text = "Description:", Location = new Point(0, y + 4), AutoSize = true, ForeColor = _theme.Text };
         _rightPanel.Controls.Add(descLbl);
-        _descriptionBox = new TextBox { Location = new Point(70, y), Width = 300, Height = 50, Multiline = true, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle, ScrollBars = ScrollBars.Vertical };
+        _descriptionBox = new TextBox { Location = new Point(70, y), Width = 300, Height = 50, Multiline = true, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None, ScrollBars = ScrollBars.Vertical };
         _rightPanel.Controls.Add(_descriptionBox);
         y += 60;
 
@@ -400,7 +400,7 @@ internal sealed class ProfileManagerDialog : Form
             Text = "",
             Location = new Point(220, 48),
             AutoSize = true,
-            ForeColor = Color.Green,
+            ForeColor = FlatUiHelper.SuccessColor(_theme),
             Font = new Font("Segoe UI", 7),
             BackColor = Color.Transparent
         };
@@ -434,7 +434,7 @@ internal sealed class ProfileManagerDialog : Form
             Size = new Size(240, 23),
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             PlaceholderText = "Select workspace folder..."
         };
         workspaceControlsPanel.Controls.Add(_workspaceBox);
@@ -482,7 +482,7 @@ internal sealed class ProfileManagerDialog : Form
             Size = new Size(240, 23),
             BackColor = _theme.EditorBackground,
             ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             PlaceholderText = "Workspace path..."
         };
         workspaceInputPanel.Controls.Add(_workspaceBox);
@@ -561,7 +561,7 @@ internal sealed class ProfileManagerDialog : Form
         // Recent workspaces (simple version)
         var recentLbl = new Label { Text = "Recent Workspaces:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
         _workspaceSection.ContentPanel.Controls.Add(recentLbl);
-        _recentWorkspacesList = new ListBox { Location = new Point(wx, wy + 18), Width = 340, Height = 40, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+        _recentWorkspacesList = new ListBox { Location = new Point(wx, wy + 18), Width = 340, Height = 40, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
         _workspaceSection.ContentPanel.Controls.Add(_recentWorkspacesList);
         var wsBtnPanel = new Panel { Location = new Point(wx + 280, wy + 20), Size = new Size(60, 18) };
         _addWorkspaceButton = new Button { Text = "+", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
@@ -581,15 +581,15 @@ internal sealed class ProfileManagerDialog : Form
         };
         int cx = 10, cy = 22;
         _commandsSection.ContentPanel.Controls.Add(new Label { Text = "Build:", Location = new Point(cx, cy), AutoSize = true, ForeColor = _theme.Text });
-        _buildBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+        _buildBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
         _commandsSection.ContentPanel.Controls.Add(_buildBox);
         cy += 26;
         _commandsSection.ContentPanel.Controls.Add(new Label { Text = "Run:", Location = new Point(cx, cy), AutoSize = true, ForeColor = _theme.Text });
-        _runBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+        _runBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
         _commandsSection.ContentPanel.Controls.Add(_runBox);
         cy += 26;
         _commandsSection.ContentPanel.Controls.Add(new Label { Text = "Test:", Location = new Point(cx, cy), AutoSize = true, ForeColor = _theme.Text });
-        _testBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.FixedSingle };
+        _testBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
         _commandsSection.ContentPanel.Controls.Add(_testBox);
         _rightPanel.Controls.Add(_commandsSection);
         y += _commandsSection.Height + 6;
@@ -804,7 +804,7 @@ internal sealed class ProfileManagerDialog : Form
                                 if (workspaces.Count == 1)
                                 {
                                     label.Text = primaryWorkspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
-                                    label.ForeColor = primaryWorkspace?.IsTrusted == true ? Color.Green : Color.Orange;
+                                    label.ForeColor = primaryWorkspace?.IsTrusted == true ? FlatUiHelper.SuccessColor(_theme) : FlatUiHelper.WarningColor(_theme);
                                 }
                                 else if (workspaces.Count > 1)
                                 {
@@ -815,7 +815,7 @@ internal sealed class ProfileManagerDialog : Form
                                         label.Text = "⚠️ Not Trusted";
                                     else
                                         label.Text = $"{trustedCount}/{workspaces.Count} ✓ Trusted";
-                                    label.ForeColor = trustedCount == workspaces.Count ? Color.Green : Color.Orange;
+                                    label.ForeColor = trustedCount == workspaces.Count ? FlatUiHelper.SuccessColor(_theme) : FlatUiHelper.WarningColor(_theme);
                                 }
                                 else
                                 {
@@ -1196,7 +1196,7 @@ internal sealed class ProfileManagerDialog : Form
         _manager.SaveProfile(profile);
         LoadProfileList();
         _profileList.SelectedItem = name;
-        MessageBox.Show($"Created profile \"{name}\" from current window settings.", "Profile Created",
+        ThemedMessageBox.Show($"Created profile \"{name}\" from current window settings.", "Profile Created",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
@@ -1263,7 +1263,7 @@ internal sealed class ProfileManagerDialog : Form
             newName = newName.Trim();
             if (_manager.ProfileNames.Contains(newName))
             {
-                MessageBox.Show($"A profile named \"{newName}\" already exists.", "Rename Failed",
+                ThemedMessageBox.Show($"A profile named \"{newName}\" already exists.", "Rename Failed",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -1278,7 +1278,7 @@ internal sealed class ProfileManagerDialog : Form
     private void DeleteCurrentProfile()
     {
         if (_currentProfile == null || _currentProfile.Name == "Default") return;
-        var result = MessageBox.Show($"Delete profile \"{_currentProfile.Name}\"? This cannot be undone.", "Confirm Delete",
+        var result = ThemedMessageBox.Show($"Delete profile \"{_currentProfile.Name}\"? This cannot be undone.", "Confirm Delete",
             MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
         if (result == DialogResult.Yes)
         {
@@ -1315,13 +1315,13 @@ internal sealed class ProfileManagerDialog : Form
         string path = _workspaceBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(path))
         {
-            MessageBox.Show("Please enter a workspace path.", "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ThemedMessageBox.Show("Please enter a workspace path.", "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
         if (!Directory.Exists(path))
         {
-            var result = MessageBox.Show($"Directory '{path}' does not exist. Create it?", "Create Directory",
+            var result = ThemedMessageBox.Show($"Directory '{path}' does not exist. Create it?", "Create Directory",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (result == DialogResult.Yes)
             {
@@ -1331,7 +1331,7 @@ internal sealed class ProfileManagerDialog : Form
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to create directory: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    ThemedMessageBox.Show($"Failed to create directory: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
             }
@@ -1367,7 +1367,7 @@ internal sealed class ProfileManagerDialog : Form
         if (_recentWorkspacesList.Items.Count == 0)
             return;
 
-        var result = MessageBox.Show("Clear all recent workspaces?", "Confirm Clear",
+        var result = ThemedMessageBox.Show("Clear all recent workspaces?", "Confirm Clear",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (result == DialogResult.Yes)
         {
@@ -1446,14 +1446,14 @@ internal sealed class ProfileManagerDialog : Form
         string newName = _nameBox.Text.Trim();
         if (string.IsNullOrEmpty(newName))
         {
-            MessageBox.Show("Profile name cannot be empty.", "Validation Error",
+            ThemedMessageBox.Show("Profile name cannot be empty.", "Validation Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
         if (newName != _currentProfile.Name && _manager.ProfileNames.Contains(newName))
         {
-            MessageBox.Show($"A profile named \"{newName}\" already exists.", "Validation Error",
+            ThemedMessageBox.Show($"A profile named \"{newName}\" already exists.", "Validation Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1526,7 +1526,7 @@ internal sealed class ProfileManagerDialog : Form
 
         LoadProfileList();
         _profileList.SelectedItem = profile.Name;
-        MessageBox.Show($"Profile \"{profile.Name}\" saved.", "Save Complete",
+        ThemedMessageBox.Show($"Profile \"{profile.Name}\" saved.", "Save Complete",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
@@ -1546,12 +1546,12 @@ internal sealed class ProfileManagerDialog : Form
             {
                 string json = System.Text.Json.JsonSerializer.Serialize(_currentProfile, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(dlg.FileName, json);
-                MessageBox.Show($"Profile exported to {dlg.FileName}", "Export Complete",
+                ThemedMessageBox.Show($"Profile exported to {dlg.FileName}", "Export Complete",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Export failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedMessageBox.Show($"Export failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
@@ -1584,12 +1584,12 @@ internal sealed class ProfileManagerDialog : Form
                 _manager.SaveProfile(profile);
                 LoadProfileList();
                 _profileList.SelectedItem = newName;
-                MessageBox.Show($"Profile \"{newName}\" imported.", "Import Complete",
+                ThemedMessageBox.Show($"Profile \"{newName}\" imported.", "Import Complete",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Import failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedMessageBox.Show($"Import failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
@@ -1794,16 +1794,16 @@ private void LayoutRightPanel()
 
                     // Clear the input box since we're loading from file
                     _workspaceBox.Text = "";
-                    MessageBox.Show($"Loaded {workspaces.Count} workspace folders from {Path.GetFileName(dlg.FileName)}", "Workspace Loaded", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    ThemedMessageBox.Show($"Loaded {workspaces.Count} workspace folders from {Path.GetFileName(dlg.FileName)}", "Workspace Loaded", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 else
                 {
-                    MessageBox.Show("No valid workspace folders found in the file.", "No Workspaces", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    ThemedMessageBox.Show("No valid workspace folders found in the file.", "No Workspaces", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error loading workspace file: {ex.Message}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedMessageBox.Show($"Error loading workspace file: {ex.Message}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

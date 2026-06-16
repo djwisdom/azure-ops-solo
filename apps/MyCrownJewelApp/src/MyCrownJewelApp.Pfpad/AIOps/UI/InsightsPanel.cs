@@ -16,6 +16,8 @@ public sealed class InsightsPanel : UserControl
     private IReadOnlyList<ObservabilityGap> _gaps = Array.Empty<ObservabilityGap>();
     private IReadOnlyList<RemediationSuggestion> _remediations = Array.Empty<RemediationSuggestion>();
     private DeploymentRiskReport? _riskReport;
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     /// <summary>
     /// Raised when a remediation should be applied.
@@ -55,6 +57,8 @@ public sealed class InsightsPanel : UserControl
         _cardsPanel.Resize += (s, e) => ResizeCards();
 
         Controls.Add(_cardsPanel);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ AI-generated from connector data. Connect a backend first in AIOps > Settings (Ctrl+Alt+,).");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -82,6 +86,7 @@ public sealed class InsightsPanel : UserControl
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.MenuBackground;
         _cardsPanel.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _titleLabel.ForeColor = theme.Text;
         _closeButton.BackColor = Color.Transparent;
         _closeButton.ForeColor = theme.Text;
@@ -176,7 +181,15 @@ public sealed class InsightsPanel : UserControl
             Width = Math.Max(280, _cardsPanel.ClientSize.Width - 24),
             Margin = new Padding(0, 0, 0, 8),
             BackColor = _theme.EditorBackground,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
+        };
+        card.Paint += (_, e) =>
+        {
+            Rectangle bounds = card.ClientRectangle;
+            bounds.Width -= 1;
+            bounds.Height -= 1;
+            using Pen pen = new(_theme.Border);
+            e.Graphics.DrawRectangle(pen, bounds);
         };
 
         Panel accent = new() { Dock = DockStyle.Left, Width = 6, BackColor = accentColor };

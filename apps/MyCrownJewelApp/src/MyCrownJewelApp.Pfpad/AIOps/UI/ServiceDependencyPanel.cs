@@ -26,6 +26,8 @@ public sealed class ServiceDependencyPanel : UserControl
     private readonly Dictionary<string, ServiceHealthState> _healthStates = new(StringComparer.OrdinalIgnoreCase);
     private ServiceDependencyGraph? _graph;
     private Theme _theme;
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     public event Action<string>? ServiceOpenRequested;
     public event Action? CloseRequested;
@@ -72,9 +74,9 @@ public sealed class ServiceDependencyPanel : UserControl
         _docsLinkLabel = new LinkLabel { Dock = DockStyle.Top, Height = 20 };
         _docsLinkLabel.LinkClicked += (_, _) => AIOpsUiHelper.OpenUrl(_docsLinkLabel.Tag as string);
         Label upstreamLabel = new() { Dock = DockStyle.Top, Height = 18, Text = "Upstream", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), Padding = new Padding(0, 8, 0, 0) };
-        _upstreamList = new ListBox { Dock = DockStyle.Top, Height = 110, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
+        _upstreamList = new ListBox { Dock = DockStyle.Top, Height = 110, IntegralHeight = false, BorderStyle = BorderStyle.None };
         Label downstreamLabel = new() { Dock = DockStyle.Top, Height = 18, Text = "Downstream", Font = new Font("Segoe UI", 8.5f, FontStyle.Bold), Padding = new Padding(0, 8, 0, 0) };
-        _downstreamList = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, BorderStyle = BorderStyle.FixedSingle };
+        _downstreamList = new ListBox { Dock = DockStyle.Fill, IntegralHeight = false, BorderStyle = BorderStyle.None };
         _openDocsButton = new Button { Dock = DockStyle.Bottom, Height = 30, Text = "Open Docs", FlatStyle = FlatStyle.Flat };
         _openDocsButton.Click += (_, _) => AIOpsUiHelper.OpenUrl(_docsLinkLabel.Tag as string);
 
@@ -90,6 +92,8 @@ public sealed class ServiceDependencyPanel : UserControl
         _splitContainer.Panel2.Controls.Add(detailsPanel);
 
         Controls.Add(_splitContainer);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Dependency graph from Azure Monitor · Kubernetes metrics. Configure connectors in AIOps > Settings (Ctrl+Alt+,).");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -115,6 +119,7 @@ public sealed class ServiceDependencyPanel : UserControl
         _theme = theme;
         AIOpsUiHelper.ApplyControlTheme(this, theme);
         _header.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _titleLabel.ForeColor = theme.Text;
         _filterTextBox.BackColor = theme.EditorBackground;
         _filterTextBox.ForeColor = theme.Text;
@@ -128,10 +133,8 @@ public sealed class ServiceDependencyPanel : UserControl
         _docsLinkLabel.LinkColor = AIOpsUiHelper.Accent(theme);
         _docsLinkLabel.ActiveLinkColor = AIOpsUiHelper.Accent(theme);
         _docsLinkLabel.VisitedLinkColor = AIOpsUiHelper.Accent(theme);
-        _upstreamList.BackColor = theme.EditorBackground;
-        _upstreamList.ForeColor = theme.Text;
-        _downstreamList.BackColor = theme.EditorBackground;
-        _downstreamList.ForeColor = theme.Text;
+        _upstreamList.ApplyTheme(theme);
+        _downstreamList.ApplyTheme(theme);
         AIOpsUiHelper.ApplyTreeTheme(_servicesTree, theme);
     }
 

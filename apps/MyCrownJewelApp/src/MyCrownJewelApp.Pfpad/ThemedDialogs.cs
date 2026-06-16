@@ -6,16 +6,16 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal static class NativeThemed
+internal static partial class NativeThemed
 {
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
     private const string LIGHT_MODE_SCROLLBAR = "";
 
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    internal static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
-    [DllImport("dwmapi.dll")]
-    internal static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+    [LibraryImport("dwmapi.dll")]
+    internal static partial int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     internal const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 
@@ -49,14 +49,15 @@ internal static class NativeThemed
     [DllImport("user32.dll")]
     private static extern IntPtr SetWindowsHookEx(int idHook, CbtProcDelegate lpfn, IntPtr hmod, uint dwThreadId);
 
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool UnhookWindowsHookEx(IntPtr hhk);
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
 
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentThreadId();
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetCurrentThreadId();
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassNameW(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);

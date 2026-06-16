@@ -20,20 +20,22 @@ public sealed class CommandPaletteForm : Form
         _allCommands = commands;
         _filtered = commands;
 
+        var theme = ThemeManager.Instance.CurrentTheme;
+
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.None;
-        BackColor = Color.FromArgb(45, 45, 45);
+        BackColor = theme.MenuBackground;
         ClientSize = new Size(500, 350);
         ShowInTaskbar = false;
         TopMost = true;
 
         _searchBox = new TextBox
         {
-            Dock = DockStyle.Top,
+            Dock = DockStyle.Fill,
             Height = 30,
-            BackColor = Color.FromArgb(30, 30, 30),
-            ForeColor = Color.FromArgb(220, 220, 220),
-            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = theme.EditorBackground,
+            ForeColor = theme.Text,
+            BorderStyle = BorderStyle.None,
             Font = new Font("Consolas", 11),
         };
         _searchBox.TextChanged += OnSearchChanged;
@@ -61,8 +63,12 @@ public sealed class CommandPaletteForm : Form
             if (e.KeyCode == Keys.Enter) { ExecuteSelected(); e.Handled = true; }
         };
 
+        var searchBoxWrapper = FlatUiHelper.WrapFlat(_searchBox, theme);
+        searchBoxWrapper.Dock = DockStyle.Top;
+        searchBoxWrapper.Height = 30;
+
         Controls.Add(_resultsList);
-        Controls.Add(_searchBox);
+        Controls.Add(searchBoxWrapper);
 
         PopulateList();
 

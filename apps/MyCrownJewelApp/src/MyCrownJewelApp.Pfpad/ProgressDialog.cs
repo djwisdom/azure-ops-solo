@@ -45,6 +45,7 @@ namespace MyCrownJewelApp.Pfpad
                 Dock = DockStyle.Fill,
                 MarqueeAnimationSpeed = 30
             };
+            _progressBar.ApplyTheme(theme);
 
             var cancelButton = new Button
             {

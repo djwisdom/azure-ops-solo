@@ -253,7 +253,7 @@ internal sealed class GitOperationsPanel : Panel
 
         menu.Items.Add("Drop Stash", null, (s, args) =>
         {
-            if (MessageBox.Show("Drop the most recent stash?", "Drop Stash", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            if (ThemedMessageBox.Show("Drop the most recent stash?", "Drop Stash", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
             {
                 // Note: No DropStash method in existing API, would need to implement
                 ThemedMessageBox.Show("Drop stash not implemented yet.", "Not Implemented", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -292,7 +292,7 @@ internal sealed class GitOperationsPanel : Panel
         {
             if (_git.CreateTag(nameTextBox.Text.Trim(), messageTextBox.Text.Trim()))
             {
-                MessageBox.Show("Tag created successfully!", "Tag Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                ThemedMessageBox.Show("Tag created successfully!", "Tag Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
         }
     }
@@ -1026,7 +1026,7 @@ internal sealed class GitOperationsPanel : Panel
         _commitMessage = new TextBox
         {
             Font = new Font("Segoe UI", 9),
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Location = new Point(90, y),
             Size = new Size(160, 26),
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
@@ -1732,7 +1732,7 @@ internal sealed class GitOperationsPanel : Panel
         _commitMessage.BackColor = theme.EditorBackground;
         _commitMessage.ForeColor = theme.Text;
         _commitBtn.BackColor = theme.Accent;
-        _commitBtn.ForeColor = Color.White;
+        _commitBtn.ForeColor = FlatUiHelper.BadgeForeground(theme);
         _commitBtn.FlatAppearance.BorderSize = 0;
         _amendBtn.BackColor = theme.Background;
         _amendBtn.ForeColor = theme.Text;
@@ -1756,7 +1756,7 @@ internal sealed class GitOperationsPanel : Panel
         _pullBtn.ForeColor = theme.Text;
         _pullBtn.FlatAppearance.BorderColor = theme.Muted;
         _pushBtn.BackColor = theme.Accent;
-        _pushBtn.ForeColor = Color.White;
+        _pushBtn.ForeColor = FlatUiHelper.BadgeForeground(theme);
         _pushBtn.FlatAppearance.BorderSize = 0;
         _noRepoLabel.ForeColor = theme.Muted;
         _noRepoLabel.BackColor = theme.MenuBackground;

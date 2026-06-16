@@ -8,10 +8,10 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class SymbolPanel : UserControl
+internal sealed partial class SymbolPanel : UserControl
 {
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
     private readonly ToolStrip _headerStrip;
@@ -67,7 +67,7 @@ internal sealed class SymbolPanel : UserControl
         {
             Dock = DockStyle.Top,
             Font = new Font("Segoe UI", 9),
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Text = "",
             Height = 22
         };
@@ -217,8 +217,8 @@ internal sealed class SymbolPanel : UserControl
         _headerStrip.ForeColor = theme.Text;
         _headerLabel.ForeColor = theme.Muted;
         _closeButton.ForeColor = theme.Text;
-        _searchBox.BackColor = theme.EditorBackground;
-        _searchBox.ForeColor = theme.Text;
+        _searchBox.ApplyTheme(theme);
+        _searchBox.BorderStyle = BorderStyle.None;
         _symbolList.BackColor = theme.MenuBackground;
         _symbolList.ForeColor = theme.Text;
         ApplyScrollbarTheme(_symbolList.Handle);

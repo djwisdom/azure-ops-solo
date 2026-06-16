@@ -9,7 +9,8 @@ public partial class FindReplaceDialog : Form
     private TextBox replaceTextBox = null!;
     private CheckBox caseSensitiveCheckBox = null!;
     private CheckBox regexCheckBox = null!;
-    private GroupBox directionGroup = null!;
+    private Panel directionGroup = null!;
+    private Label _directionLabel = null!;
     private RadioButton upRadioButton = null!;
     private RadioButton downRadioButton = null!;
     private CheckBox wrapCheckBox = null!;
@@ -50,7 +51,7 @@ public partial class FindReplaceDialog : Form
             var t = ThemeManager.Instance.CurrentTheme;
             tb.BackColor = t.EditorBackground;
             tb.ForeColor = t.Text;
-            tb.BorderStyle = BorderStyle.FixedSingle;
+            tb.BorderStyle = BorderStyle.None;
         }
         static void StyleButton(Button btn)
         {
@@ -74,7 +75,7 @@ public partial class FindReplaceDialog : Form
         StyleCheckBox(wrapCheckBox);
 
         directionGroup.BackColor = Color.Transparent;
-        directionGroup.ForeColor = theme.Text;
+        _directionLabel.ForeColor = FlatUiHelper.MutedColor(theme);
         upRadioButton.BackColor = Color.Transparent;
         upRadioButton.ForeColor = theme.Text;
         downRadioButton.BackColor = Color.Transparent;
@@ -102,15 +103,20 @@ public partial class FindReplaceDialog : Form
 
         // Find what
         var findLabel = new Label { Text = "Fi&nd what:", Location = new Point(10, y), AutoSize = true };
-        findTextBox = new TextBox { Text = initialFind, Location = new Point(leftCol, y - 3), Width = inputW };
+        findTextBox = new TextBox { Text = initialFind, Location = new Point(leftCol, y - 3), Width = inputW, BackColor = ThemeManager.Instance.CurrentTheme.EditorBackground, ForeColor = ThemeManager.Instance.CurrentTheme.Text, BorderStyle = BorderStyle.None };
+        var findTextBoxWrapper = FlatUiHelper.WrapFlat(findTextBox, ThemeManager.Instance.CurrentTheme);
+        findTextBoxWrapper.Bounds = new Rectangle(findTextBox.Location, new Size(findTextBox.Width, findTextBox.Height + 4));
         findTextBox.TextChanged += (s, e) => UpdateButtons();
         findTextBox.SelectAll();
         y += 28;
 
         // Replace with
         var replaceLabel = new Label { Text = "Re&place with:", Location = new Point(10, y), AutoSize = true };
-        replaceTextBox = new TextBox { Location = new Point(leftCol, y - 3), Width = inputW };
+        replaceTextBox = new TextBox { Location = new Point(leftCol, y - 3), Width = inputW, BackColor = ThemeManager.Instance.CurrentTheme.EditorBackground, ForeColor = ThemeManager.Instance.CurrentTheme.Text, BorderStyle = BorderStyle.None };
+        var replaceTextBoxWrapper = FlatUiHelper.WrapFlat(replaceTextBox, ThemeManager.Instance.CurrentTheme);
+        replaceTextBoxWrapper.Bounds = new Rectangle(replaceTextBox.Location, new Size(replaceTextBox.Width, replaceTextBox.Height + 4));
         replaceTextBox.Visible = _isReplace;
+        replaceTextBoxWrapper.Visible = _isReplace;
         replaceLabel.Visible = _isReplace;
         y += _isReplace ? 28 : 0;
 
@@ -121,16 +127,29 @@ public partial class FindReplaceDialog : Form
         y += 26;
 
         // Direction group
-        directionGroup = new GroupBox
+        // Direction group — flat Panel replaces 3D GroupBox
+        _directionLabel = new Label
         {
-            Text = "Direction",
-            Location = new Point(leftCol, y),
-            Size = new Size(160, 50)
+            Text = "DIRECTION",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            Location = new Point(4, 2),
         };
-        upRadioButton = new RadioButton { Text = "&Up", Location = new Point(12, 22), AutoSize = true };
-        downRadioButton = new RadioButton { Text = "&Down", Location = new Point(80, 22), AutoSize = true };
+        directionGroup = new Panel
+        {
+            Location = new Point(leftCol, y),
+            Size = new Size(160, 50),
+            BackColor = Color.Transparent,
+        };
+        directionGroup.Paint += (s, e) =>
+        {
+            using var pen = new Pen(ThemeManager.Instance.CurrentTheme.Border, 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, directionGroup.Width - 1, directionGroup.Height - 1);
+        };
+        upRadioButton = new RadioButton { Text = "&Up", Location = new Point(12, 28), AutoSize = true };
+        downRadioButton = new RadioButton { Text = "&Down", Location = new Point(80, 28), AutoSize = true };
         downRadioButton.Checked = true;
-        directionGroup.Controls.AddRange(new[] { upRadioButton, downRadioButton });
+        directionGroup.Controls.AddRange(new Control[] { _directionLabel, upRadioButton, downRadioButton });
 
         wrapCheckBox = new CheckBox { Text = "&Wrap", Location = new Point(leftCol + 166, y + 14), AutoSize = true };
         wrapCheckBox.Checked = true;
@@ -173,7 +192,7 @@ public partial class FindReplaceDialog : Form
 
         Controls.AddRange(new Control[]
         {
-            findLabel, findTextBox, replaceLabel, replaceTextBox,
+            findLabel, findTextBoxWrapper, replaceLabel, replaceTextBoxWrapper,
             caseSensitiveCheckBox, regexCheckBox,
             directionGroup, wrapCheckBox,
             findNextButton, replaceButton, replaceAllButton,

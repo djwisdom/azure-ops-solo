@@ -4,13 +4,13 @@ using System.Text;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class TerminalPanel : UserControl, IDisposable
+internal sealed partial class TerminalPanel : UserControl, IDisposable
 {
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
     private const int EM_SETLINKCOLOR = 0x0423;
 
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
     private readonly RichTextBox _outputBox;
     private readonly TextBox _inputBox;
     private readonly Panel _inputContainer;
@@ -669,12 +669,12 @@ internal sealed class TerminalPanel : UserControl, IDisposable
     }
 }
 
-internal static class RichTextBoxExtensions
+internal static partial class RichTextBoxExtensions
 {
     private const int EM_SETLINKCOLOR = 0x0423;
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     public static void SetLinkColor(this RichTextBox rtb, Color color)
     {

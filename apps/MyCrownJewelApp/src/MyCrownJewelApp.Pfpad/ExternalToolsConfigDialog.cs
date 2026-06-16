@@ -64,13 +64,13 @@ internal sealed class ExternalToolsConfigDialog : Form
         {
             tb.BackColor = theme.EditorBackground;
             tb.ForeColor = theme.Text;
-            tb.BorderStyle = BorderStyle.FixedSingle;
+            tb.BorderStyle = BorderStyle.None;
         }
         else if (c is ListBox lb)
         {
             lb.BackColor = theme.EditorBackground;
             lb.ForeColor = theme.Text;
-            lb.BorderStyle = BorderStyle.FixedSingle;
+            lb.BorderStyle = BorderStyle.None;
         }
         else if (c is CheckBox cb)
         {
@@ -115,14 +115,25 @@ internal sealed class ExternalToolsConfigDialog : Form
         _moveDownButton = new Button { Text = "\u25BC", Location = new Point(186, 298), Width = 26, Height = 26, Enabled = false };
         _moveDownButton.Click += (s, e) => MoveTool(1);
 
-        // Right panel: properties
-        var propsGroup = new GroupBox
+        // Right panel: tool properties — flat Panel replaces 3D GroupBox
+        var propsTitleLabel = new Label
         {
-            Text = "Tool Properties",
+            Text = "TOOL PROPERTIES",
+            AutoSize = true,
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            ForeColor = theme.Muted,
+            Location = new Point(10, 6),
+        };
+        var propsGroup = new Panel
+        {
             Location = new Point(224, 12),
             Size = new Size(460, 310),
             BackColor = Color.Transparent,
-            ForeColor = theme.Text
+        };
+        propsGroup.Paint += (s, e) =>
+        {
+            using var pen = new Pen(ThemeManager.Instance.CurrentTheme.Border, 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, propsGroup.Width - 1, propsGroup.Height - 1);
         };
 
         var nameLabel = new Label { Text = "&Title:", Location = new Point(10, 25), AutoSize = true };
@@ -156,6 +167,7 @@ internal sealed class ExternalToolsConfigDialog : Form
 
         propsGroup.Controls.AddRange(new Control[]
         {
+            propsTitleLabel,
             nameLabel, _nameTextBox,
             cmdLabel, _commandTextBox, _browseCommandButton,
             argsLabel, _argumentsTextBox, _argsHintLabel,

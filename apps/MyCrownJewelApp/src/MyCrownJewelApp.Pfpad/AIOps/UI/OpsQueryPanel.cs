@@ -26,6 +26,8 @@ public sealed class OpsQueryPanel : UserControl
     private readonly TextBox _questionTextBox;
     private readonly Button _askButton;
     private readonly Label _hintLabel;
+    private readonly Panel _contextHintBar;
+    private readonly Label _contextHintLabel;
     private readonly List<MessageBubbleState> _messageStates = new();
 
     private Theme _theme;
@@ -53,7 +55,7 @@ public sealed class OpsQueryPanel : UserControl
 
         _contextBar = new Panel { Dock = DockStyle.Top, Height = 28, Padding = new Padding(6, 4, 6, 4) };
         _fileLabel = new Label { AutoSize = true, Text = "File:", Location = new Point(6, 6) };
-        _fileTextBox = new TextBox { ReadOnly = true, BorderStyle = BorderStyle.FixedSingle, Location = new Point(38, 3), Height = 22, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+        _fileTextBox = new TextBox { ReadOnly = true, BorderStyle = BorderStyle.None, Location = new Point(38, 3), Height = 22, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
         _serviceLabel = new Label { AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Width = 120, Height = 20, Anchor = AnchorStyles.Top | AnchorStyles.Right };
         _contextBar.Resize += (_, _) => LayoutContextBar();
         _contextBar.Controls.AddRange([_fileLabel, _fileTextBox, _serviceLabel]);
@@ -78,7 +80,7 @@ public sealed class OpsQueryPanel : UserControl
             Multiline = true,
             AcceptsReturn = true,
             ScrollBars = ScrollBars.Vertical,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             PlaceholderText = "Why is checkout-service failing?  •  Analyze deployment risk  •  Show recent exceptions  •  Add tracing to this function"
         };
@@ -106,6 +108,8 @@ public sealed class OpsQueryPanel : UserControl
         Controls.Add(_messagesScrollPanel);
         Controls.Add(_inputPanel);
         Controls.Add(_contextBar);
+        (_contextHintBar, _contextHintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Evidence-based answers from real connector data — logs, metrics, traces, Git history. Never hallucinated.");
+        Controls.Add(_contextHintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -182,6 +186,7 @@ public sealed class OpsQueryPanel : UserControl
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.MenuBackground;
         _contextBar.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_contextHintBar, _contextHintLabel, theme);
         _messagesScrollPanel.BackColor = theme.EditorBackground;
         _messagesHost.BackColor = theme.EditorBackground;
         _inputPanel.BackColor = theme.MenuBackground;
@@ -196,10 +201,8 @@ public sealed class OpsQueryPanel : UserControl
         _askButton.BackColor = theme.PanelBackground;
         _askButton.ForeColor = theme.Text;
         _askButton.FlatAppearance.BorderColor = theme.Border;
-        _fileTextBox.BackColor = theme.EditorBackground;
-        _fileTextBox.ForeColor = theme.Text;
-        _questionTextBox.BackColor = theme.EditorBackground;
-        _questionTextBox.ForeColor = theme.Text;
+        _fileTextBox.ApplyTheme(theme);
+        _questionTextBox.ApplyTheme(theme);
         RefreshMessageThemes();
     }
 
@@ -295,7 +298,7 @@ public sealed class OpsQueryPanel : UserControl
         bool? isGuess)
     {
         Panel wrapper = new() { Width = GetMessageWidth(), Margin = new Padding(0, 0, 0, 8), Padding = Padding.Empty };
-        Panel bubble = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(8), BorderStyle = BorderStyle.FixedSingle };
+        Panel bubble = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(8), BorderStyle = BorderStyle.None };
         bubble.Paint += (_, e) => PaintBubble(e.Graphics, bubble.ClientRectangle, isUser);
 
         FlowLayoutPanel content = new()
@@ -476,7 +479,7 @@ public sealed class OpsQueryPanel : UserControl
         Rectangle rect = Rectangle.Inflate(bounds, -1, -1);
         using GraphicsPath path = CreateRoundedPath(rect, 10);
         using SolidBrush brush = new(isUser ? Color.FromArgb(40, _theme.KeywordColor) : _theme.MenuBackground);
-        using Pen pen = new(isUser ? Color.FromArgb(90, _theme.KeywordColor) : _theme.Muted);
+        using Pen pen = new(isUser ? Color.FromArgb(90, _theme.KeywordColor) : _theme.Border);
         graphics.FillPath(brush, path);
         graphics.DrawPath(pen, path);
     }

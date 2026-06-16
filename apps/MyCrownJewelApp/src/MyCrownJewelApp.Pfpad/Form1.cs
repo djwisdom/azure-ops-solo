@@ -26,21 +26,21 @@ using Microsoft.Extensions.DependencyInjection;
      public partial class Form1 : Form
      {
         // Win32 API for dark scrollbar support
-        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-        private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+        [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+        private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
         private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
         // Win32 API for non-client area file drop (title bar, etc.)
-        [DllImport("shell32.dll")]
-        private static extern void DragAcceptFiles(IntPtr hWnd, bool fAccept);
+        [LibraryImport("shell32.dll")]
+        private static partial void DragAcceptFiles(IntPtr hWnd, [MarshalAs(UnmanagedType.Bool)] bool fAccept);
 
         [DllImport("shell32.dll")]
         private static extern uint DragQueryFile(IntPtr hDrop, uint iFile,
             [Out] char[]? lpszFile, uint cch);
 
-        [DllImport("shell32.dll")]
-        private static extern void DragFinish(IntPtr hDrop);
+        [LibraryImport("shell32.dll")]
+        private static partial void DragFinish(IntPtr hDrop);
 
         private const int WM_DROPFILES = 0x0233;
 
@@ -57,8 +57,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 
 
-        [DllImport("dwmapi.dll")]
-        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+        [LibraryImport("dwmapi.dll")]
+        private static partial int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Windows 10 1809+, Windows 11
 
@@ -7902,17 +7902,18 @@ private void NewWindow_Click(object? sender, EventArgs e)
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, StringBuilder lParam);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+        private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static partial bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         private const int GWL_STYLE = -16;
         private const int GWL_EXSTYLE = -20;

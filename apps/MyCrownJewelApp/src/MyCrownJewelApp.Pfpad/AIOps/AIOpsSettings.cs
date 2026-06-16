@@ -59,16 +59,27 @@ public class AIOpsSettings
     };
 }
 
-public class AzureMonitorSettings
+public enum AzureAuthMode
 {
-    public bool Enabled { get; set; } = false;
-    public string TenantId { get; set; } = "";
-    public string ClientId { get; set; } = "";
+    /// <summary>Service Principal with Client ID + Client Secret (client credentials flow).</summary>
+    ServicePrincipal,
+    /// <summary>Use the token cached by <c>az login</c> — no Client ID or Secret required.</summary>
+    AzureCli
+}
+
+public class AzureMonitorSettings
+{
+    public bool Enabled { get; set; } = false;
+    public AzureAuthMode AuthMode { get; set; } = AzureAuthMode.ServicePrincipal;
+    public string TenantId { get; set; } = "";
+    public string ClientId { get; set; } = "";
     /// <summary>Plaintext at runtime; always written as empty to disk. Use <see cref="EncryptedClientSecret"/>.</summary>
     public string ClientSecret { get; set; } = "";
     public string SubscriptionId { get; set; } = "";
     public string ResourceGroup { get; set; } = "";
     public string WorkspaceId { get; set; } = "";
+    /// <summary>Application Insights Application ID (found in App Insights → Properties). Used for direct App Insights API queries.</summary>
+    public string AppInsightsAppId { get; set; } = "";
     /// <summary>Plaintext at runtime; always written as empty to disk. Use <see cref="EncryptedAppInsightsKey"/>.</summary>
     public string AppInsightsKey { get; set; } = "";
 
@@ -86,9 +97,9 @@ public class AzureMonitorSettings
 
     internal AzureMonitorSettings CreateEncryptedCopy() => new()
     {
-        Enabled = Enabled, TenantId = TenantId, ClientId = ClientId,
+        Enabled = Enabled, AuthMode = AuthMode, TenantId = TenantId, ClientId = ClientId,
         SubscriptionId = SubscriptionId, ResourceGroup = ResourceGroup,
-        WorkspaceId = WorkspaceId,
+        WorkspaceId = WorkspaceId, AppInsightsAppId = AppInsightsAppId,
         ClientSecret = "", AppInsightsKey = "",
         EncryptedClientSecret  = DpapiSettingsProtector.Protect(ClientSecret),
         EncryptedAppInsightsKey = DpapiSettingsProtector.Protect(AppInsightsKey),

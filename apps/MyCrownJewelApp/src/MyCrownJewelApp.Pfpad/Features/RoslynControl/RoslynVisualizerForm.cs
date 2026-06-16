@@ -341,12 +341,7 @@ public sealed class RoslynVisualizerForm : Form
         _syntaxTreeView.ForeColor = theme.Text;
         _semanticInfoView.BackColor = theme.Background;
         _semanticInfoView.ForeColor = theme.Text;
-        _diagnosticsGrid.BackgroundColor = theme.Background;
-        _diagnosticsGrid.DefaultCellStyle.BackColor = theme.Background;
-        _diagnosticsGrid.DefaultCellStyle.ForeColor = theme.Text;
-        _diagnosticsGrid.ColumnHeadersDefaultCellStyle.BackColor = theme.PanelBackground;
-        _diagnosticsGrid.ColumnHeadersDefaultCellStyle.ForeColor = theme.Text;
-        _diagnosticsGrid.GridColor = theme.Border;
+        _diagnosticsGrid.ApplyTheme(theme);
         _generatedSourcePreview.BackColor = theme.EditorBackground;
         _generatedSourcePreview.ForeColor = theme.Text;
 

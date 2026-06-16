@@ -82,9 +82,9 @@ public sealed class AIOpsEngine : IDisposable
     {
         foreach (var connector in _connectors)
             connector.Dispose();
-
+
         _connectors.Clear();
-
+
         if (_settings.MockDataEnabled)
             _connectors.Add(new MockDataConnector());
         if (_settings.AzureMonitor.Enabled)
@@ -99,7 +99,19 @@ public sealed class AIOpsEngine : IDisposable
             _connectors.Add(new PagerDutyConnector(_settings.PagerDuty));
         if (_settings.GitHubActions.Enabled)
             _connectors.Add(new GitHubActionsConnector(_settings.GitHubActions));
-    }
+
+        // Auto-connect non-mock connectors in the background so they are ready when panels open.
+        var realConnectors = _connectors.Where(c => c is not MockDataConnector).ToList();
+        if (realConnectors.Count > 0)
+            _ = Task.Run(async () =>
+            {
+                foreach (var connector in realConnectors)
+                {
+                    try { await connector.ConnectAsync().ConfigureAwait(false); }
+                    catch { /* status will show Error; non-fatal */ }
+                }
+            });
+    }
 
     public void Start()
     {

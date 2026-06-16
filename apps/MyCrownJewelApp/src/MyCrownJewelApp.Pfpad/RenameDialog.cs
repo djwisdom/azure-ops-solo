@@ -74,12 +74,14 @@ public sealed class RenameDialog : Form
             Dock = DockStyle.Fill,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
+        var newNameBoxWrapper = FlatUiHelper.WrapFlat(_newNameBox, theme);
+        newNameBoxWrapper.Dock = DockStyle.Fill;
         _newNameBox.SelectAll();
         _newNameBox.TextChanged += (s, args) => _okButton!.Enabled = !string.IsNullOrWhiteSpace(_newNameBox.Text?.Trim());
-        mainPanel.Controls.Add(_newNameBox, 0, 1);
-        mainPanel.SetColumnSpan(_newNameBox, 2);
+        mainPanel.Controls.Add(newNameBoxWrapper, 0, 1);
+        mainPanel.SetColumnSpan(newNameBoxWrapper, 2);
 
         // Row 2: preview header
         _statusLabel = new Label

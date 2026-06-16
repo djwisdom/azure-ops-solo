@@ -137,6 +137,7 @@ public sealed class NotificationSettingsForm : Form
         };
 
         _grid.Columns.AddRange(enabledCol, labelCol, urlCol, intervalCol, sourceCol);
+        _grid.ApplyTheme(_theme);
 
         // Bottom buttons
         var bottomBar = new Panel

@@ -24,7 +24,7 @@ internal sealed class LineTokens
 
 public sealed record HighlightPatch(int LineNumber, IReadOnlyList<TokenInfo> Tokens);
 
-public sealed class IncrementalHighlighter : IDisposable
+public sealed partial class IncrementalHighlighter : IDisposable
 {
     private readonly RichTextBox _editor;
     private readonly ConcurrentDictionary<int, LineTokens> _cache = new();
@@ -48,8 +48,8 @@ public sealed class IncrementalHighlighter : IDisposable
     private const int MaxWorkerBatchTimeMs = 50;
     private const int MaxConsecutiveTimeouts = 5;
 
-    [DllImport("user32.dll", CharSet = CharSet.Auto)]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
     private const int EM_GETLINE = 0xC4;
     private const int EM_GETLINECOUNT = 0xBA;
 

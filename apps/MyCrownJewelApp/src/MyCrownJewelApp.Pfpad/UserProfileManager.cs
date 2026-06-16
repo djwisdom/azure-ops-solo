@@ -104,7 +104,7 @@ public sealed class UserProfileManager : IDisposable
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error writing active profile: {ex.Message}");
-                MessageBox.Show($"Failed to save active profile setting: {ex.Message}", "Profile Error",
+                ThemedMessageBox.Show($"Failed to save active profile setting: {ex.Message}", "Profile Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -396,7 +396,7 @@ public sealed class UserProfileManager : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error loading profile '{name}': {ex.Message}");
-            MessageBox.Show($"Failed to load profile \"{name}\": {ex.Message}", "Profile Load Error",
+            ThemedMessageBox.Show($"Failed to load profile \"{name}\": {ex.Message}", "Profile Load Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
@@ -427,7 +427,7 @@ public sealed class UserProfileManager : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error saving profile '{profile.Name}': {ex.Message}");
-            MessageBox.Show($"Failed to save profile \"{profile.Name}\": {ex.Message}", "Profile Save Error",
+            ThemedMessageBox.Show($"Failed to save profile \"{profile.Name}\": {ex.Message}", "Profile Save Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             throw; // Re-throw so caller knows
         }
@@ -460,7 +460,7 @@ public sealed class UserProfileManager : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error deleting profile '{name}': {ex.Message}");
-            MessageBox.Show($"Failed to delete profile \"{name}\": {ex.Message}", "Profile Delete Error",
+            ThemedMessageBox.Show($"Failed to delete profile \"{name}\": {ex.Message}", "Profile Delete Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             throw;
         }

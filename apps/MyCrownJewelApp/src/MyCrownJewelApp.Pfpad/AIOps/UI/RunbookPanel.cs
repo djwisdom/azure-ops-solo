@@ -24,6 +24,8 @@ public sealed class RunbookPanel : UserControl
     private readonly List<Runbook> _runbooks = new();
     private Theme _theme;
     private AIOpsEngine? _engine;
+    private readonly Panel _hintBar;
+    private readonly Label _hintLabel;
 
     public event Action? CloseRequested;
 
@@ -69,14 +71,14 @@ public sealed class RunbookPanel : UserControl
         _stepsList.Columns.Add("Description", 320);
         _stepsList.Columns.Add("Requires Approval", 120);
         _stepsList.SelectedIndexChanged += StepsList_SelectedIndexChanged;
-        _commandBox = new TextBox { Dock = DockStyle.Top, Height = 50, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.FixedSingle };
+        _commandBox = new TextBox { Dock = DockStyle.Top, Height = 50, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None };
         Panel actionPanel = new() { Dock = DockStyle.Top, Height = 32 };
         _dryRunButton = new Button { Text = "Dry Run", Width = 84, Height = 26, FlatStyle = FlatStyle.Flat, Location = new Point(0, 3) };
         _dryRunButton.Click += DryRunButton_Click;
         _externalLinkLabel = new LinkLabel { AutoSize = true, Location = new Point(96, 8), Text = "View External" };
         _externalLinkLabel.LinkClicked += (_, _) => AIOpsUiHelper.OpenUrl(_externalLinkLabel.Tag as string);
         actionPanel.Controls.AddRange([_dryRunButton, _externalLinkLabel]);
-        _resultBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.FixedSingle };
+        _resultBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, BorderStyle = BorderStyle.None };
 
         detailsPanel.Controls.Add(_resultBox);
         detailsPanel.Controls.Add(actionPanel);
@@ -89,6 +91,8 @@ public sealed class RunbookPanel : UserControl
         _splitContainer.Panel2.Controls.Add(detailsPanel);
 
         Controls.Add(_splitContainer);
+        (_hintBar, _hintLabel) = AIOpsUiHelper.CreateHintBar("ⓘ Production-impacting actions require explicit approval before execution.");
+        Controls.Add(_hintBar);
         Controls.Add(_header);
 
         ThemeManager.Instance.ThemeChanged += SetTheme;
@@ -111,15 +115,14 @@ public sealed class RunbookPanel : UserControl
         _theme = theme;
         AIOpsUiHelper.ApplyControlTheme(this, theme);
         _header.BackColor = theme.MenuBackground;
+        AIOpsUiHelper.SetHintBarTheme(_hintBar, _hintLabel, theme);
         _titleLabel.ForeColor = theme.Text;
         _refreshButton.BackColor = Color.Transparent;
         _closeButton.BackColor = Color.Transparent;
         _refreshButton.ForeColor = theme.Text;
         _closeButton.ForeColor = theme.Text;
-        _commandBox.BackColor = theme.EditorBackground;
-        _commandBox.ForeColor = theme.Text;
-        _resultBox.BackColor = theme.EditorBackground;
-        _resultBox.ForeColor = theme.Text;
+        _commandBox.ApplyTheme(theme);
+        _resultBox.ApplyTheme(theme);
         _dryRunButton.BackColor = theme.PanelBackground;
         _dryRunButton.ForeColor = theme.Text;
         _dryRunButton.FlatAppearance.BorderColor = theme.Border;
@@ -238,7 +241,7 @@ public sealed class RunbookPanel : UserControl
             _serviceLabel.Text = $"Service: {runbook.ServiceName}";
             _severityBadge.Text = $" {runbook.Severity} ";
             _severityBadge.BackColor = AIOpsUiHelper.SeverityColor(runbook.Severity);
-            _severityBadge.ForeColor = Color.White;
+            _severityBadge.ForeColor = FlatUiHelper.BadgeForeground(_theme);
             _externalLinkLabel.Tag = runbook.ExternalUrl;
             _externalLinkLabel.Visible = !string.IsNullOrWhiteSpace(runbook.ExternalUrl);
 
@@ -285,7 +288,7 @@ public sealed class RunbookPanel : UserControl
 
         foreach (RunbookStep step in runbook.Steps.OrderBy(s => s.Order).Where(s => s.RequiresApproval))
         {
-            DialogResult result = MessageBox.Show(
+            DialogResult result = ThemedMessageBox.Show(
                 this,
                 $"Approve dry run for step {step.Order}?\n\n{step.Description}\n{step.Command}\n\n{step.SafetyNote}",
                 "Runbook Approval",

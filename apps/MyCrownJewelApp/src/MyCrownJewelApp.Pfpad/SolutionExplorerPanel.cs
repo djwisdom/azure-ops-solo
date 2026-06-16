@@ -4,12 +4,12 @@ using System.Xml.Linq;
 
 namespace MyCrownJewelApp.Pfpad;
 
-internal sealed class SolutionExplorerPanel : UserControl
+internal sealed partial class SolutionExplorerPanel : UserControl
 {
     private const string DarkModeScrollbar = "DarkMode_Explorer";
 
-    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
-    private static extern int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
+    [LibraryImport("uxtheme.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int SetWindowTheme(IntPtr hWnd, string? pszSubAppName, string? pszSubIdList);
 
     private readonly TreeView _tree;
     private readonly Panel _header;
