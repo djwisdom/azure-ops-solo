@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -14,7 +15,6 @@ namespace MyCrownJewelApp.Pfpad;
 
 public sealed class NotificationFeedService : IDisposable
 {
-    // Static options — one allocation for the lifetime of the app.
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented          = true,
@@ -22,20 +22,21 @@ public sealed class NotificationFeedService : IDisposable
     };
 
     private readonly HttpClient _http;
-    private readonly ConcurrentDictionary<FeedSource, List<FeedItem>> _items  = new();
+    private readonly ConcurrentDictionary<FeedSource, List<FeedItem>> _items   = new();
     private readonly ConcurrentDictionary<string, bool>               _seenIds = new();
-
-    // Per-source error tracking (last error message, or null if OK)
-    private readonly ConcurrentDictionary<FeedSource, string?> _sourceErrors = new();
+    private readonly ConcurrentDictionary<FeedSource, string?>  _sourceErrors   = new();
+    private readonly SemaphoreSlim _fetchLock = new(1, 1);
 
     private readonly string _statePath;
     private readonly string _configPath;
     private CancellationTokenSource? _pollCts;
+    private PeriodicTimer?  _pollTimer;
+    private Task?           _pollTask;
     private bool _disposed;
 
     private List<FeedSourceConfig> _sources = DefaultFeedSources.GetDefaults();
 
-    /// <summary>Raised on the thread pool after each source finishes loading (or fails).</summary>
+    /// <summary>Raised after each source resolves. Subscribers must marshal to the UI thread themselves.</summary>
     public event Action? OnItemsUpdated;
 
     public void AddNotification(string title, string summary)
@@ -51,8 +52,9 @@ public sealed class NotificationFeedService : IDisposable
             IsRead    = false
         };
         _seenIds.TryAdd(id, false);
-        _items.GetOrAdd(FeedSource.Custom, _ => new List<FeedItem>()).Add(item);
-        OnItemsUpdated?.Invoke();
+        var list = _items.GetOrAdd(FeedSource.Custom, _ => new List<FeedItem>());
+        lock (list) { list.Add(item); }     // List<T> is not thread-safe
+        FireItemsUpdated();
     }
 
     public IReadOnlyList<FeedItem> AllItems =>
@@ -62,12 +64,13 @@ public sealed class NotificationFeedService : IDisposable
 
     public IReadOnlyList<FeedSourceConfig> Sources => _sources.AsReadOnly();
 
-    /// <summary>Returns the last error for a given source, or null if the last fetch succeeded.</summary>
     public string? GetSourceError(FeedSource source) =>
         _sourceErrors.TryGetValue(source, out var err) ? err : null;
 
-    /// <summary>True if any source has a recorded error.</summary>
     public bool HasErrors => _sourceErrors.Values.Any(e => e is not null);
+
+    /// <summary>True when the background poll loop is alive.</summary>
+    public bool IsPolling => _pollTask is { IsCompleted: false };
 
     public NotificationFeedService()
     {
@@ -90,14 +93,27 @@ public sealed class NotificationFeedService : IDisposable
     {
         _sources = sources;
         SaveConfig();
-        OnItemsUpdated?.Invoke();
+        // Restart with the (potentially new) minimum interval
+        if (IsPolling) { StopPolling(); StartPolling(); }
+        FireItemsUpdated();
     }
 
     public void StartPolling()
     {
-        if (_pollCts is not null) return;
+        if (IsPolling) return;          // Guard: check task liveness, not just the CTS
+
+        _pollCts?.Dispose();
         _pollCts = new CancellationTokenSource();
-        _ = PollLoopAsync(_pollCts.Token);
+
+        int intervalMinutes = _sources
+            .Where(s => s.Enabled)
+            .Select(s => s.PollIntervalMinutes)
+            .DefaultIfEmpty(15)
+            .Min();
+
+        _pollTimer?.Dispose();
+        _pollTimer = new PeriodicTimer(TimeSpan.FromMinutes(Math.Max(1, intervalMinutes)));
+        _pollTask  = PollLoopAsync(_pollCts.Token);
     }
 
     public void StopPolling()
@@ -105,43 +121,93 @@ public sealed class NotificationFeedService : IDisposable
         _pollCts?.Cancel();
         _pollCts?.Dispose();
         _pollCts = null;
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+    }
+
+    /// <summary>Call periodically (e.g. on window activation) to recover from an unexpected poll-loop crash.</summary>
+    public void RestartPollingIfDead()
+    {
+        if (!IsPolling && _pollTimer is not null)
+        {
+            Debug.WriteLine("[NotificationFeed] Poll loop was dead — restarting.");
+            StopPolling();
+            StartPolling();
+        }
     }
 
     private async Task PollLoopAsync(CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested)
+        // Immediate first fetch so the UI has data right away
+        try
         {
             await FetchAllAsync(ct).ConfigureAwait(false);
-            int minInterval = _sources
-                .Where(s => s.Enabled)
-                .Select(s => s.PollIntervalMinutes)
-                .DefaultIfEmpty(15)
-                .Min();
-            try { await Task.Delay(TimeSpan.FromMinutes(minInterval), ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { break; }
         }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { Debug.WriteLine($"[NotificationFeed] Initial fetch error: {ex.Message}"); }
+
+        try
+        {
+            // PeriodicTimer (.NET 6+): accurate ticking — no drift accumulation, respects cancellation cleanly
+            while (await _pollTimer!.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                try
+                {
+                    await FetchAllAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex)
+                {
+                    // A single bad fetch must NOT kill the loop — just log and wait for the next tick
+                    Debug.WriteLine($"[NotificationFeed] Fetch cycle error: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* expected on StopPolling() */ }
     }
 
     /// <summary>
-    /// Fetches all enabled sources. Uses <c>Task.WhenEach</c> (.NET 9) so the UI
-    /// receives an <see cref="OnItemsUpdated"/> notification as each source resolves
-    /// rather than waiting for the slowest feed.
+    /// Fetches all enabled sources concurrently. Uses <c>Task.WhenEach</c> (.NET 9+) so
+    /// <see cref="OnItemsUpdated"/> fires progressively as each source resolves rather than
+    /// waiting for the slowest feed.
     /// </summary>
     public async Task FetchAllAsync(CancellationToken ct = default)
     {
-        var enabled = _sources.Where(s => s.Enabled).ToList();
-        var tasks   = enabled.Select(cfg => FetchSourceAsync(cfg, ct)).ToList();
+        // Skip if a fetch is already running (e.g. manual refresh during a scheduled poll)
+        if (!await _fetchLock.WaitAsync(0, ct).ConfigureAwait(false))
+            return;
 
-        // .NET 9: Task.WhenEach yields each completed task as it finishes — progressive updates.
-        await foreach (var completedTask in Task.WhenEach(tasks).ConfigureAwait(false))
+        try
         {
-            try { await completedTask.ConfigureAwait(false); }
-            catch { /* individual errors already recorded in FetchSourceAsync */ }
+            var enabled = _sources.Where(s => s.Enabled).ToList();
+            if (enabled.Count == 0) return;
 
-            OnItemsUpdated?.Invoke();
+            var tasks = enabled.Select(cfg => FetchSourceAsync(cfg, ct)).ToList();
+
+            await foreach (var completedTask in Task.WhenEach(tasks).ConfigureAwait(false))
+            {
+                try { await completedTask.ConfigureAwait(false); }
+                catch { /* errors already recorded inside FetchSourceAsync */ }
+
+                FireItemsUpdated();
+            }
+
+            SaveState();
         }
+        finally
+        {
+            _fetchLock.Release();
+        }
+    }
 
-        SaveState();
+    private void FireItemsUpdated()
+    {
+        try { OnItemsUpdated?.Invoke(); }
+        catch (Exception ex)
+        {
+            // A misbehaving subscriber must not propagate exceptions into the poll loop
+            Debug.WriteLine($"[NotificationFeed] OnItemsUpdated subscriber threw: {ex.Message}");
+        }
     }
 
     private async Task FetchSourceAsync(FeedSourceConfig cfg, CancellationToken ct)
@@ -387,6 +453,7 @@ public sealed class NotificationFeedService : IDisposable
         if (_disposed) return;
         _disposed = true;
         StopPolling();
+        _fetchLock.Dispose();
         _http.Dispose();
         SaveState();
         SaveConfig();

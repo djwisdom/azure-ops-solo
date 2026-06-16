@@ -17,12 +17,6 @@ namespace MyCrownJewelApp.Pfpad;
         private const int FadeStepMs = 30;
         private const float FadeDelta = 0.06f;
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_NOACTIVATE = 0x08000000;

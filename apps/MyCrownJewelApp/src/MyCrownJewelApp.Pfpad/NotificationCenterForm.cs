@@ -7,7 +7,7 @@ using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-public sealed class NotificationCenterForm : Form
+public sealed partial class NotificationCenterForm : Form
 {
     private readonly NotificationFeedService _feed;
     private readonly ListView _listView;
@@ -18,11 +18,12 @@ public sealed class NotificationCenterForm : Form
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 2;
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool ReleaseCapture();
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static partial bool ReleaseCapture();
 
     public NotificationCenterForm(NotificationFeedService feed)
     {

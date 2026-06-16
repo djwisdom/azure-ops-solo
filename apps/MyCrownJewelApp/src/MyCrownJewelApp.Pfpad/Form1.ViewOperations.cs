@@ -280,15 +280,20 @@ namespace MyCrownJewelApp.Pfpad
 
         private void OnFeedUpdated()
         {
-            if (_notificationStatusLabel is null || _notificationStatusLabel.IsDisposed) return;
-            if (InvokeRequired)
+            // Guard against cross-thread access during form teardown
+            try
             {
-                BeginInvoke(OnFeedUpdated);
-                return;
+                if (_notificationStatusLabel is null || !IsHandleCreated || IsDisposed) return;
+                if (InvokeRequired)
+                {
+                    BeginInvoke(OnFeedUpdated);
+                    return;
+                }
             }
+            catch { return; }
 
             UpdateNotificationBadge();
-            // ShowToastForNewItems(); // Disabled for less visual intensity
+            ShowToastForNewItems();
         }
 
         public void ShowNotification(string title, string summary)
@@ -308,17 +313,15 @@ namespace MyCrownJewelApp.Pfpad
 
             _notificationFeed.AddNotification(title, summary);
 
-            var id = $"app-{Guid.NewGuid():N}";
-            var item = new FeedItem
+            var unread = _notificationFeed.AllItems.Where(i => !i.IsRead).ToList();
+            foreach (var item in unread)
             {
-                Id = id,
-                Source = FeedSource.Custom,
-                Title = title,
-                Summary = summary,
-                Published = DateTime.UtcNow,
-                IsRead = false
-            };
-            // ShowToast(item); // Disabled for less visual intensity
+                if (_toastedIds.Add(item.Id))
+                {
+                    ShowToast(item);
+                    break;  // Only one toast for an explicit ShowNotification call
+                }
+            }
         }
 
         private void ShowToast(FeedItem item, int stackIndex = -1)
@@ -371,9 +374,7 @@ namespace MyCrownJewelApp.Pfpad
             foreach (var item in unread)
             {
                 if (_toastedIds.Add(item.Id))
-                {
-                    // ShowToast(item); // Disabled for less visual intensity
-                }
+                    ShowToast(item);
             }
             _delayedNotifications.Clear();
         }
@@ -406,11 +407,14 @@ namespace MyCrownJewelApp.Pfpad
                 return;
 
             var unread = _notificationFeed.AllItems.Where(i => !i.IsRead).ToList();
+            int shown = 0;
             foreach (var item in unread)
             {
+                if (shown >= 3) break;  // Max 3 toasts per poll cycle — prevent notification flood
                 if (_toastedIds.Add(item.Id))
                 {
-                    // ShowToast(item); // Disabled for less visual intensity
+                    ShowToast(item);
+                    shown++;
                 }
             }
         }
