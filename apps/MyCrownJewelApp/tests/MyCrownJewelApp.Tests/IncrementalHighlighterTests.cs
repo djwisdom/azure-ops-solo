@@ -74,10 +74,14 @@ public class IncrementalHighlighterTests : IDisposable
     {
         RunOnUI(() =>
         {
-            _highlighter.RequestRange(0, 0);
-            var sw = Stopwatch.StartNew();
-            while (_highlighter.GetTokens(0) == null && sw.ElapsedMilliseconds < 1000)
-                Thread.Sleep(5);
+            // tokens may already be populated from the constructor's RequestRange(0,99)
+            using var ready = new ManualResetEventSlim(_highlighter.GetTokens(0) != null);
+            _highlighter.PatchReady += _ => ready.Set();
+            if (!ready.IsSet)
+            {
+                _highlighter.RequestRange(0, 0);
+                ready.Wait(TimeSpan.FromSeconds(10));
+            }
             var tokens = _highlighter.GetTokens(0);
             Assert.NotNull(tokens);
             Assert.NotEmpty(tokens);

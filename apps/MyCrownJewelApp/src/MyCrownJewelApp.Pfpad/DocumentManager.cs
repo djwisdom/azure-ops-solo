@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -6,14 +8,9 @@ namespace MyCrownJewelApp.Pfpad;
 /// Manages the collection of open documents (editor tabs) and the active-tab index.
 /// This class is a pure data manager — no WinForms dependencies.
 ///
-/// Phase 3 note: Form1 still mutates the Documents list directly in many places
-/// for backward compatibility. The mutable-list exposure is a transitional design;
-/// the goal is to route all mutations through this class in a future phase so that
-/// invariants (active index bounds, untitled numbering) can be enforced centrally.
-///
-/// Events are intentionally omitted from v1 because Form1 still bypasses this class
-/// for mutations in several paths. Events will be added once all mutations are routed
-/// through DocumentManager methods.
+/// Mutation invariants are enforced centrally: Add(), RemoveAt(), SetActive(), and Clear()
+/// are the only write paths. All three raise the corresponding events after mutating state,
+/// allowing subscribers (Form1 UI, tests) to react without polling.
 /// </summary>
 public sealed class DocumentManager
 {
@@ -21,17 +18,35 @@ public sealed class DocumentManager
     private int _activeIndex = -1;
     private int _nextUntitledNumber = 1;
 
+    // ── Events ───────────────────────────────────────────────────────────────
+
+    /// <summary>Raised after a document is added to the collection.</summary>
+    public event Action<EditorDocument>? DocumentAdded;
+
+    /// <summary>Raised after a document is removed. <paramref name="oldIndex"/> is the index it occupied.</summary>
+    public event Action<EditorDocument, int>? DocumentRemoved;
+
+    /// <summary>Raised after the active document changes. Argument is the new active document (null when none).</summary>
+    public event Action<EditorDocument?>? ActiveDocumentChanged;
+
+    // ── Collection access ────────────────────────────────────────────────────
+
     /// <summary>
-    /// Live mutable reference to the documents list. Form1 may mutate this directly
-    /// during the transition period. Prefer Add() and RemoveAt() where possible.
+    /// Live mutable reference to the documents list. Prefer Add() and RemoveAt()
+    /// so that events fire and invariants are enforced.
     /// </summary>
     public List<EditorDocument> Documents => _documents;
 
-    /// <summary>Index of the currently active EditorDocument, or -1 when no EditorDocument is active.</summary>
+    /// <summary>Index of the currently active EditorDocument, or -1 when no document is active.</summary>
     public int ActiveIndex
     {
         get => _activeIndex;
-        set => _activeIndex = value;  // intentionally no bounds-check (Form1 uses -1 as sentinel)
+        set
+        {
+            if (_activeIndex == value) return;
+            _activeIndex = value;
+            ActiveDocumentChanged?.Invoke(GetActive());
+        }
     }
 
     /// <summary>Counter for naming new untitled documents: Untitled1, Untitled2, etc.</summary>
@@ -40,6 +55,8 @@ public sealed class DocumentManager
         get => _nextUntitledNumber;
         set => _nextUntitledNumber = value;
     }
+
+    // ── Queries ──────────────────────────────────────────────────────────────
 
     /// <summary>Number of open documents.</summary>
     public int Count => _documents.Count;
@@ -55,44 +72,79 @@ public sealed class DocumentManager
         index >= 0 && index < _documents.Count ? _documents[index] : null;
 
     /// <summary>
+    /// Returns the first open document whose <see cref="EditorDocument.FilePath"/> matches
+    /// <paramref name="path"/> (case-insensitive, OS path rules), or null if not found.
+    /// </summary>
+    public EditorDocument? FindByPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        return _documents.FirstOrDefault(d =>
+            string.Equals(d.FilePath, path, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Returns the zero-based index of <paramref name="doc"/> in the collection,
+    /// or -1 if it is not present.
+    /// </summary>
+    public int IndexOf(EditorDocument doc) => _documents.IndexOf(doc);
+
+    /// <summary>Returns true if the given index is a valid document index.</summary>
+    public bool IsValidIndex(int index) =>
+        index >= 0 && index < _documents.Count;
+
+    // ── Mutations ────────────────────────────────────────────────────────────
+
+    /// <summary>
     /// Creates a new untitled EditorDocument and increments the untitled counter.
     /// The caller is responsible for adding it to the collection via Add().
     /// </summary>
     public EditorDocument CreateNew() =>
         new EditorDocument { UntitledNumber = _nextUntitledNumber++ };
 
-    /// <summary>Adds a EditorDocument to the end of the collection.</summary>
-    public void Add(EditorDocument doc) => _documents.Add(doc);
+    /// <summary>Adds a document to the end of the collection and raises <see cref="DocumentAdded"/>.</summary>
+    public void Add(EditorDocument doc)
+    {
+        _documents.Add(doc);
+        DocumentAdded?.Invoke(doc);
+    }
 
     /// <summary>
-    /// Removes the EditorDocument at the given index. The caller must update
-    /// ActiveIndex before or after calling this to keep it in range.
+    /// Removes the document at <paramref name="index"/>. The caller must update
+    /// <see cref="ActiveIndex"/> before or after to keep it in range.
+    /// Raises <see cref="DocumentRemoved"/> with the removed document and its old index.
     /// </summary>
-    public void RemoveAt(int index) => _documents.RemoveAt(index);
+    public void RemoveAt(int index)
+    {
+        if (index < 0 || index >= _documents.Count) return;
+        var doc = _documents[index];
+        _documents.RemoveAt(index);
+        DocumentRemoved?.Invoke(doc, index);
+    }
 
     /// <summary>
-    /// Sets the active EditorDocument index and returns the newly active EditorDocument,
-    /// or null if the index is out of range (including -1).
+    /// Sets the active document index and raises <see cref="ActiveDocumentChanged"/>.
+    /// Returns the newly active document, or null when index is -1 or out of range.
     /// </summary>
     public EditorDocument? SetActive(int index)
     {
-        _activeIndex = index;
+        ActiveIndex = index;
         return GetActive();
     }
 
     /// <summary>
-    /// Clears all documents and resets state to empty. Used on session restore.
+    /// Clears all documents and resets state to empty. Raises <see cref="DocumentRemoved"/>
+    /// for each removed document, then <see cref="ActiveDocumentChanged"/> with null.
     /// </summary>
     public void Clear()
     {
-        _documents.Clear();
+        for (int i = _documents.Count - 1; i >= 0; i--)
+        {
+            var doc = _documents[i];
+            _documents.RemoveAt(i);
+            DocumentRemoved?.Invoke(doc, i);
+        }
         _activeIndex = -1;
         _nextUntitledNumber = 1;
+        ActiveDocumentChanged?.Invoke(null);
     }
-
-    /// <summary>
-    /// Returns true if the given index is a valid EditorDocument index.
-    /// </summary>
-    public bool IsValidIndex(int index) =>
-        index >= 0 && index < _documents.Count;
 }

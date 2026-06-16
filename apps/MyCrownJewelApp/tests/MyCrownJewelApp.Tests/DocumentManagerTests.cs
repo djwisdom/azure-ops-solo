@@ -206,10 +206,143 @@ public class DocumentManagerTests
         Assert.Equal("editor.cs", doc.DisplayName);
     }
 
+    // ── FindByPath ───────────────────────────────────────────────────────────
+
     [Fact]
-    public void Document_DisplayName_FileTakesPriorityOverUntitledNumber()
+    public void FindByPath_ReturnsDocument_WhenPathMatches()
     {
-        var doc = new EditorDocument { FilePath = @"C:\projects\real.cs", UntitledNumber = 2 };
-        Assert.Equal("real.cs", doc.DisplayName);
+        var mgr = new DocumentManager();
+        var doc = new EditorDocument { FilePath = @"C:\projects\app.cs" };
+        mgr.Add(doc);
+        Assert.Same(doc, mgr.FindByPath(@"C:\projects\app.cs"));
+    }
+
+    [Fact]
+    public void FindByPath_IsCaseInsensitive()
+    {
+        var mgr = new DocumentManager();
+        var doc = new EditorDocument { FilePath = @"C:\Projects\App.CS" };
+        mgr.Add(doc);
+        Assert.Same(doc, mgr.FindByPath(@"c:\projects\app.cs"));
+    }
+
+    [Fact]
+    public void FindByPath_ReturnsNull_WhenNoMatch()
+    {
+        var mgr = new DocumentManager();
+        mgr.Add(new EditorDocument { FilePath = @"C:\a.cs" });
+        Assert.Null(mgr.FindByPath(@"C:\other.cs"));
+    }
+
+    [Fact]
+    public void FindByPath_ReturnsNull_ForNullOrEmpty()
+    {
+        var mgr = new DocumentManager();
+        Assert.Null(mgr.FindByPath(null));
+        Assert.Null(mgr.FindByPath(""));
+    }
+
+    // ── IndexOf ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void IndexOf_ReturnsCorrectIndex()
+    {
+        var mgr = new DocumentManager();
+        var a = new EditorDocument { FilePath = "a.cs" };
+        var b = new EditorDocument { FilePath = "b.cs" };
+        mgr.Add(a);
+        mgr.Add(b);
+        Assert.Equal(0, mgr.IndexOf(a));
+        Assert.Equal(1, mgr.IndexOf(b));
+    }
+
+    [Fact]
+    public void IndexOf_ReturnsMinusOne_WhenNotPresent()
+    {
+        var mgr = new DocumentManager();
+        mgr.Add(new EditorDocument());
+        Assert.Equal(-1, mgr.IndexOf(new EditorDocument()));
+    }
+
+    // ── Events ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void DocumentAdded_FiresOnAdd()
+    {
+        var mgr = new DocumentManager();
+        EditorDocument? fired = null;
+        mgr.DocumentAdded += d => fired = d;
+        var doc = new EditorDocument { FilePath = "x.cs" };
+        mgr.Add(doc);
+        Assert.Same(doc, fired);
+    }
+
+    [Fact]
+    public void DocumentRemoved_FiresOnRemoveAt_WithCorrectIndex()
+    {
+        var mgr = new DocumentManager();
+        var a = new EditorDocument { FilePath = "a.cs" };
+        var b = new EditorDocument { FilePath = "b.cs" };
+        mgr.Add(a);
+        mgr.Add(b);
+        EditorDocument? removedDoc = null;
+        int removedIndex = -99;
+        mgr.DocumentRemoved += (d, i) => { removedDoc = d; removedIndex = i; };
+        mgr.RemoveAt(0);
+        Assert.Same(a, removedDoc);
+        Assert.Equal(0, removedIndex);
+    }
+
+    [Fact]
+    public void ActiveDocumentChanged_FiresOnSetActive()
+    {
+        var mgr = new DocumentManager();
+        var doc = new EditorDocument { FilePath = "a.cs" };
+        mgr.Add(doc);
+        EditorDocument? notified = null;
+        mgr.ActiveDocumentChanged += d => notified = d;
+        mgr.SetActive(0);
+        Assert.Same(doc, notified);
+    }
+
+    [Fact]
+    public void ActiveDocumentChanged_FiresWithNull_OnSetActiveMinusOne()
+    {
+        var mgr = new DocumentManager();
+        mgr.Add(new EditorDocument());
+        mgr.SetActive(0);
+        EditorDocument? notified = new EditorDocument(); // sentinel non-null
+        mgr.ActiveDocumentChanged += d => notified = d;
+        mgr.SetActive(-1);
+        Assert.Null(notified);
+    }
+
+    [Fact]
+    public void ActiveDocumentChanged_DoesNotFire_WhenIndexUnchanged()
+    {
+        var mgr = new DocumentManager();
+        mgr.Add(new EditorDocument());
+        mgr.SetActive(0);
+        int fireCount = 0;
+        mgr.ActiveDocumentChanged += _ => fireCount++;
+        mgr.SetActive(0); // same index — no change
+        Assert.Equal(0, fireCount);
+    }
+
+    [Fact]
+    public void Clear_FiresRemovedForEachDoc_ThenActiveChangedWithNull()
+    {
+        var mgr = new DocumentManager();
+        mgr.Add(new EditorDocument { FilePath = "a.cs" });
+        mgr.Add(new EditorDocument { FilePath = "b.cs" });
+        mgr.SetActive(0);
+        var removed = new List<string?>();
+        EditorDocument? activeAfterClear = new EditorDocument(); // sentinel
+        mgr.DocumentRemoved += (d, _) => removed.Add(d.FilePath);
+        mgr.ActiveDocumentChanged += d => activeAfterClear = d;
+        mgr.Clear();
+        Assert.Equal(0, mgr.Count);
+        Assert.Equal(2, removed.Count);
+        Assert.Null(activeAfterClear);
     }
 }

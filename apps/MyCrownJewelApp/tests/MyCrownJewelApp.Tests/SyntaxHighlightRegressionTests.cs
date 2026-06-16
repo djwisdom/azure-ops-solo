@@ -60,8 +60,10 @@ public class SyntaxHighlightRegressionTests
         var rtb = new RichTextBox();
         rtb.Text = "int main() { return 0; }";
         var hl = CreateHighlighter(rtb, SyntaxDefinition.C);
+        using var ready = new ManualResetEventSlim(false);
+        hl.PatchReady += _ => ready.Set();
         hl.RequestRange(0, 0);
-        Thread.Sleep(500);
+        ready.Wait(TimeSpan.FromSeconds(5));
         var tokens = hl.GetTokens(0);
         Assert.NotNull(tokens);
         Assert.Contains(tokens, t => t.Type == SyntaxTokenType.Keyword);
@@ -75,8 +77,15 @@ public class SyntaxHighlightRegressionTests
         var rtb = new RichTextBox();
         rtb.Text = "class Foo\n{\n    // comment\n    int x = \"hello\";\n}";
         var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
+        using var allLinesReady = new ManualResetEventSlim(false);
+        int patchCount = 0;
+        hl.PatchReady += patches =>
+        {
+            patchCount += patches.Count;
+            if (patchCount >= 5) allLinesReady.Set();
+        };
         hl.RequestRange(0, 4);
-        Thread.Sleep(1000);
+        allLinesReady.Wait(TimeSpan.FromSeconds(5));
         for (int i = 0; i < 5; i++)
         {
             var tokens = hl.GetTokens(i);

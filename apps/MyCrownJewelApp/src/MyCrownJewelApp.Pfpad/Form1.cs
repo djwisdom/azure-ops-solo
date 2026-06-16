@@ -631,7 +631,7 @@ using Microsoft.Extensions.DependencyInjection;
                         // Apply feature degradation for large files
                         ApplyLargeFileDegradation(doc, fileInfo.Length);
 
-                        documents.Add(doc);
+                        _docManager.Add(doc);
                         int newIndex = documents.Count - 1;
                         var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
                         tabControl.TabPages.Add(tabPage);
@@ -5666,7 +5666,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             }
 
             var newDoc = CreateNewDocument();
-            documents.Add(newDoc);
+            _docManager.Add(newDoc);
             int newIndex = documents.Count - 1;
 
             // Create tab page and add to end
@@ -5722,7 +5722,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 // Apply feature degradation for large files
                 ApplyLargeFileDegradation(doc, fileInfo.Length);
 
-                documents.Add(doc);
+                _docManager.Add(doc);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
                 tabControl.TabPages.Add(tabPage);
@@ -5779,7 +5779,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             // Apply feature degradation for large files
             ApplyLargeFileDegradation(doc, fileInfo.Length);
 
-            documents.Add(doc);
+            _docManager.Add(doc);
             int newIndex = documents.Count - 1;
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
             tabControl.TabPages.Add(tabPage);
@@ -5870,7 +5870,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 // Force activeDocIndex to -1 so that SelectedIndexChanged → SwitchToTab does not bail
                 activeDocIndex = -1;
 
-                documents.RemoveAt(closeIndex);
+                _docManager.RemoveAt(closeIndex);
                 tabControl.TabPages.RemoveAt(closeIndex);
 
                 // Select another tab
@@ -5914,7 +5914,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             try
             {
                 // Remove EditorDocument and tab
-                documents.RemoveAt(index);
+                _docManager.RemoveAt(index);
 
                 // Adjust activeDocIndex BEFORE removing the tab page, because
                 // TabPages.RemoveAt can fire SelectedIndexChanged → SwitchToTab → SaveCurrentDocument,
@@ -6255,7 +6255,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     // Remove the EditorDocument from the original window
                     if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
                     {
-                        documents.RemoveAt(tabIndex);
+                        _docManager.RemoveAt(tabIndex);
                         tabControl.TabPages.RemoveAt(tabIndex);
                     }
 
@@ -6278,7 +6278,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     detachedForm.activeDocIndex = -1;
 
                     // Add the dragged EditorDocument to the new form
-                    detachedForm.documents.Add(doc);
+                    detachedForm._docManager.Add(doc);
                     var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
                     detachedForm.tabControl.TabPages.Add(tabPage);
                     detachedForm.tabControl.SelectedIndex = 0;
@@ -6298,7 +6298,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     // Remove the EditorDocument from the original window
                     if (tabIndex < documents.Count && tabIndex < tabControl.TabPages.Count)
                     {
-                        documents.RemoveAt(tabIndex);
+                        _docManager.RemoveAt(tabIndex);
                         tabControl.TabPages.RemoveAt(tabIndex);
                     }
 
@@ -6347,7 +6347,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
         /// </summary>
         private void ReceiveDroppedTab(EditorDocument doc)
         {
-            documents.Add(doc);
+            _docManager.Add(doc);
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
             tabControl.TabPages.Add(tabPage);
 
@@ -6488,7 +6488,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                 if (tabIndex >= 0 && tabIndex < tabControl.TabPages.Count)
                     tabControl.TabPages.RemoveAt(tabIndex);
                 if (tabIndex >= 0 && tabIndex < documents.Count)
-                    documents.RemoveAt(tabIndex);
+                    _docManager.RemoveAt(tabIndex);
 
                 // Adjust active index
                 if (activeDocIndex >= documents.Count)
@@ -6568,7 +6568,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             // Re-add the EditorDocument and tab page to the main window
             if (_splitDocument != null)
             {
-                documents.Add(_splitDocument);
+                _docManager.Add(_splitDocument);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(_splitDocumentTitle ?? _splitDocument.DisplayName) { Tag = _splitDocument };
                 tabControl.TabPages.Add(tabPage);
@@ -8596,7 +8596,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
                     }
                 }
             }
-            documents.Clear();
+            _docManager.Clear();
             tabControl.TabPages.Clear();
             NewFile();
         }
@@ -9018,7 +9018,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             {
                 if (hadInitialTab)
                 {
-                    documents.Clear();
+                    _docManager.Clear();
                     tabControl.TabPages.Clear();
                 }
 
