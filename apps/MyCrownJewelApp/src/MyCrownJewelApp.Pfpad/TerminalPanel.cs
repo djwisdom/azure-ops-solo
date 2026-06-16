@@ -264,7 +264,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
         _copyButton = new ToolStripButton
         {
-            Text = "\uD83D\uDCCB",  // 📋
+            Text = "\u29C9",  // ⧉ two joined squares — copy icon (BMP safe)
             Font = new Font("Segoe UI", 9),
             DisplayStyle = ToolStripItemDisplayStyle.Text,
             AutoSize = false,

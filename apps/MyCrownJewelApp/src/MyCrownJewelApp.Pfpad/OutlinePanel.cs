@@ -179,14 +179,17 @@ public sealed class OutlinePanel : UserControl
                     string kw = m.Groups[1].Value;
                     icon = kw switch
                     {
-                        "namespace" => "\uD83D\uDCC1", "class" => "\uD83D\uDCBB",
-                        "struct" => "\uD83D\uDD17", "interface" => "\uD83D\uDD0C",
-                        "enum" => "\uD83D\uDD22", "record" => "\uD83D\uDCC4",
-                        _ => "\u25A0"
+                        "namespace" => "\u2302",  // ⌂
+                        "class"     => "\u25A1",  // □
+                        "struct"    => "\u25C6",  // ◆
+                        "interface" => "\u25EF",  // ◯
+                        "enum"      => "\u2116",  // №
+                        "record"    => "\u2295",  // ⊕
+                        _           => "\u25A0"   // ■
                     };
                 }
-                else if (trimmed.Contains('(')) icon = "\u2699";
-                else if (trimmed.Contains('{')) icon = "\uD83D\uDCCC";
+                else if (trimmed.Contains('(')) icon = "\u2699";   // ⚙
+                else if (trimmed.Contains('{')) icon = "\u25C8";   // ◈
                 else icon = "\u25CF";
 
                 var node = new TreeNode($"{icon} {name}") { Tag = i };
