@@ -19,7 +19,7 @@ variables:
   - name: buildConfiguration
     value: Release
   - name: dotnetSdkVersion
-    value: "9.0.x"
+    value: "10.0.x"
 
 stages:
   - stage: Build

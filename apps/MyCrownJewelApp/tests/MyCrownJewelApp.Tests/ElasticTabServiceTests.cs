@@ -29,8 +29,9 @@ public class ElasticTabServiceTests
     [Fact] public void ComputeTabStops_SingleTabColumn_ReturnsSingleStop()
     {
         // "abc\tdef" — col 0 max width = 3 (abc), stop = 3 + 2 = 5
+        // Pass minTabWidth:0 to test pure elastic behaviour (no UI minimum floor)
         string[] lines = { "abc\tdef" };
-        int[] stops = ElasticTabService.ComputeTabStops(lines, 0, 0, FlatMeasure, CancellationToken.None);
+        int[] stops = ElasticTabService.ComputeTabStops(lines, 0, 0, FlatMeasure, CancellationToken.None, minTabWidth: 0);
         Assert.Single(stops);
         Assert.Equal(5, stops[0]); // 3 chars + 2px padding
     }
@@ -39,8 +40,9 @@ public class ElasticTabServiceTests
     {
         // "a\tb\tc" — col0 max=1, col1 max=1
         // stop0 = 1+2=3, stop1 = 3 + 1+2 = 6
+        // Pass minTabWidth:0 to test pure elastic behaviour (no UI minimum floor)
         string[] lines = { "a\tb\tc" };
-        int[] stops = ElasticTabService.ComputeTabStops(lines, 0, 0, FlatMeasure, CancellationToken.None);
+        int[] stops = ElasticTabService.ComputeTabStops(lines, 0, 0, FlatMeasure, CancellationToken.None, minTabWidth: 0);
         Assert.Equal(2, stops.Length);
         Assert.Equal(3, stops[0]);
         Assert.Equal(6, stops[1]);
@@ -51,8 +53,9 @@ public class ElasticTabServiceTests
         // Line 0: "ab\tx"   — col0 width 2
         // Line 1: "abcd\ty" — col0 width 4
         // Expected: stop0 = 4+2=6
+        // Pass minTabWidth:0 to test pure elastic behaviour (no UI minimum floor)
         string[] lines = { "ab\tx", "abcd\ty" };
-        int[] stops = ElasticTabService.ComputeTabStops(lines, 0, 1, FlatMeasure, CancellationToken.None);
+        int[] stops = ElasticTabService.ComputeTabStops(lines, 0, 1, FlatMeasure, CancellationToken.None, minTabWidth: 0);
         Assert.Single(stops);
         Assert.Equal(6, stops[0]);
     }
@@ -71,8 +74,9 @@ public class ElasticTabServiceTests
         // Line 0 (not visible): "longcell\tx" — col0 width 8
         // Line 1 (visible): "a\tx"            — col0 width 1
         // With firstLine=1, lastLine=1, only line 1 counted → stop0 = 1+2=3
+        // Pass minTabWidth:0 to test pure elastic behaviour (no UI minimum floor)
         string[] lines = { "longcell\tx", "a\tx" };
-        int[] stops = ElasticTabService.ComputeTabStops(lines, 1, 1, FlatMeasure, CancellationToken.None);
+        int[] stops = ElasticTabService.ComputeTabStops(lines, 1, 1, FlatMeasure, CancellationToken.None, minTabWidth: 0);
         Assert.Single(stops);
         Assert.Equal(3, stops[0]);
     }

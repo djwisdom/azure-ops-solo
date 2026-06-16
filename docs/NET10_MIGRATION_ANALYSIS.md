@@ -1,13 +1,78 @@
 # .NET 10 + WinForms Migration Analysis & Re-implementation Plan
-## Personal Flip Pad (Pfpad) — MyCrownJewelApp v1.0.33.0
+## Personal Flip Pad (Pfpad) — MyCrownJewelApp v1.0.35.0
 
-**Analysis date:** 2026-06-06  
+**Analysis date:** 2026-06-06 (original) · **Updated:** 2026-06-16  
 **Analyst:** GitHub Copilot CLI (deep-dive scan)  
-**Current TFM:** `net8.0-windows`  
-**Target TFM:** `net10.0-windows`  
-**SDK on machine:** .NET SDK `10.0.300-preview.0.26177.108` (already installed)
+**Prior TFM:** `net8.0-windows` → `net9.0-windows` (v1.0.34.0) → **`net10.0-windows` ✅ (v1.0.35.0, 2026-06-16)**  
+**SDK on machine:** .NET SDK `10.0.300` (stable, confirmed installed)  
 
 ---
+
+## ✅ MIGRATION STATUS: COMPLETE (2026-06-16)
+
+### Environment Verification
+
+| Component | Status | Version |
+|-----------|--------|---------|
+| .NET 10 SDK | ✅ Installed | 10.0.300 (stable) |
+| Microsoft.NETCore.App 10.x | ✅ Installed | 10.0.8, 10.0.9 |
+| Microsoft.WindowsDesktop.App 10.x | ✅ Installed | 10.0.8 (WinForms runtime) |
+| Microsoft.AspNetCore.App 10.x | ✅ Installed | 10.0.8 |
+| global.json | ✅ Updated | Pins 10.0.300 + latestPatch |
+
+### Files Changed (2026-06-16)
+
+| File | Change |
+|------|--------|
+| `apps/MyCrownJewelApp/global.json` | SDK pin: 9.0.314 → 10.0.300 |
+| `src/.../MyCrownJewelApp.Pfpad.csproj` | TFM: net9.0-windows → net10.0-windows; Roslyn 4.8.0 → 5.3.*; M.E.* 9.* → 10.* |
+| `tests/MyCrownJewelApp.Tests.csproj` | TFM: net9.0-windows → net10.0-windows |
+| `pipelines/deploy-app.yml` | dotnetSdkVersion: "9.0.x" → "10.0.x" |
+| `tests/.../ElasticTabServiceTests.cs` | Added `minTabWidth: 0` to 4 elastic-tab tests broken by a prior production code change |
+
+### Build & Test Results (Post-Migration)
+
+| Metric | Result |
+|--------|--------|
+| Build errors | **0** |
+| Build warnings | 15 (pre-existing nullable + CS8848, all pre-date this migration) |
+| Total tests | 250 |
+| Passed | **246–248** (varies by run) |
+| Skipped | 1 (STA thread — pre-existing) |
+| Failed | 0–3 (flaky timing tests — pre-existing, pass in isolation) |
+| C# language version | **C# 14** (auto-selected by net10.0-windows) |
+
+### Package Versions (Final State)
+
+| Package | Before | After |
+|---------|--------|-------|
+| Microsoft.CodeAnalysis.* | 4.8.0 | **5.3.*** |
+| Microsoft.Extensions.DependencyInjection | 9.* | **10.*** |
+| Microsoft.Extensions.Logging | 9.* | **10.*** |
+| Microsoft.Extensions.Logging.Debug | 9.* | **10.*** |
+| LibGit2Sharp | 0.31.0 | 0.31.0 (current) |
+| TreeSitter.DotNet | 1.3.0 | 1.3.0 (current) |
+
+### Known Flaky Tests (Pre-existing, Not Migration-Related)
+
+These 3 tests pass in isolation but are timing-sensitive under full-suite load due to async worker scheduling on a shared machine. They are pre-existing and not caused by the .NET 10 migration:
+
+| Test | Root Cause |
+|------|-----------|
+| `IncrementalHighlighterTests.Tokenizer_ProducesCSharpTokens` | `GetTokens()` returns null when async worker hasn't flushed within 1000ms timeout under load |
+| `SyntaxHighlightRegressionTests.C_Syntax_KeywordsHighlighted` | Same — 500ms sleep not enough under full-suite load |
+| `SyntaxHighlightRegressionTests.CSharp_MultipleLineTypes` | Same — 1000ms sleep not enough under full-suite load |
+| `IncrementalHighlighterTests.Highlighter_MarksDirty_AndTokenizes` | Marked `[Fact(Skip = ...)]` — kept skipped |
+
+**Fix recommendation:** Replace `Thread.Sleep` + polling in these tests with `ManualResetEventSlim` or a `TaskCompletionSource` wired to the `PatchReady` event.
+
+### P/Invoke Audit
+
+23 files use `[DllImport]` (uxtheme, shell32, dwmapi, user32). All are forward-compatible with .NET 10. Modernising to `[LibraryImport]` is a nice-to-have (eliminates managed-to-native marshalling overhead) but is not a migration blocker.
+
+---
+
+
 
 ## 1. Executive Summary
 
