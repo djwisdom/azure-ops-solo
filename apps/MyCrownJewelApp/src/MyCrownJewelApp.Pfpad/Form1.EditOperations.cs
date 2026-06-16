@@ -158,6 +158,16 @@ namespace MyCrownJewelApp.Pfpad
         private bool _lastUseRegex;
         private string _lastReplaceText = "";
 
+        // Find settings
+        private bool _findCaseSensitive = false;
+        private bool _findUseRegex = false;
+        private bool _findWrapAround = true;
+        private bool _findSeedFromSelection = true;
+        private string _findNotFoundNotification = "messagebox";
+        private string _findInFilesFilter = "*.cs, *.ts, *.js, *.json, *.md, *.xml, *.yaml, *.html, *.css, *.py, *.go, *.rs, *.tf, *.ps1, *.sh";
+        private string _findInFilesExclude = "node_modules, .git, bin, obj, .vs, packages, .terraform";
+        private int _findInFilesMaxResults = 5000;
+
         private void ConfigureTools_Click(object? sender, EventArgs e)
         {
             using var dlg = new ExternalToolsConfigDialog(_externalTools);

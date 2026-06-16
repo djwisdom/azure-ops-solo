@@ -27,7 +27,8 @@ public partial class FindReplaceDialog : Form
     public string ReplaceText => replaceTextBox.Text;
     public bool WrapAround => wrapCheckBox.Checked;
 
-    public FindReplaceDialog(Form1 form, bool replaceMode, string? initialFind = null, bool initialCaseSensitive = false, bool initialRegex = false)
+    public FindReplaceDialog(Form1 form, bool replaceMode, string? initialFind = null,
+        bool initialCaseSensitive = false, bool initialRegex = false, bool initialWrapAround = true)
     {
         _mainForm = form;
         _isReplace = replaceMode;
@@ -38,6 +39,12 @@ public partial class FindReplaceDialog : Form
             caseSensitiveCheckBox.Checked = initialCaseSensitive;
             regexCheckBox.Checked = initialRegex;
         }
+        else
+        {
+            caseSensitiveCheckBox.Checked = initialCaseSensitive;
+            regexCheckBox.Checked = initialRegex;
+        }
+        wrapCheckBox.Checked = initialWrapAround;
     }
 
     private void ApplyTheme()

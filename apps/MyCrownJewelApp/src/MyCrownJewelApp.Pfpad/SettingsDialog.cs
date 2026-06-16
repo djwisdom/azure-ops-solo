@@ -357,6 +357,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddEditorManagementUI(_contentPanel, y);
         }
+        else if (category == "editor.find")
+        {
+            y = AddFindSettingsUI(_contentPanel, y);
+        }
         else if (category is "editor" or "workbench" or "features" or "application")
         {
             // Parent node — redirect to the appropriate first child with settings
@@ -734,6 +738,14 @@ internal sealed class SettingsDialog : Form
             TabConfirmCloseUnsaved = GetSettingValue<bool>("workbench.editor.confirmCloseUnsaved", _mainForm.CurrentTabConfirmCloseUnsaved),
             TabRememberRecentlyClosed = GetSettingValue<bool>("workbench.editor.rememberRecentlyClosed", _mainForm.CurrentTabRememberRecentlyClosed),
             TabMaxRecentlyClosed = GetSettingValue<int>("workbench.editor.maxRecentlyClosed", _mainForm.CurrentTabMaxRecentlyClosed),
+            FindCaseSensitive = GetSettingValue<bool>("editor.find.caseSensitive", _mainForm.CurrentFindCaseSensitive),
+            FindUseRegex = GetSettingValue<bool>("editor.find.useRegex", _mainForm.CurrentFindUseRegex),
+            FindWrapAround = GetSettingValue<bool>("editor.find.wrapAround", _mainForm.CurrentFindWrapAround),
+            FindSeedFromSelection = GetSettingValue<bool>("editor.find.seedFromSelection", _mainForm.CurrentFindSeedFromSelection),
+            FindNotFoundNotification = GetSettingValue<string>("editor.find.notFoundNotification", _mainForm.CurrentFindNotFoundNotification),
+            FindInFilesFilter = GetSettingValue<string>("editor.find.inFilesFilter", _mainForm.CurrentFindInFilesFilter),
+            FindInFilesExclude = GetSettingValue<string>("editor.find.inFilesExclude", _mainForm.CurrentFindInFilesExclude),
+            FindInFilesMaxResults = GetSettingValue<int>("editor.find.inFilesMaxResults", _mainForm.CurrentFindInFilesMaxResults),
         };
         _mainForm.ApplySettings(settings);
     }
@@ -855,8 +867,7 @@ internal sealed class SettingsDialog : Form
             ["application.workspace.maxRecentFiles"] = _mainForm.CurrentWsMaxRecentFiles,
 
             // Workbench - Editor Management
-            ["workbench.editor.tabWidth"] = _mainForm.CurrentTabWidth,
-            ["workbench.editor.tabHeight"] = _mainForm.CurrentTabHeight,
+            ["workbench.editor.tabWidth"] = _mainForm.CurrentTabWidth,            ["workbench.editor.tabHeight"] = _mainForm.CurrentTabHeight,
             ["workbench.editor.showFileIcons"] = _mainForm.CurrentTabShowFileIcons,
             ["workbench.editor.dirtyIndicator"] = _mainForm.CurrentTabDirtyIndicator,
             ["workbench.editor.closeButtonVisibility"] = _mainForm.CurrentTabCloseButtonVisibility,
@@ -865,7 +876,17 @@ internal sealed class SettingsDialog : Form
             ["workbench.editor.maxOpenTabs"] = _mainForm.CurrentTabMaxOpen,
             ["workbench.editor.confirmCloseUnsaved"] = _mainForm.CurrentTabConfirmCloseUnsaved,
             ["workbench.editor.rememberRecentlyClosed"] = _mainForm.CurrentTabRememberRecentlyClosed,
-            ["workbench.editor.maxRecentlyClosed"] = _mainForm.CurrentTabMaxRecentlyClosed
+            ["workbench.editor.maxRecentlyClosed"] = _mainForm.CurrentTabMaxRecentlyClosed,
+
+            // Editor - Find
+            ["editor.find.caseSensitive"] = _mainForm.CurrentFindCaseSensitive,
+            ["editor.find.useRegex"] = _mainForm.CurrentFindUseRegex,
+            ["editor.find.wrapAround"] = _mainForm.CurrentFindWrapAround,
+            ["editor.find.seedFromSelection"] = _mainForm.CurrentFindSeedFromSelection,
+            ["editor.find.notFoundNotification"] = _mainForm.CurrentFindNotFoundNotification,
+            ["editor.find.inFilesFilter"] = _mainForm.CurrentFindInFilesFilter,
+            ["editor.find.inFilesExclude"] = _mainForm.CurrentFindInFilesExclude,
+            ["editor.find.inFilesMaxResults"] = _mainForm.CurrentFindInFilesMaxResults
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -2542,6 +2563,60 @@ internal sealed class SettingsDialog : Form
             ThemedMessageBox.Show($"Failed to save workspace settings: {ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    private int AddFindSettingsUI(Panel parent, int y)
+    {
+        y = AddSecSectionHeader(parent, y, "Default Options");
+
+        y = AddSecCheckRow(parent, y,
+            "Case sensitive by default",
+            "Pre-check 'Match case' each time the Find/Replace dialog opens.",
+            "editor.find.caseSensitive");
+
+        y = AddSecCheckRow(parent, y,
+            "Use regular expressions by default",
+            "Pre-check 'Use regex' each time the Find/Replace dialog opens.",
+            "editor.find.useRegex");
+
+        y = AddSecCheckRow(parent, y,
+            "Wrap around by default",
+            "Pre-check 'Wrap' so searches continue from the top/bottom when no further match is found.",
+            "editor.find.wrapAround");
+
+        y = AddSecCheckRow(parent, y,
+            "Seed find field from current selection",
+            "Automatically fill the Find field with the current editor selection (up to 200 chars) when opening the dialog.",
+            "editor.find.seedFromSelection");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Search Behaviour");
+
+        y = AddEditorComboRow(parent, y,
+            "Not-found notification",
+            "How to notify you when the search term cannot be found in the current document.",
+            "editor.find.notFoundNotification",
+            new[] { ("messagebox", "Message box (blocking)"), ("statusbar", "Status bar (2 s flash)"), ("silent", "Silent") });
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Find in Files Defaults");
+
+        y = AddSecTextRow(parent, y,
+            "File filter",
+            "Comma-separated glob patterns for Find in Files (e.g. *.cs, *.ts, *.json).",
+            "editor.find.inFilesFilter", 360);
+
+        y = AddSecTextRow(parent, y,
+            "Exclude directories",
+            "Comma-separated folder names to skip during Find in Files.",
+            "editor.find.inFilesExclude", 360);
+
+        y = AddWinNumericRow(parent, y,
+            "Maximum results (0 = unlimited)",
+            "Stop collecting matches after this many hits to protect performance on large repos.",
+            "editor.find.inFilesMaxResults", 0, 100000, 500, 5000);
+
+        return y + 16;
     }
 
     private int AddEditorManagementUI(Panel parent, int y)

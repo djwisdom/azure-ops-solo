@@ -126,6 +126,46 @@ using Microsoft.Extensions.DependencyInjection;
             tabControl.Invalidate();
         }
 
+        private void ApplyFindSettings()
+        {
+            // Sync _lastFindCaseSensitive / _lastUseRegex with persisted defaults
+            // (only on first apply; preserve per-session values if dialog was already used)
+            if (string.IsNullOrEmpty(_lastFindText))
+            {
+                _lastFindCaseSensitive = _findCaseSensitive;
+                _lastUseRegex = _findUseRegex;
+            }
+        }
+
+        private System.Windows.Forms.Timer? _findNotFoundResetTimer;
+
+        internal void NotifyNotFound(string text)
+        {
+            switch (_findNotFoundNotification)
+            {
+                case "statusbar":
+                    if (lineColLabel != null)
+                    {
+                        lineColLabel.Text = $"Not found: \"{text}\"";
+                        _findNotFoundResetTimer?.Stop();
+                        _findNotFoundResetTimer = new System.Windows.Forms.Timer { Interval = 2500 };
+                        _findNotFoundResetTimer.Tick += (s, e) =>
+                        {
+                            _findNotFoundResetTimer?.Stop();
+                            UpdateStatusBar();
+                        };
+                        _findNotFoundResetTimer.Start();
+                    }
+                    break;
+                case "silent":
+                    break;
+                default:
+                    ThemedMessageBox.Show("Cannot find \"" + text + "\".", "Find",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    break;
+            }
+        }
+
         internal void ReopenLastClosedTab()
         {
             if (!_tabRememberRecentlyClosed || _recentlyClosed.Count == 0) return;
@@ -687,6 +727,14 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentTabConfirmCloseUnsaved => _tabConfirmCloseUnsaved;
         public bool CurrentTabRememberRecentlyClosed => _tabRememberRecentlyClosed;
         public int CurrentTabMaxRecentlyClosed => _tabMaxRecentlyClosed;
+        public bool CurrentFindCaseSensitive => _findCaseSensitive;
+        public bool CurrentFindUseRegex => _findUseRegex;
+        public bool CurrentFindWrapAround => _findWrapAround;
+        public bool CurrentFindSeedFromSelection => _findSeedFromSelection;
+        public string CurrentFindNotFoundNotification => _findNotFoundNotification;
+        public string CurrentFindInFilesFilter => _findInFilesFilter;
+        public string CurrentFindInFilesExclude => _findInFilesExclude;
+        public int CurrentFindInFilesMaxResults => _findInFilesMaxResults;
 
     public Form1()
         : this(skipInitialDocument: false, services: null)
@@ -2453,6 +2501,15 @@ using Microsoft.Extensions.DependencyInjection;
                 _tabConfirmCloseUnsaved = settings.TabConfirmCloseUnsaved;
                 _tabRememberRecentlyClosed = settings.TabRememberRecentlyClosed;
                 _tabMaxRecentlyClosed = Math.Clamp(settings.TabMaxRecentlyClosed, 5, 20);
+                // Find settings
+                _findCaseSensitive = settings.FindCaseSensitive;
+                _findUseRegex = settings.FindUseRegex;
+                _findWrapAround = settings.FindWrapAround;
+                _findSeedFromSelection = settings.FindSeedFromSelection;
+                _findNotFoundNotification = settings.FindNotFoundNotification ?? "messagebox";
+                _findInFilesFilter = string.IsNullOrWhiteSpace(settings.FindInFilesFilter) ? _findInFilesFilter : settings.FindInFilesFilter;
+                _findInFilesExclude = string.IsNullOrWhiteSpace(settings.FindInFilesExclude) ? _findInFilesExclude : settings.FindInFilesExclude;
+                _findInFilesMaxResults = Math.Max(0, settings.FindInFilesMaxResults);
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2641,6 +2698,14 @@ using Microsoft.Extensions.DependencyInjection;
                 TabConfirmCloseUnsaved = _tabConfirmCloseUnsaved,
                 TabRememberRecentlyClosed = _tabRememberRecentlyClosed,
                 TabMaxRecentlyClosed = _tabMaxRecentlyClosed,
+                FindCaseSensitive = _findCaseSensitive,
+                FindUseRegex = _findUseRegex,
+                FindWrapAround = _findWrapAround,
+                FindSeedFromSelection = _findSeedFromSelection,
+                FindNotFoundNotification = _findNotFoundNotification,
+                FindInFilesFilter = _findInFilesFilter,
+                FindInFilesExclude = _findInFilesExclude,
+                FindInFilesMaxResults = _findInFilesMaxResults,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2817,7 +2882,16 @@ using Microsoft.Extensions.DependencyInjection;
             _tabMaxRecentlyClosed = Math.Clamp(settings.TabMaxRecentlyClosed, 5, 20);
             ApplyTabSettings();
 
-            // Vim mode
+            // Find settings
+            _findCaseSensitive = settings.FindCaseSensitive;
+            _findUseRegex = settings.FindUseRegex;
+            _findWrapAround = settings.FindWrapAround;
+            _findSeedFromSelection = settings.FindSeedFromSelection;
+            _findNotFoundNotification = settings.FindNotFoundNotification ?? "messagebox";
+            _findInFilesFilter = string.IsNullOrWhiteSpace(settings.FindInFilesFilter) ? _findInFilesFilter : settings.FindInFilesFilter;
+            _findInFilesExclude = string.IsNullOrWhiteSpace(settings.FindInFilesExclude) ? _findInFilesExclude : settings.FindInFilesExclude;
+            _findInFilesMaxResults = Math.Max(0, settings.FindInFilesMaxResults);
+            ApplyFindSettings();
             vimModeEnabled = settings.VimModeEnabled;
             if (vimModeMenuItem != null) vimModeMenuItem.Checked = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;
@@ -4276,7 +4350,7 @@ internal void ToggleGutter()
             }
             else
             {
-                ThemedMessageBox.Show("Cannot find \"" + text + "\".", "Find", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                NotifyNotFound(text);
             }
         }
 
@@ -4383,10 +4457,10 @@ internal void ToggleGutter()
                 ".tf", ".bicep", ".editorconfig", ".gitignore", ".props", ".targets", ".resx"
             };
 
-            var ignoredDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "node_modules", ".git", ".svn", ".hg", "bin", "obj", ".vs", "packages"
-            };
+            var ignoredDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var part in _findInFilesExclude.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                ignoredDirs.Add(part);
+            ignoredDirs.UnionWith(new[] { ".svn", ".hg" }); // always excluded
 
             Regex? regex = null;
             StringComparison comparison = StringComparison.CurrentCultureIgnoreCase;
@@ -5420,7 +5494,8 @@ internal void ToggleGutter()
 
         private void GlobalSearch_Click(object? sender, EventArgs e)
         {
-            using var dlg = new GlobalSearchDialog(this);
+            using var dlg = new GlobalSearchDialog(this,
+                _findInFilesFilter, _findInFilesExclude, _findInFilesMaxResults);
             if (_workspacePanel?.RootPath is { Length: > 0 } root && Directory.Exists(root))
                 dlg.WorkspaceRoot = root;
             else if (!string.IsNullOrEmpty(_workspaceRoot) && Directory.Exists(_workspaceRoot))

@@ -96,8 +96,25 @@ public record AppSettings
     /// <summary>Maximum number of recent files to remember (5–50).</summary>
     public int WsMaxRecentFiles { get; init; } = 10;
 
-    // ── Editor Management (Tab) configuration ─────────────────────────────────
-    /// <summary>Editor tab width in pixels (60–300). Default 140.</summary>
+    // ── Find / Replace configuration ───────────────────────────────────────────
+    /// <summary>Default case-sensitive matching when opening the Find/Replace dialog.</summary>
+    public bool FindCaseSensitive { get; init; } = false;
+    /// <summary>Default regular-expression mode when opening the Find/Replace dialog.</summary>
+    public bool FindUseRegex { get; init; } = false;
+    /// <summary>Default wrap-around behaviour when opening the Find/Replace dialog.</summary>
+    public bool FindWrapAround { get; init; } = true;
+    /// <summary>Auto-fill the Find field from the current editor selection when the dialog opens.</summary>
+    public bool FindSeedFromSelection { get; init; } = true;
+    /// <summary>How to report "not found": "messagebox", "statusbar", or "silent".</summary>
+    public string FindNotFoundNotification { get; init; } = "messagebox";
+    /// <summary>Default file-type filter for Find in Files (comma-separated globs).</summary>
+    public string FindInFilesFilter { get; init; } = "*.cs, *.ts, *.js, *.json, *.md, *.xml, *.yaml, *.html, *.css, *.py, *.go, *.rs, *.tf, *.ps1, *.sh";
+    /// <summary>Default directory names to exclude from Find in Files.</summary>
+    public string FindInFilesExclude { get; init; } = "node_modules, .git, bin, obj, .vs, packages, .terraform";
+    /// <summary>Maximum matches collected in Find in Files (0 = unlimited).</summary>
+    public int FindInFilesMaxResults { get; init; } = 5000;
+
+    // ── Editor Management (Tab) configuration ─────────────────────────────────    /// <summary>Editor tab width in pixels (60–300). Default 140.</summary>
     public int TabWidth { get; init; } = 140;
     /// <summary>Editor tab height in pixels (22–40). Default 26.</summary>
     public int TabHeight { get; init; } = 26;

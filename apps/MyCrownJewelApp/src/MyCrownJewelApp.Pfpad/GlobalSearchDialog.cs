@@ -28,6 +28,7 @@ internal sealed class GlobalSearchDialog : Form
     private readonly HashSet<string> _defaultFilters;
     private string _workspaceRoot = "";
     private int _totalMatches;
+    private int _maxResults;
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
@@ -39,9 +40,11 @@ internal sealed class GlobalSearchDialog : Form
         "node_modules", ".git", ".svn", ".hg", "bin", "obj", ".vs", "packages", ".terraform"
     };
 
-    public GlobalSearchDialog(Form1 mainForm)
+    public GlobalSearchDialog(Form1 mainForm,
+        string defaultFilter = "", string defaultExclude = "", int maxResults = 0)
     {
         _mainForm = mainForm;
+        _maxResults = maxResults;
         _defaultFilters = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".cs", ".vb", ".fs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
@@ -174,7 +177,9 @@ internal sealed class GlobalSearchDialog : Form
         };
         _filterBox = new TextBox
         {
-            Text = "*.cs, *.ts, *.js, *.json, *.md, *.xml, *.yaml, *.html, *.css, *.py, *.go, *.rs, *.tf, *.ps1, *.sh",
+            Text = !string.IsNullOrWhiteSpace(defaultFilter)
+                ? defaultFilter
+                : "*.cs, *.ts, *.js, *.json, *.md, *.xml, *.yaml, *.html, *.css, *.py, *.go, *.rs, *.tf, *.ps1, *.sh",
             Location = new Point(leftCol + 180, y - 1),
             Width = 280,
             Font = new Font("Segoe UI", 8.25f),
@@ -192,7 +197,9 @@ internal sealed class GlobalSearchDialog : Form
         };
         _excludeBox = new TextBox
         {
-            Text = "node_modules, .git, bin, obj, .vs, packages, .terraform",
+            Text = !string.IsNullOrWhiteSpace(defaultExclude)
+                ? defaultExclude
+                : "node_modules, .git, bin, obj, .vs, packages, .terraform",
             Location = new Point(leftCol + 524, y - 1),
             Width = 340,
             Font = new Font("Segoe UI", 8.25f),
@@ -475,11 +482,22 @@ internal sealed class GlobalSearchDialog : Form
                 };
                 fileNode.Nodes.Add(matchNode);
                 _totalMatches++;
+                if (_maxResults > 0 && _totalMatches >= _maxResults)
+                {
+                    fileNode.Nodes.Add(new TreeNode("  (result limit reached — increase in Settings > Editor > Find)")
+                    {
+                        ForeColor = theme.Muted,
+                        NodeFont = nodeFont
+                    });
+                    _resultsTree.Nodes.Add(fileNode);
+                    goto Done;
+                }
             }
 
             _resultsTree.Nodes.Add(fileNode);
         }
 
+        Done:
         _resultsTree.EndUpdate();
 
         int fileCount = fileResults.Count;

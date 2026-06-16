@@ -26,7 +26,13 @@ namespace MyCrownJewelApp.Pfpad
 
         private void Find_Click(object? sender, EventArgs e)
         {
-            using var dlg = new FindReplaceDialog(this, false, _lastFindText, _lastFindCaseSensitive, _lastUseRegex);
+            string initialFind = _findSeedFromSelection
+                && textEditor?.SelectionLength > 0
+                && textEditor.SelectionLength <= 200
+                ? textEditor.SelectedText
+                : _lastFindText;
+            using var dlg = new FindReplaceDialog(this, false, initialFind,
+                _lastFindCaseSensitive, _lastUseRegex, _findWrapAround);
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
                 _lastFindText = dlg.FindText;
@@ -54,7 +60,13 @@ namespace MyCrownJewelApp.Pfpad
 
         private void Replace_Click(object? sender, EventArgs e)
         {
-            using var dlg = new FindReplaceDialog(this, true, _lastFindText, _lastFindCaseSensitive, _lastUseRegex);
+            string initialFind = _findSeedFromSelection
+                && textEditor?.SelectionLength > 0
+                && textEditor.SelectionLength <= 200
+                ? textEditor.SelectedText
+                : _lastFindText;
+            using var dlg = new FindReplaceDialog(this, true, initialFind,
+                _lastFindCaseSensitive, _lastUseRegex, _findWrapAround);
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
                 _lastFindText = dlg.FindText;
