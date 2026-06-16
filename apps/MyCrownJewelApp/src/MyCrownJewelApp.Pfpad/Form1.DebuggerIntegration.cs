@@ -132,6 +132,13 @@ namespace MyCrownJewelApp.Pfpad
                 return;
             }
 
+            if (_secConfirmDebugStart)
+            {
+                if (ThemedMessageBox.Show("Start a debug session?", "Debugger",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                    return;
+            }
+
             string? projectDir = ProjectLocator.FindProjectDirectory(currentFilePath);
             if (projectDir == null)
             {

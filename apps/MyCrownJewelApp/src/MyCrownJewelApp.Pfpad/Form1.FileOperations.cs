@@ -359,7 +359,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
 
         private void CloneRepository_Click(object? sender, EventArgs e)
         {
-            using var dlg = new CloneRepositoryDialog(this);
+            using var dlg = new CloneRepositoryDialog(this, _secConfirmGitClone, _secTrustedGitHosts);
             dlg.ShowDialog(this);
         }
         private void Save_Click(object? sender, EventArgs e) => SaveFile();

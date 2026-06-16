@@ -33,6 +33,8 @@ public sealed class LintEngine : IDisposable
         }
     }
 
+    public bool HighlightHardcodedSecrets { get; set; } = true;
+
     public LintEngine()
     {
         _rules = new List<LintRule>

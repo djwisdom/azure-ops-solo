@@ -80,6 +80,23 @@ public record AppSettings
     public string GitBranchSwitchBehavior { get; init; } = "ask";
     public bool GitCommitLengthWarning { get; init; } = false;
 
+    // ── Application Security ────────────────────────────────────────────────────
+    public bool SecPromptUntrustedWorkspace { get; init; } = true;
+    public string SecTrustedWorkspacePaths { get; init; } = "";
+    public bool SecConfirmUrlOpen { get; init; } = false;
+    public bool SecAllowHttpUrls { get; init; } = true;
+    public bool SecConfirmExternalTools { get; init; } = false;
+    public bool SecConfirmDebugStart { get; init; } = false;
+    public bool SecDebugAdapterPathOnly { get; init; } = true;
+    public bool SecConfirmGitClone { get; init; } = true;
+    public string SecTrustedGitHosts { get; init; } = "github.com,gitlab.com,dev.azure.com,bitbucket.org";
+    public bool SecSastEnabled { get; init; } = true;
+    public string SecSastSeverityThreshold { get; init; } = "Medium";
+    public bool SecWriteCrashLog { get; init; } = true;
+    public bool SecWriteStartupLog { get; init; } = true;
+    public int SecLogRetentionDays { get; init; } = 30;
+    public bool SecHighlightHardcodedSecrets { get; init; } = true;
+
     // ── AIOps configuration ────────────────────────────────────────────────────
     /// <summary>
     /// AIOps engine settings: connector endpoints, auth, polling intervals.

@@ -8,6 +8,8 @@ namespace MyCrownJewelApp.Pfpad;
 
 internal sealed partial class TerminalPanel : UserControl, IDisposable
 {
+    public record SecuritySettings(bool ConfirmUrlOpen, bool AllowHttpUrls);
+
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
     private const int EM_SETLINKCOLOR = 0x0423;
     private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
@@ -159,6 +161,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private readonly List<string> _commandHistory = new();
     private int _historyIndex = -1;
     private int _maxScrollback = 5000;
+    private SecuritySettings _securitySettings = new(ConfirmUrlOpen: false, AllowHttpUrls: true);
     private readonly ToolStrip _headerStrip;
     private readonly ToolStripLabel _shellLabel;
     private readonly ToolStripButton _closeButton;
@@ -357,6 +360,11 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             }
             catch { }
         }
+    }
+
+    public void ApplySecuritySettings(SecuritySettings settings)
+    {
+        _securitySettings = settings;
     }
 
     public void SetMaxScrollback(int lines)
@@ -1420,9 +1428,24 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         throw new Win32Exception(Marshal.GetLastWin32Error(), operation);
     }
 
-    private static void OpenUrl(string? url)
+    private void OpenUrl(string? url)
     {
         if (string.IsNullOrEmpty(url)) return;
+
+        if (!_securitySettings.AllowHttpUrls &&
+            url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            AppendAnsiText($"\x1B[93m[Security] Blocked http:// URL (allow http disabled): {url}\x1B[0m\n");
+            return;
+        }
+
+        if (_securitySettings.ConfirmUrlOpen)
+        {
+            if (ThemedMessageBox.Show($"Open URL in browser?\n\n{url}", "Open URL",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+        }
+
         try
         {
             using var _ = Process.Start(new ProcessStartInfo

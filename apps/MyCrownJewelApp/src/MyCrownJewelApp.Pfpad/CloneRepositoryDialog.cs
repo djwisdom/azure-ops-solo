@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -10,6 +11,8 @@ namespace MyCrownJewelApp.Pfpad;
 internal sealed class CloneRepositoryDialog : Form
 {
     private readonly Form1 _mainForm;
+    private readonly bool _confirmClone;
+    private readonly HashSet<string> _trustedHosts;
     private TextBox _urlTextBox = null!;
     private TextBox _pathTextBox = null!;
     private Button _browseButton = null!;
@@ -21,9 +24,15 @@ internal sealed class CloneRepositoryDialog : Form
     private readonly CancellationTokenSource _cts = new();
     private bool _cloning;
 
-    public CloneRepositoryDialog(Form1 mainForm)
+    public CloneRepositoryDialog(Form1 mainForm,
+        bool confirmUnknownHost = false,
+        string trustedHosts = "github.com,gitlab.com,dev.azure.com,bitbucket.org")
     {
         _mainForm = mainForm;
+        _confirmClone = confirmUnknownHost;
+        _trustedHosts = new HashSet<string>(
+            trustedHosts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.OrdinalIgnoreCase);
         Text = "Clone Repository";
         Size = new Size(540, 260);
         StartPosition = FormStartPosition.CenterParent;
@@ -210,6 +219,21 @@ internal sealed class CloneRepositoryDialog : Form
 
         if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(destDir))
             return;
+
+        if (_confirmClone)
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                string host = uri.Host;
+                if (!_trustedHosts.Contains(host))
+                {
+                    if (ThemedMessageBox.Show(
+                        $"Clone from untrusted host \"{host}\"?\n\nURL: {url}\n\nOnly clone from repositories you trust.",
+                        "Untrusted Host", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                        return;
+                }
+            }
+        }
 
         string repoName = GetRepoName(url);
         string targetPath = Path.Combine(destDir, repoName);

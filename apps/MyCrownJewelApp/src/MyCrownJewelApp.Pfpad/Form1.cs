@@ -136,6 +136,23 @@ using Microsoft.Extensions.DependencyInjection;
         private string _gitBranchSwitchBehavior = "ask";
         private bool _gitCommitLengthWarning = false;
 
+        // Security settings
+        private bool _secPromptUntrustedWorkspace = true;
+        private string _secTrustedWorkspacePaths = "";
+        private bool _secConfirmUrlOpen = false;
+        private bool _secAllowHttpUrls = true;
+        private bool _secConfirmExternalTools = false;
+        private bool _secConfirmDebugStart = false;
+        private bool _secDebugAdapterPathOnly = true;
+        private bool _secConfirmGitClone = true;
+        private string _secTrustedGitHosts = "github.com,gitlab.com,dev.azure.com,bitbucket.org";
+        private bool _secSastEnabled = true;
+        private string _secSastSeverityThreshold = "Medium";
+        private bool _secWriteCrashLog = true;
+        private bool _secWriteStartupLog = true;
+        private int _secLogRetentionDays = 30;
+        private bool _secHighlightHardcodedSecrets = true;
+
         // Workspace / folder tree state
         private SplitContainer? _workspaceSplitContainer;
         private WorkspacePanel? _workspacePanel;
@@ -509,6 +526,21 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentGitConfirmHiddenChanges => _gitConfirmHiddenChanges;
         public string CurrentGitBranchSwitchBehavior => _gitBranchSwitchBehavior;
         public bool CurrentGitCommitLengthWarning => _gitCommitLengthWarning;
+        public bool CurrentSecPromptUntrustedWorkspace => _secPromptUntrustedWorkspace;
+        public string CurrentSecTrustedWorkspacePaths => _secTrustedWorkspacePaths;
+        public bool CurrentSecConfirmUrlOpen => _secConfirmUrlOpen;
+        public bool CurrentSecAllowHttpUrls => _secAllowHttpUrls;
+        public bool CurrentSecConfirmExternalTools => _secConfirmExternalTools;
+        public bool CurrentSecConfirmDebugStart => _secConfirmDebugStart;
+        public bool CurrentSecDebugAdapterPathOnly => _secDebugAdapterPathOnly;
+        public bool CurrentSecConfirmGitClone => _secConfirmGitClone;
+        public string CurrentSecTrustedGitHosts => _secTrustedGitHosts;
+        public bool CurrentSecSastEnabled => _secSastEnabled;
+        public string CurrentSecSastSeverityThreshold => _secSastSeverityThreshold;
+        public bool CurrentSecWriteCrashLog => _secWriteCrashLog;
+        public bool CurrentSecWriteStartupLog => _secWriteStartupLog;
+        public int CurrentSecLogRetentionDays => _secLogRetentionDays;
+        public bool CurrentSecHighlightHardcodedSecrets => _secHighlightHardcodedSecrets;
         public bool CurrentVimMode => vimModeEnabled;
         public bool CurrentStickyScroll => _stickyScrollEnabled;
         public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
@@ -2235,6 +2267,21 @@ using Microsoft.Extensions.DependencyInjection;
                 _terminalPadding = Math.Clamp(settings.TerminalPadding, 0, 20);
                 _terminalMaxScrollback = Math.Clamp(settings.TerminalMaxScrollback, 500, 50000);
                 _terminalTabTitle = settings.TerminalTabTitle ?? "";
+                _secPromptUntrustedWorkspace = settings.SecPromptUntrustedWorkspace;
+                _secTrustedWorkspacePaths = settings.SecTrustedWorkspacePaths;
+                _secConfirmUrlOpen = settings.SecConfirmUrlOpen;
+                _secAllowHttpUrls = settings.SecAllowHttpUrls;
+                _secConfirmExternalTools = settings.SecConfirmExternalTools;
+                _secConfirmDebugStart = settings.SecConfirmDebugStart;
+                _secDebugAdapterPathOnly = settings.SecDebugAdapterPathOnly;
+                _secConfirmGitClone = settings.SecConfirmGitClone;
+                _secTrustedGitHosts = settings.SecTrustedGitHosts;
+                _secSastEnabled = settings.SecSastEnabled;
+                _secSastSeverityThreshold = settings.SecSastSeverityThreshold;
+                _secWriteCrashLog = settings.SecWriteCrashLog;
+                _secWriteStartupLog = settings.SecWriteStartupLog;
+                _secLogRetentionDays = settings.SecLogRetentionDays;
+                _secHighlightHardcodedSecrets = settings.SecHighlightHardcodedSecrets;
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2282,6 +2329,7 @@ using Microsoft.Extensions.DependencyInjection;
                 DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
                 SyntaxHighlightingThresholdBytes = Math.Max(1024, settings.SyntaxHighlightingThresholdBytes);
                 ApplyTerminalSettingsToAll();
+                ApplySecuritySettings();
             }
             catch { /* ignore settings load errors */ }
         }
@@ -2374,6 +2422,21 @@ using Microsoft.Extensions.DependencyInjection;
                 GitConfirmHiddenChanges = _gitConfirmHiddenChanges,
                 GitBranchSwitchBehavior = _gitBranchSwitchBehavior,
                 GitCommitLengthWarning = _gitCommitLengthWarning,
+                SecPromptUntrustedWorkspace = _secPromptUntrustedWorkspace,
+                SecTrustedWorkspacePaths = _secTrustedWorkspacePaths,
+                SecConfirmUrlOpen = _secConfirmUrlOpen,
+                SecAllowHttpUrls = _secAllowHttpUrls,
+                SecConfirmExternalTools = _secConfirmExternalTools,
+                SecConfirmDebugStart = _secConfirmDebugStart,
+                SecDebugAdapterPathOnly = _secDebugAdapterPathOnly,
+                SecConfirmGitClone = _secConfirmGitClone,
+                SecTrustedGitHosts = _secTrustedGitHosts,
+                SecSastEnabled = _secSastEnabled,
+                SecSastSeverityThreshold = _secSastSeverityThreshold,
+                SecWriteCrashLog = _secWriteCrashLog,
+                SecWriteStartupLog = _secWriteStartupLog,
+                SecLogRetentionDays = _secLogRetentionDays,
+                SecHighlightHardcodedSecrets = _secHighlightHardcodedSecrets,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2491,6 +2554,24 @@ using Microsoft.Extensions.DependencyInjection;
             _gitBranchSwitchBehavior = settings.GitBranchSwitchBehavior;
             _gitCommitLengthWarning = settings.GitCommitLengthWarning;
             ApplyGitSettings();
+
+            // Apply security settings
+            _secPromptUntrustedWorkspace = settings.SecPromptUntrustedWorkspace;
+            _secTrustedWorkspacePaths = settings.SecTrustedWorkspacePaths;
+            _secConfirmUrlOpen = settings.SecConfirmUrlOpen;
+            _secAllowHttpUrls = settings.SecAllowHttpUrls;
+            _secConfirmExternalTools = settings.SecConfirmExternalTools;
+            _secConfirmDebugStart = settings.SecConfirmDebugStart;
+            _secDebugAdapterPathOnly = settings.SecDebugAdapterPathOnly;
+            _secConfirmGitClone = settings.SecConfirmGitClone;
+            _secTrustedGitHosts = settings.SecTrustedGitHosts;
+            _secSastEnabled = settings.SecSastEnabled;
+            _secSastSeverityThreshold = settings.SecSastSeverityThreshold;
+            _secWriteCrashLog = settings.SecWriteCrashLog;
+            _secWriteStartupLog = settings.SecWriteStartupLog;
+            _secLogRetentionDays = settings.SecLogRetentionDays;
+            _secHighlightHardcodedSecrets = settings.SecHighlightHardcodedSecrets;
+            ApplySecuritySettings();
 
             // Advanced
             _analyzersEnabled = settings.AnalyzersEnabled;
@@ -2932,6 +3013,38 @@ internal void ToggleGutter()
             ));
         }
 
+        private void ApplySecuritySettings()
+        {
+            _lintEngine.Enabled = _secSastEnabled;
+            _lintEngine.HighlightHardcodedSecrets = _secHighlightHardcodedSecrets;
+
+            foreach (var terminal in _terminalTabs)
+                terminal.ApplySecuritySettings(new TerminalPanel.SecuritySettings(
+                    ConfirmUrlOpen: _secConfirmUrlOpen,
+                    AllowHttpUrls: _secAllowHttpUrls));
+
+            if (_secWriteStartupLog)
+                PurgeOldLogs(_secLogRetentionDays);
+        }
+
+        private static void PurgeOldLogs(int retentionDays)
+        {
+            try
+            {
+                string logDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MyCrownJewelApp", "Pfpad");
+                if (!Directory.Exists(logDir)) return;
+                var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
+                foreach (var f in Directory.GetFiles(logDir, "*.log"))
+                {
+                    if (File.GetLastWriteTimeUtc(f) < cutoff)
+                        try { File.Delete(f); } catch { }
+                }
+            }
+            catch { }
+        }
+
         private string ResolveTerminalStartingDirectory()
         {
             if (!string.IsNullOrWhiteSpace(_terminalStartingDirectory))
@@ -2984,6 +3097,9 @@ internal void ToggleGutter()
             terminal.StartingDirectory = ResolveTerminalStartingDirectory();
             terminal.ApplyTerminalSettings(_terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap, _terminalScrollbarVisible, _terminalPadding);
             terminal.SetMaxScrollback(_terminalMaxScrollback);
+            terminal.ApplySecuritySettings(new TerminalPanel.SecuritySettings(
+                ConfirmUrlOpen: _secConfirmUrlOpen,
+                AllowHttpUrls: _secAllowHttpUrls));
 
             var page = new TabPage(GetTerminalTabTitle(terminal))
             {

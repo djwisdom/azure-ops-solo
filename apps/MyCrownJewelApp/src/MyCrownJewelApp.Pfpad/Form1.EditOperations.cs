@@ -216,6 +216,14 @@ namespace MyCrownJewelApp.Pfpad
                 return;
             }
 
+            if (_secConfirmExternalTools)
+            {
+                if (ThemedMessageBox.Show(
+                    $"Run external tool \"{tool.Name}\"?\n\nCommand: {tool.Command}",
+                    "External Tool", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                    return;
+            }
+
             string args = tool.Arguments;
             if (tool.PromptForArguments)
             {

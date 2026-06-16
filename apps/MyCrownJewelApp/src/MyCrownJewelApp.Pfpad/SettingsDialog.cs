@@ -345,6 +345,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddGitSettingsUI(_contentPanel, y);
         }
+        else if (category == "application.security")
+        {
+            y = AddSecuritySettingsUI(_contentPanel, y);
+        }
         else
         {
             var settings = GetSettingsForCategory(category);
@@ -660,6 +664,21 @@ internal sealed class SettingsDialog : Form
             GitConfirmHiddenChanges = GetSettingValue<bool>("features.git.confirmHiddenChanges", _mainForm.CurrentGitConfirmHiddenChanges),
             GitBranchSwitchBehavior = GetSettingValue<string>("features.git.branchSwitchBehavior", _mainForm.CurrentGitBranchSwitchBehavior),
             GitCommitLengthWarning = GetSettingValue<bool>("features.git.commitLengthWarning", _mainForm.CurrentGitCommitLengthWarning),
+            SecPromptUntrustedWorkspace = GetSettingValue<bool>("application.security.promptUntrustedWorkspace", _mainForm.CurrentSecPromptUntrustedWorkspace),
+            SecTrustedWorkspacePaths = GetSettingValue<string>("application.security.trustedWorkspacePaths", _mainForm.CurrentSecTrustedWorkspacePaths),
+            SecConfirmUrlOpen = GetSettingValue<bool>("application.security.confirmUrlOpen", _mainForm.CurrentSecConfirmUrlOpen),
+            SecAllowHttpUrls = GetSettingValue<bool>("application.security.allowHttpUrls", _mainForm.CurrentSecAllowHttpUrls),
+            SecConfirmExternalTools = GetSettingValue<bool>("application.security.confirmExternalTools", _mainForm.CurrentSecConfirmExternalTools),
+            SecConfirmDebugStart = GetSettingValue<bool>("application.security.confirmDebugStart", _mainForm.CurrentSecConfirmDebugStart),
+            SecDebugAdapterPathOnly = GetSettingValue<bool>("application.security.debugAdapterPathOnly", _mainForm.CurrentSecDebugAdapterPathOnly),
+            SecConfirmGitClone = GetSettingValue<bool>("application.security.confirmGitClone", _mainForm.CurrentSecConfirmGitClone),
+            SecTrustedGitHosts = GetSettingValue<string>("application.security.trustedGitHosts", _mainForm.CurrentSecTrustedGitHosts),
+            SecSastEnabled = GetSettingValue<bool>("application.security.sastEnabled", _mainForm.CurrentSecSastEnabled),
+            SecSastSeverityThreshold = GetSettingValue<string>("application.security.sastSeverityThreshold", _mainForm.CurrentSecSastSeverityThreshold),
+            SecWriteCrashLog = GetSettingValue<bool>("application.security.writeCrashLog", _mainForm.CurrentSecWriteCrashLog),
+            SecWriteStartupLog = GetSettingValue<bool>("application.security.writeStartupLog", _mainForm.CurrentSecWriteStartupLog),
+            SecLogRetentionDays = GetSettingValue<int>("application.security.logRetentionDays", _mainForm.CurrentSecLogRetentionDays),
+            SecHighlightHardcodedSecrets = GetSettingValue<bool>("application.security.highlightSecrets", _mainForm.CurrentSecHighlightHardcodedSecrets),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
         };
@@ -739,7 +758,24 @@ internal sealed class SettingsDialog : Form
             ["features.git.confirmOverrideCommitMsg"] = _mainForm.CurrentGitConfirmOverrideCommitMsg,
             ["features.git.confirmHiddenChanges"] = _mainForm.CurrentGitConfirmHiddenChanges,
             ["features.git.branchSwitchBehavior"] = _mainForm.CurrentGitBranchSwitchBehavior,
-            ["features.git.commitLengthWarning"] = _mainForm.CurrentGitCommitLengthWarning
+            ["features.git.commitLengthWarning"] = _mainForm.CurrentGitCommitLengthWarning,
+
+            // Application Security
+            ["application.security.promptUntrustedWorkspace"] = _mainForm.CurrentSecPromptUntrustedWorkspace,
+            ["application.security.trustedWorkspacePaths"] = _mainForm.CurrentSecTrustedWorkspacePaths,
+            ["application.security.confirmUrlOpen"] = _mainForm.CurrentSecConfirmUrlOpen,
+            ["application.security.allowHttpUrls"] = _mainForm.CurrentSecAllowHttpUrls,
+            ["application.security.confirmExternalTools"] = _mainForm.CurrentSecConfirmExternalTools,
+            ["application.security.confirmDebugStart"] = _mainForm.CurrentSecConfirmDebugStart,
+            ["application.security.debugAdapterPathOnly"] = _mainForm.CurrentSecDebugAdapterPathOnly,
+            ["application.security.confirmGitClone"] = _mainForm.CurrentSecConfirmGitClone,
+            ["application.security.trustedGitHosts"] = _mainForm.CurrentSecTrustedGitHosts,
+            ["application.security.sastEnabled"] = _mainForm.CurrentSecSastEnabled,
+            ["application.security.sastSeverityThreshold"] = _mainForm.CurrentSecSastSeverityThreshold,
+            ["application.security.writeCrashLog"] = _mainForm.CurrentSecWriteCrashLog,
+            ["application.security.writeStartupLog"] = _mainForm.CurrentSecWriteStartupLog,
+            ["application.security.logRetentionDays"] = _mainForm.CurrentSecLogRetentionDays,
+            ["application.security.highlightSecrets"] = _mainForm.CurrentSecHighlightHardcodedSecrets
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -1210,6 +1246,312 @@ internal sealed class SettingsDialog : Form
         cb.CheckedChanged += (s, e) => _currentValues[key] = cb.Checked;
         parent.Controls.Add(cb);
         return y + 24;
+    }
+
+    private int AddSecuritySettingsUI(Panel parent, int y)
+    {
+        y = AddSecSectionHeader(parent, y, "Workspace Trust");
+
+        y = AddSecCheckRow(parent, y,
+            "Prompt when opening an untrusted folder",
+            "Warn before loading build files (MSBuild/Roslyn) from an unknown directory.",
+            "application.security.promptUntrustedWorkspace");
+
+        y = AddSecMultilineTextRow(parent, y,
+            "Trusted workspace paths",
+            "One path per line. These folders are always opened without prompting.",
+            "application.security.trustedWorkspacePaths",
+            height: 60);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Terminal");
+
+        y = AddSecCheckRow(parent, y,
+            "Confirm before opening links in browser",
+            "Ask for confirmation when you click a URL in the terminal output.",
+            "application.security.confirmUrlOpen");
+
+        y = AddSecCheckRow(parent, y,
+            "Allow http:// links (not just https://)",
+            "When disabled, http:// links in terminal output are blocked.",
+            "application.security.allowHttpUrls");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "External Tools");
+
+        y = AddSecCheckRow(parent, y,
+            "Confirm before running an external tool",
+            "Show tool name and command before executing Tools menu items.",
+            "application.security.confirmExternalTools");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Debugger");
+
+        y = AddSecCheckRow(parent, y,
+            "Confirm before starting a debug session",
+            "Ask for confirmation each time F5 / Start Debug is pressed.",
+            "application.security.confirmDebugStart");
+
+        y = AddSecCheckRow(parent, y,
+            "Only load debug adapter from PATH",
+            "Prevent loading a debug adapter from a workspace-relative or untrusted path.",
+            "application.security.debugAdapterPathOnly");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Git");
+
+        y = AddSecCheckRow(parent, y,
+            "Confirm cloning from unknown hosts",
+            "Warn before cloning from a host not on the trusted list below.",
+            "application.security.confirmGitClone");
+
+        y = AddSecTextRow(parent, y,
+            "Trusted Git hosts",
+            "Comma-separated list. Clone from these hosts without prompting.",
+            "application.security.trustedGitHosts",
+            width: 340);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Code Scanning (SAST)");
+
+        y = AddSecCheckRow(parent, y,
+            "Enable SAST scanning",
+            "Run static analysis rules (CWE-78 command injection, CWE-89 SQL injection, CWE-312 secrets, etc.) while editing.",
+            "application.security.sastEnabled");
+
+        y = AddSecCheckRow(parent, y,
+            "Highlight hardcoded credentials",
+            "Flag API keys, passwords and tokens detected in source code.",
+            "application.security.highlightSecrets");
+
+        var threshLbl = new Label
+        {
+            Text = "Minimum severity to report",
+            Location = new Point(0, y + 4),
+            Size = new Size(220, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(threshLbl);
+
+        string currentThresh = _currentValues.TryGetValue("application.security.sastSeverityThreshold", out var tv)
+            ? tv.ToString()! : "Medium";
+        var threshCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 120,
+            Location = new Point(parent.Width - 174, y + 2),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            FlatStyle = FlatStyle.Flat,
+            Tag = "application.security.sastSeverityThreshold"
+        };
+        threshCombo.Items.AddRange(new[] { "Low", "Medium", "High", "Critical" });
+        threshCombo.Text = currentThresh;
+        threshCombo.SelectedIndexChanged += (s, e) =>
+            _currentValues["application.security.sastSeverityThreshold"] = threshCombo.Text;
+        parent.Controls.Add(threshCombo);
+        y += 32;
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Logging & Crash Reports");
+
+        y = AddSecCheckRow(parent, y,
+            "Write crash log on fatal error",
+            $"Save crash details to %LocalAppData%\\MyCrownJewelApp\\Pfpad\\crash.log. Takes effect on next launch.",
+            "application.security.writeCrashLog");
+
+        y = AddSecCheckRow(parent, y,
+            "Write startup log",
+            "Record startup and lifecycle events to startup.log. Disable on shared machines. Takes effect on next launch.",
+            "application.security.writeStartupLog");
+
+        var retLbl = new Label
+        {
+            Text = "Log retention (days)",
+            Location = new Point(0, y + 4),
+            Size = new Size(220, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(retLbl);
+
+        int currentRet = _currentValues.TryGetValue("application.security.logRetentionDays", out var rv) && rv is int ri ? ri : 30;
+        var retUpDown = new NumericUpDown
+        {
+            Width = 70,
+            Minimum = 1,
+            Maximum = 365,
+            Increment = 7,
+            Value = Math.Clamp(currentRet, 1, 365),
+            Location = new Point(parent.Width - 124, y),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            Tag = "application.security.logRetentionDays"
+        };
+        retUpDown.ValueChanged += (s, e) =>
+            _currentValues["application.security.logRetentionDays"] = decimal.ToInt32(retUpDown.Value);
+        parent.Controls.Add(retUpDown);
+        y += 32;
+
+        y += 8;
+        var dpapiLbl = new Label
+        {
+            Text = "Connector credential encryption",
+            Location = new Point(0, y + 4),
+            Size = new Size(260, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(dpapiLbl);
+        var dpapiStatus = new Label
+        {
+            Text = "Protected by Windows DPAPI (user account)",
+            Location = new Point(270, y + 4),
+            AutoSize = true,
+            ForeColor = Color.FromArgb(80, 200, 120),
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(dpapiStatus);
+        y += 28;
+
+        return y + 16;
+    }
+
+    private int AddSecSectionHeader(Panel parent, int y, string title)
+    {
+        var lbl = new Label
+        {
+            Text = title,
+            Location = new Point(0, y),
+            Size = new Size(parent.Width, 24),
+            ForeColor = _theme.Accent,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        lbl.Paint += (s, e) =>
+        {
+            using var pen = new Pen(_theme.Border);
+            e.Graphics.DrawLine(pen, 0, lbl.Height - 1, lbl.Width, lbl.Height - 1);
+        };
+        parent.Controls.Add(lbl);
+        return y + 30;
+    }
+
+    private int AddSecCheckRow(Panel parent, int y, string labelText, string description, string key)
+    {
+        bool current = _currentValues.TryGetValue(key, out var v) && v is bool b && b;
+        var cb = new CheckBox
+        {
+            Text = labelText,
+            Location = new Point(0, y),
+            AutoSize = true,
+            Checked = current,
+            ForeColor = _theme.Text,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 9),
+            Tag = key
+        };
+        cb.CheckedChanged += (s, e) => _currentValues[key] = cb.Checked;
+        parent.Controls.Add(cb);
+
+        var desc = new Label
+        {
+            Text = description,
+            Location = new Point(20, y + 20),
+            Size = new Size(parent.Width - 24, 28),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+        return y + 50;
+    }
+
+    private int AddSecTextRow(Panel parent, int y, string labelText, string description, string key, int width = 260)
+    {
+        var lbl = new Label
+        {
+            Text = labelText,
+            Location = new Point(0, y + 4),
+            Size = new Size(200, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var desc = new Label
+        {
+            Text = description,
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - width - 20, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+
+        string current = _currentValues.TryGetValue(key, out var v) ? v.ToString()! : "";
+        var txt = new TextBox
+        {
+            Text = current,
+            Location = new Point(parent.Width - width - 8, y + 4),
+            Size = new Size(width, 22),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Tag = key
+        };
+        txt.TextChanged += (s, e) => _currentValues[key] = txt.Text;
+        parent.Controls.Add(txt);
+        return y + 52;
+    }
+
+    private int AddSecMultilineTextRow(Panel parent, int y, string labelText, string description, string key, int height = 60)
+    {
+        var lbl = new Label
+        {
+            Text = labelText,
+            Location = new Point(0, y),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var desc = new Label
+        {
+            Text = description,
+            Location = new Point(0, y + 20),
+            Size = new Size(parent.Width, 16),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+
+        string current = _currentValues.TryGetValue(key, out var v) ? v.ToString()! : "";
+        var txt = new TextBox
+        {
+            Text = current.Replace("\n", Environment.NewLine),
+            Location = new Point(0, y + 38),
+            Size = new Size(parent.Width - 8, height),
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Tag = key
+        };
+        txt.TextChanged += (s, e) => _currentValues[key] = txt.Text.Replace(Environment.NewLine, "\n");
+        parent.Controls.Add(txt);
+        return y + 38 + height + 8;
     }
 
     private int AddCategoryHeader(Panel parent, int y, string title)

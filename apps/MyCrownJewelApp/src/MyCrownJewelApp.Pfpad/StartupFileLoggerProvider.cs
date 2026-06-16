@@ -13,13 +13,26 @@ internal sealed class StartupFileLoggerProvider : ILoggerProvider
 {
     private readonly string _logPath;
 
-    public StartupFileLoggerProvider()
+    public StartupFileLoggerProvider(int retentionDays = 30)
     {
         string dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "MyCrownJewelApp", "Pfpad");
         Directory.CreateDirectory(dir);
         _logPath = Path.Combine(dir, "startup.log");
+        PurgeOldLogs(dir, retentionDays);
+    }
+
+    private static void PurgeOldLogs(string dir, int retentionDays)
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
+            foreach (var f in Directory.GetFiles(dir, "*.log"))
+                if (File.GetLastWriteTimeUtc(f) < cutoff)
+                    try { File.Delete(f); } catch { }
+        }
+        catch { }
     }
 
     public ILogger CreateLogger(string categoryName) => new FileLogger(_logPath, categoryName);
@@ -41,7 +54,7 @@ internal sealed class StartupFileLoggerProvider : ILoggerProvider
                 if (exception != null) line += $"{Environment.NewLine}{exception}";
                 File.AppendAllText(path, line + Environment.NewLine);
             }
-            catch { /* never crash on logging */ }
+            catch { }
         }
     }
 }
