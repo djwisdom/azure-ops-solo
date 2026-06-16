@@ -157,6 +157,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private readonly string _shellPath;
     private readonly List<string> _commandHistory = new();
     private int _historyIndex = -1;
+    private int _maxScrollback = 5000;
     private readonly ToolStrip _headerStrip;
     private readonly ToolStripLabel _shellLabel;
     private readonly ToolStripButton _closeButton;
@@ -175,6 +176,10 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public bool IsRunning => _conPtyMode ? (_hProcess != IntPtr.Zero && !_processExited) : (_legacyProcess is { HasExited: false });
 
     public string ShellName => Path.GetFileNameWithoutExtension(_shellPath);
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string StartingDirectory { get; set; } = "";
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string? CustomTabTitle { get; set; }
 
     public TerminalPanel(string? shellPath = null)
     {
@@ -190,9 +195,10 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
             WordWrap = true,
+            ScrollBars = RichTextBoxScrollBars.Vertical,
             TabStop = false,
             Margin = new Padding(0),
-            Padding = new Padding(4, 2, 4, 2),
+            Padding = new Padding(4),
             DetectUrls = true
         };
         _outputBox.LinkClicked += (s, e) => OpenUrl(e.LinkText);
@@ -324,6 +330,36 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         SetTheme(Theme.Dark);
     }
 
+    public void ApplyTerminalSettings(string fontFace, float fontSize, bool fontBold, bool wordWrap, bool scrollbarVisible, int padding)
+    {
+        var outputOldFont = _outputBox.Font;
+        var inputOldFont = _inputBox.Font;
+        Font terminalFont = CreateTerminalFont(fontFace, fontSize, fontBold);
+        _outputBox.Font = terminalFont;
+        _inputBox.Font = (Font)terminalFont.Clone();
+        outputOldFont?.Dispose();
+        inputOldFont?.Dispose();
+
+        _outputBox.WordWrap = wordWrap;
+        _outputBox.ScrollBars = scrollbarVisible ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.None;
+        _outputBox.Padding = new Padding(Math.Clamp(padding, 0, 20));
+
+        if (_conPtyMode && _hPC != IntPtr.Zero)
+        {
+            try
+            {
+                ResizePseudoConsole(_hPC, GetTerminalSize());
+            }
+            catch { }
+        }
+    }
+
+    public void SetMaxScrollback(int lines)
+    {
+        _maxScrollback = Math.Clamp(lines, 500, 50000);
+        TrimScrollback();
+    }
+
     public void Start()
     {
         if (_shellStarted || _disposed) return;
@@ -406,7 +442,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
-                WorkingDirectory = Environment.CurrentDirectory,
+                WorkingDirectory = GetWorkingDirectory(),
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
@@ -481,7 +517,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             // This prevents the "application was unable to start (0xC0000142)" popup when
             // security software DLL injection fails under EXTENDED_STARTUPINFO_PRESENT.
             uint prevErrorMode = SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
-            bool procCreated = CreateProcess(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, Environment.CurrentDirectory, ref si, out PROCESS_INFORMATION pi);
+            bool procCreated = CreateProcess(null, commandLine, IntPtr.Zero, IntPtr.Zero, false, EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, GetWorkingDirectory(), ref si, out PROCESS_INFORMATION pi);
             SetErrorMode(prevErrorMode);
 
             if (!procCreated)
@@ -722,12 +758,33 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
                 GoToLineStart();
                 searchStart = crPos + 1;
             }
+            TrimScrollback();
             ScrollToBottom();
             return;
         }
 
         AppendAnsiParsed(text);
+        TrimScrollback();
         ScrollToBottom();
+    }
+
+    private void TrimScrollback()
+    {
+        if (_outputBox.IsDisposed)
+            return;
+
+        int lineCount = _outputBox.Lines.Length;
+        if (lineCount <= _maxScrollback)
+            return;
+
+        int firstCharToKeep = _outputBox.GetFirstCharIndexFromLine(lineCount - _maxScrollback);
+        if (firstCharToKeep <= 0)
+            return;
+
+        _outputBox.Select(0, firstCharToKeep);
+        _outputBox.SelectedText = string.Empty;
+        _outputBox.SelectionStart = _outputBox.TextLength;
+        _outputBox.SelectionLength = 0;
     }
 
     private void AppendAnsiParsed(string text)
@@ -1372,6 +1429,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         catch { }
     }
 
+    private string GetWorkingDirectory()
+    {
+        if (!string.IsNullOrWhiteSpace(StartingDirectory) && Directory.Exists(StartingDirectory))
+            return StartingDirectory;
+
+        return Environment.CurrentDirectory;
+    }
+
     private static string ResolveShell(string? preferred)
     {
         if (!string.IsNullOrWhiteSpace(preferred))
@@ -1403,20 +1468,41 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         return RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "/bin/zsh" : "/bin/bash";
     }
 
-    private static Font GetMonospaceFont()
+    private static Font CreateTerminalFont(string? fontFace, float fontSize, bool fontBold)
+    {
+        float resolvedFontSize = fontSize > 0f ? fontSize : 10f;
+        FontStyle style = fontBold ? FontStyle.Bold : FontStyle.Regular;
+
+        if (!string.IsNullOrWhiteSpace(fontFace))
+        {
+            try
+            {
+                var customFont = new Font(fontFace, resolvedFontSize, style);
+                if (string.Equals(customFont.Name, fontFace, StringComparison.OrdinalIgnoreCase))
+                    return customFont;
+                customFont.Dispose();
+            }
+            catch { }
+        }
+
+        return GetMonospaceFont(resolvedFontSize, fontBold);
+    }
+
+    private static Font GetMonospaceFont(float fontSize = 10f, bool fontBold = false)
     {
         string[] preferred = { "Cascadia Code", "Cascadia Mono", "Consolas", "Source Code Pro", "Courier New" };
+        FontStyle style = fontBold ? FontStyle.Bold : FontStyle.Regular;
         foreach (var name in preferred)
         {
             try
             {
-                var f = new Font(name, 10.5f);
+                var f = new Font(name, fontSize, style);
                 if (f.Name == name) return f;
                 f.Dispose();
             }
             catch { }
         }
-        return new Font("Consolas", 10.5f);
+        return new Font("Consolas", fontSize, style);
     }
 }
 

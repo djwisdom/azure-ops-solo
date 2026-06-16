@@ -25,6 +25,15 @@ public record AppSettings
     public bool TerminalVisible { get; init; } = false;
     public int TerminalHeight { get; init; } = 200;
     public string TerminalShellPath { get; init; } = "";
+    public string TerminalStartingDirectory { get; init; } = "";
+    public string TerminalFontFace { get; init; } = "";
+    public float TerminalFontSize { get; init; } = 0f;
+    public bool TerminalFontBold { get; init; } = false;
+    public bool TerminalWordWrap { get; init; } = true;
+    public bool TerminalScrollbarVisible { get; init; } = true;
+    public int TerminalPadding { get; init; } = 4;
+    public int TerminalMaxScrollback { get; init; } = 5000;
+    public string TerminalTabTitle { get; init; } = "";
     public string ThemeName { get; init; } = "Dark";
     public List<ExternalTool>? ExternalTools { get; init; } = null;
     public bool WorkspaceVisible { get; init; } = false;

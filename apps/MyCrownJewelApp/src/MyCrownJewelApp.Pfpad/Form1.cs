@@ -110,6 +110,15 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _terminalVisible = false;
         private int _terminalHeight = 200;
         private string _terminalShell = "";
+        private string _terminalFontFace = "";
+        private float _terminalFontSize = 0f;
+        private bool _terminalFontBold = false;
+        private bool _terminalWordWrap = true;
+        private bool _terminalScrollbarVisible = true;
+        private int _terminalPadding = 4;
+        private int _terminalMaxScrollback = 5000;
+        private string _terminalStartingDirectory = "";
+        private string _terminalTabTitle = "";
 
         // Workspace / folder tree state
         private SplitContainer? _workspaceSplitContainer;
@@ -461,6 +470,15 @@ using Microsoft.Extensions.DependencyInjection;
         public int CurrentTerminalHeight => _terminalHeight;
         public bool CurrentAnalyzersEnabled => _analyzersEnabled;
         public string CurrentTerminalShell => _terminalShell;
+        public string CurrentTerminalFontFace => _terminalFontFace;
+        public float CurrentTerminalFontSize => _terminalFontSize;
+        public bool CurrentTerminalFontBold => _terminalFontBold;
+        public bool CurrentTerminalWordWrap => _terminalWordWrap;
+        public bool CurrentTerminalScrollbarVisible => _terminalScrollbarVisible;
+        public int CurrentTerminalPadding => _terminalPadding;
+        public int CurrentTerminalMaxScrollback => _terminalMaxScrollback;
+        public string CurrentTerminalStartingDirectory => _terminalStartingDirectory;
+        public string CurrentTerminalTabTitle => _terminalTabTitle;
         public bool CurrentVimMode => vimModeEnabled;
         public bool CurrentStickyScroll => _stickyScrollEnabled;
         public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
@@ -2177,6 +2195,15 @@ using Microsoft.Extensions.DependencyInjection;
                 _terminalVisible = settings.TerminalVisible;
                 _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
                 _terminalShell = settings.TerminalShellPath ?? "";
+                _terminalStartingDirectory = settings.TerminalStartingDirectory ?? "";
+                _terminalFontFace = settings.TerminalFontFace ?? "";
+                _terminalFontSize = Math.Max(0f, settings.TerminalFontSize);
+                _terminalFontBold = settings.TerminalFontBold;
+                _terminalWordWrap = settings.TerminalWordWrap;
+                _terminalScrollbarVisible = settings.TerminalScrollbarVisible;
+                _terminalPadding = Math.Clamp(settings.TerminalPadding, 0, 20);
+                _terminalMaxScrollback = Math.Clamp(settings.TerminalMaxScrollback, 500, 50000);
+                _terminalTabTitle = settings.TerminalTabTitle ?? "";
                 if (settings.ExternalTools != null)
                     _externalTools = settings.ExternalTools;
                 _workspaceVisible = settings.WorkspaceVisible;
@@ -2223,6 +2250,7 @@ using Microsoft.Extensions.DependencyInjection;
                 DisableMinimapForLargeFiles = settings.DisableMinimapForLargeFiles;
                 DisableWordWrapForLargeFiles = settings.DisableWordWrapForLargeFiles;
                 SyntaxHighlightingThresholdBytes = Math.Max(1024, settings.SyntaxHighlightingThresholdBytes);
+                ApplyTerminalSettingsToAll();
             }
             catch { /* ignore settings load errors */ }
         }
@@ -2292,6 +2320,15 @@ using Microsoft.Extensions.DependencyInjection;
                 TerminalVisible = _terminalVisible,
                 TerminalHeight = _terminalHeight,
                 TerminalShellPath = _terminalShell,
+                TerminalStartingDirectory = _terminalStartingDirectory,
+                TerminalFontFace = _terminalFontFace,
+                TerminalFontSize = _terminalFontSize,
+                TerminalFontBold = _terminalFontBold,
+                TerminalWordWrap = _terminalWordWrap,
+                TerminalScrollbarVisible = _terminalScrollbarVisible,
+                TerminalPadding = _terminalPadding,
+                TerminalMaxScrollback = _terminalMaxScrollback,
+                TerminalTabTitle = _terminalTabTitle,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2382,6 +2419,16 @@ using Microsoft.Extensions.DependencyInjection;
             if (terminalMenuItem != null) terminalMenuItem.Checked = settings.TerminalVisible;
             _terminalHeight = Math.Max(60, Math.Min(600, settings.TerminalHeight));
             _terminalShell = settings.TerminalShellPath ?? "";
+            _terminalStartingDirectory = settings.TerminalStartingDirectory ?? "";
+            _terminalFontFace = settings.TerminalFontFace ?? "";
+            _terminalFontSize = Math.Max(0f, settings.TerminalFontSize);
+            _terminalFontBold = settings.TerminalFontBold;
+            _terminalWordWrap = settings.TerminalWordWrap;
+            _terminalScrollbarVisible = settings.TerminalScrollbarVisible;
+            _terminalPadding = Math.Clamp(settings.TerminalPadding, 0, 20);
+            _terminalMaxScrollback = Math.Clamp(settings.TerminalMaxScrollback, 500, 50000);
+            _terminalTabTitle = settings.TerminalTabTitle ?? "";
+            ApplyTerminalSettingsToAll();
 
             // Advanced
             _analyzersEnabled = settings.AnalyzersEnabled;
@@ -2789,13 +2836,73 @@ internal void ToggleGutter()
             _buildOutputPanel?.SetTheme(theme);
         }
 
+        private void ApplyTerminalSettingsToAll()
+        {
+            foreach (var terminal in _terminalTabs)
+            {
+                terminal.CustomTabTitle = _terminalTabTitle;
+                terminal.StartingDirectory = ResolveTerminalStartingDirectory();
+                terminal.ApplyTerminalSettings(_terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap, _terminalScrollbarVisible, _terminalPadding);
+                terminal.SetMaxScrollback(_terminalMaxScrollback);
+            }
+
+            RefreshTerminalTabTitles();
+        }
+
+        private string ResolveTerminalStartingDirectory()
+        {
+            if (!string.IsNullOrWhiteSpace(_terminalStartingDirectory))
+                return _terminalStartingDirectory;
+
+            if (!string.IsNullOrWhiteSpace(_workspaceRoot))
+                return _workspaceRoot;
+
+            return "";
+        }
+
+        private void RefreshTerminalTabTitles()
+        {
+            foreach (var terminal in _terminalTabs)
+            {
+                if (FindTerminalTabPage(terminal) is { } page)
+                    page.Text = GetTerminalTabTitle(terminal);
+            }
+        }
+
+        private TabPage? FindTerminalTabPage(TerminalPanel terminal)
+        {
+            if (_terminalTabControl == null)
+                return null;
+
+            foreach (TabPage page in _terminalTabControl.TabPages)
+            {
+                if (page.Tag == terminal)
+                    return page;
+            }
+
+            return null;
+        }
+
+        private string GetTerminalTabTitle(TerminalPanel terminal)
+        {
+            if (!string.IsNullOrWhiteSpace(terminal.CustomTabTitle))
+                return terminal.CustomTabTitle;
+
+            int tabIndex = _terminalTabs.IndexOf(terminal);
+            int tabNumber = tabIndex >= 0 ? tabIndex + 1 : _terminalTabs.Count + 1;
+            return $"Terminal {tabNumber}";
+        }
+
         private TerminalPanel AddTerminalTab(string? shellPath)
         {
             var terminal = new TerminalPanel(shellPath);
             terminal.SetTheme(_themeManager.CurrentTheme);
+            terminal.CustomTabTitle = _terminalTabTitle;
+            terminal.StartingDirectory = ResolveTerminalStartingDirectory();
+            terminal.ApplyTerminalSettings(_terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap, _terminalScrollbarVisible, _terminalPadding);
+            terminal.SetMaxScrollback(_terminalMaxScrollback);
 
-            int tabNumber = _terminalTabs.Count + 1;
-            var page = new TabPage($"Terminal {tabNumber}")
+            var page = new TabPage(GetTerminalTabTitle(terminal))
             {
                 BackColor = _themeManager.CurrentTheme.EditorBackground,
                 ToolTipText = shellPath ?? "Default shell",
@@ -2809,6 +2916,7 @@ internal void ToggleGutter()
             _terminalTabs.Add(terminal);
             if (_terminalTabControl != null)
                 _terminalTabControl.SelectedTab = page;
+            RefreshTerminalTabTitles();
 
             if (_terminalVisible)
                 terminal.Start();
@@ -2834,6 +2942,7 @@ internal void ToggleGutter()
 
             if (_terminalTabs.Count == 0)
                 HideTerminal();
+            RefreshTerminalTabTitles();
             PositionTerminalNewTabButton();
         }
 

@@ -633,6 +633,15 @@ internal sealed class SettingsDialog : Form
             TerminalHeight = 200,
             AnalyzersEnabled = GetSettingValue<bool>("features.behavior.analyzers", _mainForm.CurrentAnalyzersEnabled),
             TerminalShellPath = GetSettingValue<string>("features.terminal.shell", _mainForm.CurrentTerminalShell),
+            TerminalStartingDirectory = GetSettingValue<string>("features.terminal.startingDirectory", _mainForm.CurrentTerminalStartingDirectory),
+            TerminalFontFace = GetSettingValue<string>("features.terminal.fontFace", _mainForm.CurrentTerminalFontFace),
+            TerminalFontSize = GetSettingValue<float>("features.terminal.fontSize", _mainForm.CurrentTerminalFontSize),
+            TerminalFontBold = GetSettingValue<bool>("features.terminal.fontWeight", _mainForm.CurrentTerminalFontBold),
+            TerminalWordWrap = GetSettingValue<bool>("features.terminal.wordWrap", _mainForm.CurrentTerminalWordWrap),
+            TerminalScrollbarVisible = GetSettingValue<bool>("features.terminal.scrollbar", _mainForm.CurrentTerminalScrollbarVisible),
+            TerminalPadding = GetSettingValue<int>("features.terminal.padding", _mainForm.CurrentTerminalPadding),
+            TerminalMaxScrollback = GetSettingValue<int>("features.terminal.maxScrollback", _mainForm.CurrentTerminalMaxScrollback),
+            TerminalTabTitle = GetSettingValue<string>("features.terminal.tabTitle", _mainForm.CurrentTerminalTabTitle),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
         };
@@ -687,7 +696,16 @@ internal sealed class SettingsDialog : Form
             ["features.behavior.analyzers"] = _mainForm.CurrentAnalyzersEnabled,
 
             // Features - Terminal
-            ["features.terminal.shell"] = _mainForm.CurrentTerminalShell
+            ["features.terminal.shell"] = _mainForm.CurrentTerminalShell,
+            ["features.terminal.startingDirectory"] = _mainForm.CurrentTerminalStartingDirectory,
+            ["features.terminal.fontFace"] = _mainForm.CurrentTerminalFontFace,
+            ["features.terminal.fontSize"] = _mainForm.CurrentTerminalFontSize,
+            ["features.terminal.fontWeight"] = _mainForm.CurrentTerminalFontBold,
+            ["features.terminal.wordWrap"] = _mainForm.CurrentTerminalWordWrap,
+            ["features.terminal.scrollbar"] = _mainForm.CurrentTerminalScrollbarVisible,
+            ["features.terminal.padding"] = _mainForm.CurrentTerminalPadding,
+            ["features.terminal.maxScrollback"] = _mainForm.CurrentTerminalMaxScrollback,
+            ["features.terminal.tabTitle"] = _mainForm.CurrentTerminalTabTitle
         };
 
         _originalValues = new Dictionary<string, object>(_currentValues);
@@ -851,6 +869,15 @@ internal sealed class SettingsDialog : Form
             "features.behavior.autoSave" => "Automatically save files after 30 seconds of inactivity.",
             "features.behavior.analyzers" => "Enable Roslyn analyzers for code analysis and suggestions.",
             "features.terminal.shell" => "Shell to use in the integrated terminal.",
+            "features.terminal.startingDirectory" => "Starting directory for the shell. Empty = workspace folder (or current directory).",
+            "features.terminal.fontFace" => "Font for the terminal (empty = auto: Cascadia Code → Cascadia Mono → Consolas → Courier New).",
+            "features.terminal.fontSize" => "Terminal font size in pt. 0 = use default (10pt).",
+            "features.terminal.fontWeight" => "Use bold font weight in the terminal.",
+            "features.terminal.wordWrap" => "Wrap long lines in the terminal output.",
+            "features.terminal.scrollbar" => "Show the scrollbar in the terminal output panel.",
+            "features.terminal.padding" => "Padding (px) inside the terminal output area. 0–20.",
+            "features.terminal.maxScrollback" => "Maximum lines to keep in scrollback. 500–50000.",
+            "features.terminal.tabTitle" => "Custom tab title for terminal tabs. Empty = \"Terminal N\".",
             _ => "No description available."
         };
     }
@@ -1758,6 +1785,14 @@ internal sealed class SettingsDialog : Form
             "autoSave" => "Auto Save",
             "analyzers" => "Roslyn Analyzers",
             "shell" => "Terminal Shell",
+            "startingDirectory" => "Starting Directory",
+            "fontFace" => "Font Face",
+            "fontSize" => "Font Size",
+            "fontWeight" => "Font Weight",
+            "scrollbar" => "Scrollbar",
+            "padding" => "Padding",
+            "maxScrollback" => "Max Scrollback",
+            "tabTitle" => "Tab Title",
             _ => key.Split('.').Last()
         };
     }
@@ -1772,7 +1807,8 @@ internal sealed class SettingsDialog : Form
                            k.Contains("autoIndent") || k.Contains("smartTabs") || k.Contains("elasticTabs") ||
                            k.Contains("showWhitespace") || k.Contains("minimap") || k.Contains("stickyScroll") ||
                            k.Contains("rainbowBrackets") || k.Contains("breadcrumbs") ||
-                           k.Contains("vimMode") || k.Contains("autoSave") || k.Contains("analyzers"):
+                           k.Contains("vimMode") || k.Contains("autoSave") || k.Contains("analyzers") ||
+                           k.Contains("fontWeight") || k.Contains("scrollbar"):
                 return new ToggleSwitch(_theme) { Checked = (bool)value, Tag = key };
 
             case var k when k.Contains("lineHighlight"):
@@ -1851,6 +1887,51 @@ internal sealed class SettingsDialog : Form
                 sizeUpDown.ValueChanged += SettingControl_ValueChanged;
                 return sizeUpDown;
 
+            case var k when k.Contains("terminal.fontSize"):
+                var terminalFontSize = new NumericUpDown
+                {
+                    Width = 70,
+                    Minimum = 0,
+                    Maximum = 72,
+                    DecimalPlaces = 1,
+                    Increment = 0.5m,
+                    BackColor = _theme.EditorBackground,
+                    ForeColor = _theme.Text
+                };
+                terminalFontSize.Value = (decimal)(float)value;
+                terminalFontSize.Tag = key;
+                terminalFontSize.ValueChanged += SettingControl_ValueChanged;
+                return terminalFontSize;
+
+            case var k when k.Contains("terminal.padding"):
+                var paddingUpDown = new NumericUpDown
+                {
+                    Width = 70,
+                    Minimum = 0,
+                    Maximum = 20,
+                    BackColor = _theme.EditorBackground,
+                    ForeColor = _theme.Text
+                };
+                paddingUpDown.Value = (int)value;
+                paddingUpDown.Tag = key;
+                paddingUpDown.ValueChanged += SettingControl_ValueChanged;
+                return paddingUpDown;
+
+            case var k when k.Contains("terminal.maxScrollback"):
+                var scrollbackUpDown = new NumericUpDown
+                {
+                    Width = 90,
+                    Minimum = 500,
+                    Maximum = 50000,
+                    Increment = 500,
+                    BackColor = _theme.EditorBackground,
+                    ForeColor = _theme.Text
+                };
+                scrollbackUpDown.Value = (int)value;
+                scrollbackUpDown.Tag = key;
+                scrollbackUpDown.ValueChanged += SettingControl_ValueChanged;
+                return scrollbackUpDown;
+
             case var k when k.Contains("theme"):
                 var themeCombo = new ComboBox
                 {
@@ -1866,7 +1947,7 @@ internal sealed class SettingsDialog : Form
                 themeCombo.SelectedIndexChanged += SettingControl_ValueChanged;
                 return themeCombo;
 
-            case var k when k.Contains("shell"):
+            case var k when k.Contains("shell") || k.Contains("startingDirectory") || k.Contains("fontFace") || k.Contains("tabTitle"):
                 var shellText = new TextBox
                 {
                     Width = 200,
@@ -1892,6 +1973,7 @@ internal sealed class SettingsDialog : Form
             {
                 ToggleSwitch ts => ts.Checked,
                 ComboBox cb => cb.Text,
+                NumericUpDown nud when _currentValues.TryGetValue(key, out var currentValue) && currentValue is int => decimal.ToInt32(nud.Value),
                 NumericUpDown nud => (float)nud.Value,
                 TextBox tb => tb.Text,
                 _ => null
@@ -1930,6 +2012,9 @@ internal sealed class SettingsDialog : Form
                 break;
             case NumericUpDown nud when value is float f:
                 nud.Value = (decimal)f;
+                break;
+            case NumericUpDown nud when value is int i:
+                nud.Value = i;
                 break;
             case TextBox tb when value is string s:
                 tb.Text = s;
