@@ -4,6 +4,14 @@ This directory contains comprehensive assessments and recommendations for improv
 
 ## Documents
 
+### [TERMINAL.md](TERMINAL.md)
+User manual for the built-in terminal panel. Covers:
+
+- PTY mode (ConPTY) vs compatibility (pipe) mode
+- Enterprise security agent interference (`0xC0000142` / Avacee SIPAgent) — detection, automatic fallback, and re-enabling PTY mode
+- Shell auto-discovery and custom shell configuration
+- Input key routing, multi-tab, and mode limitations
+
 ### [WORKSPACE_PANEL_ASSESSMENT.md](WORKSPACE_PANEL_ASSESSMENT.md)
 Deep dive analysis of the current Workspace panel (file explorer) with detailed recommendations for visual, functional, and UX improvements. Covers:
 
