@@ -223,6 +223,16 @@ public record AppSettings
     /// <summary>Comma-separated comment tags to scan for (case-insensitive).</summary>
     public string TodoScanPatterns { get; init; } = "TODO, FIXME, HACK, NOTE, BUG, WORKAROUND";
 
+    // ── Cursor configuration ───────────────────────────────────────────────────
+    /// <summary>Keep the current-line highlight visible even when the editor does not have keyboard focus.</summary>
+    public bool LineHighlightWhenUnfocused { get; init; } = false;
+    /// <summary>Caret shape: "line" (2 px vertical bar), "block" (full-character fill), or "underline" (2 px horizontal bar at bottom).</summary>
+    public string CursorStyle { get; init; } = "line";
+    /// <summary>Animate the caret by blinking. Disable for a steady non-blinking cursor.</summary>
+    public bool CursorBlinkEnabled { get; init; } = true;
+    /// <summary>Caret blink interval in milliseconds (200–1200). Default 530 ms matches the Windows system default.</summary>
+    public int CursorBlinkRateMs { get; init; } = 530;
+
     // ── Debug adapter configuration ────────────────────────────────────────────
     /// <summary>
     /// Which debug adapter to use. Defaults to NetCoreDbg (C#/.NET).

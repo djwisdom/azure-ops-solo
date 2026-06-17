@@ -368,6 +368,10 @@ internal sealed class SettingsDialog : Form
         {
             y = AddTextEditorSettingsUI(_contentPanel, y);
         }
+        else if (category == "editor.cursor")
+        {
+            y = AddCursorSettingsUI(_contentPanel, y);
+        }
         else if (category == "workbench.appearance")
         {
             y = AddWorkbenchAppearanceUI(_contentPanel, y);
@@ -670,6 +674,10 @@ internal sealed class SettingsDialog : Form
             RainbowBracketsEnabled = GetSettingValue<bool>("editor.appearance.rainbowBrackets", _mainForm.CurrentRainbowBrackets),
             BreadcrumbsEnabled = GetSettingValue<bool>("editor.appearance.breadcrumbs", _mainForm.CurrentBreadcrumbs),
             HoverLineHighlightEnabled = GetSettingValue<bool>("editor.cursor.hoverLineHighlight", _mainForm.CurrentHoverLineHighlight),
+            LineHighlightWhenUnfocused = GetSettingValue<bool>("editor.cursor.lineHighlightWhenUnfocused", _mainForm.CurrentLineHighlightWhenUnfocused),
+            CursorStyle = GetSettingValue<string>("editor.cursor.cursorStyle", _mainForm.CurrentCursorStyle),
+            CursorBlinkEnabled = GetSettingValue<bool>("editor.cursor.blinkEnabled", _mainForm.CurrentCursorBlinkEnabled),
+            CursorBlinkRateMs = GetSettingValue<int>("editor.cursor.blinkRateMs", _mainForm.CurrentCursorBlinkRateMs),
             AutoSaveEnabled = GetSettingValue<bool>("features.behavior.autoSave", _mainForm.CurrentAutoSave),
             TrimTrailingWhitespace = GetSettingValue<bool>("editor.text.trimTrailingWhitespace", _mainForm.CurrentTrimTrailingWhitespace),
             InsertFinalNewline = GetSettingValue<bool>("editor.text.insertFinalNewline", _mainForm.CurrentInsertFinalNewline),
@@ -807,6 +815,10 @@ internal sealed class SettingsDialog : Form
             // Editor - Cursor
             ["editor.cursor.lineHighlight"] = _mainForm.CurrentLineHighlightName,
             ["editor.cursor.hoverLineHighlight"] = _mainForm.CurrentHoverLineHighlight,
+            ["editor.cursor.lineHighlightWhenUnfocused"] = _mainForm.CurrentLineHighlightWhenUnfocused,
+            ["editor.cursor.cursorStyle"] = _mainForm.CurrentCursorStyle,
+            ["editor.cursor.blinkEnabled"] = _mainForm.CurrentCursorBlinkEnabled,
+            ["editor.cursor.blinkRateMs"] = _mainForm.CurrentCursorBlinkRateMs,
 
             // Editor - Font
             ["editor.font.name"] = _mainForm.CurrentFontName,
@@ -1087,6 +1099,10 @@ internal sealed class SettingsDialog : Form
             "editor.text.statusBar" => "Show the status bar at the bottom of the editor window.",
             "editor.cursor.lineHighlight" => "Highlight the current line where the cursor is positioned.",
             "editor.cursor.hoverLineHighlight" => "Highlight lines when hovering over them with the mouse.",
+            "editor.cursor.lineHighlightWhenUnfocused" => "Keep the current-line highlight visible even when the editor does not have keyboard focus.",
+            "editor.cursor.cursorStyle" => "Caret shape: Line (2 px vertical bar), Block (full character fill), or Underline (2 px bar at bottom).",
+            "editor.cursor.blinkEnabled" => "Animate the caret by blinking. Disable for a steady non-blinking cursor.",
+            "editor.cursor.blinkRateMs" => "Caret blink interval in milliseconds (200–1200). Default 530 ms matches the Windows system default.",
             "editor.font.name" => "Font family used in the editor.",
             "editor.font.size" => "Font size in pixels.",
             "editor.formatting.insertSpaces" => "Insert spaces instead of tabs when pressing Tab.",
@@ -2995,6 +3011,68 @@ internal sealed class SettingsDialog : Form
             "Scan patterns",
             "Comma-separated comment tags to scan for (case-insensitive).",
             "features.extensions.todoScanPatterns", 280);
+
+        return y + 16;
+    }
+
+    private int AddCursorSettingsUI(Panel parent, int y)
+    {
+        // ── Section 1: Current Line Highlight ─────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Current Line Highlight");
+
+        y = AddEditorComboRow(parent, y,
+            "Highlight mode",
+            "How to mark the line containing the cursor. Number only tints the gutter number; " +
+            "Whole line draws a band across the full editor width.",
+            "editor.cursor.lineHighlight",
+            new[] {
+                ("Off",                  "Off"),
+                ("NumberOnly",           "Number only"),
+                ("WholeLine",            "Whole line"),
+                ("NumberAndWholeLine",   "Number + whole line")
+            });
+
+        y = AddSecCheckRow(parent, y,
+            "Show when unfocused",
+            "Keep the current-line highlight visible even when the editor does not have keyboard focus " +
+            "(e.g. when using the terminal or workspace panel).",
+            "editor.cursor.lineHighlightWhenUnfocused");
+
+        y = AddSecCheckRow(parent, y,
+            "Hover line highlight",
+            "Draw a subtle highlight on the line the mouse pointer is hovering over.",
+            "editor.cursor.hoverLineHighlight");
+
+        y += 8;
+        // ── Section 2: Caret Appearance ───────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Caret Appearance");
+
+        y = AddEditorComboRow(parent, y,
+            "Cursor style",
+            "Shape of the text insertion cursor. Line: 2 px vertical bar (VS Code default). " +
+            "Block: full character fill (Vim style). Underline: 2 px bar at the bottom of the character cell.",
+            "editor.cursor.cursorStyle",
+            new[] {
+                ("line",       "Line (2 px bar)"),
+                ("block",      "Block (full character)"),
+                ("underline",  "Underline (2 px bar)")
+            });
+
+        y += 8;
+        // ── Section 3: Caret Blinking ─────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Caret Blinking");
+
+        y = AddSecCheckRow(parent, y,
+            "Enable blinking",
+            "Animate the caret by toggling its visibility at the blink rate. " +
+            "Disable for a steady non-blinking cursor.",
+            "editor.cursor.blinkEnabled");
+
+        y = AddWinNumericRow(parent, y,
+            "Blink rate (ms)",
+            "How long (in milliseconds) between each blink on/off cycle. Range: 200–1200. " +
+            "530 ms matches the Windows system default.",
+            "editor.cursor.blinkRateMs", 200, 1200, 50, 530);
 
         return y + 16;
     }

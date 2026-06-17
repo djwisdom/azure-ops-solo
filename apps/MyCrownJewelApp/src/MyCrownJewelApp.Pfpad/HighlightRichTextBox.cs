@@ -44,6 +44,11 @@ namespace MyCrownJewelApp.Pfpad
         private int _hoverLine = -1;
         private bool _hoverLineHighlightEnabled = false;
 
+        // Cursor appearance
+        private bool _lineHighlightWhenUnfocused = false;
+        private string _cursorStyle = "line";
+        private bool _cursorBlinkEnabled = true;
+
     private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
     private static readonly Dictionary<char, char> _bracePairs = new()
     {
@@ -111,7 +116,10 @@ namespace MyCrownJewelApp.Pfpad
     {
         base.OnGotFocus(e);
         HideCaret(Handle);
-        _caretBlinkTimer?.Start();
+        if (_cursorBlinkEnabled)
+            _caretBlinkTimer?.Start();
+        else
+            _caretVisible = true;
                 Invalidate();
     }
 
@@ -175,6 +183,62 @@ namespace MyCrownJewelApp.Pfpad
         {
             _highlightColor = value;
                         Invalidate();
+        }
+    }
+
+    [Category("Appearance")]
+    [Description("Keep the current-line highlight visible when the editor loses keyboard focus.")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool LineHighlightWhenUnfocused
+    {
+        get => _lineHighlightWhenUnfocused;
+        set { _lineHighlightWhenUnfocused = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [Description("Caret shape: \"line\" (2 px bar), \"block\" (full character fill), or \"underline\" (2 px bar at bottom).")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string CursorStyle
+    {
+        get => _cursorStyle;
+        set { _cursorStyle = value ?? "line"; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [Description("Animate the caret by blinking. Disable for a steady non-blinking cursor.")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool CursorBlinkEnabled
+    {
+        get => _cursorBlinkEnabled;
+        set
+        {
+            _cursorBlinkEnabled = value;
+            if (_caretBlinkTimer != null)
+            {
+                if (!value)
+                {
+                    _caretBlinkTimer.Stop();
+                    _caretVisible = true;
+                }
+                else if (Focused)
+                {
+                    _caretBlinkTimer.Start();
+                }
+            }
+            Invalidate();
+        }
+    }
+
+    [Category("Appearance")]
+    [Description("Caret blink interval in milliseconds (200–1200).")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public int CursorBlinkRateMs
+    {
+        get => _caretBlinkTimer?.Interval ?? 530;
+        set
+        {
+            if (_caretBlinkTimer != null)
+                _caretBlinkTimer.Interval = Math.Clamp(value, 200, 1200);
         }
     }
 
@@ -334,7 +398,9 @@ namespace MyCrownJewelApp.Pfpad
 
     private Rectangle? GetCurrentLineRect()
     {
-        if (_highlightMode != CurrentLineHighlightMode.WholeLine && _highlightMode != CurrentLineHighlightMode.NumberAndWholeLine || !Visible || IsDisposed || !Enabled || !Focused)
+        if (_highlightMode != CurrentLineHighlightMode.WholeLine && _highlightMode != CurrentLineHighlightMode.NumberAndWholeLine || !Visible || IsDisposed || !Enabled)
+            return null;
+        if (!Focused && !_lineHighlightWhenUnfocused)
             return null;
         if (Lines == null || Lines.Length == 0 || SelectionStart < 0)
             return null;
@@ -386,6 +452,37 @@ namespace MyCrownJewelApp.Pfpad
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
             using var brush = new SolidBrush(ForeColor);
             g.FillRectangle(brush, pt.X, pt.Y, charW, lineH);
+        }
+        catch { }
+    }
+
+    private void DrawLineCursor(Graphics g)
+    {
+        try
+        {
+            int pos = SelectionStart;
+            if (pos > TextLength) return;
+            Point pt = GetPositionFromCharIndex(pos);
+            if (pt.IsEmpty) return;
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            using var brush = new SolidBrush(ForeColor);
+            g.FillRectangle(brush, pt.X, pt.Y, 2, lineH);
+        }
+        catch { }
+    }
+
+    private void DrawUnderlineCursor(Graphics g)
+    {
+        try
+        {
+            int pos = SelectionStart;
+            if (pos > TextLength) return;
+            Point pt = GetPositionFromCharIndex(pos);
+            if (pt.IsEmpty) return;
+            int charW = Math.Max(4, (int)(8 * ZoomFactor));
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            using var brush = new SolidBrush(ForeColor);
+            g.FillRectangle(brush, pt.X, pt.Y + lineH - 2, charW, 2);
         }
         catch { }
     }
@@ -1080,7 +1177,14 @@ namespace MyCrownJewelApp.Pfpad
                              DrawWhitespaceGlyphs(g);
 
                              if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
-                                 DrawBlockCursor(g);
+                             {
+                                 switch (_cursorStyle)
+                                 {
+                                     case "block": DrawBlockCursor(g); break;
+                                     case "underline": DrawUnderlineCursor(g); break;
+                                     default: DrawLineCursor(g); break;
+                                 }
+                             }
 
                              DrawExtraCarets(g);
                          }

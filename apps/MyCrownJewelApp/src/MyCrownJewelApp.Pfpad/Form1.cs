@@ -190,6 +190,15 @@ using Microsoft.Extensions.DependencyInjection;
             _symbolIndex.SetTreeSitterService(_treeSitterEnabled ? _treeSitter : null);
         }
 
+        private void ApplyCursorSettings()
+        {
+            if (textEditor == null) return;
+            textEditor.LineHighlightWhenUnfocused = _lineHighlightWhenUnfocused;
+            textEditor.CursorStyle = _cursorStyle;
+            textEditor.CursorBlinkEnabled = _cursorBlinkEnabled;
+            textEditor.CursorBlinkRateMs = _cursorBlinkRateMs;
+        }
+
         private System.Windows.Forms.Timer? _findNotFoundResetTimer;
 
         internal void NotifyNotFound(string text)
@@ -269,6 +278,12 @@ using Microsoft.Extensions.DependencyInjection;
         private int lastHighlightedLine = -1;
         private int _hoverLine = -1;
         private bool _hoverLineHighlightEnabled = false;
+
+        // Cursor appearance
+        private bool _lineHighlightWhenUnfocused = false;
+        private string _cursorStyle = "line";
+        private bool _cursorBlinkEnabled = true;
+        private int _cursorBlinkRateMs = 530;
 
         // Vim mode state
         private bool vimModeEnabled = false;
@@ -782,6 +797,10 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentVimMode => vimModeEnabled;
         public bool CurrentStickyScroll => _stickyScrollEnabled;
         public bool CurrentHoverLineHighlight => _hoverLineHighlightEnabled;
+        public bool CurrentLineHighlightWhenUnfocused => _lineHighlightWhenUnfocused;
+        public string CurrentCursorStyle => _cursorStyle;
+        public bool CurrentCursorBlinkEnabled => _cursorBlinkEnabled;
+        public int CurrentCursorBlinkRateMs => _cursorBlinkRateMs;
         public int CurrentMaxFileSizeMB => MaxFileSizeMB;
         public int CurrentLargeFileWarningMB => LargeFileWarningMB;
         public int CurrentAsyncFileWarningMB => AsyncFileWarningMB;
@@ -2628,6 +2647,10 @@ using Microsoft.Extensions.DependencyInjection;
                 _problemsPanelVisible = settings.ProblemsPanelVisible;
                 _rainbowBracketsEnabled = settings.RainbowBracketsEnabled;
                 _hoverLineHighlightEnabled = settings.HoverLineHighlightEnabled;
+                _lineHighlightWhenUnfocused = settings.LineHighlightWhenUnfocused;
+                _cursorStyle = settings.CursorStyle ?? "line";
+                _cursorBlinkEnabled = settings.CursorBlinkEnabled;
+                _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
                 _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
                 _analyzersEnabled = settings.AnalyzersEnabled;
                 _autoSaveEnabled = settings.AutoSaveEnabled;
@@ -2667,6 +2690,7 @@ using Microsoft.Extensions.DependencyInjection;
                 ApplyTerminalSettingsToAll();
                 ApplySecuritySettings();
                 ApplyExtensionsSettings();
+                ApplyCursorSettings();
             }
             catch { /* ignore settings load errors */ }
         }
@@ -2835,6 +2859,10 @@ using Microsoft.Extensions.DependencyInjection;
                 TreeSitterEnabled = _treeSitterEnabled,
                 TodoScanEnabled = _todoScanEnabled,
                 TodoScanPatterns = _todoScanPatterns,
+                LineHighlightWhenUnfocused = _lineHighlightWhenUnfocused,
+                CursorStyle = _cursorStyle,
+                CursorBlinkEnabled = _cursorBlinkEnabled,
+                CursorBlinkRateMs = _cursorBlinkRateMs,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2913,6 +2941,11 @@ using Microsoft.Extensions.DependencyInjection;
             if (autoSaveMenuItem != null) autoSaveMenuItem.Checked = settings.AutoSaveEnabled;
             if (settings.AutoSaveEnabled) _autoSaveTimer.Start(); else _autoSaveTimer.Stop();
             _hoverLineHighlightEnabled = settings.HoverLineHighlightEnabled;
+            _lineHighlightWhenUnfocused = settings.LineHighlightWhenUnfocused;
+            _cursorStyle = settings.CursorStyle ?? "line";
+            _cursorBlinkEnabled = settings.CursorBlinkEnabled;
+            _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+            ApplyCursorSettings();
 
             // Panels
             _workspaceVisible = settings.WorkspaceVisible;
@@ -3050,6 +3083,13 @@ using Microsoft.Extensions.DependencyInjection;
             _todoScanEnabled = settings.TodoScanEnabled;
             _todoScanPatterns = string.IsNullOrWhiteSpace(settings.TodoScanPatterns) ? _todoScanPatterns : settings.TodoScanPatterns;
             ApplyExtensionsSettings();
+
+            // Cursor settings
+            _lineHighlightWhenUnfocused = settings.LineHighlightWhenUnfocused;
+            _cursorStyle = settings.CursorStyle ?? "line";
+            _cursorBlinkEnabled = settings.CursorBlinkEnabled;
+            _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+            ApplyCursorSettings();
 
             vimModeEnabled = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;
