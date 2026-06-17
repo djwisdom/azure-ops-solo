@@ -20,7 +20,7 @@ namespace MyCrownJewelApp.Pfpad
         private byte _caretAlpha = 255;
         private bool _smoothCaretBlink = true;
         private int _blinkStep;
-        private static readonly byte[] _blinkSteps = [255, 180, 80, 0, 0, 80, 180];
+        private static readonly byte[] _blinkSteps = [255, 0];
 
         private int _guideColumn = 80;
         private bool _showGuide = false;
@@ -1459,8 +1459,32 @@ namespace MyCrownJewelApp.Pfpad
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial IntPtr SendMessagePtr(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr BeginPaint(IntPtr hWnd, ref PAINTSTRUCT lpPaint);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EndPaint(IntPtr hWnd, ref PAINTSTRUCT lpPaint);
+
     [LibraryImport("gdi32.dll")]
     private static partial int BitBlt(IntPtr hdc, int x, int y, int cx, int cy, IntPtr hdcSrc, int x1, int y1, int rop);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial IntPtr CreateCompatibleBitmap(IntPtr hdc, int cx, int cy);
+
+    [LibraryImport("gdi32.dll")]
+    private static partial IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DeleteObject(IntPtr ho);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DeleteDC(IntPtr hdc);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -1471,6 +1495,18 @@ namespace MyCrownJewelApp.Pfpad
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static partial int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PAINTSTRUCT
+    {
+        public IntPtr hdc;
+        public int fErase;
+        public int rcPaint_left, rcPaint_top, rcPaint_right, rcPaint_bottom;
+        public int fRestore;
+        public int fIncUpdate;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+        public byte[] rgbReserved;
+    }
 
     private const int GWL_STYLE = -16;
     private const int WS_VSCROLL = 0x00200000;
@@ -1488,6 +1524,7 @@ namespace MyCrownJewelApp.Pfpad
 
     private const int WM_SETREDRAW = 0x000B;
     private const int WM_NCPAINT = 0x0085;
+    private const int WM_ERASEBKGND = 0x0014;
     private const int WM_PRINTCLIENT = 0x0318;
     private const int PRF_CLIENT = 0x00000004;
     private const int PRF_ERASEBKGND = 0x00000008;
@@ -1538,28 +1575,56 @@ namespace MyCrownJewelApp.Pfpad
                 if (!IsHandleCreated || DesignMode) return;
                 try { PaintScrollbarCorner(); } catch { }
                 return;
+
+            case WM_ERASEBKGND:
+                // Suppress default background erase — we fill the background ourselves
+                // in WM_PAINT via a single off-screen blit. Prevents the white/black flash
+                // that occurs when OS erases the client area before our paint runs.
+                m.Result = (IntPtr)1;
+                return;
+
             case WM_PAINT:
+            {
+                if (IsDisposed || !IsHandleCreated || DesignMode)
                 {
                     base.WndProc(ref m);
-                    if (IsDisposed || !IsHandleCreated) return;
-                    if (_scrollInProgress) return;
+                    return;
+                }
 
-                    IntPtr hdc = GetDC(Handle);
-                    if (hdc == IntPtr.Zero) return;
+                int w = ClientSize.Width;
+                int h = ClientSize.Height;
+                if (w <= 0 || h <= 0) { base.WndProc(ref m); return; }
 
-                    try
+                // Use BeginPaint/EndPaint so Windows validates the update region
+                // and does NOT call the default WndProc (which would paint to screen directly).
+                var ps = new PAINTSTRUCT();
+                IntPtr hdc = BeginPaint(Handle, ref ps);
+                if (hdc == IntPtr.Zero) return;
+
+                IntPtr memDC = IntPtr.Zero;
+                IntPtr hBmp  = IntPtr.Zero;
+                IntPtr oldBmp = IntPtr.Zero;
+                try
+                {
+                    // Create off-screen memory DC + bitmap
+                    memDC  = CreateCompatibleDC(hdc);
+                    hBmp   = CreateCompatibleBitmap(hdc, w, h);
+                    oldBmp = SelectObject(memDC, hBmp);
+
+                    // Fill background (prevents garbage from uninitialised bitmap)
+                    using (var gBg = Graphics.FromHdc(memDC))
+                    using (var bgBrush = new SolidBrush(BackColor))
+                        gBg.FillRectangle(bgBrush, 0, 0, w, h);
+
+                    // Tell the RichEdit control to render its content into our memory DC.
+                    // WM_PRINTCLIENT renders without touching the real screen HDC at all.
+                    SendMessagePtr(Handle, WM_PRINTCLIENT, memDC,
+                        (IntPtr)(PRF_CLIENT | PRF_ERASEBKGND));
+
+                    // Draw all overlays into the same memory DC
+                    if (!_scrollInProgress)
                     {
-                        int w = ClientSize.Width;
-                        int h = ClientSize.Height;
-                        if (w <= 0 || h <= 0) return;
-
-                        using var screenGraphics = Graphics.FromHdc(hdc);
-                        using var context = BufferedGraphicsManager.Current.Allocate(screenGraphics, new Rectangle(0, 0, w, h));
-                        var g = context.Graphics;
-
-                        IntPtr bufHdc = g.GetHdc();
-                        BitBlt(bufHdc, 0, 0, w, h, hdc, 0, 0, SRCCOPY);
-                        g.ReleaseHdc(bufHdc);
+                        using var g = Graphics.FromHdc(memDC);
 
                         var lineRect = GetCurrentLineRect();
                         if (lineRect.HasValue)
@@ -1567,15 +1632,14 @@ namespace MyCrownJewelApp.Pfpad
                             var r = lineRect.Value;
                             using var hlBrush = new SolidBrush(_highlightColor);
                             g.FillRectangle(hlBrush, r);
-
-                            using var textBmp = new Bitmap(r.Width, r.Height);
+                            // Re-blit text into the highlighted row so it stays readable
+                            using var textBmp = new Bitmap(Math.Max(1, r.Width), Math.Max(1, r.Height));
                             using (var textG = Graphics.FromImage(textBmp))
                             {
                                 IntPtr textHdc = textG.GetHdc();
-                                BitBlt(textHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
+                                BitBlt(textHdc, 0, 0, r.Width, r.Height, memDC, r.X, r.Y, SRCCOPY);
                                 textG.ReleaseHdc(textHdc);
                             }
-
                             using var attrs = new ImageAttributes();
                             attrs.SetColorKey(BackColor, BackColor);
                             g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
@@ -1583,16 +1647,16 @@ namespace MyCrownJewelApp.Pfpad
 
                         if (_hoverLineHighlightEnabled && _hoverLine >= 0)
                         {
-                            int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
-                            if (lineHeight <= 0) lineHeight = 1;
-                            int firstCharIdx = GetFirstCharIndexFromLine(_hoverLine);
-                            if (firstCharIdx >= 0)
+                            int lh = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
+                            if (lh > 0)
                             {
-                                Point pt = GetPositionFromCharIndex(firstCharIdx);
-                                if (!pt.IsEmpty)
+                                int fc = GetFirstCharIndexFromLine(_hoverLine);
+                                if (fc >= 0)
                                 {
-                                    using var hoverBrush = new SolidBrush(Color.FromArgb(60, 60, 60, 60));
-                                    g.FillRectangle(hoverBrush, pt.X, pt.Y, ClientSize.Width, lineHeight);
+                                    Point pt = GetPositionFromCharIndex(fc);
+                                    if (!pt.IsEmpty)
+                                        using (var hb = new SolidBrush(Color.FromArgb(60, 60, 60, 60)))
+                                            g.FillRectangle(hb, pt.X, pt.Y, ClientSize.Width, lh);
                                 }
                             }
                         }
@@ -1606,26 +1670,32 @@ namespace MyCrownJewelApp.Pfpad
                         DrawErrorLens(g);
                         DrawWhitespaceGlyphs(g);
 
-                        if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
+                        if (_caretVisible && Focused)
                         {
                             switch (_cursorStyle)
                             {
-                                case "block": DrawBlockCursor(g); break;
+                                case "block":     DrawBlockCursor(g);     break;
                                 case "underline": DrawUnderlineCursor(g); break;
-                                default: DrawLineCursor(g); break;
+                                default:          DrawLineCursor(g);      break;
                             }
                         }
 
                         DrawExtraCarets(g);
                         DrawZoomIndicator(g);
-                        context.Render(screenGraphics);
                     }
-                    finally
-                    {
-                        ReleaseDC(Handle, hdc);
-                    }
-                    return;
+
+                    // Single blit — the only time pixels reach the screen
+                    BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
                 }
+                finally
+                {
+                    if (oldBmp != IntPtr.Zero) SelectObject(memDC, oldBmp);
+                    if (hBmp   != IntPtr.Zero) DeleteObject(hBmp);
+                    if (memDC  != IntPtr.Zero) DeleteDC(memDC);
+                    EndPaint(Handle, ref ps);
+                }
+                return;
+            }
             case WM_VSCROLL:
             case WM_HSCROLL:
                 _scrollInProgress = true;
