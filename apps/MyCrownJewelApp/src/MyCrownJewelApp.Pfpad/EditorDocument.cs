@@ -33,6 +33,11 @@ public class EditorDocument
     public bool DisableMinimap { get; set; } = false;
     public bool DisableWordWrap { get; set; } = false;
 
+    /// <summary>Per-document detected tab size (null = use global setting).</summary>
+    public int? DetectedTabSize { get; set; }
+    /// <summary>Per-document detected insert-spaces preference (null = use global setting).</summary>
+    public bool? DetectedInsertSpaces { get; set; }
+
     public string DisplayName =>
         string.IsNullOrEmpty(FilePath) && UntitledNumber.HasValue ? $"Untitled{UntitledNumber}" :
         string.IsNullOrEmpty(FilePath) ? "Untitled" :

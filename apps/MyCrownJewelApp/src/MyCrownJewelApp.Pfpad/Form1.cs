@@ -285,6 +285,11 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _cursorBlinkEnabled = true;
         private int _cursorBlinkRateMs = 530;
 
+        // Formatting behaviour
+        private bool _autoCloseBracesOnEnter = false;
+        private bool _formatOnSave = false;
+        private bool _detectIndentationFromFile = true;
+
         // Vim mode state
         private bool vimModeEnabled = false;
         private VimEngine? vimEngine;
@@ -801,6 +806,9 @@ using Microsoft.Extensions.DependencyInjection;
         public string CurrentCursorStyle => _cursorStyle;
         public bool CurrentCursorBlinkEnabled => _cursorBlinkEnabled;
         public int CurrentCursorBlinkRateMs => _cursorBlinkRateMs;
+        public bool CurrentAutoCloseBracesOnEnter => _autoCloseBracesOnEnter;
+        public bool CurrentFormatOnSave => _formatOnSave;
+        public bool CurrentDetectIndentationFromFile => _detectIndentationFromFile;
         public int CurrentMaxFileSizeMB => MaxFileSizeMB;
         public int CurrentLargeFileWarningMB => LargeFileWarningMB;
         public int CurrentAsyncFileWarningMB => AsyncFileWarningMB;
@@ -2651,7 +2659,9 @@ using Microsoft.Extensions.DependencyInjection;
                 _cursorStyle = settings.CursorStyle ?? "line";
                 _cursorBlinkEnabled = settings.CursorBlinkEnabled;
                 _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
-                _breadcrumbsEnabled = settings.BreadcrumbsEnabled;
+                _autoCloseBracesOnEnter = settings.AutoCloseBracesOnEnter;
+                _formatOnSave = settings.FormatOnSave;
+                _detectIndentationFromFile = settings.DetectIndentationFromFile;
                 _analyzersEnabled = settings.AnalyzersEnabled;
                 _autoSaveEnabled = settings.AutoSaveEnabled;
                 if (_autoSaveEnabled) _autoSaveTimer.Start();
@@ -2863,6 +2873,9 @@ using Microsoft.Extensions.DependencyInjection;
                 CursorStyle = _cursorStyle,
                 CursorBlinkEnabled = _cursorBlinkEnabled,
                 CursorBlinkRateMs = _cursorBlinkRateMs,
+                AutoCloseBracesOnEnter = _autoCloseBracesOnEnter,
+                FormatOnSave = _formatOnSave,
+                DetectIndentationFromFile = _detectIndentationFromFile,
                 ExternalTools = _externalTools,
                 WorkspaceVisible = _workspaceVisible,
                 WorkspaceWidth = _workspaceWidth,
@@ -2945,6 +2958,9 @@ using Microsoft.Extensions.DependencyInjection;
             _cursorStyle = settings.CursorStyle ?? "line";
             _cursorBlinkEnabled = settings.CursorBlinkEnabled;
             _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+            _autoCloseBracesOnEnter = settings.AutoCloseBracesOnEnter;
+            _formatOnSave = settings.FormatOnSave;
+            _detectIndentationFromFile = settings.DetectIndentationFromFile;
             ApplyCursorSettings();
 
             // Panels
@@ -3089,6 +3105,9 @@ using Microsoft.Extensions.DependencyInjection;
             _cursorStyle = settings.CursorStyle ?? "line";
             _cursorBlinkEnabled = settings.CursorBlinkEnabled;
             _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+            _autoCloseBracesOnEnter = settings.AutoCloseBracesOnEnter;
+            _formatOnSave = settings.FormatOnSave;
+            _detectIndentationFromFile = settings.DetectIndentationFromFile;
             ApplyCursorSettings();
 
             vimModeEnabled = settings.VimModeEnabled;
@@ -4221,9 +4240,23 @@ internal void ToggleGutter()
                     }
                     // Compute indent based on previous line
                     string indent = IndentationHelper.ComputeIndent(prevLineText, tabSize, insertSpaces);
-                    // Insert newline + indent
-                    string newText = Environment.NewLine + indent;
-                    textEditor.SelectedText = newText;
+                    string trimmedPrev = prevLineText.Trim();
+
+                    if (_autoCloseBracesOnEnter && trimmedPrev.EndsWith('{'))
+                    {
+                        // Insert inner newline + indent, then outer newline + closing brace;
+                        // leave cursor positioned after the inner indent (between the braces).
+                        string outerIndent = IndentationHelper.GetLeadingWhitespace(prevLineText);
+                        string innerText = Environment.NewLine + indent + Environment.NewLine + outerIndent + "}";
+                        textEditor.SelectedText = innerText;
+                        textEditor.SelectionStart = selStart + Environment.NewLine.Length + indent.Length;
+                        textEditor.SelectionLength = 0;
+                    }
+                    else
+                    {
+                        // Insert newline + indent
+                        textEditor.SelectedText = Environment.NewLine + indent;
+                    }
                 }
                 else
                 {

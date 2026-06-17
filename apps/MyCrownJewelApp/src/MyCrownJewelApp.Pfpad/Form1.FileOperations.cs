@@ -116,6 +116,24 @@ namespace MyCrownJewelApp.Pfpad
             {
                 try
                 {
+                    // Format on save: run Roslyn formatter before transforms (C# only, workspace must be ready)
+                    if (_formatOnSave && _roslynWorkspace.IsReady)
+                    {
+                        try
+                        {
+                            using var cts = new System.Threading.CancellationTokenSource(3000);
+                            string? formatted = Task.Run(GetFormattedTextAsync, cts.Token).GetAwaiter().GetResult();
+                            if (!string.IsNullOrEmpty(formatted) && formatted != textEditor.Text)
+                            {
+                                textEditor.TextChanged -= TextEditor_TextChanged;
+                                try { textEditor.Text = formatted; }
+                                finally { textEditor.TextChanged += TextEditor_TextChanged; }
+                                _roslynWorkspace.UpdateDocumentText(formatted);
+                            }
+                        }
+                        catch { }
+                    }
+
                     string saved = ApplySaveTransforms(textEditor.Text);
                     UnicodeFileHelper.WriteAllText(currentFilePath, saved);
                     _profilerDialog?.Log($"Saved file: {currentFilePath} ({saved.Length} chars)");

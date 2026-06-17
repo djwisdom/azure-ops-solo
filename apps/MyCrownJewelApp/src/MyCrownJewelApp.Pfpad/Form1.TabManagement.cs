@@ -128,6 +128,17 @@ namespace MyCrownJewelApp.Pfpad
                 // Apply feature degradation for large files
                 ApplyLargeFileDegradation(doc, fileInfo.Length);
 
+                // Detect per-file indentation style if the feature is enabled
+                if (_detectIndentationFromFile)
+                {
+                    var (detectedSpaces, detectedTabSz, detected) = IndentationHelper.DetectIndentation(content);
+                    if (detected)
+                    {
+                        doc.DetectedInsertSpaces = detectedSpaces;
+                        doc.DetectedTabSize = detectedTabSz;
+                    }
+                }
+
                 EnforceMaxOpenTabs();
                 _docManager.Add(doc);
                 int newIndex = documents.Count - 1;
@@ -223,6 +234,17 @@ namespace MyCrownJewelApp.Pfpad
                         d.FileEncoding = encoding;
                         d.ContainsRtlText = UnicodeFileHelper.ContainsRtlText(content);
                         d.SavedHash = ComputeContentHash(content);
+
+                        // Detect per-file indentation style (async path)
+                        if (_detectIndentationFromFile)
+                        {
+                            var (detectedSpaces, detectedTabSz, detected) = IndentationHelper.DetectIndentation(content);
+                            if (detected)
+                            {
+                                d.DetectedInsertSpaces = detectedSpaces;
+                                d.DetectedTabSize = detectedTabSz;
+                            }
+                        }
 
                         // Only update if this tab is currently active
                         if (activeDocIndex == tabControl.SelectedIndex && tabControl.SelectedIndex >= 0)
@@ -414,6 +436,19 @@ namespace MyCrownJewelApp.Pfpad
                 textEditor.RightToLeft = doc.ContainsRtlText ? RightToLeft.Yes : RightToLeft.No;
             }
             currentSyntax = doc.Syntax;
+
+            // Apply per-file detected indentation overrides (set when the file was opened)
+            if (doc.DetectedTabSize.HasValue || doc.DetectedInsertSpaces.HasValue)
+            {
+                if (doc.DetectedTabSize.HasValue && doc.DetectedTabSize.Value != tabSize)
+                {
+                    tabSize = doc.DetectedTabSize.Value;
+                    if (tabSizeDropDown != null) tabSizeDropDown.Text = $"Tab: {tabSize}";
+                }
+                if (doc.DetectedInsertSpaces.HasValue)
+                    insertSpaces = doc.DetectedInsertSpaces.Value;
+                UpdateTabStops();
+            }
 
             // Load text without triggering dirty flag
 #pragma warning disable CS8602 // Method reference is never null

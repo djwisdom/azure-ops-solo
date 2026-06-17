@@ -267,4 +267,27 @@ public partial class Form1
             System.Diagnostics.Debug.WriteLine($"[FormatDocument] {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Returns the Roslyn-formatted text of the current document without applying it to the editor.
+    /// Returns null if the workspace is not ready, the document is unavailable, or formatting fails.
+    /// Safe to call from a background thread (no UI access).
+    /// </summary>
+    internal async Task<string?> GetFormattedTextAsync()
+    {
+        if (!_roslynWorkspace.IsReady) return null;
+        try
+        {
+            var doc = await _roslynWorkspace.GetCurrentDocumentAsync().ConfigureAwait(false);
+            if (doc is null) return null;
+            var formatted = await Formatter.FormatAsync(doc).ConfigureAwait(false);
+            if (formatted is null) return null;
+            return (await formatted.GetTextAsync().ConfigureAwait(false)).ToString();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[GetFormattedText] {ex.Message}");
+            return null;
+        }
+    }
 }

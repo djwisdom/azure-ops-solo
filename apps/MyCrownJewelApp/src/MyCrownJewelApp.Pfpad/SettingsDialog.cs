@@ -683,6 +683,9 @@ internal sealed class SettingsDialog : Form
             AutoIndentEnabled = GetSettingValue<bool>("editor.formatting.autoIndent", _mainForm.CurrentAutoIndent),
             SmartTabsEnabled = GetSettingValue<bool>("editor.formatting.smartTabs", _mainForm.CurrentSmartTabs),
             ElasticTabsEnabled = GetSettingValue<bool>("editor.formatting.elasticTabs", _mainForm.CurrentElasticTabs),
+            AutoCloseBracesOnEnter = GetSettingValue<bool>("editor.formatting.autoCloseBracesOnEnter", _mainForm.CurrentAutoCloseBracesOnEnter),
+            FormatOnSave = GetSettingValue<bool>("editor.formatting.formatOnSave", _mainForm.CurrentFormatOnSave),
+            DetectIndentationFromFile = GetSettingValue<bool>("editor.formatting.detectIndentation", _mainForm.CurrentDetectIndentationFromFile),
             RainbowBracketsEnabled = GetSettingValue<bool>("editor.appearance.rainbowBrackets", _mainForm.CurrentRainbowBrackets),
             BreadcrumbsEnabled = GetSettingValue<bool>("editor.appearance.breadcrumbs", _mainForm.CurrentBreadcrumbs),
             HoverLineHighlightEnabled = GetSettingValue<bool>("editor.cursor.hoverLineHighlight", _mainForm.CurrentHoverLineHighlight),
@@ -842,6 +845,9 @@ internal sealed class SettingsDialog : Form
             ["editor.formatting.autoIndent"] = _mainForm.CurrentAutoIndent,
             ["editor.formatting.smartTabs"] = _mainForm.CurrentSmartTabs,
             ["editor.formatting.elasticTabs"] = _mainForm.CurrentElasticTabs,
+            ["editor.formatting.autoCloseBracesOnEnter"] = _mainForm.CurrentAutoCloseBracesOnEnter,
+            ["editor.formatting.formatOnSave"] = _mainForm.CurrentFormatOnSave,
+            ["editor.formatting.detectIndentation"] = _mainForm.CurrentDetectIndentationFromFile,
 
             // Editor - Appearance
             ["editor.appearance.showWhitespace"] = _mainForm.CurrentShowWhitespace,
@@ -1122,6 +1128,9 @@ internal sealed class SettingsDialog : Form
             "editor.formatting.autoIndent" => "Automatically indent the new line to match the previous line; adds extra indent after opening braces.",
             "editor.formatting.smartTabs" => "Align continuation lines to the nearest tab stop based on surrounding context.",
             "editor.formatting.elasticTabs" => "Dynamically widen tab columns so tabular content stays visually aligned as you type.",
+            "editor.formatting.autoCloseBracesOnEnter" => "When Enter is pressed on a line ending with '{', insert a matching '}' on the line below and place the cursor between them.",
+            "editor.formatting.formatOnSave" => "Run the Roslyn document formatter before saving a C# file. Requires an open workspace (.csproj or .sln).",
+            "editor.formatting.detectIndentation" => "Scan the first 100 lines of each opened file to auto-detect tabs vs spaces and indent width. Overrides global settings per-document.",
             "features.behavior.vimMode" => "Enable Vim-style modal editing (Normal, Insert, Visual, Command, Search modes). Press Esc to return to Normal mode.",
             "features.behavior.autoSave" => "Automatically save modified files after the configured idle interval.",
             "features.behavior.analyzers" => "Run Roslyn diagnostic analyzers when a .csproj or .sln workspace is loaded. Diagnostics appear as squiggles and in the Problems panel.",
@@ -3171,6 +3180,30 @@ internal sealed class SettingsDialog : Form
                 ("LF",   "LF    (Unix \\n)"),
                 ("CR",   "CR    (Classic Mac \\r)")
             });
+
+        y += 8;
+        // ── Section 3: Smart Formatting ───────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Smart Formatting");
+
+        y = AddSecCheckRow(parent, y,
+            "Auto-close braces on Enter",
+            "When Enter is pressed on a line ending with an opening brace '{', " +
+            "automatically insert a matching closing brace '}' on the next empty line " +
+            "and position the cursor between them.",
+            "editor.formatting.autoCloseBracesOnEnter");
+
+        y = AddSecCheckRow(parent, y,
+            "Format on save",
+            "Run the Roslyn document formatter before saving a C# file. " +
+            "Requires an open workspace (.csproj or .sln). Has no effect on non-C# files.",
+            "editor.formatting.formatOnSave");
+
+        y = AddSecCheckRow(parent, y,
+            "Detect indentation from file",
+            "Scan the first 100 lines of a newly opened file to detect whether it uses " +
+            "tabs or spaces and what the indent width is. The detected settings override the " +
+            "global Tab Size and Insert Spaces for that document while it is active.",
+            "editor.formatting.detectIndentation");
 
         return y + 16;
     }

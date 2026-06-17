@@ -223,6 +223,14 @@ public record AppSettings
     /// <summary>Comma-separated comment tags to scan for (case-insensitive).</summary>
     public string TodoScanPatterns { get; init; } = "TODO, FIXME, HACK, NOTE, BUG, WORKAROUND";
 
+    // ── Formatting configuration ───────────────────────────────────────────────
+    /// <summary>Auto-insert a matching closing brace on the line below and position the cursor between them when Enter is pressed on a line ending with an opening brace.</summary>
+    public bool AutoCloseBracesOnEnter { get; init; } = false;
+    /// <summary>Run the Roslyn document formatter before writing the file when a C# workspace is loaded. Has no effect on non-C# files or when no workspace is open.</summary>
+    public bool FormatOnSave { get; init; } = false;
+    /// <summary>Scan the first 100 lines of a newly opened file to detect its indentation style (tabs vs spaces, and indent width). Overrides the global Tab Size and Insert Spaces for that document while it is active.</summary>
+    public bool DetectIndentationFromFile { get; init; } = true;
+
     // ── Cursor configuration ───────────────────────────────────────────────────
     /// <summary>Keep the current-line highlight visible even when the editor does not have keyboard focus.</summary>
     public bool LineHighlightWhenUnfocused { get; init; } = false;
