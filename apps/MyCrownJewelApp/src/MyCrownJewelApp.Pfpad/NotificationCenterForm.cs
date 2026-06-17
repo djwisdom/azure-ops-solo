@@ -251,7 +251,11 @@ public sealed partial class NotificationCenterForm : Form
         var hit = _listView.HitTest(e.Location);
         if (hit.Item?.Tag is FeedItem item && item.Link is not null)
         {
-            try { Process.Start(new ProcessStartInfo(item.Link.AbsoluteUri) { UseShellExecute = true }); }
+            try
+            {
+                if (SecurityEnforcementService.IsUrlSchemeAllowed(item.Link.AbsoluteUri, SecurityProfile.Low))
+                    Process.Start(new ProcessStartInfo(item.Link.AbsoluteUri) { UseShellExecute = true });
+            }
             catch { }
         }
     }

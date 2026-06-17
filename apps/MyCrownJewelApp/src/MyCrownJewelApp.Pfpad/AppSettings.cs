@@ -180,6 +180,8 @@ public record AppSettings
     public bool GitCommitLengthWarning { get; init; } = false;
 
     // ── Application Security ────────────────────────────────────────────────────
+    /// <summary>Runtime security hardening level. Controls URL validation, TLS, path canonicalization, and encryption.</summary>
+    public SecurityProfile SecurityProfile { get; init; } = SecurityProfile.Low;
     public bool SecPromptUntrustedWorkspace { get; init; } = true;
     public string SecTrustedWorkspacePaths { get; init; } = "";
     public bool SecConfirmUrlOpen { get; init; } = false;
@@ -273,4 +275,17 @@ public enum DebugAdapterType
     CppVsDbg,
     /// <summary>gdb — GNU debugger via MI/DAP bridge (MinGW, MSYS2, or WSL).</summary>
     Gdb,
+}
+
+/// <summary>Graded security hardening level applied at runtime.</summary>
+public enum SecurityProfile
+{
+    /// <summary>No runtime security enforcement. Legacy/development use only.</summary>
+    NotHardened = 0,
+    /// <summary>Basic runtime enforcement: URL scheme validation, TLS validation, path canonicalization.</summary>
+    Low = 1,
+    /// <summary>All Low controls plus DPAPI settings encryption, SDK credential flows, log secret masking.</summary>
+    Mid = 2,
+    /// <summary>All Mid controls plus strict URL allowlist (no http://), enforced HTTPS for AIOps endpoints.</summary>
+    Max = 3,
 }

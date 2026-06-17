@@ -280,8 +280,8 @@ public sealed class AIOpsSettingsDialog : Form
             {
                 using var proc = new System.Diagnostics.Process
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c az account list --output json --all")
-                    {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo("az")
+                    { ArgumentList = { "account", "list", "--output", "json", "--all" },
                         RedirectStandardOutput = true,
                         RedirectStandardError  = true,
                         UseShellExecute        = false,
@@ -350,9 +350,9 @@ public sealed class AIOpsSettingsDialog : Form
             {
                 using var proc = new System.Diagnostics.Process
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo(
-                        "cmd.exe", $"/c az monitor log-analytics workspace list --subscription {subId} --output json")
+                    StartInfo = new System.Diagnostics.ProcessStartInfo("az")
                     {
+                        ArgumentList = { "monitor", "log-analytics", "workspace", "list", "--subscription", subId, "--output", "json" },
                         RedirectStandardOutput = true,
                         RedirectStandardError  = true,
                         UseShellExecute        = false,
@@ -423,9 +423,9 @@ public sealed class AIOpsSettingsDialog : Form
                 string armUrl = $"https://management.azure.com/subscriptions/{subId}/providers/Microsoft.Insights/components?api-version=2020-02-02";
                 using var proc = new System.Diagnostics.Process
                 {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo(
-                        "cmd.exe", $"/c az rest --method get --url \"{armUrl}\" --output json")
+                    StartInfo = new System.Diagnostics.ProcessStartInfo("az")
                     {
+                        ArgumentList = { "rest", "--method", "get", "--url", armUrl, "--output", "json" },
                         RedirectStandardOutput = true,
                         RedirectStandardError  = true,
                         UseShellExecute        = false,

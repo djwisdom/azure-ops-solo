@@ -1,4 +1,4 @@
-﻿ using System;
+ using System;
  using System.Collections.Generic;
  using System.ComponentModel;
  using System.Drawing;
@@ -353,6 +353,7 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _gitCommitLengthWarning = false;
 
         // Security settings
+        private SecurityProfile _securityProfile = SecurityProfile.Low;
         private bool _secPromptUntrustedWorkspace = true;
         private string _secTrustedWorkspacePaths = "";
         private bool _secConfirmUrlOpen = false;
@@ -807,6 +808,7 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentGitConfirmHiddenChanges => _gitConfirmHiddenChanges;
         public string CurrentGitBranchSwitchBehavior => _gitBranchSwitchBehavior;
         public bool CurrentGitCommitLengthWarning => _gitCommitLengthWarning;
+        public SecurityProfile CurrentSecurityProfile => _securityProfile;
         public bool CurrentSecPromptUntrustedWorkspace => _secPromptUntrustedWorkspace;
         public string CurrentSecTrustedWorkspacePaths => _secTrustedWorkspacePaths;
         public bool CurrentSecConfirmUrlOpen => _secConfirmUrlOpen;
@@ -2570,7 +2572,7 @@ using Microsoft.Extensions.DependencyInjection;
         {
             try
             {
-                var settings = _settingsService.Load();
+                var settings = _settingsService.LoadWithDecrypt();
                 if (settings is null) return;
 
                 string themeName = settings.ThemeName;
@@ -2604,6 +2606,7 @@ using Microsoft.Extensions.DependencyInjection;
                 _terminalPadding = Math.Clamp(settings.TerminalPadding, 0, 20);
                 _terminalMaxScrollback = Math.Clamp(settings.TerminalMaxScrollback, 500, 50000);
                 _terminalTabTitle = settings.TerminalTabTitle ?? "";
+                _securityProfile = settings.SecurityProfile;
                 _secPromptUntrustedWorkspace = settings.SecPromptUntrustedWorkspace;
                 _secTrustedWorkspacePaths = settings.SecTrustedWorkspacePaths;
                 _secConfirmUrlOpen = settings.SecConfirmUrlOpen;
@@ -2843,6 +2846,7 @@ using Microsoft.Extensions.DependencyInjection;
                 GitConfirmHiddenChanges = _gitConfirmHiddenChanges,
                 GitBranchSwitchBehavior = _gitBranchSwitchBehavior,
                 GitCommitLengthWarning = _gitCommitLengthWarning,
+                SecurityProfile = _securityProfile,
                 SecPromptUntrustedWorkspace = _secPromptUntrustedWorkspace,
                 SecTrustedWorkspacePaths = _secTrustedWorkspacePaths,
                 SecConfirmUrlOpen = _secConfirmUrlOpen,
@@ -2951,11 +2955,11 @@ using Microsoft.Extensions.DependencyInjection;
                 RulerEnabled = _rulerEnabled,
                 ShowGutterBreakpoints = showGutterBreakpointsMenuItem?.Checked ?? true,
                 ShowGutterBookmarks   = showGutterBookmarksMenuItem?.Checked ?? true,
-                AIOpsConfig = _aiopsEngine?.CurrentSettings?.CreateEncryptedCopy() ?? _settingsService.Load()?.AIOpsConfig,
+                AIOpsConfig = _aiopsEngine?.CurrentSettings?.CreateEncryptedCopy() ?? _settingsService.LoadWithDecrypt()?.AIOpsConfig,
                 DebugAdapterType = _debugAdapterType,
                 DebugAdapterPath = _debugAdapterPath,
             };
-            _settingsService.Save(settings);
+            _settingsService.Save(settings, SecurityEnforcementService.ShouldEncryptSettings(settings.SecurityProfile));
         }
 
         public void ApplySettings(AppSettings settings)
@@ -3060,6 +3064,7 @@ using Microsoft.Extensions.DependencyInjection;
             ApplyGitSettings();
 
             // Apply security settings
+            _securityProfile = settings.SecurityProfile;
             _secPromptUntrustedWorkspace = settings.SecPromptUntrustedWorkspace;
             _secTrustedWorkspacePaths = settings.SecTrustedWorkspacePaths;
             _secConfirmUrlOpen = settings.SecConfirmUrlOpen;
@@ -5206,7 +5211,7 @@ internal void ToggleGutter()
             if (_aiopsEngine != null)
                 return;
 
-            var settings = _settingsService.Load()?.AIOpsConfig ?? new MyCrownJewelApp.Pfpad.AIOps.AIOpsSettings();
+            var settings = _settingsService.LoadWithDecrypt()?.AIOpsConfig ?? new MyCrownJewelApp.Pfpad.AIOps.AIOpsSettings();
             settings.LoadSecretsFromEncrypted();
             _aiopsEngine = new MyCrownJewelApp.Pfpad.AIOps.AIOpsEngine(settings);
 
@@ -6013,3 +6018,4 @@ internal void ToggleGutter()
 
     }
 }
+

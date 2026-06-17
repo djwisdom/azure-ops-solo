@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace MyCrownJewelApp.Pfpad;
@@ -89,6 +90,66 @@ public sealed class SettingsService
             if (tmpPath != null)
             {
                 try { File.Delete(tmpPath); } catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Saves with optional DPAPI encryption. When <paramref name="encrypt"/> is true the JSON bytes
+    /// are protected with <see cref="DataProtectionScope.CurrentUser"/> before writing.
+    /// </summary>
+    public void Save(AppSettings settings, bool encrypt)
+    {
+        if (!encrypt) { Save(settings); return; }
+
+        string? tmpPath = null;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
+            tmpPath = Path.Combine(
+                Path.GetDirectoryName(_settingsPath)!,
+                Path.GetFileNameWithoutExtension(_settingsPath)
+                    + "." + Path.GetRandomFileName() + ".tmp");
+
+            byte[] json = System.Text.Encoding.UTF8.GetBytes(
+                System.Text.Json.JsonSerializer.Serialize(settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            byte[] encrypted = ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser);
+            File.WriteAllBytes(tmpPath, encrypted);
+
+            if (File.Exists(_settingsPath))
+                File.Replace(tmpPath, _settingsPath, null);
+            else
+                File.Move(tmpPath, _settingsPath);
+            tmpPath = null;
+        }
+        catch { }
+        finally { if (tmpPath != null) try { File.Delete(tmpPath); } catch { } }
+    }
+
+    /// <summary>
+    /// Loads settings, trying plain JSON first, then DPAPI-decryption as fallback.
+    /// </summary>
+    public AppSettings? LoadWithDecrypt()
+    {
+        if (!File.Exists(_settingsPath)) return null;
+        try
+        {
+            string json = File.ReadAllText(_settingsPath);
+            return System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
+        }
+        catch
+        {
+            try
+            {
+                byte[] encrypted = File.ReadAllBytes(_settingsPath);
+                byte[] decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                string json = System.Text.Encoding.UTF8.GetString(decrypted);
+                return System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
+            }
+            catch
+            {
+                TryBackupCorrupt();
+                return null;
             }
         }
     }

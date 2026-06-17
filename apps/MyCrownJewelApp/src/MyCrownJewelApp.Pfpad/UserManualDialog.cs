@@ -343,7 +343,11 @@ public sealed partial class UserManualDialog : Form
         e.Cancel = true;
         if (e.Url?.Scheme is "http" or "https")
         {
-            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            try
+            {
+                if (SecurityEnforcementService.IsUrlSchemeAllowed(url, SecurityProfile.Low))
+                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
             catch { }
         }
     }

@@ -49,6 +49,7 @@ internal sealed class SettingsDialog : Form
     // Current values storage
     private Dictionary<string, object> _originalValues = new();
     private Dictionary<string, object> _currentValues = new();
+    private Label[]? _securityProfileFeatureLabels;
 
     // Settings scopes
     public enum SettingScope { Default, User, Workspace, Profile }
@@ -742,6 +743,7 @@ internal sealed class SettingsDialog : Form
             GitConfirmHiddenChanges = GetSettingValue<bool>("features.git.confirmHiddenChanges", _mainForm.CurrentGitConfirmHiddenChanges),
             GitBranchSwitchBehavior = GetSettingValue<string>("features.git.branchSwitchBehavior", _mainForm.CurrentGitBranchSwitchBehavior),
             GitCommitLengthWarning = GetSettingValue<bool>("features.git.commitLengthWarning", _mainForm.CurrentGitCommitLengthWarning),
+            SecurityProfile = (SecurityProfile)GetSettingValue<int>("application.security.profile", (int)_mainForm.CurrentSecurityProfile),
             SecPromptUntrustedWorkspace = GetSettingValue<bool>("application.security.promptUntrustedWorkspace", _mainForm.CurrentSecPromptUntrustedWorkspace),
             SecTrustedWorkspacePaths = GetSettingValue<string>("application.security.trustedWorkspacePaths", _mainForm.CurrentSecTrustedWorkspacePaths),
             SecConfirmUrlOpen = GetSettingValue<bool>("application.security.confirmUrlOpen", _mainForm.CurrentSecConfirmUrlOpen),
@@ -913,6 +915,7 @@ internal sealed class SettingsDialog : Form
             ["features.git.commitLengthWarning"] = _mainForm.CurrentGitCommitLengthWarning,
 
             // Application Security
+            ["application.security.profile"] = (int)_mainForm.CurrentSecurityProfile,
             ["application.security.promptUntrustedWorkspace"] = _mainForm.CurrentSecPromptUntrustedWorkspace,
             ["application.security.trustedWorkspacePaths"] = _mainForm.CurrentSecTrustedWorkspacePaths,
             ["application.security.confirmUrlOpen"] = _mainForm.CurrentSecConfirmUrlOpen,
@@ -1368,7 +1371,11 @@ internal sealed class SettingsDialog : Form
             Font = new Font("Segoe UI", 8.5f)
         };
         signInBtn.FlatAppearance.BorderColor = _theme.Border;
-        signInBtn.Click += (s, e) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(authUrl) { UseShellExecute = true });
+        signInBtn.Click += (s, e) =>
+        {
+            if (SecurityEnforcementService.IsUrlSchemeAllowed(authUrl, _mainForm.CurrentSecurityProfile))
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(authUrl) { UseShellExecute = true });
+        };
         parent.Controls.Add(signInBtn);
 
         return y + 32;
@@ -1669,6 +1676,9 @@ internal sealed class SettingsDialog : Form
 
     private int AddSecuritySettingsUI(Panel parent, int y)
     {
+        y = AddSecSectionHeader(parent, y, "Security Profile");
+        y = AddSecurityProfileSelector(parent, y);
+        y += 12;
         y = AddSecSectionHeader(parent, y, "Workspace Trust");
 
         y = AddSecCheckRow(parent, y,
@@ -1839,6 +1849,179 @@ internal sealed class SettingsDialog : Form
         y += 28;
 
         return y + 16;
+    }
+
+    private int AddSecurityProfileSelector(Panel parent, int y)
+    {
+        int profileVal = _currentValues.TryGetValue("application.security.profile", out var pv) && pv is int pi ? pi : (int)SecurityProfile.Low;
+        var currentProfile = (SecurityProfile)profileVal;
+
+        string[] profileLabels = ["Not Hardened", "Low", "Mid", "Max"];
+        string[] profileDescs =
+        [
+            "No runtime enforcement. For development only.",
+            "URL scheme validation, TLS, path canonicalization.",
+            "Low + DPAPI settings encryption, SDK credentials, log masking.",
+            "Mid + HTTPS-only AIOps endpoints, strict URL allowlist.",
+        ];
+
+        RadioButton[] radios = new RadioButton[4];
+        for (int i = 0; i < 4; i++)
+        {
+            int level = i;
+            radios[i] = new RadioButton
+            {
+                Text = profileLabels[i],
+                Location = new Point(i * 140, y),
+                Width = 135,
+                Checked = (int)currentProfile == i,
+                ForeColor = _theme.Text,
+                BackColor = Color.Transparent,
+                Font = new Font("Segoe UI", 9f, (int)currentProfile == i ? FontStyle.Bold : FontStyle.Regular),
+                Tag = $"radio.security.profile.{i}"
+            };
+            radios[i].CheckedChanged += (s, e) =>
+            {
+                if (!radios[level].Checked) return;
+                _currentValues["application.security.profile"] = level;
+                for (int j = 0; j < 4; j++)
+                    radios[j].Font = new Font("Segoe UI", 9f, j == level ? FontStyle.Bold : FontStyle.Regular);
+                UpdateProfileChecklist((SecurityProfile)level);
+            };
+            parent.Controls.Add(radios[i]);
+        }
+        y += 28;
+
+        var descLbl = new Label
+        {
+            Text = profileDescs[(int)currentProfile],
+            Location = new Point(0, y),
+            Size = new Size(parent.Width - 8, 18),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 8f, FontStyle.Italic),
+            BackColor = Color.Transparent,
+            Tag = "label.security.profile.desc"
+        };
+        parent.Controls.Add(descLbl);
+        y += 22;
+
+        for (int i = 0; i < 4; i++)
+        {
+            int level = i;
+            radios[i].CheckedChanged += (s, e) =>
+            {
+                if (!radios[level].Checked) return;
+                descLbl.Text = profileDescs[level];
+            };
+        }
+
+        y += 4;
+        var checklistHeader = new Label
+        {
+            Text = "Runtime enforcement at selected level:",
+            Location = new Point(0, y),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            BackColor = Color.Transparent,
+        };
+        parent.Controls.Add(checklistHeader);
+        y += 20;
+
+        (string Label, bool AlwaysOn, SecurityProfile MinProfile)[] features =
+        [
+            ("Safe process launch (shell injection fix)",  true,  SecurityProfile.NotHardened),
+            ("URL scheme validation",                       false, SecurityProfile.Low),
+            ("TLS certificate validation",                  false, SecurityProfile.Low),
+            ("File path canonicalization",                  false, SecurityProfile.Low),
+            ("Settings encryption (DPAPI) — migrates",     false, SecurityProfile.Mid),
+            ("SDK credential flow (AIOps)",                 false, SecurityProfile.Mid),
+            ("Log secret masking",                          false, SecurityProfile.Mid),
+            ("HTTPS-only AIOps endpoints",                  false, SecurityProfile.Max),
+            ("Strict URL allowlist (no http://)",           false, SecurityProfile.Max),
+        ];
+
+        _securityProfileFeatureLabels = new Label[features.Length];
+        for (int i = 0; i < features.Length; i++)
+        {
+            var (label, alwaysOn, minProfile) = features[i];
+            bool active = alwaysOn || currentProfile >= minProfile;
+            string icon = alwaysOn ? "🔒" : active ? "✅" : "⬜";
+
+            _securityProfileFeatureLabels[i] = new Label
+            {
+                Text = $"  {icon}  {label}",
+                Location = new Point(8, y),
+                Size = new Size(parent.Width - 16, 20),
+                ForeColor = active ? _theme.Text : _theme.Muted,
+                Font = new Font("Segoe UI", 8.5f),
+                BackColor = Color.Transparent,
+                Tag = $"feature.security.{i}"
+            };
+            parent.Controls.Add(_securityProfileFeatureLabels[i]);
+            y += 20;
+        }
+
+        y += 8;
+        bool exeSigned = SecurityEnforcementService.IsExeSigned();
+        bool ciEnabled = SecurityEnforcementService.AreCiGatesEnabled();
+        bool installerSigned = SecurityEnforcementService.IsInstallerSigned();
+
+        var buildHeader = new Label
+        {
+            Text = "Build-time status (informational):",
+            Location = new Point(0, y),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            BackColor = Color.Transparent,
+        };
+        parent.Controls.Add(buildHeader);
+        y += 20;
+
+        string BuildItem(bool ok, string name) => $"  {(ok ? "✅" : "❌")}  {name}";
+        var buildStatus = new Label
+        {
+            Text = BuildItem(exeSigned, "Code signing") + "     " +
+                   BuildItem(ciEnabled, "CI security gates") + "     " +
+                   BuildItem(installerSigned, "Installer signing"),
+            Location = new Point(8, y),
+            Size = new Size(parent.Width - 16, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 8.5f),
+            BackColor = Color.Transparent,
+        };
+        parent.Controls.Add(buildStatus);
+        y += 24;
+
+        return y;
+    }
+
+    private void UpdateProfileChecklist(SecurityProfile profile)
+    {
+        if (_securityProfileFeatureLabels is null) return;
+
+        (string Label, bool AlwaysOn, SecurityProfile MinProfile)[] features =
+        [
+            ("Safe process launch (shell injection fix)",  true,  SecurityProfile.NotHardened),
+            ("URL scheme validation",                       false, SecurityProfile.Low),
+            ("TLS certificate validation",                  false, SecurityProfile.Low),
+            ("File path canonicalization",                  false, SecurityProfile.Low),
+            ("Settings encryption (DPAPI) — migrates",     false, SecurityProfile.Mid),
+            ("SDK credential flow (AIOps)",                 false, SecurityProfile.Mid),
+            ("Log secret masking",                          false, SecurityProfile.Mid),
+            ("HTTPS-only AIOps endpoints",                  false, SecurityProfile.Max),
+            ("Strict URL allowlist (no http://)",           false, SecurityProfile.Max),
+        ];
+
+        for (int i = 0; i < _securityProfileFeatureLabels.Length && i < features.Length; i++)
+        {
+            var (label, alwaysOn, minProfile) = features[i];
+            bool active = alwaysOn || profile >= minProfile;
+            string icon = alwaysOn ? "🔒" : active ? "✅" : "⬜";
+            _securityProfileFeatureLabels[i].Text = $"  {icon}  {label}";
+            _securityProfileFeatureLabels[i].ForeColor = active ? _theme.Text : _theme.Muted;
+        }
     }
 
     private int AddSecSectionHeader(Panel parent, int y, string title)

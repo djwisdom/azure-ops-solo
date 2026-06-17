@@ -356,8 +356,9 @@ public sealed class AzureMonitorConnector : IAIOpsConnector, IServiceDiscoveryCa
         {
             using var process = new Process
             {
-                StartInfo = new ProcessStartInfo("cmd.exe", $"/c az account get-access-token --resource {resource} --output json")
+                StartInfo = new ProcessStartInfo("az")
                 {
+                    ArgumentList = { "account", "get-access-token", "--resource", resource, "--output", "json" },
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
