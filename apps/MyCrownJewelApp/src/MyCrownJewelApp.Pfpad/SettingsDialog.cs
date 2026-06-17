@@ -372,6 +372,18 @@ internal sealed class SettingsDialog : Form
         {
             y = AddCursorSettingsUI(_contentPanel, y);
         }
+        else if (category == "editor.font")
+        {
+            y = AddFontSettingsUI(_contentPanel, y);
+        }
+        else if (category == "editor.formatting")
+        {
+            y = AddFormattingSettingsUI(_contentPanel, y);
+        }
+        else if (category == "features.behavior")
+        {
+            y = AddBehaviorSettingsUI(_contentPanel, y);
+        }
         else if (category == "workbench.appearance")
         {
             y = AddWorkbenchAppearanceUI(_contentPanel, y);
@@ -1103,13 +1115,16 @@ internal sealed class SettingsDialog : Form
             "editor.cursor.cursorStyle" => "Caret shape: Line (2 px vertical bar), Block (full character fill), or Underline (2 px bar at bottom).",
             "editor.cursor.blinkEnabled" => "Animate the caret by blinking. Disable for a steady non-blinking cursor.",
             "editor.cursor.blinkRateMs" => "Caret blink interval in milliseconds (200–1200). Default 530 ms matches the Windows system default.",
-            "editor.font.name" => "Font family used in the editor.",
-            "editor.font.size" => "Font size in pixels.",
-            "editor.formatting.insertSpaces" => "Insert spaces instead of tabs when pressing Tab.",
-            "editor.formatting.tabSize" => "Number of spaces a tab represents.",
-            "editor.formatting.autoIndent" => "Automatically indent new lines based on context.",
-            "editor.formatting.smartTabs" => "Use smart tab behavior for better indentation.",
-            "editor.formatting.elasticTabs" => "Adapt tab size based on context.",
+            "editor.font.name" => "Monospace font family used in the editor. Applies immediately.",
+            "editor.font.size" => "Editor font size in points (6–72). Default 12 pt. Applies immediately.",
+            "editor.formatting.insertSpaces" => "Insert spaces instead of a tab character when pressing Tab.",
+            "editor.formatting.tabSize" => "Number of spaces per indent level. Also controls the visual width of real tab characters.",
+            "editor.formatting.autoIndent" => "Automatically indent the new line to match the previous line; adds extra indent after opening braces.",
+            "editor.formatting.smartTabs" => "Align continuation lines to the nearest tab stop based on surrounding context.",
+            "editor.formatting.elasticTabs" => "Dynamically widen tab columns so tabular content stays visually aligned as you type.",
+            "features.behavior.vimMode" => "Enable Vim-style modal editing (Normal, Insert, Visual, Command, Search modes). Press Esc to return to Normal mode.",
+            "features.behavior.autoSave" => "Automatically save modified files after the configured idle interval.",
+            "features.behavior.analyzers" => "Run Roslyn diagnostic analyzers when a .csproj or .sln workspace is loaded. Diagnostics appear as squiggles and in the Problems panel.",
             "editor.appearance.showWhitespace" => "Show whitespace characters (spaces, tabs) in the editor.",
             "editor.appearance.minimap" => "Show a miniature overview of the file on the right side.",
             "editor.appearance.stickyScroll" => "Keep the current scope visible at the top when scrolling.",
@@ -1122,9 +1137,6 @@ internal sealed class SettingsDialog : Form
             "workbench.appearance.minimapWidth" => "Width of the minimap panel in pixels (60–200).",
             "workbench.appearance.showGitStatusBar" => "Show git branch, dirty indicator and sync status in the status bar.",
             "workbench.appearance.showRoslynStatusBar" => "Show the Roslyn workspace indicator and analyzer toggle in the status bar.",
-            "features.behavior.vimMode" => "Enable Vim-style keyboard navigation and editing.",
-            "features.behavior.autoSave" => "Automatically save files after 30 seconds of inactivity.",
-            "features.behavior.analyzers" => "Enable Roslyn analyzers for code analysis and suggestions.",
             "features.terminal.shell" => "Shell to use in the integrated terminal.",
             "features.terminal.startingDirectory" => "Starting directory for the shell. Empty = workspace folder (or current directory).",
             "features.terminal.fontFace" => "Font for the terminal (empty = auto: Cascadia Code → Cascadia Mono → Consolas → Courier New).",
@@ -3073,6 +3085,129 @@ internal sealed class SettingsDialog : Form
             "How long (in milliseconds) between each blink on/off cycle. Range: 200–1200. " +
             "530 ms matches the Windows system default.",
             "editor.cursor.blinkRateMs", 200, 1200, 50, 530);
+
+        return y + 16;
+    }
+
+    private int AddFontSettingsUI(Panel parent, int y)
+    {
+        // ── Font Family ────────────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Font Family");
+
+        if (_currentValues.TryGetValue("editor.font.name", out var fontNameVal))
+            y = AddSettingRow(parent, y, "editor.font.name", fontNameVal);
+
+        y += 8;
+        // ── Font Size ──────────────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Font Size");
+
+        if (_currentValues.TryGetValue("editor.font.size", out var fontSizeVal))
+            y = AddSettingRow(parent, y, "editor.font.size", fontSizeVal);
+
+        y += 8;
+        // ── Preview ────────────────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Preview");
+
+        var preview = CreateFontPreview();
+        preview.Location = new Point(0, y);
+        preview.Size = new Size(parent.Width - 32, 80);
+        parent.Controls.Add(preview);
+        y += 88;
+
+        return y + 16;
+    }
+
+    private int AddFormattingSettingsUI(Panel parent, int y)
+    {
+        // ── Section 1: Indentation ─────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Indentation");
+
+        y = AddSecCheckRow(parent, y,
+            "Insert spaces",
+            "Press Tab to insert spaces. Uncheck to insert a real tab character (\\t).",
+            "editor.formatting.insertSpaces");
+
+        if (_currentValues.TryGetValue("editor.formatting.tabSize", out var tabSizeVal))
+            y = AddSettingRow(parent, y, "editor.formatting.tabSize", tabSizeVal);
+
+        y = AddSecCheckRow(parent, y,
+            "Auto-indent",
+            "Automatically indent the new line to match the indentation of the previous line " +
+            "and add extra indentation after opening braces.",
+            "editor.formatting.autoIndent");
+
+        y = AddSecCheckRow(parent, y,
+            "Smart tabs",
+            "Align continuation lines to the nearest tab stop based on context rather than inserting a full indent.",
+            "editor.formatting.smartTabs");
+
+        y = AddSecCheckRow(parent, y,
+            "Elastic tab stops",
+            "Dynamically adjust tab column widths so that tabular content stays aligned " +
+            "as you type across multiple lines.",
+            "editor.formatting.elasticTabs");
+
+        y += 8;
+        // ── Section 2: On Save ─────────────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "On Save");
+
+        y = AddSecCheckRow(parent, y,
+            "Trim trailing whitespace",
+            "Remove spaces and tabs at the end of every line when the file is saved.",
+            "editor.text.trimTrailingWhitespace");
+
+        y = AddSecCheckRow(parent, y,
+            "Insert final newline",
+            "Append a newline character at the end of the file on save if one is not already present.",
+            "editor.text.insertFinalNewline");
+
+        y = AddEditorComboRow(parent, y,
+            "Line endings",
+            "End-of-line sequence written when saving. \"Auto\" preserves whatever the file already uses.",
+            "editor.text.defaultLineEnding",
+            new[] {
+                ("auto", "Auto (preserve)"),
+                ("CRLF", "CRLF  (Windows \\r\\n)"),
+                ("LF",   "LF    (Unix \\n)"),
+                ("CR",   "CR    (Classic Mac \\r)")
+            });
+
+        return y + 16;
+    }
+
+    private int AddBehaviorSettingsUI(Panel parent, int y)
+    {
+        // ── Section 1: Editor Behavior ─────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Editor Behavior");
+
+        y = AddSecCheckRow(parent, y,
+            "Vim keybindings",
+            "Enable Vim-style modal editing (Normal, Insert, Visual, Command, Search). " +
+            "Press Esc to return to Normal mode. Caret automatically switches to block style in Normal mode.",
+            "features.behavior.vimMode");
+
+        y = AddSecCheckRow(parent, y,
+            "Auto save",
+            "Automatically save modified files after the configured interval. " +
+            "Files are saved silently without showing a dialog.",
+            "features.behavior.autoSave");
+
+        y = AddWinNumericRow(parent, y,
+            "Auto save interval (s)",
+            "Seconds of idle time before an unsaved file is written to disk automatically (10–300). " +
+            "Only active when Auto Save is enabled.",
+            "editor.text.autoSaveIntervalSeconds", 10, 300, 10, 30);
+
+        y += 8;
+        // ── Section 2: Code Analysis ───────────────────────────────────────────
+        y = AddSecSectionHeader(parent, y, "Code Analysis");
+
+        y = AddSecCheckRow(parent, y,
+            "Roslyn analyzers",
+            "Run Roslyn diagnostic analyzers in the background when a .csproj or .sln workspace is loaded. " +
+            "Diagnostics appear as squiggles and in the Problems panel. " +
+            "Disable to reduce CPU usage on large solutions.",
+            "features.behavior.analyzers");
 
         return y + 16;
     }
