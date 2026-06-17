@@ -218,7 +218,6 @@ public sealed partial class AboutDialog : Form
             MinimumSize = new Size(_contentWidth, 0),
             MaximumSize = new Size(_contentWidth, 0)
         };
-        _scrollPanel.Resize += (_, _) => CenterInnerContent();
 
         var tabStrip = new FlowLayoutPanel
         {
@@ -265,7 +264,6 @@ public sealed partial class AboutDialog : Form
         _titleBar.Controls.Add(_closeButton);
 
         SelectTab(aboutButton);
-        CenterInnerContent();
     }
 
     private Panel CreateAboutPage()
@@ -611,7 +609,6 @@ public sealed partial class AboutDialog : Form
             _pageHost.Controls.Add(page);
         }
         _pageHost.ResumeLayout(true);
-        CenterInnerContent();
     }
 
     private Panel CreatePagePanel()
@@ -759,15 +756,6 @@ public sealed partial class AboutDialog : Form
             return;
 
         _closeButton.Location = new Point(_titleBar.Width - _closeButton.Width - Scale(6), Math.Max(0, (_titleBar.Height - _closeButton.Height) / 2));
-    }
-
-    private void CenterInnerContent()
-    {
-        if (_scrollPanel is null || _innerContent is null)
-            return;
-
-        int left = Math.Max(_margin, (_scrollPanel.ClientSize.Width - _innerContent.Width) / 2);
-        _innerContent.Location = new Point(left, _margin);
     }
 
     private void AttachDrag(Control control)
