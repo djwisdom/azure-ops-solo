@@ -289,28 +289,29 @@ public sealed partial class AboutDialog : Form
         var leftColumn = CreateVerticalFlow();
         leftColumn.Padding = new Padding(0, 0, Scale(14), 0);
 
-        var identityRow = new TableLayoutPanel
+        var identityRow = new FlowLayoutPanel
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 2,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
             BackColor = Color.Transparent
         };
-        identityRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        identityRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
 
         var appIcon = new PictureBox
         {
             Image = AppIconFactory.CreateBitmap(Scale(40)),
-            SizeMode = PictureBoxSizeMode.StretchImage,
+            SizeMode = PictureBoxSizeMode.Normal,
             Size = new Size(Scale(40), Scale(40)),
-            Margin = new Padding(0, 0, Scale(12), 0)
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, Scale(2), Scale(12), 0)
         };
 
         var titleStack = CreateVerticalFlow();
-        titleStack.Width = Math.Max(Scale(320), (int)Math.Round(_contentWidth * 0.52));
+        titleStack.AutoSize = true;
+        titleStack.AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
         titleStack.Controls.Add(CreateLabel("Personal Flip Pad", "Segoe UI", Scale(18), FontStyle.Bold, _theme.Text));
 
@@ -327,8 +328,8 @@ public sealed partial class AboutDialog : Form
         versionRow.Controls.Add(CreateLabel($"{_buildFlavor} build", "Segoe UI", Scale(9), FontStyle.Regular, _theme.Disabled, new Padding(Scale(10), Scale(1), 0, 0)));
         titleStack.Controls.Add(versionRow);
 
-        identityRow.Controls.Add(appIcon, 0, 0);
-        identityRow.Controls.Add(titleStack, 1, 0);
+        identityRow.Controls.Add(appIcon);
+        identityRow.Controls.Add(titleStack);
         leftColumn.Controls.Add(identityRow);
         leftColumn.Controls.Add(CreateLabel(_runtimeLabel, "Segoe UI", Scale(10), FontStyle.Bold, _theme.Accent));
         leftColumn.Controls.Add(CreateLabel($"Commit: {_commit}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
