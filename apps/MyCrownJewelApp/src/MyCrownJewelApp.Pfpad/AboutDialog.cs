@@ -303,7 +303,7 @@ public sealed partial class AboutDialog : Form
 
         var appIcon = new PictureBox
         {
-            Image = new Bitmap(SystemIcons.Application.ToBitmap(), new Size(Scale(40), Scale(40))),
+            Image = AppIconFactory.CreateBitmap(Scale(40)),
             SizeMode = PictureBoxSizeMode.StretchImage,
             Size = new Size(Scale(40), Scale(40)),
             Margin = new Padding(0, 0, Scale(12), 0)
@@ -520,7 +520,7 @@ public sealed partial class AboutDialog : Form
 
         AddPageRow(layout, CreateWrappingLabel("Personal Flip Pad is built as a WinForms editor shell with .NET, custom controls, and theme-aware UI infrastructure.", _contentWidth, _theme.Muted), _sectionGap);
         AddPageRow(layout, CreateLabel("Third-party acknowledgements", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
-        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows SystemIcons.Application for the dialog app icon", _contentWidth, _theme.Muted), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• App icon generated at runtime via GDI+ (AppIconFactory)", _contentWidth, _theme.Muted), _rowGap);
         AddPageRow(layout, CreateWrappingLabel("Thanks to the broader OSS ecosystem that makes desktop developer tooling possible.", _contentWidth, _theme.Disabled));
 
         page.Controls.Add(layout);

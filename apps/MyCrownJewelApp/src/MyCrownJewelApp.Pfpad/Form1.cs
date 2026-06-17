@@ -916,6 +916,7 @@ using Microsoft.Extensions.DependencyInjection;
             : services.GetRequiredService<SessionManager>();
 
         InitializeComponent();
+        this.Icon = AppIconFactory.GetIcon();
 
         this.KeyDown += Form1_KeyDown;
 
