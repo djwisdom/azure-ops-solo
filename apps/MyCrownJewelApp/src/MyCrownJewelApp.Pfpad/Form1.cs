@@ -211,6 +211,7 @@ using Microsoft.Extensions.DependencyInjection;
         }
 
         private System.Windows.Forms.Timer? _findNotFoundResetTimer;
+        private System.Windows.Forms.Timer? _statusResetTimer;
 
         internal void NotifyNotFound(string text)
         {
@@ -237,6 +238,22 @@ using Microsoft.Extensions.DependencyInjection;
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     break;
             }
+        }
+
+        internal void SetStatus(string message, int durationMs = 4500)
+        {
+            if (lineColLabel == null)
+                return;
+
+            lineColLabel.Text = message;
+            _statusResetTimer?.Stop();
+            _statusResetTimer = new System.Windows.Forms.Timer { Interval = durationMs };
+            _statusResetTimer.Tick += (s, e) =>
+            {
+                _statusResetTimer?.Stop();
+                UpdateStatusBar();
+            };
+            _statusResetTimer.Start();
         }
 
         internal void ReopenLastClosedTab()
@@ -809,6 +826,7 @@ using Microsoft.Extensions.DependencyInjection;
         public string CurrentGitBranchSwitchBehavior => _gitBranchSwitchBehavior;
         public bool CurrentGitCommitLengthWarning => _gitCommitLengthWarning;
         public SecurityProfile CurrentSecurityProfile => _securityProfile;
+        internal SettingsService SettingsService => _settingsService;
         public bool CurrentSecPromptUntrustedWorkspace => _secPromptUntrustedWorkspace;
         public string CurrentSecTrustedWorkspacePaths => _secTrustedWorkspacePaths;
         public bool CurrentSecConfirmUrlOpen => _secConfirmUrlOpen;
@@ -3618,6 +3636,12 @@ internal void ToggleGutter()
 
         private void ApplySecuritySettings()
         {
+            SecurityEnforcementService.UrlBlockedCallback = (url, message) =>
+            {
+                if (InvokeRequired) { BeginInvoke(() => SetStatus(message)); return; }
+                SetStatus(message);
+            };
+
             _lintEngine.SastEnabled = _secSastEnabled;
             _lintEngine.HighlightHardcodedSecrets = _secHighlightHardcodedSecrets;
 
@@ -6019,4 +6043,3 @@ internal void ToggleGutter()
 
     }
 }
-

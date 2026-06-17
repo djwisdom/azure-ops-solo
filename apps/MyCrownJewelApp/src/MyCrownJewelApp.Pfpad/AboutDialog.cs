@@ -807,11 +807,70 @@ public sealed partial class AboutDialog : Form
     {
         try
         {
-            string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MyCrownJewelApp", "TextEditor", "settings.json");
-            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{settingsPath}\"") { UseShellExecute = false });
+            string settingsPath = SettingsService.DefaultSettingsPath();
+            if (!File.Exists(settingsPath))
+            {
+                MessageBox.Show("settings.json has not been created yet.\nLaunch and configure the app first.",
+                    "Settings File", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            bool isEncrypted = false;
+            try
+            {
+                string content = File.ReadAllText(settingsPath);
+                System.Text.Json.JsonDocument.Parse(content);
+            }
+            catch
+            {
+                isEncrypted = true;
+            }
+
+            if (isEncrypted)
+            {
+                var result = MessageBox.Show(
+                    "settings.json is protected by Windows DPAPI (Security Profile: Mid or Max).\n\n" +
+                    "The file cannot be opened directly in a text editor.\n\n" +
+                    "Would you like to export a plain-text copy to your Desktop for inspection?\n" +
+                    "(The exported copy will NOT be encrypted — handle with care.)",
+                    "Settings File — Encrypted",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+
+                if (result == DialogResult.Yes)
+                    ExportDecryptedSettings(settingsPath);
+            }
+            else
+            {
+                Process.Start(new ProcessStartInfo("notepad.exe", $"\"{settingsPath}\"") { UseShellExecute = false });
+            }
         }
         catch
         {
+        }
+    }
+
+    private static void ExportDecryptedSettings(string settingsPath)
+    {
+        try
+        {
+            var svc = new SettingsService(settingsPath);
+            var settings = svc.LoadWithDecrypt();
+            if (settings == null)
+            {
+                MessageBox.Show("Could not decrypt settings.", "Export Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string exportPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "pfpad-settings-export.json");
+            string json = System.Text.Json.JsonSerializer.Serialize(settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(exportPath, json);
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{exportPath}\"") { UseShellExecute = false });
+            MessageBox.Show($"Exported to Desktop as pfpad-settings-export.json.\nDelete this file after inspection.",
+                "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 

@@ -22,9 +22,38 @@ public static class SecurityEnforcementService
     public static SecurityProfile CurrentProfile { get; set; } = SecurityProfile.Low;
 
     /// <summary>
+    /// Optional callback invoked when a URL is blocked by the current profile.
+    /// Form1 wires this to the status bar so the user sees why a link didn't open.
+    /// </summary>
+    public static Action<string, string>? UrlBlockedCallback { get; set; }
+
+    /// <summary>
+    /// Reports a blocked URL. Fires <see cref="UrlBlockedCallback"/> if set.
+    /// </summary>
+    public static void ReportUrlBlocked(string url, SecurityProfile profile)
+    {
+        string reason = profile switch
+        {
+            SecurityProfile.Low => "dangerous URI scheme",
+            SecurityProfile.Mid => "dangerous URI scheme",
+            SecurityProfile.Max => Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme == "file" || u.Scheme == "ftp")
+                ? "file:// and ftp:// links are blocked at Max profile"
+                : "http:// links are blocked at Max profile — use https://",
+            _ => "security profile restriction"
+        };
+        UrlBlockedCallback?.Invoke(url, $"🔒 Link blocked ({reason}). Change profile in Settings → Security.");
+    }
+
+    /// <summary>
     /// Convenience overload that uses <see cref="CurrentProfile"/>.
     /// </summary>
-    public static bool IsUrlSchemeAllowed(string? url) => IsUrlSchemeAllowed(url, CurrentProfile);
+    public static bool IsUrlSchemeAllowed(string? url)
+    {
+        if (IsUrlSchemeAllowed(url, CurrentProfile)) return true;
+        if (!string.IsNullOrWhiteSpace(url))
+            ReportUrlBlocked(url, CurrentProfile);
+        return false;
+    }
 
     /// <summary>
     /// Returns true when the URL is safe to open with UseShellExecute=true at the given profile.
@@ -44,6 +73,9 @@ public static class SecurityEnforcementService
 
         if (profile >= SecurityProfile.Max)
         {
+            if (scheme == Uri.UriSchemeHttp)
+                return false;
+
             foreach (var blocked in MaxBlockedSchemes)
                 if (scheme == blocked) return false;
         }

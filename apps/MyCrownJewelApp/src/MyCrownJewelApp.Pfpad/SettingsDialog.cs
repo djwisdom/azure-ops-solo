@@ -449,8 +449,46 @@ internal sealed class SettingsDialog : Form
 
     private void OkButton_Click(object? sender, EventArgs e)
     {
+        var pendingProfile = (SecurityProfile)(_currentValues.TryGetValue("application.security.profile", out var pv) && pv is int pi
+            ? pi
+            : (int)_mainForm.CurrentSecurityProfile);
+        var currentProfile = _mainForm.CurrentSecurityProfile;
+
+        if (pendingProfile != currentProfile)
+        {
+            var svc = new SecurityProfileTransitionService(_mainForm.SettingsService);
+            using var dlg = new SecurityProfileTransitionDialog(currentProfile, pendingProfile, svc, _theme);
+            if (dlg.ShowDialog(this) != DialogResult.OK || !dlg.TransitionCompleted)
+            {
+                _currentValues["application.security.profile"] = (int)currentProfile;
+                RevertProfileRadios(currentProfile);
+                return;
+            }
+        }
+
         ApplyCurrentSettings();
         Close();
+    }
+
+    private void RevertProfileRadios(SecurityProfile profile)
+    {
+        RevertProfileRadios(_contentPanel.Controls, profile);
+    }
+
+    private static void RevertProfileRadios(Control.ControlCollection controls, SecurityProfile profile)
+    {
+        foreach (Control c in controls)
+        {
+            if (c is RadioButton rb && rb.Tag is string tag && tag.StartsWith("radio.security.profile.", StringComparison.Ordinal))
+            {
+                string suffix = tag["radio.security.profile.".Length..];
+                if (int.TryParse(suffix, out int level))
+                    rb.Checked = level == (int)profile;
+            }
+
+            if (c.HasChildren)
+                RevertProfileRadios(c.Controls, profile);
+        }
     }
 
     private void ImportButton_Click(object? sender, EventArgs e)
