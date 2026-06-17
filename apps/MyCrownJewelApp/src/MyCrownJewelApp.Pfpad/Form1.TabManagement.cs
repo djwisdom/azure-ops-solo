@@ -223,17 +223,20 @@ namespace MyCrownJewelApp.Pfpad
                 if (result.Content == null) return;
                 string content = result.Content;
                 var encoding = result.Encoding;
+                // Capture doc by reference so we find the right tab regardless of
+                // activeDocIndex changing while multiple files load concurrently.
+                var capturedDoc = doc;
                 BeginInvoke(() =>
                 {
                     try
                     {
-                        if (IsDisposed || activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
-                        var d = documents[activeDocIndex];
-                        if (d.FilePath != path) return;
-                        d.Content = content;
-                        d.FileEncoding = encoding;
-                        d.ContainsRtlText = UnicodeFileHelper.ContainsRtlText(content);
-                        d.SavedHash = ComputeContentHash(content);
+                        if (IsDisposed) return;
+                        int docIndex = documents.IndexOf(capturedDoc);
+                        if (docIndex < 0) return; // tab was closed before load finished
+                        capturedDoc.Content = content;
+                        capturedDoc.FileEncoding = encoding;
+                        capturedDoc.ContainsRtlText = UnicodeFileHelper.ContainsRtlText(content);
+                        capturedDoc.SavedHash = ComputeContentHash(content);
 
                         // Detect per-file indentation style (async path)
                         if (_detectIndentationFromFile)
@@ -241,20 +244,20 @@ namespace MyCrownJewelApp.Pfpad
                             var (detectedSpaces, detectedTabSz, detected) = IndentationHelper.DetectIndentation(content);
                             if (detected)
                             {
-                                d.DetectedInsertSpaces = detectedSpaces;
-                                d.DetectedTabSize = detectedTabSz;
+                                capturedDoc.DetectedInsertSpaces = detectedSpaces;
+                                capturedDoc.DetectedTabSize = detectedTabSz;
                             }
                         }
 
-                        // Only update if this tab is currently active
-                        if (activeDocIndex == tabControl.SelectedIndex && tabControl.SelectedIndex >= 0)
+                        // Update the editor only if this tab is currently visible
+                        if (docIndex == tabControl.SelectedIndex && tabControl.SelectedIndex >= 0)
                         {
                             if (textEditor != null && !textEditor.IsDisposed && textEditor.IsHandleCreated)
                             {
                                 textEditor.TextChanged -= TextEditor_TextChanged;
                                 textEditor.Text = content;
                                 textEditor.TextChanged += TextEditor_TextChanged;
-                                savedContentHash = d.SavedHash;
+                                savedContentHash = capturedDoc.SavedHash;
                                 isModified = false;
 
                                 // Re-highlight and update UI (skip for large files)
@@ -263,7 +266,7 @@ namespace MyCrownJewelApp.Pfpad
                                     CreateIncrementalHighlighter();
                                 }
                                 UpdateStatusBar();
-                                UpdateTabTitle(activeDocIndex);
+                                UpdateTabTitle(docIndex);
                                 UpdateThemeColors(_themeManager.CurrentTheme);
                                 UpdateBreadcrumbs();
                             }
