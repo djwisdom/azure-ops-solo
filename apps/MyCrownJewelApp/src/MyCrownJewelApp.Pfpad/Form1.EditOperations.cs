@@ -98,7 +98,7 @@ namespace MyCrownJewelApp.Pfpad
 
         private void About_Click(object? sender, EventArgs e)
         {
-            using var dlg = new AboutDialog();
+            using var dlg = new AboutDialog(openFileCount: documents.Count, workspaceRoot: _workspaceRoot);
             dlg.ShowDialog(this);
         }
 

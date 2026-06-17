@@ -1,8 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
@@ -12,6 +16,46 @@ public sealed partial class AboutDialog : Form
     private const int WM_NCLBUTTONDOWN = 0x00A1;
     private const int HTCAPTION = 2;
 
+    private readonly Theme _theme;
+    private readonly float _scale;
+    private readonly int _dialogWidth;
+    private readonly int _dialogHeight;
+    private readonly int _titleBarHeight;
+    private readonly int _footerHeight;
+    private readonly int _margin;
+    private readonly int _sectionGap;
+    private readonly int _rowGap;
+    private readonly int _contentWidth;
+    private readonly int _openFileCount;
+    private readonly string? _workspaceRoot;
+    private readonly string _version;
+    private readonly string _description;
+    private readonly string _copyright;
+    private readonly string _commit;
+    private readonly string _buildDate;
+    private readonly string _clrVersion;
+    private readonly string _arch;
+    private readonly string _osArch;
+    private readonly string _osDesc;
+    private readonly string _runtimeLabel;
+    private readonly string _buildFlavor;
+    private readonly int _processorCount;
+    private readonly long _totalRam;
+    private readonly long _workingSet;
+    private readonly long _managedHeap;
+    private readonly string _uptimeText;
+    private readonly string _sessionStats;
+    private readonly string _themeName;
+
+    private Panel _titleBar = null!;
+    private Button _closeButton = null!;
+    private Panel _scrollPanel = null!;
+    private Panel _innerContent = null!;
+    private Panel _pageHost = null!;
+    private readonly List<Button> _tabButtons = new();
+    private readonly Dictionary<Button, Panel> _tabPages = new();
+    private readonly Dictionary<Button, Panel> _tabUnderlines = new();
+
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
@@ -19,297 +63,772 @@ public sealed partial class AboutDialog : Form
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ReleaseCapture();
 
-    public AboutDialog()
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AboutDialog"/> class.
+    /// </summary>
+    public AboutDialog(int openFileCount = 0, string? workspaceRoot = null)
     {
-        var theme = ThemeManager.Instance.CurrentTheme;
-        BackColor = theme.Background;
-        ForeColor = theme.Text;
+        using var graphics = Graphics.FromHwnd(IntPtr.Zero);
+        _scale = Math.Max(1f, graphics.DpiX / 96f);
+        _theme = ThemeManager.Instance.CurrentTheme;
+        _openFileCount = Math.Max(0, openFileCount);
+        _workspaceRoot = workspaceRoot;
+
+        var asm = typeof(AboutDialog).Assembly;
+        var verAttrs = asm.GetCustomAttributes(typeof(AssemblyFileVersionAttribute), false);
+        _version = verAttrs.Length > 0
+            ? ((AssemblyFileVersionAttribute)verAttrs[0]).Version
+            : asm.GetName().Version?.ToString() ?? "0.0.0.0";
+        _description = asm.GetCustomAttribute<AssemblyDescriptionAttribute>()?.Description ?? string.Empty;
+        _copyright = asm.GetCustomAttribute<AssemblyCopyrightAttribute>()?.Copyright ?? string.Empty;
+        _commit = GetMetadata("CommitHash", "unknown");
+        _buildDate = GetMetadata("BuildDate", "unknown");
+        _clrVersion = Environment.Version.ToString();
+        _arch = RuntimeInformation.ProcessArchitecture.ToString();
+        _osArch = RuntimeInformation.OSArchitecture.ToString();
+        _osDesc = string.IsNullOrWhiteSpace(RuntimeInformation.OSDescription)
+            ? Environment.OSVersion.VersionString
+            : RuntimeInformation.OSDescription.Trim();
+        _runtimeLabel = $".NET {Environment.Version.Major} (net{Environment.Version.Major}.0-windows) • {_arch}";
+        _processorCount = Environment.ProcessorCount;
+        _totalRam = Math.Max(0L, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+        _managedHeap = Math.Max(0L, GC.GetTotalMemory(false));
+        using (var process = Process.GetCurrentProcess())
+        {
+            _workingSet = Math.Max(0L, process.WorkingSet64);
+            var uptime = DateTime.UtcNow - process.StartTime.ToUniversalTime();
+            _uptimeText = uptime.TotalHours >= 1
+                ? $"{(int)uptime.TotalHours}h {uptime.Minutes}m"
+                : $"{uptime.Minutes}m {uptime.Seconds}s";
+        }
+        _themeName = _theme.Name;
+        _sessionStats = BuildSessionStats(_openFileCount, _workspaceRoot);
+
+#if DEBUG
+        _buildFlavor = "Debug";
+#else
+        _buildFlavor = "Release";
+#endif
+
+        _dialogWidth = Scale(920);
+        _dialogHeight = Scale(700);
+        _titleBarHeight = Scale(44);
+        _footerHeight = Scale(60);
+        _margin = Scale(24);
+        _sectionGap = Scale(16);
+        _rowGap = Scale(10);
+        _contentWidth = _dialogWidth - (_margin * 2) - Scale(8);
+
+        BackColor = _theme.Background;
+        ForeColor = _theme.Text;
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false;
         ShowIcon = false;
+        DoubleBuffered = true;
+        KeyPreview = true;
+        Size = new Size(_dialogWidth, _dialogHeight);
+        MinimumSize = Size;
+        MaximumSize = Size;
 
-        var asm = typeof(AboutDialog).Assembly;
-        var verAttrs = asm.GetCustomAttributes(typeof(AssemblyFileVersionAttribute), false);
-        string version = verAttrs.Length > 0
-            ? ((AssemblyFileVersionAttribute)verAttrs[0]).Version
-            : asm.GetName().Version?.ToString() ?? "0.0.0.0";
-        string description = asm.GetCustomAttribute<AssemblyDescriptionAttribute>()?.Description ?? "";
-        string copyright = asm.GetCustomAttribute<AssemblyCopyrightAttribute>()?.Copyright ?? "";
-        string commit = GetMetadata("CommitHash", "unknown");
-        string buildDate = GetMetadata("BuildDate", "unknown");
+        BuildLayout();
+        PositionCloseButton();
 
-        string osDesc = Environment.OSVersion.Platform == PlatformID.Win32NT
-            ? $"Windows_NT {Environment.OSVersion.Version.Major}.{Environment.OSVersion.Version.Minor} build {Environment.OSVersion.Version.Build}"
-            : Environment.OSVersion.VersionString;
-        string clrVersion = Environment.Version.ToString();
-        string arch = RuntimeInformation.ProcessArchitecture.ToString();
-        string osArch = RuntimeInformation.OSArchitecture.ToString();
-        string procCount = Environment.ProcessorCount.ToString();
-        long memBytes = 0;
-        try { memBytes = (long)new Microsoft.VisualBasic.Devices.ComputerInfo().TotalPhysicalMemory; } catch { }
+        Paint += (_, e) =>
+        {
+            using var pen = new Pen(_theme.Border, 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        };
+    }
 
-        int margin = 30;
-        int lineGap = 3;
-
-        // Title bar
-        var titleBar = new Panel
+    private void BuildLayout()
+    {
+        _titleBar = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 44,
-            BackColor = theme.PanelBackground,
+            Height = _titleBarHeight,
+            BackColor = _theme.PanelBackground,
             Cursor = Cursors.SizeAll
         };
-        titleBar.MouseDown += (s, e) => { ReleaseCapture(); SendMessage(Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0); };
+        AttachDrag(_titleBar);
 
         var titleLabel = new Label
         {
-            Text = "Personal Flip Pad",
-            Font = new Font("Segoe UI", 15, FontStyle.Bold),
-            ForeColor = theme.Text,
-            BackColor = Color.Transparent,
             AutoSize = true,
-            Location = new Point(margin, 9)
-        };
-        titleBar.Controls.Add(titleLabel);
-
-        var closeBtn = new Button
-        {
-            Text = "\u00D7",
-            Font = new Font("Segoe UI", 15, FontStyle.Regular),
-            FlatStyle = FlatStyle.Flat,
-            FlatAppearance = { BorderSize = 0 },
+            Text = "About Personal Flip Pad",
+            Font = new Font("Segoe UI", Scale(13), FontStyle.Bold),
+            ForeColor = _theme.Text,
             BackColor = Color.Transparent,
-            ForeColor = theme.Muted,
-            Size = new Size(34, 34),
-            Location = new Point(700, 5),
-            Cursor = Cursors.Hand,
-            TabStop = false,
-            Anchor = AnchorStyles.Top | AnchorStyles.Right
+            Location = new Point(_margin, Scale(10))
         };
-        closeBtn.Click += (s, e) => Close();
-        closeBtn.FlatAppearance.MouseOverBackColor = theme.Accent;
-        titleBar.Controls.Add(closeBtn);
+        AttachDrag(titleLabel);
+        _titleBar.Controls.Add(titleLabel);
 
-        var content = new Panel
+        _closeButton = CreateFlatButton("×", Scale(36), Scale(32));
+        _closeButton.Font = new Font("Segoe UI", Scale(14), FontStyle.Regular);
+        _closeButton.ForeColor = _theme.Muted;
+        _closeButton.BackColor = Color.Transparent;
+        _closeButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        _closeButton.FlatAppearance.MouseOverBackColor = _theme.Accent;
+        _closeButton.Click += (_, _) => Close();
+        _titleBar.Resize += (_, _) => PositionCloseButton();
+
+        var footer = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = _footerHeight,
+            BackColor = _theme.Background,
+            Padding = new Padding(_margin / 2, Scale(8), _margin / 2, Scale(12))
+        };
+
+        var okButton = CreateFlatButton("OK", Scale(96), Scale(34));
+        okButton.Anchor = AnchorStyles.None;
+        okButton.Click += (_, _) => Close();
+        AcceptButton = okButton;
+        CancelButton = okButton;
+
+        var footerLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            BackColor = theme.Background,
-            Padding = new Padding(margin, 12, margin, margin)
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        footerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        footerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footerLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        footerLayout.Controls.Add(okButton, 1, 0);
+        footer.Controls.Add(footerLayout);
+
+        _scrollPanel = new Panel
+        {
+            AutoScroll = true,
+            Dock = DockStyle.Fill,
+            BackColor = _theme.Background
         };
 
-        int y = 0;
-        int contentWidth = 560; // totalWidth (620) - 2*margin (60)
-
-        void AddLine(string text, FontStyle style, Color? color = null, int extraTop = 0, bool wordWrap = false)
+        _innerContent = new Panel
         {
-            y += extraTop;
-            var lbl = new Label
-            {
-                Text = text,
-                Font = new Font("Segoe UI", 10, style),
-                ForeColor = color ?? theme.Text,
-                BackColor = Color.Transparent,
-                Location = new Point(margin, y),
-                MaximumSize = new Size(contentWidth, 0),
-                AutoSize = wordWrap,
-                AutoEllipsis = !wordWrap
-            };
-            if (!wordWrap)
-                lbl.AutoSize = true;
-            content.Controls.Add(lbl);
-            y = lbl.Bottom + lineGap;
-        }
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = _theme.Background,
+            Location = new Point(_margin, _margin),
+            MinimumSize = new Size(_contentWidth, 0),
+            MaximumSize = new Size(_contentWidth, 0)
+        };
+        _scrollPanel.Resize += (_, _) => CenterInnerContent();
 
-        void AddSectionHeader(string text)
+        var tabStrip = new FlowLayoutPanel
         {
-            y += 4;
-            var lbl = new Label
-            {
-                Text = text,
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
-                ForeColor = theme.Text,
-                BackColor = Color.Transparent,
-                AutoSize = true,
-                Location = new Point(margin, y)
-            };
-            content.Controls.Add(lbl);
-            y = lbl.Bottom + lineGap;
-        }
+            AutoSize = true,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = Color.Transparent,
+            Location = new Point(0, 0),
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
 
-        void AddSeparator()
+        _pageHost = new Panel
         {
-            y += 6;
-            var sep = new Label
-            {
-                Text = "",
-                BorderStyle = BorderStyle.None,
-                BackColor = theme.Muted,
-                Height = 1,
-                Width = contentWidth
-            };
-            sep.Location = new Point(margin, y);
-            content.Controls.Add(sep);
-            y = sep.Bottom;
-        }
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = _theme.Background,
+            Width = _contentWidth,
+            Location = new Point(0, Scale(52))
+        };
 
-        // --- App info ---
-        AddLine("Personal Flip Pad", FontStyle.Bold, theme.Text, 6);
-        AddLine($"Version {version}", FontStyle.Regular, theme.Muted);
-        // Highlight the target framework prominently
-        string runtimeLabel = $".NET {Environment.Version.Major} (net{Environment.Version.Major}.0-windows)  •  {arch}";
-        AddLine(runtimeLabel, FontStyle.Bold, theme.Accent);
-        if (!string.IsNullOrEmpty(description))
-            AddLine(description, FontStyle.Regular, theme.Muted, 0, wordWrap: true);
-        AddLine($"Commit: {commit}", FontStyle.Regular, theme.Muted);
-        AddLine($"Build: {buildDate} UTC", FontStyle.Regular, theme.Muted);
-        if (!string.IsNullOrEmpty(copyright))
-            AddLine(copyright, FontStyle.Regular, theme.Disabled);
+        var aboutPage = CreateAboutPage();
+        var featuresPage = CreateFeaturesPage();
+        var systemPage = CreateSystemPage();
+        var creditsPage = CreateCreditsPage();
 
-        AddSeparator();
+        var aboutButton = CreateTabButton("About", aboutPage);
+        var featuresButton = CreateTabButton("Features", featuresPage);
+        var systemButton = CreateTabButton("System", systemPage);
+        var creditsButton = CreateTabButton("Credits", creditsPage);
+
+        tabStrip.Controls.Add(aboutButton);
+        tabStrip.Controls.Add(featuresButton);
+        tabStrip.Controls.Add(systemButton);
+        tabStrip.Controls.Add(creditsButton);
+
+        _innerContent.Controls.Add(tabStrip);
+        _innerContent.Controls.Add(_pageHost);
+        _scrollPanel.Controls.Add(_innerContent);
+
+        Controls.Add(_scrollPanel);
+        Controls.Add(footer);
+        Controls.Add(_titleBar);
+        _titleBar.Controls.Add(_closeButton);
+
+        SelectTab(aboutButton);
+        CenterInnerContent();
+    }
+
+    private Panel CreateAboutPage()
+    {
+        var page = CreatePagePanel();
+        var layout = CreatePageLayout();
+
+        var header = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Width = _contentWidth,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60f));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
+
+        var leftColumn = CreateVerticalFlow();
+        leftColumn.Padding = new Padding(0, 0, Scale(14), 0);
+
+        var identityRow = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        identityRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        identityRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+
+        var appIcon = new PictureBox
+        {
+            Image = new Bitmap(SystemIcons.Application.ToBitmap(), new Size(Scale(40), Scale(40))),
+            SizeMode = PictureBoxSizeMode.StretchImage,
+            Size = new Size(Scale(40), Scale(40)),
+            Margin = new Padding(0, 0, Scale(12), 0)
+        };
+
+        var titleStack = CreateVerticalFlow();
+        titleStack.Width = Math.Max(Scale(320), (int)Math.Round(_contentWidth * 0.52));
+
+        titleStack.Controls.Add(CreateLabel("Personal Flip Pad", "Segoe UI", Scale(18), FontStyle.Bold, _theme.Text));
+
+        var versionRow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        versionRow.Controls.Add(CreateLabel($"Version {_version}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
+        versionRow.Controls.Add(CreateLabel($"{_buildFlavor} build", "Segoe UI", Scale(9), FontStyle.Regular, _theme.Disabled, new Padding(Scale(10), Scale(1), 0, 0)));
+        titleStack.Controls.Add(versionRow);
+
+        identityRow.Controls.Add(appIcon, 0, 0);
+        identityRow.Controls.Add(titleStack, 1, 0);
+        leftColumn.Controls.Add(identityRow);
+        leftColumn.Controls.Add(CreateLabel(_runtimeLabel, "Segoe UI", Scale(10), FontStyle.Bold, _theme.Accent));
+        leftColumn.Controls.Add(CreateLabel($"Commit: {_commit}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
+        leftColumn.Controls.Add(CreateLabel($"Build: {_buildDate}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
+        if (!string.IsNullOrWhiteSpace(_description))
+            leftColumn.Controls.Add(CreateWrappingLabel(_description, Math.Max(Scale(380), (int)Math.Round(_contentWidth * 0.54)), _theme.Muted));
+        if (!string.IsNullOrWhiteSpace(_copyright))
+            leftColumn.Controls.Add(CreateWrappingLabel(_copyright, Math.Max(Scale(380), (int)Math.Round(_contentWidth * 0.54)), _theme.Disabled));
+
+        var rightColumn = CreateVerticalFlow();
+        rightColumn.Padding = new Padding(Scale(14), 0, 0, 0);
+        rightColumn.Controls.Add(CreateLabel("Session", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text));
+        rightColumn.Controls.Add(CreateWrappingLabel(_sessionStats, Math.Max(Scale(240), (int)Math.Round(_contentWidth * 0.34)), _theme.Muted));
+        rightColumn.Controls.Add(CreateLabel($"Theme: {_themeName}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted, new Padding(0, _rowGap, 0, 0)));
+        rightColumn.Controls.Add(CreateLabel($"Build flavor: {_buildFlavor}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
+        rightColumn.Controls.Add(CreateLabel("Press Esc to close", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Disabled, new Padding(0, _rowGap, 0, 0)));
+
+        header.Controls.Add(leftColumn, 0, 0);
+        header.Controls.Add(rightColumn, 1, 0);
+
+        AddPageRow(layout, header, _sectionGap);
+        AddPageRow(layout, CreateSeparator(), _sectionGap);
+        AddPageRow(layout, CreateLabel("Quick links", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
+
+        var quickLinks = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            Width = _contentWidth
+        };
+        quickLinks.Controls.Add(CreateActionButton("Copy Info", (_, _) => CopyInfoToClipboard()));
+        quickLinks.Controls.Add(CreateActionButton("Open Log Folder", (_, _) => OpenLogFolder()));
+        quickLinks.Controls.Add(CreateActionButton("Open settings.json", (_, _) => OpenSettingsFile()));
+        AddPageRow(layout, quickLinks, _rowGap);
+
+        AddPageRow(layout, CreateWrappingLabel("Use this dialog to confirm build details, inspect session context, and jump to local support files without leaving the editor.", _contentWidth, _theme.Disabled));
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private Panel CreateFeaturesPage()
+    {
+        var page = CreatePagePanel();
+        var layout = CreatePageLayout();
+
+        AddPageRow(layout, CreateLabel("Features & dependencies", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("Core editor capabilities, modernization work, and runtime package inventory currently visible in this process.", _contentWidth, _theme.Muted), _rowGap);
 
         var knownPackagePrefixes = new[]
         {
-            "LibGit2Sharp", "Microsoft.CodeAnalysis", "TreeSitter", "xunit", "coverlet"
+            "LibGit2Sharp",
+            "Microsoft.CodeAnalysis",
+            "TreeSitter",
+            "System.IO.Hashing"
         };
+
         var knownPackages = AppDomain.CurrentDomain.GetAssemblies()
-            .Select(a =>
+            .Select(assembly =>
             {
                 try
                 {
-                    var n = a.GetName();
-                    return (Name: n.Name, Version: n.Version?.ToString() ?? "");
+                    var name = assembly.GetName();
+                    return (Name: name.Name, Version: name.Version?.ToString() ?? string.Empty);
                 }
-                catch { return (Name: "", Version: ""); }
+                catch
+                {
+                    return (Name: string.Empty, Version: string.Empty);
+                }
             })
-            .Where(a => !string.IsNullOrEmpty(a.Name) && knownPackagePrefixes.Any(p => a.Name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
-            .OrderBy(a => a.Name)
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name) && knownPackagePrefixes.Any(prefix => item.Name!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(item => item.Name)
             .ToList();
 
-        var extraPackages = new[] { ("xunit.core", "2.8.*"), ("xunit.runner.visualstudio", "2.8.*"), ("coverlet.collector", "6.0.*") };
-        var displayed = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        // Features and Dependencies in a scrollable RichTextBox
-        y += 20; // Extra spacing similar to commit section
-        var featuresLabel = new Label
+        var extraPackages = new[]
         {
-            Text = "Features & Dependencies",
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            ForeColor = theme.Text,
-            BackColor = Color.Transparent,
-            AutoSize = true,
-            Location = new Point(margin, y)
+            (Name: "System.IO.Hashing", Version: "BCL"),
+            (Name: "LibGit2Sharp", Version: "runtime"),
+            (Name: "TreeSitter.DotNet", Version: "runtime")
         };
-        content.Controls.Add(featuresLabel);
-        y = featuresLabel.Bottom + lineGap;
+
+        var displayed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var featuresText = new StringBuilder();
+        featuresText.AppendLine("Features:");
+        featuresText.AppendLine("• Flat-themed code editor with syntax highlighting, minimap, and custom WinForms chrome");
+        featuresText.AppendLine("• Roslyn-powered C# analysis with semantic highlighting and background workspace loading");
+        featuresText.AppendLine("• Git integration for status, diff, history, blame, and branch workflows");
+        featuresText.AppendLine("• Debug Adapter Protocol integration with breakpoint persistence and session controls");
+        featuresText.AppendLine("• Vim mode, snippets, command palette, folding, bookmarks, and multi-tab session restore");
+        featuresText.AppendLine("• Large-file degradation safeguards to keep the editor responsive");
+        featuresText.AppendLine();
+        featuresText.AppendLine(".NET modernization:");
+        featuresText.AppendLine($"• Target framework: net{Environment.Version.Major}.0-windows  •  CLR {_clrVersion}");
+        featuresText.AppendLine("• Source-generated P/Invoke via LibraryImport for native interop paths");
+        featuresText.AppendLine("• Service-backed startup infrastructure with persisted session and profile data");
+        featuresText.AppendLine("• Theme-aware shell, diagnostics, notifications, and workspace tooling");
+        featuresText.AppendLine();
+        featuresText.AppendLine("NuGet dependencies:");
+
+        foreach (var package in knownPackages)
+        {
+            if (package.Name == null || !displayed.Add(package.Name))
+                continue;
+
+            featuresText.AppendLine($"  {package.Name}  {package.Version}");
+        }
+
+        foreach (var (name, version) in extraPackages)
+        {
+            if (!displayed.Add(name))
+                continue;
+
+            featuresText.AppendLine($"  {name}  {version}");
+        }
+
+        featuresText.AppendLine($"  .NET Runtime  {_clrVersion}  ({_arch})  — net{Environment.Version.Major}.0-windows");
 
         var featuresBox = new RichTextBox
         {
             ReadOnly = true,
             BorderStyle = BorderStyle.None,
-            BackColor = theme.PanelBackground,
-            ForeColor = theme.Text,
-            Font = new Font("Consolas", 9),
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            Font = new Font("Consolas", Scale(9), FontStyle.Regular),
             ScrollBars = RichTextBoxScrollBars.Vertical,
-            Location = new Point(margin, y),
-            Size = new Size(contentWidth, 240),
-            WordWrap = true
+            DetectUrls = false,
+            WordWrap = true,
+            Width = _contentWidth,
+            Height = Scale(430),
+            Margin = Padding.Empty,
+            Text = featuresText.ToString()
         };
 
-        var featuresText = new System.Text.StringBuilder();
-        featuresText.AppendLine("Features:");
-        featuresText.AppendLine("• Flat-themed code editor with syntax highlighting and minimap");
-        featuresText.AppendLine("• AIOps intelligence layer — observability, incident, deployment, security");
-        featuresText.AppendLine("• AI-assisted root cause analysis, risk scoring, OTel code generation");
-        featuresText.AppendLine("• DPAPI-encrypted connector settings (tied to Windows user account)");
-        featuresText.AppendLine("• DevSecOps scanning: secrets, CVEs, IaC risks, policy violations");
-        featuresText.AppendLine("• Vim mode with macros, marks, visual/block selection, .vimrc support");
-        featuresText.AppendLine("• Git integration with diff, blame, history, conflict resolution");
-        featuresText.AppendLine("• Workspace panel and Visual Studio-style Solution Explorer");
-        featuresText.AppendLine("• Roslyn-powered IntelliSense and semantic highlighting for C#");
-        featuresText.AppendLine("• Code folding, elastic tabs, multi-caret, column selection");
-        featuresText.AppendLine("• Performance profiler with flame graph analysis");
-        featuresText.AppendLine("• Command palette with 40+ searchable commands (Ctrl+Shift+P)");
-        featuresText.AppendLine("• Language support: C#, C/C++, Python, JS/TS, Go, Rust, Terraform, Bicep, YAML");
-        featuresText.AppendLine("• 23 built-in themes with full flat, theme-aware UI");
-        featuresText.AppendLine("• Unicode, BOM detection, RTL text support");
-        featuresText.AppendLine("• Streaming build pipeline with MSBuild diagnostic parsing (Ctrl+Shift+B)");
-        featuresText.AppendLine("• Notification center with PeriodicTimer feed polling and live toasts");
-        featuresText.AppendLine();
-        featuresText.AppendLine(".NET 10 Modernisation:");
-        featuresText.AppendLine($"• Target framework: net{Environment.Version.Major}.0-windows  •  CLR {clrVersion}");
-        featuresText.AppendLine("• [LibraryImport] source-generated P/Invoke (42 converted, trim/AOT safe)");
-        featuresText.AppendLine("• Form1 partial-class decomposition — 9 522 → 4 972 lines in core file");
-        featuresText.AppendLine("• DocumentManager with events (DocumentAdded/Removed/ActiveChanged)");
-        featuresText.AppendLine("• SettingsService with atomic write and corrupt-backup recovery");
-        featuresText.AppendLine("• Task.WhenEach (.NET 9+) for progressive feed updates");
-        featuresText.AppendLine("• PeriodicTimer for drift-free background polling");
-        featuresText.AppendLine();
-        featuresText.AppendLine("NuGet Dependencies:");
+        AddPageRow(layout, featuresBox);
+        page.Controls.Add(layout);
+        return page;
+    }
 
-        foreach (var p in knownPackages)
+    private Panel CreateSystemPage()
+    {
+        var page = CreatePagePanel();
+        var layout = CreatePageLayout();
+
+        AddPageRow(layout, CreateLabel("System", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("Live runtime and process information for the current Personal Flip Pad session.", _contentWidth, _theme.Muted), _sectionGap);
+
+        var grid = new TableLayoutPanel
         {
-            if (p.Name == null || !displayed.Add(p.Name)) continue;
-            featuresText.AppendLine($"  {p.Name}  {p.Version}");
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Width = _contentWidth,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34f));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66f));
+
+        AddInfoRow(grid, "OS", _osDesc + $" ({_osArch})");
+        AddInfoRow(grid, ".NET", _runtimeLabel + $"  •  CLR {_clrVersion}");
+        AddInfoRow(grid, "CPU", $"{_processorCount} logical processors");
+        AddInfoRow(grid, "RAM", FormatBytes(_totalRam));
+        AddInfoRow(grid, "Working set", $"{ToMegabytes(_workingSet)} MB");
+        AddInfoRow(grid, "Managed heap", $"{ToMegabytes(_managedHeap)} MB");
+        AddInfoRow(grid, "Uptime", _uptimeText);
+        AddInfoRow(grid, "Theme", _themeName);
+        AddInfoRow(grid, "Open files", _openFileCount.ToString());
+        AddInfoRow(grid, "Workspace", string.IsNullOrWhiteSpace(_workspaceRoot) ? "Not set" : _workspaceRoot!);
+        AddInfoRow(grid, "Commit", _commit);
+        AddInfoRow(grid, "Build date", _buildDate);
+
+        AddPageRow(layout, grid);
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private Panel CreateCreditsPage()
+    {
+        var page = CreatePagePanel();
+        var layout = CreatePageLayout();
+
+        AddPageRow(layout, CreateLabel("Credits", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
+        if (!string.IsNullOrWhiteSpace(_copyright))
+            AddPageRow(layout, CreateWrappingLabel(_copyright, _contentWidth, _theme.Muted), _rowGap);
+
+        AddPageRow(layout, CreateWrappingLabel("Personal Flip Pad is built as a WinForms editor shell with .NET, custom controls, and theme-aware UI infrastructure.", _contentWidth, _theme.Muted), _sectionGap);
+        AddPageRow(layout, CreateLabel("Third-party acknowledgements", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows SystemIcons.Application for the dialog app icon", _contentWidth, _theme.Muted), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("Thanks to the broader OSS ecosystem that makes desktop developer tooling possible.", _contentWidth, _theme.Disabled));
+
+        page.Controls.Add(layout);
+        return page;
+    }
+
+    private Button CreateTabButton(string text, Panel page)
+    {
+        var button = CreateFlatButton(text, Scale(120), Scale(40));
+        button.Margin = new Padding(0, 0, Scale(8), 0);
+        button.BackColor = _theme.Background;
+        button.FlatAppearance.BorderSize = 0;
+        button.ForeColor = _theme.Muted;
+        button.TextAlign = ContentAlignment.MiddleCenter;
+
+        var underline = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = Scale(2),
+            BackColor = _theme.Accent,
+            Visible = false
+        };
+        button.Controls.Add(underline);
+
+        button.Click += (_, _) => SelectTab(button);
+        _tabButtons.Add(button);
+        _tabPages[button] = page;
+        _tabUnderlines[button] = underline;
+        return button;
+    }
+
+    private void SelectTab(Button selectedButton)
+    {
+        foreach (var button in _tabButtons)
+        {
+            bool isSelected = ReferenceEquals(button, selectedButton);
+            button.BackColor = isSelected ? _theme.PanelBackground : _theme.Background;
+            button.ForeColor = isSelected ? _theme.Text : _theme.Muted;
+            if (_tabUnderlines.TryGetValue(button, out var underline))
+                underline.Visible = isSelected;
         }
-        foreach (var (name, ver) in extraPackages)
+
+        _pageHost.SuspendLayout();
+        _pageHost.Controls.Clear();
+        if (_tabPages.TryGetValue(selectedButton, out var page))
         {
-            if (!displayed.Add(name)) continue;
-            featuresText.AppendLine($"  {name}  {ver}");
+            page.Visible = true;
+            page.Location = new Point(0, 0);
+            _pageHost.Controls.Add(page);
         }
+        _pageHost.ResumeLayout(true);
+        CenterInnerContent();
+    }
 
-        featuresText.AppendLine($"  .NET Runtime  {clrVersion}  ({arch})  — net{Environment.Version.Major}.0-windows");
-
-        featuresBox.Text = featuresText.ToString();
-        content.Controls.Add(featuresBox);
-        y = featuresBox.Bottom + lineGap;
-
-        AddSeparator();
-        AddSectionHeader("System");
-        AddLine($"  OS: {osDesc}  ({osArch})", FontStyle.Regular, theme.Muted);
-        AddLine($"  CPU: {procCount} logical processors", FontStyle.Regular, theme.Muted);
-        if (memBytes > 0)
+    private Panel CreatePagePanel()
+    {
+        return new Panel
         {
-            double memGb = memBytes / (1024.0 * 1024.0 * 1024.0);
-            AddLine($"  RAM: {memGb:F1} GB", FontStyle.Regular, theme.Muted);
-        }
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = _theme.Background,
+            Width = _contentWidth,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+    }
 
-        y += 4;
-        var okBtn = new Button
+    private TableLayoutPanel CreatePageLayout()
+    {
+        var layout = new TableLayoutPanel
         {
-            Text = "OK",
-            Font = new Font("Segoe UI", 10, FontStyle.Regular),
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            Width = _contentWidth,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, _contentWidth));
+        return layout;
+    }
+
+    private FlowLayoutPanel CreateVerticalFlow()
+    {
+        return new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            FlowDirection = FlowDirection.TopDown,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+    }
+
+    private void AddPageRow(TableLayoutPanel layout, Control control, int bottomMargin = 0)
+    {
+        control.Margin = new Padding(0, 0, 0, bottomMargin);
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.Controls.Add(control, 0, layout.RowCount);
+        layout.RowCount++;
+    }
+
+    private void AddInfoRow(TableLayoutPanel grid, string label, string value)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var rowIndex = grid.RowCount;
+        grid.RowCount++;
+
+        var keyLabel = CreateLabel(label, "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text);
+        keyLabel.Margin = new Padding(0, 0, Scale(12), _rowGap);
+        var valueLabel = CreateWrappingLabel(value, Math.Max(Scale(420), (int)Math.Round(_contentWidth * 0.62)), _theme.Muted);
+        valueLabel.Margin = new Padding(0, 0, 0, _rowGap);
+
+        grid.Controls.Add(keyLabel, 0, rowIndex);
+        grid.Controls.Add(valueLabel, 1, rowIndex);
+    }
+
+    private Label CreateLabel(string text, string fontFamily, int size, FontStyle style, Color color, Padding? margin = null)
+    {
+        return new Label
+        {
+            AutoSize = true,
+            Text = text,
+            Font = new Font(fontFamily, size, style),
+            ForeColor = color,
+            BackColor = Color.Transparent,
+            Margin = margin ?? Padding.Empty
+        };
+    }
+
+    private Label CreateWrappingLabel(string text, int maxWidth, Color color)
+    {
+        return new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(maxWidth, 0),
+            Text = text,
+            Font = new Font("Segoe UI", Scale(10), FontStyle.Regular),
+            ForeColor = color,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty
+        };
+    }
+
+    private Button CreateFlatButton(string text, int width, int height)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Size = new Size(width, height),
             FlatStyle = FlatStyle.Flat,
-            BackColor = theme.PanelBackground,
-            ForeColor = theme.Text,
-            Size = new Size(90, 30),
+            Font = new Font("Segoe UI", Scale(10), FontStyle.Regular),
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
             Cursor = Cursors.Hand,
-            FlatAppearance = { BorderColor = theme.Muted, MouseOverBackColor = theme.ButtonHoverBackground },
-            Anchor = AnchorStyles.Top
+            UseVisualStyleBackColor = false,
+            Margin = Padding.Empty,
+            TabStop = true
         };
-        okBtn.Click += (s, e) => Close();
-        AcceptButton = okBtn;
-        int finalContentWidth = 620 - 2 * margin; // matches totalWidth minus left/right margins
-        okBtn.Location = new Point((finalContentWidth - okBtn.Width) / 2, y);
-        content.Controls.Add(okBtn);
-        y = okBtn.Bottom + margin; // Add extra margin below the OK button
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = _theme.Border;
+        button.FlatAppearance.MouseOverBackColor = _theme.ButtonHoverBackground;
+        button.FlatAppearance.MouseDownBackColor = _theme.ButtonHoverBackground;
+        return button;
+    }
 
-        Controls.Add(content);
-        Controls.Add(titleBar);
+    private Button CreateActionButton(string text, EventHandler onClick)
+    {
+        var button = CreateFlatButton(text, Scale(150), Scale(32));
+        button.Margin = new Padding(0, 0, Scale(8), Scale(8));
+        button.Click += onClick;
+        return button;
+    }
 
-        // Size the dialog to fit all content without scrollbars
-        int totalHeight = titleBar.Height + y;
-        totalHeight = Math.Max(510, Math.Min(totalHeight, 660));
-        int totalWidth = 620;
-        Size = new Size(totalWidth, totalHeight);
-        MinimumSize = Size;
-        MaximumSize = Size;
-
-        Paint += (s, e) =>
+    private Control CreateSeparator()
+    {
+        return new Panel
         {
-            using var p = new Pen(theme.Muted, 1);
-            e.Graphics.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
+            Height = 1,
+            Width = _contentWidth,
+            BackColor = _theme.Muted,
+            Margin = Padding.Empty
         };
+    }
+
+    private void PositionCloseButton()
+    {
+        if (_titleBar is null || _closeButton is null)
+            return;
+
+        _closeButton.Location = new Point(_titleBar.Width - _closeButton.Width - Scale(6), Math.Max(0, (_titleBar.Height - _closeButton.Height) / 2));
+    }
+
+    private void CenterInnerContent()
+    {
+        if (_scrollPanel is null || _innerContent is null)
+            return;
+
+        int left = Math.Max(_margin, (_scrollPanel.ClientSize.Width - _innerContent.Width) / 2);
+        _innerContent.Location = new Point(left, _margin);
+    }
+
+    private void AttachDrag(Control control)
+    {
+        control.MouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+        };
+    }
+
+    private void CopyInfoToClipboard()
+    {
+        var text = new StringBuilder()
+            .AppendLine($"Personal Flip Pad v{_version}")
+            .AppendLine($"Commit: {_commit}")
+            .AppendLine($"Build: {_buildDate}")
+            .AppendLine($".NET: {_clrVersion} ({_arch})")
+            .AppendLine($"OS: {_osDesc}")
+            .AppendLine($"RAM: {FormatBytes(_totalRam)}")
+            .ToString();
+
+        try
+        {
+            Clipboard.SetText(text);
+        }
+        catch
+        {
+        }
+    }
+
+    private void OpenLogFolder()
+    {
+        try
+        {
+            string logPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MyCrownJewelApp", "Pfpad");
+            if (Directory.Exists(logPath))
+                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{logPath}\"") { UseShellExecute = false });
+        }
+        catch
+        {
+        }
+    }
+
+    private void OpenSettingsFile()
+    {
+        try
+        {
+            string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MyCrownJewelApp", "TextEditor", "settings.json");
+            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{settingsPath}\"") { UseShellExecute = false });
+        }
+        catch
+        {
+        }
+    }
+
+    private int Scale(int value)
+    {
+        return Math.Max(1, (int)Math.Round(value * _scale));
+    }
+
+    private static int ToMegabytes(long bytes)
+    {
+        return (int)Math.Max(0, Math.Round(bytes / 1024d / 1024d));
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0)
+            return "unknown";
+
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        double value = bytes;
+        int unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.Length - 1)
+        {
+            value /= 1024;
+            unitIndex++;
+        }
+
+        return $"{value:0.#} {units[unitIndex]}";
+    }
+
+    private static string BuildSessionStats(int openFileCount, string? workspaceRoot)
+    {
+        var text = $"{Math.Max(0, openFileCount)} files open";
+        if (!string.IsNullOrWhiteSpace(workspaceRoot))
+            text += $"  •  workspace: {ShortenPath(workspaceRoot)}";
+
+        return text;
+    }
+
+    private static string ShortenPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return path;
+
+        var parts = path.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= 2)
+            return path;
+
+        return $"...\\{parts[^2]}\\{parts[^1]}";
     }
 
     private static string GetMetadata(string key, string fallback)
@@ -319,11 +838,14 @@ public sealed partial class AboutDialog : Form
             var asm = Assembly.GetExecutingAssembly();
             foreach (var attr in asm.GetCustomAttributes(typeof(AssemblyMetadataAttribute), false))
             {
-                if (attr is AssemblyMetadataAttribute m && m.Key == key && !string.IsNullOrEmpty(m.Value))
-                    return m.Value;
+                if (attr is AssemblyMetadataAttribute metadata && metadata.Key == key && !string.IsNullOrEmpty(metadata.Value))
+                    return metadata.Value;
             }
         }
-        catch { }
+        catch
+        {
+        }
+
         return fallback;
     }
 

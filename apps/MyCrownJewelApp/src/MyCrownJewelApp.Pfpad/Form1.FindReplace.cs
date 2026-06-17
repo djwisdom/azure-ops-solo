@@ -140,7 +140,7 @@ namespace MyCrownJewelApp.Pfpad
                 new("Open Roslyn Visualizer", "Ctrl+Alt+V", () => OpenRoslynVisualizer()),
 
                 // Help operations
-                new("About", "", () => { using var dlg = new AboutDialog(); dlg.ShowDialog(this); }),
+                new("About", "", () => { using var dlg = new AboutDialog(openFileCount: documents.Count, workspaceRoot: _workspaceRoot); dlg.ShowDialog(this); }),
             };
         }
 
