@@ -253,7 +253,7 @@ public sealed partial class NotificationCenterForm : Form
         {
             try
             {
-                if (SecurityEnforcementService.IsUrlSchemeAllowed(item.Link.AbsoluteUri, SecurityProfile.Low))
+                if (SecurityEnforcementService.IsUrlSchemeAllowed(item.Link.AbsoluteUri))
                     Process.Start(new ProcessStartInfo(item.Link.AbsoluteUri) { UseShellExecute = true });
             }
             catch { }

@@ -3065,6 +3065,7 @@ using Microsoft.Extensions.DependencyInjection;
 
             // Apply security settings
             _securityProfile = settings.SecurityProfile;
+            SecurityEnforcementService.CurrentProfile = _securityProfile;
             _secPromptUntrustedWorkspace = settings.SecPromptUntrustedWorkspace;
             _secTrustedWorkspacePaths = settings.SecTrustedWorkspacePaths;
             _secConfirmUrlOpen = settings.SecConfirmUrlOpen;

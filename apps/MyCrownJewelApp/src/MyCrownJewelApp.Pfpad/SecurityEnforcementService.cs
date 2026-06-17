@@ -7,11 +7,24 @@ namespace MyCrownJewelApp.Pfpad;
 /// <summary>
 /// Centralised runtime security enforcement driven by the active <see cref="SecurityProfile"/>.
 /// All methods are pure/static — consumers pass the current profile.
+/// The active profile is also available via <see cref="CurrentProfile"/> for call sites
+/// that do not have a direct reference to Form1.
 /// </summary>
 public static class SecurityEnforcementService
 {
     private static readonly string[] AlwaysBlockedSchemes = ["javascript", "vbscript", "data", "ms-settings", "ms-msdt"];
     private static readonly string[] MaxBlockedSchemes = ["file", "ftp"];
+
+    /// <summary>
+    /// The application-wide active security profile. Set by Form1 on startup and when settings change.
+    /// Defaults to <see cref="SecurityProfile.Low"/>.
+    /// </summary>
+    public static SecurityProfile CurrentProfile { get; set; } = SecurityProfile.Low;
+
+    /// <summary>
+    /// Convenience overload that uses <see cref="CurrentProfile"/>.
+    /// </summary>
+    public static bool IsUrlSchemeAllowed(string? url) => IsUrlSchemeAllowed(url, CurrentProfile);
 
     /// <summary>
     /// Returns true when the URL is safe to open with UseShellExecute=true at the given profile.

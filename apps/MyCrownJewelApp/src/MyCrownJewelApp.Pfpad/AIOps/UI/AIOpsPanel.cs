@@ -377,7 +377,7 @@ internal static class AIOpsUiHelper
 
         try
         {
-            if (SecurityEnforcementService.IsUrlSchemeAllowed(url, SecurityProfile.Low))
+            if (SecurityEnforcementService.IsUrlSchemeAllowed(url))
                 Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
         }
         catch

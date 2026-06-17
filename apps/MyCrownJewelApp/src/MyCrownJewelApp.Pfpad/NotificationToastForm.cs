@@ -227,7 +227,7 @@ namespace MyCrownJewelApp.Pfpad;
         {
             try
             {
-                if (SecurityEnforcementService.IsUrlSchemeAllowed(_item.Link.AbsoluteUri, SecurityProfile.Low))
+                if (SecurityEnforcementService.IsUrlSchemeAllowed(_item.Link.AbsoluteUri))
                     System.Diagnostics.Process.Start(
                         new System.Diagnostics.ProcessStartInfo(_item.Link.AbsoluteUri) { UseShellExecute = true });
             }

@@ -345,7 +345,7 @@ public sealed partial class UserManualDialog : Form
         {
             try
             {
-                if (SecurityEnforcementService.IsUrlSchemeAllowed(url, SecurityProfile.Low))
+                if (SecurityEnforcementService.IsUrlSchemeAllowed(url))
                     Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             }
             catch { }
