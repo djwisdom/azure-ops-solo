@@ -231,6 +231,15 @@ public record AppSettings
     /// <summary>Scan the first 100 lines of a newly opened file to detect its indentation style (tabs vs spaces, and indent width). Overrides the global Tab Size and Insert Spaces for that document while it is active.</summary>
     public bool DetectIndentationFromFile { get; init; } = true;
 
+    // ── Editor advanced rendering ───────────────────────────────────────────────
+    public bool ShowOccurrenceHighlights { get; init; } = true;
+    public bool ShowIndentGuides { get; init; } = false;
+    public bool SmoothenCaretBlink { get; init; } = true;
+    public bool HighlightTrailingWhitespace { get; init; } = false;
+    public bool MultiCursorEnabled { get; init; } = false;
+    public bool SmartHomeKey { get; init; } = true;
+    public bool BracketTypeOver { get; init; } = true;
+
     // ── Cursor configuration ───────────────────────────────────────────────────
     /// <summary>Keep the current-line highlight visible even when the editor does not have keyboard focus.</summary>
     public bool LineHighlightWhenUnfocused { get; init; } = false;

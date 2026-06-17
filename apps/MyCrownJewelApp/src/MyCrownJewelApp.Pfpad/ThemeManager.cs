@@ -12,7 +12,7 @@ public sealed class ThemeManager : IDisposable
     public static ThemeManager Instance => _instance.Value;
 
     private readonly ConcurrentDictionary<string, Bitmap> _tintedIconCache = new();
-    private readonly object _cacheLock = new();
+    private readonly Lock _cacheLock = new();
     private bool _disposed;
 
     public event Action<Theme>? ThemeChanged;
@@ -823,4 +823,3 @@ public readonly struct Theme
         terminalHeaderBg: Color.FromArgb(20, 23, 31)
     );
 }
-

@@ -10,7 +10,7 @@ public sealed class RoslynService : IDisposable
 {
     private readonly RoslynWorkspaceService _workspace;
     private readonly AnalyzerController _controller;
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private bool _disposed;
 
     private bool _analyzersEnabled = true;

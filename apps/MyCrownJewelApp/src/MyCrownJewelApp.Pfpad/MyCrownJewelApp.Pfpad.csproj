@@ -34,6 +34,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.3.*" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.3.*" />
     <PackageReference Include="TreeSitter.DotNet" Version="1.3.0" />
+    <PackageReference Include="System.IO.Hashing" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.*" />

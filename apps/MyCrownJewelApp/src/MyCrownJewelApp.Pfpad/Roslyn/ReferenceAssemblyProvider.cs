@@ -6,7 +6,7 @@ namespace MyCrownJewelApp.Pfpad.Roslyn;
 public static class ReferenceAssemblyProvider
 {
     private static List<PortableExecutableReference>? _cache;
-    private static readonly object _lock = new();
+    private static readonly Lock _lock = new();
 
     private static readonly string[] _requiredAssemblies =
     [

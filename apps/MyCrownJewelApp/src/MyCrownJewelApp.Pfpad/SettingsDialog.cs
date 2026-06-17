@@ -693,6 +693,13 @@ internal sealed class SettingsDialog : Form
             CursorStyle = GetSettingValue<string>("editor.cursor.cursorStyle", _mainForm.CurrentCursorStyle),
             CursorBlinkEnabled = GetSettingValue<bool>("editor.cursor.blinkEnabled", _mainForm.CurrentCursorBlinkEnabled),
             CursorBlinkRateMs = GetSettingValue<int>("editor.cursor.blinkRateMs", _mainForm.CurrentCursorBlinkRateMs),
+            ShowOccurrenceHighlights = GetSettingValue<bool>("editor.advanced.showOccurrenceHighlights", _mainForm.CurrentShowOccurrenceHighlights),
+            ShowIndentGuides = GetSettingValue<bool>("editor.advanced.showIndentGuides", _mainForm.CurrentShowIndentGuides),
+            SmoothenCaretBlink = GetSettingValue<bool>("editor.advanced.smoothenCaretBlink", _mainForm.CurrentSmoothenCaretBlink),
+            HighlightTrailingWhitespace = GetSettingValue<bool>("editor.advanced.highlightTrailingWhitespace", _mainForm.CurrentHighlightTrailingWhitespace),
+            MultiCursorEnabled = GetSettingValue<bool>("editor.advanced.multiCursorEnabled", _mainForm.CurrentMultiCursorEnabled),
+            SmartHomeKey = GetSettingValue<bool>("editor.advanced.smartHomeKey", _mainForm.CurrentSmartHomeKey),
+            BracketTypeOver = GetSettingValue<bool>("editor.advanced.bracketTypeOver", _mainForm.CurrentBracketTypeOver),
             AutoSaveEnabled = GetSettingValue<bool>("features.behavior.autoSave", _mainForm.CurrentAutoSave),
             TrimTrailingWhitespace = GetSettingValue<bool>("editor.text.trimTrailingWhitespace", _mainForm.CurrentTrimTrailingWhitespace),
             InsertFinalNewline = GetSettingValue<bool>("editor.text.insertFinalNewline", _mainForm.CurrentInsertFinalNewline),
@@ -834,6 +841,13 @@ internal sealed class SettingsDialog : Form
             ["editor.cursor.cursorStyle"] = _mainForm.CurrentCursorStyle,
             ["editor.cursor.blinkEnabled"] = _mainForm.CurrentCursorBlinkEnabled,
             ["editor.cursor.blinkRateMs"] = _mainForm.CurrentCursorBlinkRateMs,
+            ["editor.advanced.showOccurrenceHighlights"] = _mainForm.CurrentShowOccurrenceHighlights,
+            ["editor.advanced.showIndentGuides"] = _mainForm.CurrentShowIndentGuides,
+            ["editor.advanced.smoothenCaretBlink"] = _mainForm.CurrentSmoothenCaretBlink,
+            ["editor.advanced.highlightTrailingWhitespace"] = _mainForm.CurrentHighlightTrailingWhitespace,
+            ["editor.advanced.multiCursorEnabled"] = _mainForm.CurrentMultiCursorEnabled,
+            ["editor.advanced.smartHomeKey"] = _mainForm.CurrentSmartHomeKey,
+            ["editor.advanced.bracketTypeOver"] = _mainForm.CurrentBracketTypeOver,
 
             // Editor - Font
             ["editor.font.name"] = _mainForm.CurrentFontName,
@@ -1121,6 +1135,13 @@ internal sealed class SettingsDialog : Form
             "editor.cursor.cursorStyle" => "Caret shape: Line (2 px vertical bar), Block (full character fill), or Underline (2 px bar at bottom).",
             "editor.cursor.blinkEnabled" => "Animate the caret by blinking. Disable for a steady non-blinking cursor.",
             "editor.cursor.blinkRateMs" => "Caret blink interval in milliseconds (200–1200). Default 530 ms matches the Windows system default.",
+            "editor.advanced.showOccurrenceHighlights" => "Highlight other whole-word occurrences of the current symbol or selection in the visible editor.",
+            "editor.advanced.showIndentGuides" => "Draw dotted vertical guides at each indentation tab stop for indented lines.",
+            "editor.advanced.smoothenCaretBlink" => "Use a soft pulsing caret animation instead of a simple on/off blink.",
+            "editor.advanced.highlightTrailingWhitespace" => "Underline trailing spaces and tabs at the end of lines.",
+            "editor.advanced.multiCursorEnabled" => "Allow Ctrl+Click to add or remove extra carets for multi-cursor editing experiments.",
+            "editor.advanced.smartHomeKey" => "Press Home to jump to first non-whitespace, then to column 0 when already there.",
+            "editor.advanced.bracketTypeOver" => "When a matching closing bracket was auto-inserted, typing that same bracket moves over it instead of inserting a duplicate.",
             "editor.font.name" => "Monospace font family used in the editor. Applies immediately.",
             "editor.font.size" => "Editor font size in points (6–72). Default 12 pt. Applies immediately.",
             "editor.formatting.insertSpaces" => "Insert spaces instead of a tab character when pressing Tab.",
@@ -2784,6 +2805,44 @@ internal sealed class SettingsDialog : Form
             "Mouse wheel scroll lines (0 = system default)",
             "Number of lines to scroll per mouse wheel tick. Set to 0 to use the Windows system setting.",
             "editor.text.mouseWheelScrollLines", 0, 20, 1, 3);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Advanced Rendering");
+
+        y = AddSecCheckRow(parent, y,
+            "Highlight word occurrences",
+            "Highlight other whole-word occurrences of the current symbol or selection.",
+            "editor.advanced.showOccurrenceHighlights");
+
+        y = AddSecCheckRow(parent, y,
+            "Show indent guides",
+            "Draw dotted indent guides at each tab stop for indented lines.",
+            "editor.advanced.showIndentGuides");
+
+        y = AddSecCheckRow(parent, y,
+            "Smooth caret blink",
+            "Use a pulsing caret animation instead of a simple on/off blink.",
+            "editor.advanced.smoothenCaretBlink");
+
+        y = AddSecCheckRow(parent, y,
+            "Highlight trailing whitespace",
+            "Underline trailing spaces and tabs at the ends of lines.",
+            "editor.advanced.highlightTrailingWhitespace");
+
+        y = AddSecCheckRow(parent, y,
+            "Enable multi-cursor Ctrl+Click",
+            "Allow Ctrl+Click in the editor to add or remove extra carets.",
+            "editor.advanced.multiCursorEnabled");
+
+        y = AddSecCheckRow(parent, y,
+            "Smart Home key",
+            "Home jumps to first non-whitespace, then to column 0 on the next press.",
+            "editor.advanced.smartHomeKey");
+
+        y = AddSecCheckRow(parent, y,
+            "Bracket type-over",
+            "Typing a closing bracket over an auto-inserted one moves the caret past it.",
+            "editor.advanced.bracketTypeOver");
 
         return y + 16;
     }

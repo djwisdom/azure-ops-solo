@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
@@ -33,9 +34,9 @@ public sealed partial class IncrementalHighlighter : IDisposable
     private readonly Task _worker;
     private readonly RoslynHighlighter? _roslynHighlighter;
     private readonly bool _useRoslyn;
-    private readonly HashSet<string> _keywords;
-    private readonly HashSet<string> _types;
-    private readonly HashSet<string> _preprocs;
+    private readonly FrozenSet<string> _keywords;
+    private readonly FrozenSet<string> _types;
+    private readonly FrozenSet<string> _preprocs;
     private bool _disposed;
     private int _totalTimeouts;
     private int _consecutiveTimeouts;
@@ -47,6 +48,10 @@ public sealed partial class IncrementalHighlighter : IDisposable
     private const int MaxIterationsPerLine = 10000;
     private const int MaxWorkerBatchTimeMs = 50;
     private const int MaxConsecutiveTimeouts = 5;
+    private static readonly System.Buffers.SearchValues<char> _wordStartChars =
+        System.Buffers.SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_@0123456789\"'/");
+    private static readonly System.Buffers.SearchValues<char> _nonWordChars =
+        System.Buffers.SearchValues.Create(" \t\r\n!@#$%^&*()-+=[]{}|\\;:',.<>?/`~\"");
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, IntPtr lParam);
@@ -62,9 +67,9 @@ public sealed partial class IncrementalHighlighter : IDisposable
         _useRoslyn = roslynHighlighter != null && syntax == SyntaxDefinition.CSharp;
 
         // Always initialize collections, even if not used for Roslyn
-        _keywords = new HashSet<string>(syntax.Keywords, StringComparer.Ordinal);
-        _types = new HashSet<string>(syntax.Types, StringComparer.Ordinal);
-        _preprocs = new HashSet<string>(syntax.Preprocessor, StringComparer.Ordinal);
+        _keywords = syntax.Keywords.ToFrozenSet(StringComparer.Ordinal);
+        _types = syntax.Types.ToFrozenSet(StringComparer.Ordinal);
+        _preprocs = syntax.Preprocessor.ToFrozenSet(StringComparer.Ordinal);
 
         _channel = Channel.CreateBounded<(int, string)>(new BoundedChannelOptions(2000)
         {
@@ -297,6 +302,14 @@ public sealed partial class IncrementalHighlighter : IDisposable
             }
 
             char c = line[pos];
+
+            if (c == ' ' || c == '\t')
+            {
+                int skip = line.Slice(pos).IndexOfAnyExcept(' ', '\t');
+                if (skip < 0) break;
+                pos += skip;
+                continue;
+            }
 
             if (c == '/' && pos + 1 < line.Length)
             {

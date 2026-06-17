@@ -13,8 +13,14 @@ namespace MyCrownJewelApp.Pfpad
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
     private bool _scrollInProgress;
     private System.Windows.Forms.Timer? _scrollDebounceTimer;
-        private WinFormsTimer? _caretBlinkTimer;
+        private System.Threading.PeriodicTimer? _blinkPeriodicTimer;
+        private CancellationTokenSource? _blinkCts;
+        private int _blinkIntervalMs = 530;
         private bool _caretVisible = true;
+        private byte _caretAlpha = 255;
+        private bool _smoothCaretBlink = true;
+        private int _blinkStep;
+        private static readonly byte[] _blinkSteps = [255, 180, 80, 0, 0, 80, 180];
 
         private int _guideColumn = 80;
         private bool _showGuide = false;
@@ -22,12 +28,23 @@ namespace MyCrownJewelApp.Pfpad
         private FoldingManager? _foldingManager;
         private Color _foldLineColor = Color.FromArgb(80, 80, 80);
         private List<(int start, int length, Color color)> _squiggles = new();
-        private Dictionary<int, string> _lineMessages = new();
+        private Dictionary<int, (string Message, int Severity)> _lineMessages = new();
         private List<int> _extraCarets = new();
+        private bool _multiCursorEnabled = false;
+        private readonly HashSet<int> _autoInsertedClosePositions = new();
+        private bool _bracketTypeOverEnabled = false;
+
+        // Word occurrence highlights
+        private bool _showOccurrenceHighlights = true;
+        private Color _occurrenceHighlightColor = Color.FromArgb(60, 180, 180, 180);
+        private List<(int start, int length)> _wordOccurrenceRanges = new();
+        private WinFormsTimer? _wordHighlightDebounce;
 
         // Whitespace glyphs
         private bool  _showWhitespace      = false;
         private Color _whitespaceGlyphColor = Color.FromArgb(110, 180, 180, 180);
+        private bool _highlightTrailingWhitespace = false;
+        private Color _trailingWhitespaceColor = Color.FromArgb(160, 255, 80, 80);
         // Rainbow brackets
         private bool _rainbowBracketsEnabled;
         private RainbowBracketResult? _lastBracketResult;
@@ -48,6 +65,12 @@ namespace MyCrownJewelApp.Pfpad
         private bool _lineHighlightWhenUnfocused = false;
         private string _cursorStyle = "line";
         private bool _cursorBlinkEnabled = true;
+        private bool _showIndentGuides = false;
+        private Color _indentGuideColor = Color.FromArgb(50, 120, 120, 120);
+        private int _indentGuideTabSize = 4;
+        private string _zoomIndicatorText = "";
+        private byte _zoomIndicatorAlpha = 0;
+        private WinFormsTimer? _zoomFadeTimer;
 
     private static readonly HashSet<char> _openBraces = new() { '{', '[', '(' };
     private static readonly Dictionary<char, char> _bracePairs = new()
@@ -76,13 +99,6 @@ namespace MyCrownJewelApp.Pfpad
                         Invalidate();
         };
 
-        _caretBlinkTimer = new WinFormsTimer { Interval = 500 };
-        _caretBlinkTimer.Tick += (s, e) =>
-        {
-            _caretVisible = !_caretVisible;
-            Invalidate();
-        };
-
         _bracketDebounceTimer = new WinFormsTimer { Interval = 150 };
         _bracketDebounceTimer.Tick += (s, e) =>
         {
@@ -95,13 +111,24 @@ namespace MyCrownJewelApp.Pfpad
             _renderedResult = RainbowBracketEngine.Parse(Text, 0);
             Invalidate();
         };
+
+        _wordHighlightDebounce = new WinFormsTimer { Interval = 150 };
+        _wordHighlightDebounce.Tick += (s, e) => { _wordHighlightDebounce!.Stop(); ComputeWordOccurrences(); };
+
+        _zoomFadeTimer = new WinFormsTimer { Interval = 50 };
+        _zoomFadeTimer.Tick += (s, e) =>
+        {
+            if (_zoomIndicatorAlpha <= 15) { _zoomFadeTimer!.Stop(); _zoomIndicatorAlpha = 0; }
+            else _zoomIndicatorAlpha -= 15;
+            Invalidate();
+        };
     }
 
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
         HideCaret(Handle);
-        _caretBlinkTimer?.Start();
+        StartBlinkTimer();
     }
 
     private void UpdateCaretWidth()
@@ -112,23 +139,90 @@ namespace MyCrownJewelApp.Pfpad
 
     public void SyncCaretWidth() => UpdateCaretWidth();
 
+    private async Task BlinkLoopAsync(System.Threading.PeriodicTimer timer, CancellationToken ct)
+    {
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                if (IsDisposed || !IsHandleCreated) break;
+                BeginInvoke(new Action(() =>
+                {
+                    if (IsDisposed)
+                        return;
+
+                    if (_smoothCaretBlink)
+                    {
+                        _caretAlpha = _blinkSteps[_blinkStep % _blinkSteps.Length];
+                        _blinkStep++;
+                        _caretVisible = _caretAlpha > 0;
+                    }
+                    else
+                    {
+                        _caretVisible = !_caretVisible;
+                        _caretAlpha = _caretVisible ? (byte)255 : (byte)0;
+                    }
+
+                    Invalidate();
+                }));
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void StartBlinkTimer()
+    {
+        StopBlinkTimer();
+        if (!_cursorBlinkEnabled)
+        {
+            _caretVisible = true;
+            _caretAlpha = 255;
+            _blinkStep = 0;
+            return;
+        }
+
+        int interval = _smoothCaretBlink
+            ? Math.Max(40, _blinkIntervalMs / Math.Max(1, _blinkSteps.Length))
+            : _blinkIntervalMs;
+
+        _blinkStep = 0;
+        _caretVisible = true;
+        _caretAlpha = 255;
+        _blinkCts = new CancellationTokenSource();
+        _blinkPeriodicTimer = new System.Threading.PeriodicTimer(TimeSpan.FromMilliseconds(interval));
+        _ = BlinkLoopAsync(_blinkPeriodicTimer, _blinkCts.Token);
+    }
+
+    private void StopBlinkTimer()
+    {
+        _blinkCts?.Cancel();
+        _blinkCts?.Dispose();
+        _blinkCts = null;
+        _blinkPeriodicTimer?.Dispose();
+        _blinkPeriodicTimer = null;
+    }
+
     protected override void OnGotFocus(EventArgs e)
     {
         base.OnGotFocus(e);
         HideCaret(Handle);
         if (_cursorBlinkEnabled)
-            _caretBlinkTimer?.Start();
+            StartBlinkTimer();
         else
+        {
             _caretVisible = true;
-                Invalidate();
+            _caretAlpha = 255;
+        }
+        Invalidate();
     }
 
     protected override void OnLostFocus(EventArgs e)
     {
         base.OnLostFocus(e);
-        _caretBlinkTimer?.Stop();
+        StopBlinkTimer();
         _caretVisible = false;
-                Invalidate();
+        _caretAlpha = 0;
+        Invalidate();
     }
 
     protected override void OnSelectionChanged(EventArgs e)
@@ -136,17 +230,50 @@ namespace MyCrownJewelApp.Pfpad
         base.OnSelectionChanged(e);
         if (_scrollInProgress) return;
         HideCaret(Handle);
-                Invalidate();
+        if (_showOccurrenceHighlights)
+        {
+            _wordHighlightDebounce?.Stop();
+            _wordHighlightDebounce?.Start();
+        }
+        Invalidate();
     }
 
     protected override void OnTextChanged(EventArgs e)
     {
         base.OnTextChanged(e);
-                if (_rainbowBracketsEnabled)
+        _autoInsertedClosePositions.RemoveWhere(position => position < 0 || position >= TextLength);
+        if (_showOccurrenceHighlights)
+        {
+            _wordHighlightDebounce?.Stop();
+            _wordHighlightDebounce?.Start();
+        }
+        if (_rainbowBracketsEnabled)
         {
             _bracketDebounceTimer?.Stop();
             _bracketDebounceTimer?.Start();
         }
+    }
+
+    protected override void OnKeyPress(KeyPressEventArgs e)
+    {
+        if (_bracketTypeOverEnabled && SelectionLength == 0)
+        {
+            char c = e.KeyChar;
+            if (c == '}' || c == ')' || c == ']')
+            {
+                int pos = SelectionStart;
+                if (_autoInsertedClosePositions.Contains(pos) && pos < TextLength && Text[pos] == c)
+                {
+                    _autoInsertedClosePositions.Remove(pos);
+                    SelectionStart = pos + 1;
+                    SelectionLength = 0;
+                    e.Handled = true;
+                    return;
+                }
+            }
+        }
+
+        base.OnKeyPress(e);
     }
 
     protected override void OnFontChanged(EventArgs e)
@@ -213,17 +340,12 @@ namespace MyCrownJewelApp.Pfpad
         set
         {
             _cursorBlinkEnabled = value;
-            if (_caretBlinkTimer != null)
+            if (Focused) StartBlinkTimer();
+            else StopBlinkTimer();
+            if (!value)
             {
-                if (!value)
-                {
-                    _caretBlinkTimer.Stop();
-                    _caretVisible = true;
-                }
-                else if (Focused)
-                {
-                    _caretBlinkTimer.Start();
-                }
+                _caretVisible = true;
+                _caretAlpha = 255;
             }
             Invalidate();
         }
@@ -234,12 +356,90 @@ namespace MyCrownJewelApp.Pfpad
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int CursorBlinkRateMs
     {
-        get => _caretBlinkTimer?.Interval ?? 530;
+        get => _blinkIntervalMs;
         set
         {
-            if (_caretBlinkTimer != null)
-                _caretBlinkTimer.Interval = Math.Clamp(value, 200, 1200);
+            _blinkIntervalMs = Math.Clamp(value, 200, 1200);
+            if (Focused) StartBlinkTimer();
         }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool SmoothCaretBlink
+    {
+        get => _smoothCaretBlink;
+        set
+        {
+            _smoothCaretBlink = value;
+            if (Focused) StartBlinkTimer();
+        }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowOccurrenceHighlights
+    {
+        get => _showOccurrenceHighlights;
+        set
+        {
+            _showOccurrenceHighlights = value;
+            if (!value) _wordOccurrenceRanges.Clear();
+            Invalidate();
+        }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color OccurrenceHighlightColor
+    {
+        get => _occurrenceHighlightColor;
+        set { _occurrenceHighlightColor = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool ShowIndentGuides
+    {
+        get => _showIndentGuides;
+        set { _showIndentGuides = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color IndentGuideColor
+    {
+        get => _indentGuideColor;
+        set { _indentGuideColor = value; Invalidate(); }
+    }
+
+    [Category("Behavior")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public int IndentGuideTabSize
+    {
+        get => _indentGuideTabSize;
+        set { _indentGuideTabSize = Math.Max(1, value); Invalidate(); }
+    }
+
+    [Category("Behavior")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool MultiCursorEnabled
+    {
+        get => _multiCursorEnabled;
+        set
+        {
+            _multiCursorEnabled = value;
+            if (!value) _extraCarets.Clear();
+            Invalidate();
+        }
+    }
+
+    [Category("Behavior")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool BracketTypeOverEnabled
+    {
+        get => _bracketTypeOverEnabled;
+        set => _bracketTypeOverEnabled = value;
     }
 
     #region Rainbow Brackets API
@@ -384,16 +584,38 @@ namespace MyCrownJewelApp.Pfpad
                 Invalidate();
     }
 
+    public void SetLineMessages(Dictionary<int, (string message, int severity)> messages)
+    {
+        _lineMessages = messages?.ToDictionary(kv => kv.Key, kv => (kv.Value.message, kv.Value.severity)) ?? new();
+        Invalidate();
+    }
+
     public void SetLineMessages(Dictionary<int, string> messages)
     {
-        _lineMessages = messages ?? new Dictionary<int, string>();
-                Invalidate();
+        _lineMessages = messages?.ToDictionary(kv => kv.Key, kv => (kv.Value, 1)) ?? new();
+        Invalidate();
     }
 
     public void SetExtraCarets(List<int> positions)
     {
         _extraCarets = positions ?? new List<int>();
-                Invalidate();
+        Invalidate();
+    }
+
+    public void RegisterAutoInsertedClose(int position)
+    {
+        if (position >= 0)
+            _autoInsertedClosePositions.Add(position);
+    }
+
+    public void ClearAutoInsertedClose(int position)
+    {
+        _autoInsertedClosePositions.Remove(position);
+    }
+
+    public void ClearAutoInsertedCloses()
+    {
+        _autoInsertedClosePositions.Clear();
     }
 
     private Rectangle? GetCurrentLineRect()
@@ -450,7 +672,7 @@ namespace MyCrownJewelApp.Pfpad
             if (pt.IsEmpty) return;
             int charW = Math.Max(1, (int)(8 * ZoomFactor));
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
-            using var brush = new SolidBrush(ForeColor);
+            using var brush = new SolidBrush(Color.FromArgb(_caretAlpha, ForeColor));
             g.FillRectangle(brush, pt.X, pt.Y, charW, lineH);
         }
         catch { }
@@ -465,7 +687,7 @@ namespace MyCrownJewelApp.Pfpad
             Point pt = GetPositionFromCharIndex(pos);
             if (pt.IsEmpty) return;
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
-            using var brush = new SolidBrush(ForeColor);
+            using var brush = new SolidBrush(Color.FromArgb(_caretAlpha, ForeColor));
             g.FillRectangle(brush, pt.X, pt.Y, 2, lineH);
         }
         catch { }
@@ -481,7 +703,7 @@ namespace MyCrownJewelApp.Pfpad
             if (pt.IsEmpty) return;
             int charW = Math.Max(4, (int)(8 * ZoomFactor));
             int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
-            using var brush = new SolidBrush(ForeColor);
+            using var brush = new SolidBrush(Color.FromArgb(_caretAlpha, ForeColor));
             g.FillRectangle(brush, pt.X, pt.Y + lineH - 2, charW, 2);
         }
         catch { }
@@ -504,6 +726,162 @@ namespace MyCrownJewelApp.Pfpad
                 if (pt.IsEmpty) continue;
                 g.FillRectangle(caretBrush, pt.X, pt.Y, charW, lineH);
             }
+        }
+        catch { }
+    }
+
+    private void ComputeWordOccurrences()
+    {
+        _wordOccurrenceRanges.Clear();
+        if (!_showOccurrenceHighlights || TextLength == 0) { Invalidate(); return; }
+        try
+        {
+            int selStart = SelectionStart;
+            int selLen = SelectionLength;
+
+            string word;
+            if (selLen > 1 && selLen <= 100)
+            {
+                word = SelectedText.Trim();
+                if (word.Length == 0 || word.Any(char.IsWhiteSpace)) { Invalidate(); return; }
+            }
+            else
+            {
+                string text = Text;
+                if (selStart < 0 || selStart > text.Length) { Invalidate(); return; }
+                int s = Math.Min(selStart, text.Length);
+                while (s > 0 && (char.IsLetterOrDigit(text[s - 1]) || text[s - 1] == '_')) s--;
+                int e2 = Math.Min(selStart, text.Length);
+                while (e2 < text.Length && (char.IsLetterOrDigit(text[e2]) || text[e2] == '_')) e2++;
+                if (e2 == s || e2 - s < 2) { Invalidate(); return; }
+                word = text[s..e2];
+            }
+
+            string fullText = Text;
+            int idx = 0;
+            while ((idx = fullText.IndexOf(word, idx, StringComparison.Ordinal)) >= 0)
+            {
+                bool wordStart = idx == 0 || !(char.IsLetterOrDigit(fullText[idx - 1]) || fullText[idx - 1] == '_');
+                bool wordEnd = idx + word.Length >= fullText.Length || !(char.IsLetterOrDigit(fullText[idx + word.Length]) || fullText[idx + word.Length] == '_');
+                if (wordStart && wordEnd)
+                    _wordOccurrenceRanges.Add((idx, word.Length));
+                idx += word.Length;
+                if (_wordOccurrenceRanges.Count > 500) break;
+            }
+        }
+        catch { }
+
+        Invalidate();
+    }
+
+    private void DrawWordOccurrences(Graphics g)
+    {
+        if (!_showOccurrenceHighlights || _wordOccurrenceRanges.Count == 0 || !IsHandleCreated) return;
+        try
+        {
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            int selStart = SelectionStart;
+            int selLen = SelectionLength;
+
+            using var fillBrush = new SolidBrush(_occurrenceHighlightColor);
+            using var borderPen = new Pen(Color.FromArgb(Math.Min(255, _occurrenceHighlightColor.A + 80),
+                _occurrenceHighlightColor.R, _occurrenceHighlightColor.G, _occurrenceHighlightColor.B), 1);
+
+            foreach (var (start, length) in _wordOccurrenceRanges)
+            {
+                if (start == selStart && length == selLen) continue;
+
+                Point pt = GetPositionFromCharIndex(start);
+                if (pt.IsEmpty || pt.Y < -lineH || pt.Y > ClientSize.Height) continue;
+                int charW = length > 0 && start + length <= TextLength
+                    ? Math.Max(1, GetPositionFromCharIndex(start + length).X - pt.X)
+                    : GetCharWidth(start);
+                g.FillRectangle(fillBrush, pt.X, pt.Y, charW, lineH);
+                g.DrawRectangle(borderPen, pt.X, pt.Y, Math.Max(0, charW - 1), Math.Max(0, lineH - 1));
+            }
+        }
+        catch { }
+    }
+
+    private void DrawIndentGuides(Graphics g)
+    {
+        if (!_showIndentGuides || !IsHandleCreated || TextLength == 0) return;
+        try
+        {
+            int lineH = Math.Max(1, (int)Math.Ceiling(Font.GetHeight() * ZoomFactor));
+            int firstVis = (int)SendMessage(Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+            if (firstVis < 0) firstVis = 0;
+            int visCount = ClientSize.Height / lineH + 2;
+            int lastVis = Math.Min(Lines.Length - 1, firstVis + visCount);
+
+            int charW = 8;
+            int fi = GetFirstCharIndexFromLine(0);
+            if (fi >= 0 && fi + 1 < TextLength)
+            {
+                Point p0 = GetPositionFromCharIndex(fi);
+                Point p1 = GetPositionFromCharIndex(fi + 1);
+                charW = Math.Max(1, p1.X - p0.X);
+            }
+
+            using var pen = new Pen(_indentGuideColor, 1) { DashStyle = DashStyle.Dot };
+
+            for (int li = firstVis; li <= lastVis; li++)
+            {
+                if (li < 0 || li >= Lines.Length) continue;
+                string line = Lines[li];
+                if (line.Length == 0) continue;
+
+                int indentCol = 0;
+                foreach (char c in line)
+                {
+                    if (c == ' ') indentCol++;
+                    else if (c == '\t') indentCol = ((indentCol / _indentGuideTabSize) + 1) * _indentGuideTabSize;
+                    else break;
+                }
+                if (indentCol < _indentGuideTabSize) continue;
+
+                int lineStart = GetFirstCharIndexFromLine(li);
+                if (lineStart < 0) continue;
+                Point lineOrigin = GetPositionFromCharIndex(lineStart);
+                if (lineOrigin.IsEmpty) continue;
+
+                for (int stop = _indentGuideTabSize; stop < indentCol; stop += _indentGuideTabSize)
+                {
+                    int x = lineOrigin.X + stop * charW;
+                    if (x <= 0 || x >= ClientSize.Width) continue;
+                    g.DrawLine(pen, x, lineOrigin.Y, x, lineOrigin.Y + lineH);
+                }
+            }
+        }
+        catch { }
+    }
+
+    public void ShowZoomIndicator(float zoomPercent)
+    {
+        _zoomIndicatorText = $"{(int)(zoomPercent * 100)}%";
+        _zoomIndicatorAlpha = 220;
+        _zoomFadeTimer?.Stop();
+        _zoomFadeTimer?.Start();
+        Invalidate();
+    }
+
+    private void DrawZoomIndicator(Graphics g)
+    {
+        if (_zoomIndicatorAlpha == 0 || string.IsNullOrEmpty(_zoomIndicatorText)) return;
+        try
+        {
+            using var font = new Font(Font.FontFamily, 20f, FontStyle.Bold);
+            var size = TextRenderer.MeasureText(_zoomIndicatorText, font);
+            int padding = 12;
+            int x = ClientSize.Width - size.Width - padding * 2 - 8;
+            int y = ClientSize.Height - size.Height - padding * 2 - 8;
+            if (x < 0 || y < 0) return;
+
+            using var bgBrush = new SolidBrush(Color.FromArgb(_zoomIndicatorAlpha / 2, 0, 0, 0));
+            using var textBrush = new SolidBrush(Color.FromArgb(_zoomIndicatorAlpha, 255, 255, 255));
+            var rect = new Rectangle(x - padding, y - padding, size.Width + padding * 2, size.Height + padding * 2);
+            g.FillRectangle(bgBrush, rect);
+            g.DrawString(_zoomIndicatorText, font, textBrush, x, y);
         }
         catch { }
     }
@@ -803,8 +1181,7 @@ namespace MyCrownJewelApp.Pfpad
             int firstVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, 0)));
             int lastVisLine = GetLineFromCharIndex(GetCharIndexFromPosition(new Point(0, ClientSize.Height)));
 
-            using var lensFont = new Font("Consolas", 8);
-            using var lensBrush = new SolidBrush(Color.FromArgb(160, Color.FromArgb(180, 160, 80)));
+            using var lensFont = new Font(Font.FontFamily, Math.Max(7f, Font.Size * 0.85f * ZoomFactor));
 
             foreach (var kvp in _lineMessages)
             {
@@ -825,13 +1202,35 @@ namespace MyCrownJewelApp.Pfpad
                 if (lineEndPos.IsEmpty) continue;
 
                 int textX = lineEndPos.X + 24;
-                if (textX + 10 >= ClientSize.Width) continue;
+                if (textX + 30 >= ClientSize.Width) continue;
 
                 int textY = lineEndPos.Y;
-                string message = kvp.Value;
-                if (message.Length > 60) message = message[..57] + "...";
+                var (msg, severity) = kvp.Value;
+                string glyph = severity switch { 0 => "● ", 2 => "ℹ ", 3 => "· ", _ => "⚠ " };
+                Color glyphColor = severity switch
+                {
+                    0 => Color.FromArgb(200, 220, 80, 80),
+                    2 => Color.FromArgb(180, 100, 160, 220),
+                    3 => Color.FromArgb(140, 160, 160, 160),
+                    _ => Color.FromArgb(200, 220, 180, 80)
+                };
+                Color textColor = Color.FromArgb(150, glyphColor.R, glyphColor.G, glyphColor.B);
 
-                g.DrawString($"// {message}", lensFont, lensBrush, textX, textY);
+                int availW = ClientSize.Width - textX - 4;
+                string renderMsg = msg.Length > 80 ? msg[..77] + "..." : msg;
+                string display = glyph + renderMsg;
+                if (TextRenderer.MeasureText(display, lensFont).Width > availW)
+                {
+                    while (display.Length > 4 && TextRenderer.MeasureText(display + "…", lensFont).Width > availW)
+                        display = display[..^1];
+                    display += "…";
+                }
+
+                using var glyphBrush = new SolidBrush(glyphColor);
+                using var textBrush = new SolidBrush(textColor);
+                var glyphSize = TextRenderer.MeasureText(glyph, lensFont);
+                g.DrawString(glyph, lensFont, glyphBrush, textX, textY);
+                g.DrawString(display[glyph.Length..], lensFont, textBrush, textX + glyphSize.Width - 4, textY);
             }
         }
         catch { }
@@ -853,8 +1252,10 @@ namespace MyCrownJewelApp.Pfpad
         if (disposing)
         {
             _scrollDebounceTimer?.Dispose();
-            _caretBlinkTimer?.Dispose();
+            StopBlinkTimer();
             _bracketDebounceTimer?.Dispose();
+            _wordHighlightDebounce?.Dispose();
+            _zoomFadeTimer?.Dispose();
         }
         base.Dispose(disposing);
     }
@@ -923,6 +1324,22 @@ namespace MyCrownJewelApp.Pfpad
     {
         get => _whitespaceGlyphColor;
         set { _whitespaceGlyphColor = value; if (_showWhitespace) Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool HighlightTrailingWhitespace
+    {
+        get => _highlightTrailingWhitespace;
+        set { _highlightTrailingWhitespace = value; Invalidate(); }
+    }
+
+    [Category("Appearance")]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public Color TrailingWhitespaceColor
+    {
+        get => _trailingWhitespaceColor;
+        set { _trailingWhitespaceColor = value; Invalidate(); }
     }
 
     /// <summary>
@@ -1003,6 +1420,24 @@ namespace MyCrownJewelApp.Pfpad
                         g.DrawLine(arrowPen, arrowL, cy, arrowR, cy);
                         g.DrawLine(arrowPen, arrowR - hs, cy - hs * 0.55f, arrowR, cy);
                         g.DrawLine(arrowPen, arrowR - hs, cy + hs * 0.55f, arrowR, cy);
+                    }
+                }
+
+                if (_highlightTrailingWhitespace && line.Length > 0)
+                {
+                    int trailStart = line.Length;
+                    while (trailStart > 0 && (line[trailStart - 1] == ' ' || line[trailStart - 1] == '\t'))
+                        trailStart--;
+                    if (trailStart < line.Length)
+                    {
+                        Point tPt = GetPositionFromCharIndex(lineStart + trailStart);
+                        Point tEnd = GetPositionFromCharIndex(lineStart + line.Length - 1);
+                        if (!tPt.IsEmpty && !tEnd.IsEmpty)
+                        {
+                            int underY = tPt.Y + lineH - 1;
+                            using var twPen = new Pen(_trailingWhitespaceColor, 1);
+                            g.DrawLine(twPen, tPt.X, underY, tEnd.X + charW, underY);
+                        }
                     }
                 }
             }
@@ -1090,6 +1525,7 @@ namespace MyCrownJewelApp.Pfpad
         const int WM_HSCROLL = 0x0114;
         const int WM_SIZE = 0x0005;
         const int WM_KEYUP = 0x0101;
+        const int WM_LBUTTONDOWN = 0x0201;
         const int WM_LBUTTONUP = 0x0202;
         const int WM_MOUSEWHEEL = 0x020A;
         const int WM_SETFOCUS = 0x0007;
@@ -1106,11 +1542,7 @@ namespace MyCrownJewelApp.Pfpad
                 {
                     base.WndProc(ref m);
                     if (IsDisposed || !IsHandleCreated) return;
-
-                    if (_scrollInProgress)
-                    {
-                                                return;
-                    }
+                    if (_scrollInProgress) return;
 
                     IntPtr hdc = GetDC(Handle);
                     if (hdc == IntPtr.Zero) return;
@@ -1121,76 +1553,72 @@ namespace MyCrownJewelApp.Pfpad
                         int h = ClientSize.Height;
                         if (w <= 0 || h <= 0) return;
 
-                        using var fullBmp = new Bitmap(w, h);
-                        using (var g = Graphics.FromImage(fullBmp))
+                        using var screenGraphics = Graphics.FromHdc(hdc);
+                        using var context = BufferedGraphicsManager.Current.Allocate(screenGraphics, new Rectangle(0, 0, w, h));
+                        var g = context.Graphics;
+
+                        IntPtr bufHdc = g.GetHdc();
+                        BitBlt(bufHdc, 0, 0, w, h, hdc, 0, 0, SRCCOPY);
+                        g.ReleaseHdc(bufHdc);
+
+                        var lineRect = GetCurrentLineRect();
+                        if (lineRect.HasValue)
                         {
-                            IntPtr bmpHdc = g.GetHdc();
-                            BitBlt(bmpHdc, 0, 0, w, h, hdc, 0, 0, SRCCOPY);
-                            g.ReleaseHdc(bmpHdc);
+                            var r = lineRect.Value;
+                            using var hlBrush = new SolidBrush(_highlightColor);
+                            g.FillRectangle(hlBrush, r);
+
+                            using var textBmp = new Bitmap(r.Width, r.Height);
+                            using (var textG = Graphics.FromImage(textBmp))
+                            {
+                                IntPtr textHdc = textG.GetHdc();
+                                BitBlt(textHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
+                                textG.ReleaseHdc(textHdc);
+                            }
+
+                            using var attrs = new ImageAttributes();
+                            attrs.SetColorKey(BackColor, BackColor);
+                            g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
                         }
 
-                         using (var g = Graphics.FromImage(fullBmp))
-                         {
-                             var lineRect = GetCurrentLineRect();
-                             if (lineRect.HasValue)
-                             {
-                                 var r = lineRect.Value;
-                                 using var hlBrush = new SolidBrush(_highlightColor);
-                                 g.FillRectangle(hlBrush, r);
+                        if (_hoverLineHighlightEnabled && _hoverLine >= 0)
+                        {
+                            int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
+                            if (lineHeight <= 0) lineHeight = 1;
+                            int firstCharIdx = GetFirstCharIndexFromLine(_hoverLine);
+                            if (firstCharIdx >= 0)
+                            {
+                                Point pt = GetPositionFromCharIndex(firstCharIdx);
+                                if (!pt.IsEmpty)
+                                {
+                                    using var hoverBrush = new SolidBrush(Color.FromArgb(60, 60, 60, 60));
+                                    g.FillRectangle(hoverBrush, pt.X, pt.Y, ClientSize.Width, lineHeight);
+                                }
+                            }
+                        }
 
-                                 using var textBmp = new Bitmap(r.Width, r.Height);
-                                 using (var textG = Graphics.FromImage(textBmp))
-                                 {
-                                     IntPtr textHdc = textG.GetHdc();
-                                     BitBlt(textHdc, 0, 0, r.Width, r.Height, hdc, r.X, r.Y, SRCCOPY);
-                                     textG.ReleaseHdc(textHdc);
-                                 }
-                                 var attrs = new ImageAttributes();
-                                 attrs.SetColorKey(BackColor, BackColor);
-                                 g.DrawImage(textBmp, r, 0, 0, r.Width, r.Height, GraphicsUnit.Pixel, attrs);
-                             }
+                        DrawWordOccurrences(g);
+                        DrawIndentGuides(g);
+                        DrawColumnGuide(g);
+                        DrawFoldBracketLines(g);
+                        DrawMatchingBraces(g);
+                        DrawSquiggles(g);
+                        DrawErrorLens(g);
+                        DrawWhitespaceGlyphs(g);
 
-                             // Draw hover line highlight
-                             if (_hoverLineHighlightEnabled && _hoverLine >= 0)
-                             {
-                                 int lineHeight = (int)Math.Ceiling(Font.GetHeight() * ZoomFactor);
-                                 if (lineHeight <= 0) lineHeight = 1;
-                                 
-                                 int firstCharIdx = GetFirstCharIndexFromLine(_hoverLine);
-                                 if (firstCharIdx >= 0)
-                                 {
-                                     Point pt = GetPositionFromCharIndex(firstCharIdx);
-                                     if (!pt.IsEmpty)
-                                     {
-                                         int lineWidth = ClientSize.Width;
-                                         using var hoverBrush = new SolidBrush(Color.FromArgb(60, 60, 60, 60));
-                                         g.FillRectangle(hoverBrush, pt.X, pt.Y, lineWidth, lineHeight);
-                                     }
-                                 }
-                             }
+                        if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
+                        {
+                            switch (_cursorStyle)
+                            {
+                                case "block": DrawBlockCursor(g); break;
+                                case "underline": DrawUnderlineCursor(g); break;
+                                default: DrawLineCursor(g); break;
+                            }
+                        }
 
-                             DrawColumnGuide(g);
-                             DrawFoldBracketLines(g);
-                             DrawMatchingBraces(g);
-                             DrawSquiggles(g);
-                             DrawErrorLens(g);
-                             DrawWhitespaceGlyphs(g);
-
-                             if (_caretVisible && Focused && IsHandleCreated && !IsDisposed && !DesignMode)
-                             {
-                                 switch (_cursorStyle)
-                                 {
-                                     case "block": DrawBlockCursor(g); break;
-                                     case "underline": DrawUnderlineCursor(g); break;
-                                     default: DrawLineCursor(g); break;
-                                 }
-                             }
-
-                             DrawExtraCarets(g);
-                         }
-
-                        using (var g = Graphics.FromHdc(hdc))
-                            g.DrawImageUnscaled(fullBmp, 0, 0);
+                        DrawExtraCarets(g);
+                        DrawZoomIndicator(g);
+                        context.Render(screenGraphics);
                     }
                     finally
                     {
@@ -1225,7 +1653,25 @@ namespace MyCrownJewelApp.Pfpad
                     base.WndProc(ref m);
                     return;
                 }
-
+            case WM_LBUTTONDOWN:
+                {
+                    int keyState = (int)(m.WParam.ToInt64() & 0xFFFF);
+                    bool ctrlDown = (keyState & 0x0008) != 0;
+                    if (ctrlDown && _multiCursorEnabled)
+                    {
+                        int x = (short)(m.LParam.ToInt64() & 0xFFFF);
+                        int y = (short)((m.LParam.ToInt64() >> 16) & 0xFFFF);
+                        int charIdx = GetCharIndexFromPosition(new Point(x, y));
+                        if (charIdx >= 0)
+                        {
+                            if (_extraCarets.Contains(charIdx)) _extraCarets.Remove(charIdx);
+                            else _extraCarets.Add(charIdx);
+                            Invalidate();
+                            return;
+                        }
+                    }
+                    break;
+                }
             case WM_SIZE:
             case WM_KEYUP:
             case WM_LBUTTONUP:

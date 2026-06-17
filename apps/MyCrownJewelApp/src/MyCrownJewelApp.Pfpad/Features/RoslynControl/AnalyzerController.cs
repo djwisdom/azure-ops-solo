@@ -8,7 +8,7 @@ namespace MyCrownJewelApp.Pfpad.Features.RoslynControl;
 
 public sealed class AnalyzerController : IDisposable
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private CancellationTokenSource? _currentCts;
     private int _version;
     private bool _disposed;

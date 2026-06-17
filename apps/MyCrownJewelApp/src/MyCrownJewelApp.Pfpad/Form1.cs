@@ -199,6 +199,17 @@ using Microsoft.Extensions.DependencyInjection;
             textEditor.CursorBlinkRateMs = _cursorBlinkRateMs;
         }
 
+        private void ApplyEditorRenderingSettings()
+        {
+            if (textEditor == null) return;
+            textEditor.ShowOccurrenceHighlights = _showOccurrenceHighlights;
+            textEditor.ShowIndentGuides = _showIndentGuides;
+            textEditor.SmoothCaretBlink = _smoothenCaretBlink;
+            textEditor.HighlightTrailingWhitespace = _highlightTrailingWhitespace;
+            textEditor.MultiCursorEnabled = _multiCursorEnabled;
+            textEditor.BracketTypeOverEnabled = _bracketTypeOver;
+        }
+
         private System.Windows.Forms.Timer? _findNotFoundResetTimer;
 
         internal void NotifyNotFound(string text)
@@ -284,11 +295,23 @@ using Microsoft.Extensions.DependencyInjection;
         private string _cursorStyle = "line";
         private bool _cursorBlinkEnabled = true;
         private int _cursorBlinkRateMs = 530;
+        private bool _showOccurrenceHighlights = true;
+        private bool _showIndentGuides = false;
+        private bool _smoothenCaretBlink = true;
+        private bool _highlightTrailingWhitespace = false;
+        private bool _multiCursorEnabled = false;
+        private bool _smartHomeKey = true;
+        private bool _bracketTypeOver = true;
 
         // Formatting behaviour
         private bool _autoCloseBracesOnEnter = false;
         private bool _formatOnSave = false;
         private bool _detectIndentationFromFile = true;
+
+        private readonly LinkedList<(int Position, string? FilePath)> _cursorHistory = new();
+        private LinkedListNode<(int Position, string? FilePath)>? _cursorHistoryCurrent;
+        private const int MaxCursorHistory = 25;
+        private bool _suppressHistoryPush = false;
 
         // Vim mode state
         private bool vimModeEnabled = false;
@@ -806,6 +829,13 @@ using Microsoft.Extensions.DependencyInjection;
         public string CurrentCursorStyle => _cursorStyle;
         public bool CurrentCursorBlinkEnabled => _cursorBlinkEnabled;
         public int CurrentCursorBlinkRateMs => _cursorBlinkRateMs;
+        public bool CurrentShowOccurrenceHighlights => _showOccurrenceHighlights;
+        public bool CurrentShowIndentGuides => _showIndentGuides;
+        public bool CurrentSmoothenCaretBlink => _smoothenCaretBlink;
+        public bool CurrentHighlightTrailingWhitespace => _highlightTrailingWhitespace;
+        public bool CurrentMultiCursorEnabled => _multiCursorEnabled;
+        public bool CurrentSmartHomeKey => _smartHomeKey;
+        public bool CurrentBracketTypeOver => _bracketTypeOver;
         public bool CurrentAutoCloseBracesOnEnter => _autoCloseBracesOnEnter;
         public bool CurrentFormatOnSave => _formatOnSave;
         public bool CurrentDetectIndentationFromFile => _detectIndentationFromFile;
@@ -1113,7 +1143,10 @@ using Microsoft.Extensions.DependencyInjection;
                 incrementalHighlighter?.Dispose();
                 incrementalHighlighter = null;
             };
-            
+            ApplyTextEditorSettings();
+            ApplyCursorSettings();
+            ApplyEditorRenderingSettings();
+             
             UpdateThemeColors(_themeManager.CurrentTheme);
 
             // Add Catppuccin themes to View > Theme menu
@@ -2659,6 +2692,13 @@ using Microsoft.Extensions.DependencyInjection;
                 _cursorStyle = settings.CursorStyle ?? "line";
                 _cursorBlinkEnabled = settings.CursorBlinkEnabled;
                 _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+                _showOccurrenceHighlights = settings.ShowOccurrenceHighlights;
+                _showIndentGuides = settings.ShowIndentGuides;
+                _smoothenCaretBlink = settings.SmoothenCaretBlink;
+                _highlightTrailingWhitespace = settings.HighlightTrailingWhitespace;
+                _multiCursorEnabled = settings.MultiCursorEnabled;
+                _smartHomeKey = settings.SmartHomeKey;
+                _bracketTypeOver = settings.BracketTypeOver;
                 _autoCloseBracesOnEnter = settings.AutoCloseBracesOnEnter;
                 _formatOnSave = settings.FormatOnSave;
                 _detectIndentationFromFile = settings.DetectIndentationFromFile;
@@ -2701,6 +2741,7 @@ using Microsoft.Extensions.DependencyInjection;
                 ApplySecuritySettings();
                 ApplyExtensionsSettings();
                 ApplyCursorSettings();
+                ApplyEditorRenderingSettings();
             }
             catch { /* ignore settings load errors */ }
         }
@@ -2873,6 +2914,13 @@ using Microsoft.Extensions.DependencyInjection;
                 CursorStyle = _cursorStyle,
                 CursorBlinkEnabled = _cursorBlinkEnabled,
                 CursorBlinkRateMs = _cursorBlinkRateMs,
+                ShowOccurrenceHighlights = _showOccurrenceHighlights,
+                ShowIndentGuides = _showIndentGuides,
+                SmoothenCaretBlink = _smoothenCaretBlink,
+                HighlightTrailingWhitespace = _highlightTrailingWhitespace,
+                MultiCursorEnabled = _multiCursorEnabled,
+                SmartHomeKey = _smartHomeKey,
+                BracketTypeOver = _bracketTypeOver,
                 AutoCloseBracesOnEnter = _autoCloseBracesOnEnter,
                 FormatOnSave = _formatOnSave,
                 DetectIndentationFromFile = _detectIndentationFromFile,
@@ -2958,10 +3006,18 @@ using Microsoft.Extensions.DependencyInjection;
             _cursorStyle = settings.CursorStyle ?? "line";
             _cursorBlinkEnabled = settings.CursorBlinkEnabled;
             _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+            _showOccurrenceHighlights = settings.ShowOccurrenceHighlights;
+            _showIndentGuides = settings.ShowIndentGuides;
+            _smoothenCaretBlink = settings.SmoothenCaretBlink;
+            _highlightTrailingWhitespace = settings.HighlightTrailingWhitespace;
+            _multiCursorEnabled = settings.MultiCursorEnabled;
+            _smartHomeKey = settings.SmartHomeKey;
+            _bracketTypeOver = settings.BracketTypeOver;
             _autoCloseBracesOnEnter = settings.AutoCloseBracesOnEnter;
             _formatOnSave = settings.FormatOnSave;
             _detectIndentationFromFile = settings.DetectIndentationFromFile;
             ApplyCursorSettings();
+            ApplyEditorRenderingSettings();
 
             // Panels
             _workspaceVisible = settings.WorkspaceVisible;
@@ -3105,10 +3161,18 @@ using Microsoft.Extensions.DependencyInjection;
             _cursorStyle = settings.CursorStyle ?? "line";
             _cursorBlinkEnabled = settings.CursorBlinkEnabled;
             _cursorBlinkRateMs = Math.Clamp(settings.CursorBlinkRateMs, 200, 1200);
+            _showOccurrenceHighlights = settings.ShowOccurrenceHighlights;
+            _showIndentGuides = settings.ShowIndentGuides;
+            _smoothenCaretBlink = settings.SmoothenCaretBlink;
+            _highlightTrailingWhitespace = settings.HighlightTrailingWhitespace;
+            _multiCursorEnabled = settings.MultiCursorEnabled;
+            _smartHomeKey = settings.SmartHomeKey;
+            _bracketTypeOver = settings.BracketTypeOver;
             _autoCloseBracesOnEnter = settings.AutoCloseBracesOnEnter;
             _formatOnSave = settings.FormatOnSave;
             _detectIndentationFromFile = settings.DetectIndentationFromFile;
             ApplyCursorSettings();
+            ApplyEditorRenderingSettings();
 
             vimModeEnabled = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;
@@ -3930,6 +3994,44 @@ internal void ToggleGutter()
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.KeyCode == Keys.Home && _smartHomeKey && !e.Control && !e.Alt)
+            {
+                HandleSmartHome(e);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void HandleSmartHome(KeyEventArgs e)
+        {
+            if (textEditor == null) return;
+            int pos = textEditor.SelectionStart;
+            int line = textEditor.GetLineFromCharIndex(pos);
+            int lineStart = textEditor.GetFirstCharIndexFromLine(line);
+            string lineText = GetLineText(line) ?? "";
+
+            int firstNonWs = 0;
+            while (firstNonWs < lineText.Length && char.IsWhiteSpace(lineText[firstNonWs]))
+                firstNonWs++;
+            int firstNonWsIdx = lineStart + firstNonWs;
+
+            if (e.Shift)
+            {
+                int anchor = pos + textEditor.SelectionLength;
+                int newPos = pos != firstNonWsIdx ? firstNonWsIdx : lineStart;
+                textEditor.SelectionStart = Math.Min(anchor, newPos);
+                textEditor.SelectionLength = Math.Abs(anchor - newPos);
+            }
+            else if (pos != firstNonWsIdx)
+            {
+                textEditor.SelectionStart = firstNonWsIdx;
+                textEditor.SelectionLength = 0;
+            }
+            else
+            {
+                textEditor.SelectionStart = lineStart;
+                textEditor.SelectionLength = 0;
+            }
         }
 
         private async void TriggerCompletion()
@@ -4249,6 +4351,8 @@ internal void ToggleGutter()
                         string outerIndent = IndentationHelper.GetLeadingWhitespace(prevLineText);
                         string innerText = Environment.NewLine + indent + Environment.NewLine + outerIndent + "}";
                         textEditor.SelectedText = innerText;
+                        int closePosition = selStart + Environment.NewLine.Length + indent.Length + Environment.NewLine.Length + outerIndent.Length;
+                        textEditor.RegisterAutoInsertedClose(closePosition);
                         textEditor.SelectionStart = selStart + Environment.NewLine.Length + indent.Length;
                         textEditor.SelectionLength = 0;
                     }
@@ -4421,6 +4525,57 @@ internal void ToggleGutter()
 
         #region Public API (called by dialogs)
 
+        private void PushCursorHistory()
+        {
+            if (_suppressHistoryPush || textEditor == null) return;
+            int pos = textEditor.SelectionStart;
+            string? path = currentFilePath;
+
+            if (_cursorHistoryCurrent?.Value.Position == pos && _cursorHistoryCurrent?.Value.FilePath == path) return;
+
+            while (_cursorHistory.Last != null && _cursorHistory.Last != _cursorHistoryCurrent)
+                _cursorHistory.RemoveLast();
+
+            _cursorHistory.AddLast((pos, path));
+            _cursorHistoryCurrent = _cursorHistory.Last;
+
+            while (_cursorHistory.Count > MaxCursorHistory)
+                _cursorHistory.RemoveFirst();
+        }
+
+        private void NavigateCursorBack()
+        {
+            if (_cursorHistoryCurrent?.Previous == null) return;
+            _cursorHistoryCurrent = _cursorHistoryCurrent.Previous;
+            _suppressHistoryPush = true;
+            try { ApplyCursorHistoryEntry(_cursorHistoryCurrent.Value); }
+            finally { _suppressHistoryPush = false; }
+        }
+
+        private void NavigateCursorForward()
+        {
+            if (_cursorHistoryCurrent?.Next == null) return;
+            _cursorHistoryCurrent = _cursorHistoryCurrent.Next;
+            _suppressHistoryPush = true;
+            try { ApplyCursorHistoryEntry(_cursorHistoryCurrent.Value); }
+            finally { _suppressHistoryPush = false; }
+        }
+
+        private void ApplyCursorHistoryEntry((int Position, string? FilePath) entry)
+        {
+            if (entry.FilePath != null && entry.FilePath != currentFilePath)
+            {
+                var idx = documents.FindIndex(d => d.FilePath == entry.FilePath);
+                if (idx >= 0) SwitchToTab(idx);
+            }
+            if (textEditor != null && entry.Position >= 0 && entry.Position <= textEditor.TextLength)
+            {
+                textEditor.SelectionStart = entry.Position;
+                textEditor.SelectionLength = 0;
+                textEditor.ScrollToCaret();
+            }
+        }
+
         public void GoToLine(int lineNumber)
         {
              if (lineNumber < 1 || LineCount == 0) return;
@@ -4429,6 +4584,7 @@ internal void ToggleGutter()
             int charIndex = textEditor.GetFirstCharIndexFromLine(targetIndex);
             if (charIndex >= 0)
             {
+                PushCursorHistory();
                 textEditor.SelectionStart = charIndex;
                 textEditor.ScrollToCaret();
                 UpdateStatusBar();
@@ -4457,6 +4613,7 @@ internal void ToggleGutter()
             if (textEditor is null) return;
             string? word = GetWordAtCursor();
             if (string.IsNullOrEmpty(word)) return;
+            PushCursorHistory();
 
             // Roslyn semantic go-to-definition for C# files
             if (currentSyntax?.Name == "C#" && _roslynWorkspace.IsReady)
@@ -4581,6 +4738,7 @@ internal void ToggleGutter()
 
             if (found >= 0)
             {
+                PushCursorHistory();
                 textEditor.SelectionStart = found;
                 textEditor.SelectionLength = useRegex ? 0 : text.Length;
                 textEditor.ScrollToCaret();
@@ -4619,6 +4777,7 @@ internal void ToggleGutter()
                         var m = regex.Match(textEditor.Text, textEditor.SelectionStart);
                         if (m.Success)
                         {
+                            PushCursorHistory();
                             textEditor.SelectionStart = m.Index;
                             textEditor.SelectionLength = m.Length;
                             textEditor.SelectedText = regex.Replace(m.Value, replaceText);
@@ -4766,6 +4925,7 @@ internal void ToggleGutter()
         {
             if (_applyingHighlight) return;
             if (_applyingElasticTabs) return;  // SelectionTabs change fires TextChanged — don't restart timer
+            textEditor.ClearAutoInsertedCloses();
             // Hash comparison catches spurious TextChanged from RichTextBox internals
             // (line ending normalization, deferred messages, etc.) when content hasn't changed
             if (!isModified && ComputeContentHash() == savedContentHash) return;
@@ -4903,6 +5063,7 @@ internal void ToggleGutter()
                     {
                         zoomFactor = newZoom;
                         zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
+                        textEditor.ShowZoomIndicator(zoomFactor);
                         gutterPanel?.UpdateLineNumberWidth();
                         SyncGutterColumnWidth();
                         textEditor.SyncCaretWidth();
@@ -5532,6 +5693,18 @@ internal void ToggleGutter()
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
+            else if (e.Alt && e.KeyCode == Keys.Left && !e.Control && !e.Shift)
+            {
+                NavigateCursorBack();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.Alt && e.KeyCode == Keys.Right && !e.Control && !e.Shift)
+            {
+                NavigateCursorForward();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
 
         private bool _isFullScreen = false;
@@ -5721,6 +5894,7 @@ internal void ToggleGutter()
                 int idx = textEditor.GetFirstCharIndexFromLine(lineNumber - 1);
                 if (idx >= 0)
                 {
+                    PushCursorHistory();
                     textEditor.SelectionStart = idx;
                     textEditor.SelectionLength = 0;
                     textEditor.ScrollToCaret();
