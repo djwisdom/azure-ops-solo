@@ -14,7 +14,7 @@
     <AssemblyVersion>1.0.35.0</AssemblyVersion>
     <FileVersion>1.0.35.0</FileVersion>
     <Company>Personal Flip Pad</Company>
-    <Description>AIOps-aware developer editor with code editing, DevSecOps scanning, observability intelligence, Git integration, Roslyn IntelliSense, minimap, Vim mode, flat theme system, DPAPI-encrypted settings, and AI-assisted operational insights.</Description>
+    <Description>AIOps-aware developer editor with code editing, DevSecOps scanning, observability intelligence, Git integration, Roslyn IntelliSense, minimap, Vim mode, flat theme system, graded security hardening (Not Hardened / Low / Mid / Max) with DPAPI-encrypted settings and guided transition wizard, and AI-assisted operational insights.</Description>
     <Copyright>Copyright (c) Dennis O. Esternon 2026</Copyright>
   </PropertyGroup>
 
@@ -51,6 +51,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Resources\TERMINAL.md">
       <LogicalName>MyCrownJewelApp.Pfpad.Resources.TERMINAL.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\SECURITY_HARDENING.md">
+      <LogicalName>MyCrownJewelApp.Pfpad.Resources.SECURITY_HARDENING.md</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

@@ -20,8 +20,9 @@ If you're new to pfpad, don't worry. You do **not** need to memorize everything 
 10. [For C# Developers](#10-for-c-developers)
 11. [For C Developers](#11-for-c-developers)
 12. [For C++ Developers](#12-for-c-developers)
-13. [Keyboard Shortcuts Reference](#13-keyboard-shortcuts-reference)
-14. [Troubleshooting & FAQ](#14-troubleshooting--faq)
+13. [Security Hardening](#13-security-hardening)
+14. [Keyboard Shortcuts Reference](#14-keyboard-shortcuts-reference)
+15. [Troubleshooting & FAQ](#15-troubleshooting--faq)
 
 ---
 
@@ -1223,3 +1224,81 @@ If you're an experienced developer but new to pfpad, the best approach is:
 That is enough to make pfpad feel like your editor instead of somebody else's.
 
 And if something feels unfamiliar at first, don't worry — that's normal. A good editor should reward curiosity, not punish it. pfpad gives you room to learn at your own pace.
+
+---
+
+# 13. Security Hardening
+
+pfpad includes a **built-in, graded runtime security hardening system** accessible from
+**Settings → Security → Security Profile**. You do not need to be a security expert — the
+system is designed to be progressive and forgiving.
+
+## The Four Profiles
+
+| Profile | What it means for you |
+|---------|-----------------------|
+| **Not Hardened** | Zero enforcement. Everything works, nothing is blocked. Use for trusted local dev only. |
+| **Low** *(default)* | Blocks dangerous URI schemes (javascript:, bscript:, ms-msdt:). Zero friction otherwise. |
+| **Mid** | Encrypts settings.json with your Windows account (DPAPI). Protects API keys and tokens at rest. |
+| **Max** | Adds HTTPS-only for all links and AIOps connectors. For regulated or high-security environments. |
+
+## Changing Your Profile
+
+1. Open **Settings** (Ctrl+,) → navigate to **Security**
+2. Select the desired profile with the radio buttons
+3. Click **OK**
+4. A **transition wizard** opens and shows exactly what will happen
+5. Click **Upgrade** (or **Downgrade**) to proceed, or **Cancel** to stay where you are
+
+## The Transition Wizard
+
+The wizard never changes anything without your confirmation. It shows:
+
+- Each migration step as a plain-English description
+- Live status icons as steps run: ⬜ pending → ⏳ running → ✅ done / ⚠️ warning / ❌ failed
+- Automatic rollback if a step fails — your original state is always restored
+- A backup of any file it modifies before touching it
+
+**You can always cancel.** If you cancel after a step has already run, the wizard rolls back
+the completed steps automatically.
+
+## Practical Examples
+
+**Upgrading to Mid (encrypting your settings):**
+
+The wizard backs up settings.json → settings.json.bak, then encrypts the live file with
+DPAPI. If encryption fails for any reason, the backup is restored. On success, the wizard
+auto-closes after 1.5 seconds — no action required.
+
+**"I can't read settings.json any more after upgrading to Mid":**
+
+This is expected. Use **Help > About → About tab → Open settings.json** — if the file is
+encrypted, pfpad offers to export a readable copy to your Desktop. Or simply downgrade to
+Low: the wizard decrypts the file back to plain JSON automatically.
+
+**"A link stopped working after upgrading to Max":**
+
+The status bar will tell you exactly why:
+*"🔒 Link blocked (http:// links are blocked at Max — use https://). Change profile in
+Settings → Security."*
+
+Either switch the endpoint to https://, or temporarily drop to Mid for that session.
+
+## Build-Time Status Indicators
+
+The Security panel also shows read-only indicators that reflect how the binary you are running
+was built:
+
+- **Code signing** — whether the EXE has an Authenticode signature
+- **CI security gates** — whether the pipeline has Wiz or CodeQL scanning active
+- **Installer signing** — whether the Inno Setup installer has a SignTool directive
+
+These are informational only and cannot be changed at runtime. ❌ indicators are normal for
+personal development machines.
+
+## Full Documentation
+
+For complete details, transition behaviour, FAQ, and build-time status explanation, see
+**Help > Manual → 🔒 Security Hardening** tab inside the app.
+
+---

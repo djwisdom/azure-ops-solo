@@ -2,7 +2,7 @@
 
 **Version 1.0.35.0**
 
-Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE for Windows. It combines code editing, DevSecOps scanning, observability intelligence, Git integration, and AI-assisted operational insights into a single workflow.
+Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE for Windows. It combines code editing, DevSecOps scanning, observability intelligence, Git integration, and AI-assisted operational insights into a single workflow. pfpad also includes a built-in graded security hardening system that lets you progressively harden your environment as your needs grow.
 
 ---
 
@@ -17,6 +17,7 @@ Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE
 - [Panels](#panels)
 - [Themes and Display](#themes-and-display)
 - [Settings](#settings)
+- [Security Hardening](#security-hardening)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Language Support](#language-support)
 - [Quick Open](#quick-open)
@@ -404,11 +405,56 @@ Settings are organized by category:
 - **Appearance** — theme, minimap, status bar, gutter
 - **Cursor** — line highlight mode, hover highlight, blink rate
 - **Git** — user name, email, default branch
+- **Security** — runtime hardening profile (Not Hardened / Low / Mid / Max), workspace trust, URL validation, SAST scanning, logging
 - **AIOps** — connector endpoints and credentials
 - **Extensions** — external tools and plugins
 - **Keybindings** — view and customize keyboard shortcuts
 
 Settings are saved per-user and persisted across sessions.
+
+---
+
+## Security Hardening
+
+pfpad includes a **built-in, graded runtime security hardening system** accessible from
+**Settings → Security → Security Profile**.
+
+### Profiles
+
+| Profile | Purpose |
+|---------|---------|
+| **Not Hardened** | No enforcement — local development / testing only |
+| **Low** *(default)* | URL scheme allowlist, TLS preference, safe process launch |
+| **Mid** | Low + DPAPI-encrypted settings.json, SDK credential flows, log masking |
+| **Max** | Mid + HTTPS-only AIOps endpoints, `http://` links blocked |
+
+### Transition Wizard
+
+Changing the profile opens a guided **transition wizard** that:
+
+- Lists every migration step with a plain-English description
+- Shows live status icons (⬜ pending → ⏳ running → ✅ done / ⚠️ warning / ❌ failed)
+- Creates backups before any file mutation (`settings.json.bak`, `settings.json.enc.bak`)
+- Rolls back all completed steps automatically if a step fails
+- Reverts the profile selector if you cancel
+
+### Key user-visible behaviours by profile
+
+| Behaviour | Not Hardened | Low | Mid | Max |
+|-----------|:-----------:|:---:|:---:|:---:|
+| `javascript:` / `vbscript:` links blocked | ✗ | ✅ | ✅ | ✅ |
+| `http://` links blocked | ✗ | ✗ | ✗ | ✅ |
+| `settings.json` DPAPI-encrypted | ✗ | ✗ | ✅ | ✅ |
+| Status-bar feedback on blocked links | ✗ | ✅ | ✅ | ✅ |
+| Blocked link feedback in status bar | *silent* | ✅ | ✅ | ✅ |
+
+### Settings encryption (Mid+)
+
+When you upgrade to Mid, `settings.json` is encrypted with **Windows DPAPI** (tied to your
+user account on this machine). Use **About → Open settings.json** to export a readable copy
+for inspection if needed. Downgrading back to Low decrypts the file automatically.
+
+For full details, see the **🔒 Security Hardening** tab in **Help > Manual**.
 
 ---
 

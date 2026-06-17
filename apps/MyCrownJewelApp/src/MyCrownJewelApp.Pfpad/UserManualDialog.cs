@@ -46,9 +46,10 @@ public sealed partial class UserManualDialog : Form
     private readonly Button     _manualTab;
     private readonly Button     _archTab;
     private readonly Button     _terminalTab;
+    private readonly Button     _securityTab;
     private readonly Button     _closeBtn;
     private readonly Panel      _titleBar;
-    private enum ActiveTab { Manual, Architecture, Terminal }
+    private enum ActiveTab { Manual, Architecture, Terminal, Security }
     private ActiveTab _activeTab = ActiveTab.Manual;
     private Theme _theme;
 
@@ -120,18 +121,22 @@ public sealed partial class UserManualDialog : Form
         _manualTab   = CreateTabButton("📖  User Manual",           active: true);
         _archTab     = CreateTabButton("🏗  Architecture & Design",  active: false);
         _terminalTab = CreateTabButton("🖥  Terminal Guide",          active: false);
+        _securityTab = CreateTabButton("🔒  Security Hardening",     active: false);
         _manualTab.Location   = new Point(0, 0);
         _archTab.Location     = new Point(_manualTab.Width, 0);
         _terminalTab.Location = new Point(_manualTab.Width + _archTab.Width, 0);
-        _manualTab.Height = _archTab.Height = _terminalTab.Height = 32;
+        _securityTab.Location = new Point(_manualTab.Width + _archTab.Width + _terminalTab.Width, 0);
+        _manualTab.Height = _archTab.Height = _terminalTab.Height = _securityTab.Height = 32;
 
         _manualTab.Click   += (_, _) => SwitchTab(ActiveTab.Manual);
         _archTab.Click     += (_, _) => SwitchTab(ActiveTab.Architecture);
         _terminalTab.Click += (_, _) => SwitchTab(ActiveTab.Terminal);
+        _securityTab.Click += (_, _) => SwitchTab(ActiveTab.Security);
 
         tabStrip.Controls.Add(_manualTab);
         tabStrip.Controls.Add(_archTab);
         tabStrip.Controls.Add(_terminalTab);
+        tabStrip.Controls.Add(_securityTab);
 
         // Draw active-tab underline
         tabStrip.Paint += (_, e) =>
@@ -140,6 +145,7 @@ public sealed partial class UserManualDialog : Form
             {
                 ActiveTab.Architecture => _archTab,
                 ActiveTab.Terminal     => _terminalTab,
+                ActiveTab.Security     => _securityTab,
                 _                     => _manualTab,
             };
             using var pen = new Pen(_theme.Accent, 2);
@@ -149,6 +155,7 @@ public sealed partial class UserManualDialog : Form
         _manualTab.Click   += (_, _) => tabStrip.Invalidate();
         _archTab.Click     += (_, _) => tabStrip.Invalidate();
         _terminalTab.Click += (_, _) => tabStrip.Invalidate();
+        _securityTab.Click += (_, _) => tabStrip.Invalidate();
 
         // ── Resize grip (bottom-right corner) ─────────────────────────────────
         var grip = new Panel
@@ -274,6 +281,7 @@ public sealed partial class UserManualDialog : Form
         SetTabActive(_manualTab,   _activeTab == ActiveTab.Manual);
         SetTabActive(_archTab,     _activeTab == ActiveTab.Architecture);
         SetTabActive(_terminalTab, _activeTab == ActiveTab.Terminal);
+        SetTabActive(_securityTab, _activeTab == ActiveTab.Security);
     }
 
     private void SetTabActive(Button btn, bool active)
@@ -288,6 +296,7 @@ public sealed partial class UserManualDialog : Form
         {
             ActiveTab.Architecture => LoadArchitectureMarkdown(),
             ActiveTab.Terminal     => LoadTerminalMarkdown(),
+            ActiveTab.Security     => LoadSecurityMarkdown(),
             _                     => LoadManualMarkdown(),
         };
         string html = MarkdownRenderer.ConvertToHtml(markdown, _theme);
@@ -322,6 +331,16 @@ public sealed partial class UserManualDialog : Form
             try { return File.ReadAllText(localPath); } catch { }
 #endif
         return LoadEmbeddedResource("MyCrownJewelApp.Pfpad.Resources.TERMINAL.md");
+    }
+
+    private static string LoadSecurityMarkdown()
+    {
+#if DEBUG
+        string localPath = Path.Combine(AppContext.BaseDirectory, "SECURITY_HARDENING.md");
+        if (File.Exists(localPath))
+            try { return File.ReadAllText(localPath); } catch { }
+#endif
+        return LoadEmbeddedResource("MyCrownJewelApp.Pfpad.Resources.SECURITY_HARDENING.md");
     }
 
     private static string LoadEmbeddedResource(string resourceName)

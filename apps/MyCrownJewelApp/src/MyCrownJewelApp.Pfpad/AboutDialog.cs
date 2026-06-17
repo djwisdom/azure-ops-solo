@@ -457,6 +457,15 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Vim mode, snippets, command palette, folding, bookmarks, and multi-tab session restore");
         featuresText.AppendLine("• Large-file degradation safeguards to keep the editor responsive");
         featuresText.AppendLine();
+        featuresText.AppendLine("Security hardening:");
+        featuresText.AppendLine("• Graded security profiles: Not Hardened → Low → Mid → Max");
+        featuresText.AppendLine("• Guided transition wizard with per-step live status, rollback on failure, and auto-backups");
+        featuresText.AppendLine("• DPAPI encryption for settings.json at Mid+ (tied to Windows user account)");
+        featuresText.AppendLine("• URL scheme allowlist blocks javascript:, vbscript:, ms-msdt: at Low+");
+        featuresText.AppendLine("• Status-bar feedback on blocked links — no silent failures");
+        featuresText.AppendLine("• Safe process launch via ArgumentList — eliminates shell injection in AIOps CLI calls");
+        featuresText.AppendLine("• Build-time status indicators: code signing, CI gates, installer signing");
+        featuresText.AppendLine();
         featuresText.AppendLine(".NET modernization:");
         featuresText.AppendLine($"• Target framework: net{Environment.Version.Major}.0-windows  •  CLR {_clrVersion}");
         featuresText.AppendLine("• Source-generated P/Invoke via LibraryImport for native interop paths");
@@ -538,6 +547,7 @@ public sealed partial class AboutDialog : Form
         AddInfoRow(grid, "Theme", _themeName);
         AddInfoRow(grid, "Open files", _openFileCount.ToString());
         AddInfoRow(grid, "Workspace", string.IsNullOrWhiteSpace(_workspaceRoot) ? "Not set" : _workspaceRoot!);
+        AddInfoRow(grid, "Security profile", SecurityEnforcementService.CurrentProfile.ToString());
         AddInfoRow(grid, "Commit", _commit);
         AddInfoRow(grid, "Build date", _buildDate);
 
@@ -557,7 +567,7 @@ public sealed partial class AboutDialog : Form
 
         AddPageRow(layout, CreateWrappingLabel("Personal Flip Pad is built as a WinForms editor shell with .NET, custom controls, and theme-aware UI infrastructure.", _contentWidth, _theme.Muted), _sectionGap);
         AddPageRow(layout, CreateLabel("Third-party acknowledgements", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
-        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• App icon generated at runtime via GDI+ (AppIconFactory)", _contentWidth, _theme.Muted), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows DPAPI (System.Security.Cryptography) for at-rest settings encryption\r\n• App icon generated at runtime via GDI+ (AppIconFactory)", _contentWidth, _theme.Muted), _rowGap);
         AddPageRow(layout, CreateWrappingLabel("Thanks to the broader OSS ecosystem that makes desktop developer tooling possible.", _contentWidth, _theme.Disabled));
 
         page.Controls.Add(layout);
