@@ -273,21 +273,39 @@ public sealed partial class AboutDialog : Form
         var page = CreatePagePanel();
         var layout = CreatePageLayout();
 
+        // Compute column widths explicitly — Percent columns in AutoSize TLPs have no
+        // defined denominator and produce incorrect offsets. Use Absolute instead.
+        int gap = Scale(20);
+        int leftColW = (int)Math.Round(_contentWidth * 0.58);
+        int rightColW = _contentWidth - leftColW - gap;
+
         var header = new TableLayoutPanel
         {
+            ColumnCount = 2,
+            RowCount = 1,
+            Width = _contentWidth,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 2,
-            Width = _contentWidth,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
             BackColor = Color.Transparent
         };
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60f));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, leftColW));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, rightColW + gap));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var leftColumn = CreateVerticalFlow();
-        leftColumn.Padding = new Padding(0, 0, Scale(14), 0);
+        // Left column — fixed width, height auto-grows
+        var leftColumn = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Width = leftColW - Scale(12),
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 0, Scale(12), 0)
+        };
 
         var identityRow = new FlowLayoutPanel
         {
@@ -309,15 +327,22 @@ public sealed partial class AboutDialog : Form
             Margin = new Padding(0, Scale(2), Scale(12), 0)
         };
 
-        var titleStack = CreateVerticalFlow();
-        titleStack.AutoSize = true;
-        titleStack.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-
+        var titleStack = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
         titleStack.Controls.Add(CreateLabel("Personal Flip Pad", "Segoe UI", Scale(18), FontStyle.Bold, _theme.Text));
 
         var versionRow = new FlowLayoutPanel
         {
             AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
             Margin = Padding.Empty,
@@ -335,14 +360,24 @@ public sealed partial class AboutDialog : Form
         leftColumn.Controls.Add(CreateLabel($"Commit: {_commit}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
         leftColumn.Controls.Add(CreateLabel($"Build: {_buildDate}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
         if (!string.IsNullOrWhiteSpace(_description))
-            leftColumn.Controls.Add(CreateWrappingLabel(_description, Math.Max(Scale(380), (int)Math.Round(_contentWidth * 0.54)), _theme.Muted));
+            leftColumn.Controls.Add(CreateWrappingLabel(_description, leftColW - Scale(12), _theme.Muted));
         if (!string.IsNullOrWhiteSpace(_copyright))
-            leftColumn.Controls.Add(CreateWrappingLabel(_copyright, Math.Max(Scale(380), (int)Math.Round(_contentWidth * 0.54)), _theme.Disabled));
+            leftColumn.Controls.Add(CreateWrappingLabel(_copyright, leftColW - Scale(12), _theme.Disabled));
 
-        var rightColumn = CreateVerticalFlow();
-        rightColumn.Padding = new Padding(Scale(14), 0, 0, 0);
+        // Right column — fixed width, height auto-grows, gap provided by left padding
+        var rightColumn = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Width = rightColW,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = new Padding(gap, 0, 0, 0)
+        };
         rightColumn.Controls.Add(CreateLabel("Session", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text));
-        rightColumn.Controls.Add(CreateWrappingLabel(_sessionStats, Math.Max(Scale(240), (int)Math.Round(_contentWidth * 0.34)), _theme.Muted));
+        rightColumn.Controls.Add(CreateWrappingLabel(_sessionStats, rightColW - Scale(4), _theme.Muted));
         rightColumn.Controls.Add(CreateLabel($"Theme: {_themeName}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted, new Padding(0, _rowGap, 0, 0)));
         rightColumn.Controls.Add(CreateLabel($"Build flavor: {_buildFlavor}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
         rightColumn.Controls.Add(CreateLabel("Press Esc to close", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Disabled, new Padding(0, _rowGap, 0, 0)));
@@ -479,6 +514,9 @@ public sealed partial class AboutDialog : Form
         AddPageRow(layout, CreateLabel("System", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
         AddPageRow(layout, CreateWrappingLabel("Live runtime and process information for the current Personal Flip Pad session.", _contentWidth, _theme.Muted), _sectionGap);
 
+        int labelColW = (int)Math.Round(_contentWidth * 0.30);
+        int valueColW = _contentWidth - labelColW;
+
         var grid = new TableLayoutPanel
         {
             AutoSize = true,
@@ -489,8 +527,8 @@ public sealed partial class AboutDialog : Form
             Padding = Padding.Empty,
             BackColor = Color.Transparent
         };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34f));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 66f));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, labelColW));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, valueColW));
 
         AddInfoRow(grid, "OS", _osDesc + $" ({_osArch})");
         AddInfoRow(grid, ".NET", _runtimeLabel + $"  •  CLR {_clrVersion}");
@@ -629,13 +667,18 @@ public sealed partial class AboutDialog : Form
 
     private void AddInfoRow(TableLayoutPanel grid, string label, string value)
     {
+        // Derive value column width from the grid's second column (Absolute style)
+        int valueColW = grid.ColumnStyles.Count >= 2 && grid.ColumnStyles[1].SizeType == SizeType.Absolute
+            ? (int)grid.ColumnStyles[1].Width
+            : Math.Max(Scale(420), (int)Math.Round(_contentWidth * 0.62));
+
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var rowIndex = grid.RowCount;
         grid.RowCount++;
 
         var keyLabel = CreateLabel(label, "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text);
         keyLabel.Margin = new Padding(0, 0, Scale(12), _rowGap);
-        var valueLabel = CreateWrappingLabel(value, Math.Max(Scale(420), (int)Math.Round(_contentWidth * 0.62)), _theme.Muted);
+        var valueLabel = CreateWrappingLabel(value, valueColW - Scale(4), _theme.Muted);
         valueLabel.Margin = new Padding(0, 0, 0, _rowGap);
 
         grid.Controls.Add(keyLabel, 0, rowIndex);
