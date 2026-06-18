@@ -89,10 +89,6 @@ internal sealed class FavoritesManagerPanel : UserControl
             Panel1MinSize = 120,
             Panel2MinSize = 150,
         };
-        // Set SplitterDistance after the control has real width.
-        // SizeChanged fires once the parent sizes us; we clamp to the valid range
-        // and unsubscribe so it only applies the initial split once.
-        _splitContainer.SizeChanged += OnSplitContainerFirstSize;
         _splitContainer.Panel1.Controls.Add(_folderTree);
         _splitContainer.Panel2.Controls.Add(_itemsList);
 
@@ -170,8 +166,33 @@ internal sealed class FavoritesManagerPanel : UserControl
         _splitContainer.SplitterDistance = Math.Clamp(220, min, max);
     }
 
+    private bool _splitterDistanceSet;
+
+    private void SetSplitterDistanceSafe()
+    {
+        if (_splitterDistanceSet) return;
+        int min = _splitContainer.Panel1MinSize;
+        int max = _splitContainer.Width - _splitContainer.Panel2MinSize - _splitContainer.SplitterWidth;
+        if (max < min) return;
+        try
+        {
+            _splitContainer.SplitterDistance = Math.Clamp(220, min, max);
+            _splitterDistanceSet = true;
+        }
+        catch { /* width not settled yet — next VisibleChanged will retry */ }
+    }
+
     private void WireEvents()
     {
+        // Set the initial splitter position once the panel has real pixel dimensions.
+        // VisibleChanged + BeginInvoke guarantees all pending layout messages have
+        // been processed before we touch SplitterDistance.
+        VisibleChanged += (_, _) =>
+        {
+            if (Visible && !_splitterDistanceSet)
+                BeginInvoke(SetSplitterDistanceSafe);
+        };
+
         _addFavoriteButton.Click += (_, _) => AddFavorite();
         _addFolderButton.Click += (_, _) => AddFolder(GetSelectedFolderId());
         _importEdgeButton.Click += (_, _) => ImportFavorites("edge");
