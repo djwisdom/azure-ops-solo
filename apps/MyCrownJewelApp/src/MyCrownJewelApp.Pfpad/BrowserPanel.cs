@@ -241,17 +241,18 @@ internal sealed class BrowserPanel : UserControl
         // ── Zoom indicator widget (absolute layout — avoids FlowLayoutPanel paint issues) ──
         const int zh = 18;  // button height
         const int zy = 2;   // top offset within 22px status bar
+        var zoomFont = new Font("Segoe UI", 7.5f);
         _zoomLabel = new Label
         {
             Text = "100%",
             AutoSize = false,
-            Bounds = new Rectangle(4, zy, 38, zh),
+            Bounds = new Rectangle(4, zy, 36, zh),
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
         };
-        _zoomOutBtn   = MakeZoomBtn("−",     "Zoom out (Ctrl+−)", new Rectangle(44, zy, 22, zh));
-        _zoomInBtn    = MakeZoomBtn("+",     "Zoom in (Ctrl++)",  new Rectangle(68, zy, 22, zh));
-        _zoomResetBtn = MakeZoomBtn("Reset", "Reset zoom",        new Rectangle(93, zy, 44, zh));
+        _zoomOutBtn   = MakeZoomBtn("−",     "Zoom out (Ctrl+−)", new Rectangle(42, zy, 20, zh), zoomFont);
+        _zoomInBtn    = MakeZoomBtn("+",     "Zoom in (Ctrl++)",  new Rectangle(64, zy, 20, zh), zoomFont);
+        _zoomResetBtn = MakeZoomBtn("Reset", "Reset zoom",        new Rectangle(86, zy, 46, zh), zoomFont);
 
         _zoomOutBtn.Click   += (_, _) => AdjustZoom(-0.1);
         _zoomInBtn.Click    += (_, _) => AdjustZoom(+0.1);
@@ -260,7 +261,7 @@ internal sealed class BrowserPanel : UserControl
         _zoomPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 142,
+            Width = 138,
             Visible = false,
         };
         _zoomPanel.Controls.AddRange([_zoomLabel, _zoomOutBtn, _zoomInBtn, _zoomResetBtn]);
@@ -1119,7 +1120,7 @@ internal sealed class BrowserPanel : UserControl
         _webView.ZoomFactor = Math.Clamp(factor, 0.25, 5.0);
     }
 
-    private Button MakeZoomBtn(string text, string tip, Rectangle bounds)
+    private Button MakeZoomBtn(string text, string tip, Rectangle bounds, Font font)
     {
         var btn = new Button
         {
@@ -1127,7 +1128,7 @@ internal sealed class BrowserPanel : UserControl
             AutoSize = false,
             Bounds = bounds,
             FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 8f),
+            Font = font,
             Cursor = Cursors.Hand,
             TextAlign = ContentAlignment.MiddleCenter,
         };
