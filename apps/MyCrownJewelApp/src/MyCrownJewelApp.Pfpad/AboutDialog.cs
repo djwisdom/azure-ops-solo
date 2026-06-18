@@ -337,6 +337,7 @@ public sealed partial class AboutDialog : Form
             Padding = Padding.Empty
         };
         titleStack.Controls.Add(CreateLabel("Personal Flip Pad", "Segoe UI", Scale(18), FontStyle.Bold, _theme.Text));
+        titleStack.Controls.Add(CreateLabel($"v{_version}", "Segoe UI", Scale(11), FontStyle.Bold, _theme.Text));
 
         var versionRow = new FlowLayoutPanel
         {
@@ -348,8 +349,7 @@ public sealed partial class AboutDialog : Form
             Padding = Padding.Empty,
             BackColor = Color.Transparent
         };
-        versionRow.Controls.Add(CreateLabel($"Version {_version}", "Segoe UI", Scale(10), FontStyle.Regular, _theme.Muted));
-        versionRow.Controls.Add(CreateLabel($"{_buildFlavor} build", "Segoe UI", Scale(9), FontStyle.Regular, _theme.Disabled, new Padding(Scale(10), Scale(1), 0, 0)));
+        versionRow.Controls.Add(CreateLabel($"{_buildFlavor} build", "Segoe UI", Scale(9), FontStyle.Regular, _theme.Muted, new Padding(0, Scale(1), 0, 0)));
         titleStack.Controls.Add(versionRow);
 
         identityRow.Controls.Add(appIcon);
