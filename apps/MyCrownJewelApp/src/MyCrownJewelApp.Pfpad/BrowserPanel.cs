@@ -95,7 +95,6 @@ internal sealed class BrowserPanel : UserControl
     private double _defaultZoom = 1.0;
     private bool _showInTitlebar = false;
     private bool _contentFilterEnabled = true;
-    private string? _ytAdScriptId;         // handle for the YouTube ad-block script injection
     private string _userAgentPreset = "default";
     private string _customUserAgent = "";
     private bool _showFavBar = false;
@@ -405,28 +404,8 @@ internal sealed class BrowserPanel : UserControl
 
     public void SetContentFilterEnabled(bool enabled)
     {
-        bool changed = _contentFilterEnabled != enabled;
         _contentFilterEnabled = enabled;
         UpdateBlockedLabel();
-
-        if (!changed || _webView?.CoreWebView2 == null) return;
-        var cw = _webView.CoreWebView2;
-
-        if (enabled)
-        {
-            // Re-inject YouTube ad-block script when filter is re-enabled
-            if (_ytAdScriptId == null)
-                _ = InjectYouTubeAdBlockScriptAsync(cw);
-        }
-        else
-        {
-            // Remove script when filter is disabled
-            if (_ytAdScriptId != null)
-            {
-                cw.RemoveScriptToExecuteOnDocumentCreated(_ytAdScriptId);
-                _ytAdScriptId = null;
-            }
-        }
     }
 
     public void SetUserAgent(string preset, string custom)
@@ -611,6 +590,16 @@ internal sealed class BrowserPanel : UserControl
                 // Apply default zoom after each navigation
                 if (_webView != null) _webView.ZoomFactor = _defaultZoom;
             });
+
+            // Inject YouTube ad-block script after page load (fire-and-forget).
+            // ExecuteScriptAsync runs after DOMContentLoaded; YouTube's ad machinery
+            // loads lazily so the 300ms poll loop in the script still catches all ads.
+            if (_contentFilterEnabled && args.IsSuccess && _webView?.CoreWebView2 != null)
+            {
+                string source = cw.Source ?? "";
+                if (source.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+                    _ = _webView.CoreWebView2.ExecuteScriptAsync(YouTubeAdBlocker.ContentScript);
+            }
         };
 
         cw.SourceChanged += (_, _) =>
@@ -690,27 +679,6 @@ internal sealed class BrowserPanel : UserControl
         };
 
         UpdateBlockedLabel();
-
-        // ── YouTube ad-block content script ──────────────────────────────────
-        // Runs on every page; self-guards to youtube.com inside the script.
-        // Stored ID allows removal if the user disables the content filter.
-        if (_contentFilterEnabled)
-            _ = InjectYouTubeAdBlockScriptAsync(cw);
-    }
-
-    private async System.Threading.Tasks.Task InjectYouTubeAdBlockScriptAsync(
-        Microsoft.Web.WebView2.Core.CoreWebView2 cw)
-    {
-        try
-        {
-            _ytAdScriptId = await cw.AddScriptToExecuteOnDocumentCreatedAsync(
-                YouTubeAdBlocker.ContentScript).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.TraceWarning(
-                $"[YouTubeAdBlocker] Script injection failed: {ex.Message}");
-        }
     }
 
     /// <summary>Returns true if the URI targets localhost (127.0.0.1, [::1], or localhost).</summary>
