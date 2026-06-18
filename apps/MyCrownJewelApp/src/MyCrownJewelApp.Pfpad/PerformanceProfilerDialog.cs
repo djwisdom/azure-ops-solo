@@ -32,6 +32,8 @@ public sealed class PerformanceProfilerDialog : Form
     // Sampling profiler components
     public SamplingEngine? _samplingEngine;
     private BinaryLogger? _binaryLogger;
+#endif
+#if PROFILING && DEBUG
     private DebugOverlay? _debugOverlay;
 #endif
 
@@ -729,6 +731,8 @@ public sealed class PerformanceProfilerDialog : Form
 #if PROFILING
             _samplingEngine?.Dispose();
             _binaryLogger?.Dispose();
+#endif
+#if PROFILING && DEBUG
             _debugOverlay?.Dispose();
 #endif
         }

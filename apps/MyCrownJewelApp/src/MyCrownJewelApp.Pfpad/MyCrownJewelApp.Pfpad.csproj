@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <DefineConstants>$(DefineConstants);PROFILING;DEBUG</DefineConstants>
+    <DefineConstants>$(DefineConstants);PROFILING</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
