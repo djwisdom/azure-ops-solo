@@ -1352,7 +1352,8 @@ internal sealed class BrowserPanel : UserControl
 
     private void LayoutFavActionButtons()
     {
-        bool showOverflow = _favOverflowMenu != null && _favOverflowMenu.Items.Count > 0;
+        // Use _favOverflowItems (not _favOverflowMenu) — menu is built lazily on click
+        bool showOverflow = _favOverflowItems.Count > 0;
         if (_favOverflowBtn != null)
             _favOverflowBtn.Visible = showOverflow;
 
