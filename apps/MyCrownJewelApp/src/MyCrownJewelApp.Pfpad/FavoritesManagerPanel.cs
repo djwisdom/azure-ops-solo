@@ -234,8 +234,18 @@ internal sealed class FavoritesManagerPanel : UserControl
         _itemsList.KeyDown += (_, e) =>
         {
             // Alt+Up / Alt+Down moves the selected item without leaving the list
-            if (e.Alt && e.KeyCode == Keys.Up)   { MoveSelectedItem(-1); e.Handled = true; }
-            if (e.Alt && e.KeyCode == Keys.Down) { MoveSelectedItem(+1); e.Handled = true; }
+            if (e.Alt && e.KeyCode == Keys.Up)
+            {
+                MoveSelectedItem(-1);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.Alt && e.KeyCode == Keys.Down)
+            {
+                MoveSelectedItem(+1);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         };
         _itemsList.MouseUp += (_, e) =>
         {
@@ -286,7 +296,13 @@ internal sealed class FavoritesManagerPanel : UserControl
 
     private void RefreshFavoritesView(string? preferredFolderId)
     {
+        // BuildFolderTree fires AfterSelect → RefreshList, which would consume
+        // _pendingRestoreId before the explicit RefreshList call below.
+        // Guard: save the ID, suppress it during BuildFolderTree, restore it after.
+        string? savedId = _pendingRestoreId;
+        _pendingRestoreId = null;
         BuildFolderTree(preferredFolderId);
+        _pendingRestoreId = savedId;
         RefreshList();
     }
 
@@ -352,6 +368,8 @@ internal sealed class FavoritesManagerPanel : UserControl
                     }
                 }
                 _pendingRestoreId = null;
+                // Return focus so Alt+Up/Down key-repeat continues on the list
+                _itemsList.Focus();
             }
         }
         finally
