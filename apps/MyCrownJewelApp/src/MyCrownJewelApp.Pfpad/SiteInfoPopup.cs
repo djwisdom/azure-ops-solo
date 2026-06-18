@@ -161,17 +161,13 @@ internal sealed class SiteInfoPopup : Form
     {
         try
         {
-            var cookies = await _cw!.CookieManager
-                .GetCookiesAsync(_info.Url).ConfigureAwait(false);
+            var cookies = await _cw!.CookieManager.GetCookiesAsync(_info.Url);
+            if (IsDisposed) return;
             int n = cookies?.Count ?? 0;
             string text = n == 0 ? "None in use" : n == 1 ? "1 in use" : $"{n} in use";
-            if (!IsDisposed && cookieRow.IsHandleCreated)
-                cookieRow.BeginInvoke(() =>
-                {
-                    foreach (Control c in cookieRow.Controls)
-                        if (c.Tag is string t && t == "detail")
-                            c.Text = text;
-                });
+            foreach (Control c in cookieRow.Controls)
+                if (c.Tag is string t && t == "detail")
+                    c.Text = text;
         }
         catch { /* swallow — cookie API unavailable */ }
     }
@@ -211,8 +207,7 @@ internal sealed class SiteInfoPopup : Form
     {
         try
         {
-            var cookies = await _cw!.CookieManager
-                .GetCookiesAsync(_info.Url).ConfigureAwait(false);
+            var cookies = await _cw!.CookieManager.GetCookiesAsync(_info.Url);
             if (cookies == null || IsDisposed) return;
 
             string summary = cookies.Count == 0 ? "No cookies in use"
@@ -225,8 +220,7 @@ internal sealed class SiteInfoPopup : Form
                 .Take(8)
                 .ToList();
 
-            if (!IsDisposed && p.IsHandleCreated)
-                p.BeginInvoke(() => ReplaceCookieDetail(p, summary, distinct));
+            ReplaceCookieDetail(p, summary, distinct);
         }
         catch { }
     }
