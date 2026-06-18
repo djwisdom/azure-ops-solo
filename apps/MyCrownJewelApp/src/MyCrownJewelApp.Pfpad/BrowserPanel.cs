@@ -569,6 +569,30 @@ internal sealed class BrowserPanel : UserControl
         _webView.ZoomFactorChanged += (_, _) =>
             BeginInvoke(() => ShowZoomIndicator(_webView.ZoomFactor));
 
+        // Intercept pop-up windows — redirect into this panel so content filter applies
+        cw.NewWindowRequested += (_, args) =>
+        {
+            args.Handled = true;  // suppress the native Chromium pop-up window
+            string url = args.Uri;
+            if (!string.IsNullOrEmpty(url))
+                BeginInvoke(() =>
+                {
+                    // Content filter check before navigating
+                    if (_contentFilterEnabled && ContentFilterService.Instance.IsBlocked(url))
+                    {
+                        ContentFilterService.Instance.RecordBlocked();
+                        BeginInvoke(() => SetStatus($"⛔ Pop-up blocked: {new Uri(url).Host}"));
+                        return;
+                    }
+                    if (!_allowLocalhost && IsLocalhostUri(url))
+                    {
+                        SetStatus("Localhost pop-up blocked by settings.");
+                        return;
+                    }
+                    Navigate(url);
+                });
+        };
+
         // Register Ctrl+Wheel interceptor so we catch wheel-zoom that bypasses ZoomFactorChanged
         _wheelFilter = new ZoomWheelFilter(this);
         Application.AddMessageFilter(_wheelFilter);
