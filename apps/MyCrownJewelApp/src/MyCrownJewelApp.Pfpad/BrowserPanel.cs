@@ -238,45 +238,32 @@ internal sealed class BrowserPanel : UserControl
         _statusBar.Controls.Add(_statusLabel);
         _statusBar.Controls.Add(_blockedLabel);
 
-        // ── Zoom indicator widget ─────────────────────────────────────────────
+        // ── Zoom indicator widget (absolute layout — avoids FlowLayoutPanel paint issues) ──
+        const int zh = 18;  // button height
+        const int zy = 2;   // top offset within 22px status bar
         _zoomLabel = new Label
         {
             Text = "100%",
             AutoSize = false,
-            Width = 40,
-            Dock = DockStyle.Left,
+            Bounds = new Rectangle(4, zy, 38, zh),
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 8f, FontStyle.Bold),
         };
-        _zoomOutBtn = MakeZoomBtn("−", "Zoom out (Ctrl+−)");
-        _zoomInBtn  = MakeZoomBtn("+", "Zoom in (Ctrl++)");
-        _zoomResetBtn = MakeZoomBtn("Reset", "Reset zoom to default");
-        _zoomResetBtn.Width = 42;
+        _zoomOutBtn   = MakeZoomBtn("−",     "Zoom out (Ctrl+−)", new Rectangle(44, zy, 22, zh));
+        _zoomInBtn    = MakeZoomBtn("+",     "Zoom in (Ctrl++)",  new Rectangle(68, zy, 22, zh));
+        _zoomResetBtn = MakeZoomBtn("Reset", "Reset zoom",        new Rectangle(93, zy, 44, zh));
 
-        _zoomOutBtn.Click  += (_, _) => AdjustZoom(-0.1);
-        _zoomInBtn.Click   += (_, _) => AdjustZoom(+0.1);
+        _zoomOutBtn.Click   += (_, _) => AdjustZoom(-0.1);
+        _zoomInBtn.Click    += (_, _) => AdjustZoom(+0.1);
         _zoomResetBtn.Click += (_, _) => SetZoom(_defaultZoom);
-
-        var zoomFlow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Padding = new Padding(2, 0, 2, 0),
-            Margin = new Padding(0),
-        };
-        zoomFlow.Controls.Add(_zoomLabel);
-        zoomFlow.Controls.Add(_zoomOutBtn);
-        zoomFlow.Controls.Add(_zoomInBtn);
-        zoomFlow.Controls.Add(_zoomResetBtn);
 
         _zoomPanel = new Panel
         {
             Dock = DockStyle.Right,
-            Width = 152,
+            Width = 142,
             Visible = false,
         };
-        _zoomPanel.Controls.Add(zoomFlow);
+        _zoomPanel.Controls.AddRange([_zoomLabel, _zoomOutBtn, _zoomInBtn, _zoomResetBtn]);
         _statusBar.Controls.Add(_zoomPanel);
 
         _statusBar.Controls.Add(_openExternalBtn);
@@ -1132,22 +1119,19 @@ internal sealed class BrowserPanel : UserControl
         _webView.ZoomFactor = Math.Clamp(factor, 0.25, 5.0);
     }
 
-    private Button MakeZoomBtn(string text, string tip)
+    private Button MakeZoomBtn(string text, string tip, Rectangle bounds)
     {
         var btn = new Button
         {
             Text = text,
             AutoSize = false,
-            Width = 24,
-            Height = 18,
-            Dock = DockStyle.Left,
+            Bounds = bounds,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8f),
             Cursor = Cursors.Hand,
-            Margin = new Padding(1, 0, 1, 0),
             TextAlign = ContentAlignment.MiddleCenter,
         };
-        btn.FlatAppearance.BorderSize = 0;
+        btn.FlatAppearance.BorderSize = 1;
         _toolTip.SetToolTip(btn, tip);
         return btn;
     }
