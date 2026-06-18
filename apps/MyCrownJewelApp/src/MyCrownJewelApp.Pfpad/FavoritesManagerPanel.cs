@@ -86,8 +86,6 @@ internal sealed class FavoritesManagerPanel : UserControl
             FixedPanel = FixedPanel.None,
             IsSplitterFixed = false,
             SplitterWidth = 5,
-            Panel1MinSize = 120,
-            Panel2MinSize = 150,
         };
         _splitContainer.Panel1.Controls.Add(_folderTree);
         _splitContainer.Panel2.Controls.Add(_itemsList);
@@ -171,15 +169,19 @@ internal sealed class FavoritesManagerPanel : UserControl
     private void SetSplitterDistanceSafe()
     {
         if (_splitterDistanceSet) return;
-        int min = _splitContainer.Panel1MinSize;
-        int max = _splitContainer.Width - _splitContainer.Panel2MinSize - _splitContainer.SplitterWidth;
+        if (_splitContainer.Width <= 0) return;
+        // No Panel1MinSize/Panel2MinSize set — any value ≥ 0 is valid.
+        // Pick 220px for the folder tree, clamped so both panels get at least 120px.
+        int desired = 220;
+        int max = _splitContainer.Width - _splitContainer.SplitterWidth - 150;
+        int min = 120;
         if (max < min) return;
         try
         {
-            _splitContainer.SplitterDistance = Math.Clamp(220, min, max);
+            _splitContainer.SplitterDistance = Math.Clamp(desired, min, max);
             _splitterDistanceSet = true;
         }
-        catch { /* width not settled yet — next VisibleChanged will retry */ }
+        catch { }
     }
 
     private void WireEvents()
@@ -191,6 +193,21 @@ internal sealed class FavoritesManagerPanel : UserControl
         {
             if (Visible && !_splitterDistanceSet)
                 BeginInvoke(SetSplitterDistanceSafe);
+        };
+
+        // Enforce soft min-sizes at drag time (Panel1MinSize/Panel2MinSize can't
+        // be set at construction because Panel2MinSize > Width causes internal
+        // WinForms SplitterDistanceInternal to go negative and throw on layout).
+        _splitContainer.SplitterMoved += (_, _) =>
+        {
+            int d = _splitContainer.SplitterDistance;
+            int minP1 = 120;
+            int minP2 = 150;
+            int maxD  = _splitContainer.Width - _splitContainer.SplitterWidth - minP2;
+            if (d < minP1 && minP1 <= maxD)
+                try { _splitContainer.SplitterDistance = minP1; } catch { }
+            else if (d > maxD && maxD >= minP1)
+                try { _splitContainer.SplitterDistance = maxD; } catch { }
         };
 
         _addFavoriteButton.Click += (_, _) => AddFavorite();
