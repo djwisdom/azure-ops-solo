@@ -36,8 +36,10 @@ internal sealed class BrowserPanel : UserControl
     private readonly Button _favManageBtn;
     private Button? _favOverflowBtn;          // "»" shown when items don't fit
     private ContextMenuStrip? _favOverflowMenu;
+    private List<FavBarItem> _favOverflowItems = [];   // built lazily on first click
     private FavoritesManagerPanel? _favManagerPanel;
     private List<FavBarItem> _favItems = [];
+    private Font? _favFont;                   // cached — avoids GDI leak per-button
 
     private sealed record FavBarItem(string Id, string Name, string? Url, bool IsFolder, List<FavBarItem> Children);
 
@@ -341,8 +343,15 @@ internal sealed class BrowserPanel : UserControl
 
         _favOverflowBtn.Click += (_, _) =>
         {
-            if (_favOverflowMenu != null)
-                _favOverflowMenu.Show(_favOverflowBtn, new Point(0, _favOverflowBtn.Height));
+            // Build the overflow menu lazily on first click — avoids creating
+            // hundreds of ToolStripMenuItems at layout time for large bookmark sets.
+            if (_favOverflowMenu == null && _favOverflowItems.Count > 0)
+            {
+                _favOverflowMenu = new ContextMenuStrip();
+                ApplyContextMenuTheme(_favOverflowMenu, _currentTheme);
+                BuildFavMenu(_favOverflowMenu.Items, _favOverflowItems);
+            }
+            _favOverflowMenu?.Show(_favOverflowBtn, new Point(0, _favOverflowBtn.Height));
         };
 
         _favBar.Controls.Add(_favActionsPanel);
@@ -768,7 +777,7 @@ internal sealed class BrowserPanel : UserControl
 
         const int overflowBtnWidth = 30;     // reserved width for the "»" button
         const int itemMargin      = 2;        // gap between buttons
-        using var font = new Font("Segoe UI", 8.5f);
+        _favFont ??= new Font("Segoe UI", 8.5f);
         int available = _favBar.Width - _favActionsPanel.Width - overflowBtnWidth - 4;
 
         var visible  = new List<FavBarItem>();
@@ -779,7 +788,7 @@ internal sealed class BrowserPanel : UserControl
         {
             string label = item.Name.Length > 20 ? item.Name[..20] + "…" : item.Name;
             string displayLabel = item.IsFolder ? "📁 " + label : label;
-            int btnWidth = TextRenderer.MeasureText(displayLabel, font).Width + 14 + itemMargin;
+            int btnWidth = TextRenderer.MeasureText(displayLabel, _favFont).Width + 14 + itemMargin;
 
             if (used + btnWidth <= available)
             {
@@ -802,18 +811,15 @@ internal sealed class BrowserPanel : UserControl
             _favFlow.Controls.Add(btn);
         }
 
-        // Build overflow menu and show/hide "»" button
+        // Store overflow items — menu is built lazily on first click of "»"
+        _favOverflowItems = overflow;
+        _favOverflowMenu?.Dispose();
+        _favOverflowMenu = null;
+
         if (overflow.Count > 0)
-        {
-            _favOverflowMenu = new ContextMenuStrip();
-            ApplyContextMenuTheme(_favOverflowMenu, _currentTheme);
-            BuildFavMenu(_favOverflowMenu.Items, overflow);
             _favOverflowBtn!.Visible = true;
-        }
         else
-        {
             _favOverflowBtn!.Visible = false;
-        }
 
         LayoutFavActionButtons();
         _favFlow.ResumeLayout();
@@ -878,14 +884,15 @@ internal sealed class BrowserPanel : UserControl
 
     private Button MakeFavButton(string text, string? tooltip, bool isFolder)
     {
+        _favFont ??= new Font("Segoe UI", 8.5f);
         var btn = new Button
         {
             Text = text,
             AutoSize = false,
             Height = 22,
-            Width = TextRenderer.MeasureText(text, new Font("Segoe UI", 8.5f)).Width + 14,
+            Width = TextRenderer.MeasureText(text, _favFont).Width + 14,
             FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 8.5f),
+            Font = _favFont,
             Cursor = Cursors.Hand,
             Margin = new Padding(1, 2, 1, 2),
             TextAlign = ContentAlignment.MiddleCenter,
@@ -1264,6 +1271,9 @@ internal sealed class BrowserPanel : UserControl
             if (_wheelFilter != null) { Application.RemoveMessageFilter(_wheelFilter); _wheelFilter = null; }
             _zoomHideTimer.Dispose();
             _zoomPollTimer.Dispose();
+            _favFont?.Dispose();
+            _favFont = null;
+            _favOverflowMenu?.Dispose();
             _webView?.Dispose();
             // Clean up ephemeral temp profile so no browser data lingers on disk
             if (_ephemeralProfileDir != null)
