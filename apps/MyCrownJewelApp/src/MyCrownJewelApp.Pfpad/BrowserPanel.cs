@@ -26,7 +26,9 @@ internal sealed class BrowserPanel : UserControl
     private readonly TextBox _addressBar;                    // inner TextBox (alias to _addressBarPanel.TextBox)
     private readonly Button _goBtn;
     private readonly Button _devToolsBtn;
+    private readonly Button _darkModeBtn;
     private readonly Button _openExternalBtn;
+    private bool _darkModeActive;
     private readonly ProgressBar _progressBar;
 
     // ── Favorites bar ─────────────────────────────────────────────────────────
@@ -162,10 +164,11 @@ internal sealed class BrowserPanel : UserControl
 
         _goBtn = MakeToolBtn("Go", "Navigate", 40);
         _devToolsBtn = MakeNavBtn("\uE943", "Developer Tools (F12)");
+        _darkModeBtn = MakeNavBtn("\uE793", "Toggle page dark mode");
         _openExternalBtn = MakeToolBtn("⧉", "Open in system browser", 28);
 
         // Apply consistent margin to all nav buttons for vertical centering
-        foreach (var b in new[] { _backBtn, _forwardBtn, _refreshStopBtn, _devToolsBtn })
+        foreach (var b in new[] { _backBtn, _forwardBtn, _refreshStopBtn, _devToolsBtn, _darkModeBtn })
             b.Margin = new Padding(horzMargin, vertMargin, horzMargin, vertMargin);
         _goBtn.Margin = new Padding(horzMargin, vertMargin, horzMargin, vertMargin);
 
@@ -182,7 +185,7 @@ internal sealed class BrowserPanel : UserControl
         var toolTable = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 6,
+            ColumnCount = 7,
             RowCount = 1,
             Margin = new Padding(4, 0, 4, 0),
             Padding = new Padding(0)
@@ -193,6 +196,7 @@ internal sealed class BrowserPanel : UserControl
         toolTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));      // address
         toolTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42));      // go
         toolTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, navBtnW)); // devtools
+        toolTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, navBtnW)); // dark mode
         toolTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         _backBtn.Dock = DockStyle.Fill;
@@ -200,6 +204,7 @@ internal sealed class BrowserPanel : UserControl
         _refreshStopBtn.Dock = DockStyle.Fill;
         _goBtn.Dock = DockStyle.Fill;
         _devToolsBtn.Dock = DockStyle.Fill;
+        _darkModeBtn.Dock = DockStyle.Fill;
 
         toolTable.Controls.Add(_backBtn, 0, 0);
         toolTable.Controls.Add(_forwardBtn, 1, 0);
@@ -207,6 +212,7 @@ internal sealed class BrowserPanel : UserControl
         toolTable.Controls.Add(_addressBarPanel, 3, 0);
         toolTable.Controls.Add(_goBtn, 4, 0);
         toolTable.Controls.Add(_devToolsBtn, 5, 0);
+        toolTable.Controls.Add(_darkModeBtn, 6, 0);
 
         _toolbar.Controls.Add(toolTable);
         _toolbar.Controls.Add(_progressBar);
@@ -378,6 +384,7 @@ internal sealed class BrowserPanel : UserControl
         };
         _goBtn.Click += (_, _) => Navigate(_addressBar.Text);
         _devToolsBtn.Click += (_, _) => _webView?.CoreWebView2?.OpenDevToolsWindow();
+        _darkModeBtn.Click += TogglePageDarkMode;
         _openExternalBtn.Click += OpenInSystemBrowser;
         FavoritesService.Instance.Changed += HandleFavoritesChanged;
 
@@ -612,6 +619,10 @@ internal sealed class BrowserPanel : UserControl
                 if (source.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
                     _ = _webView.CoreWebView2.ExecuteScriptAsync(YouTubeAdBlocker.ContentScript);
             }
+
+            // Re-apply dark mode CSS if it was active (lost on each navigation).
+            if (_darkModeActive && args.IsSuccess && _webView?.CoreWebView2 != null)
+                _ = InjectDarkModeCssAsync(enable: true);
         };
 
         cw.SourceChanged += (_, _) =>
@@ -985,6 +996,50 @@ internal sealed class BrowserPanel : UserControl
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
+    // ── Page dark mode ────────────────────────────────────────────────────────
+
+    private async void TogglePageDarkMode(object? sender, EventArgs e)
+    {
+        _darkModeActive = !_darkModeActive;
+        UpdateDarkModeButton();
+        if (_webView?.CoreWebView2 != null)
+            await InjectDarkModeCssAsync(_darkModeActive);
+    }
+
+    private void UpdateDarkModeButton()
+    {
+        // Accent blue when active, normal foreground when inactive.
+        _darkModeBtn.ForeColor = _darkModeActive
+            ? Color.FromArgb(0, 153, 204)
+            : _currentTheme.Text;
+        _darkModeBtn.Invalidate();
+    }
+
+    private async Task InjectDarkModeCssAsync(bool enable)
+    {
+        if (_webView?.CoreWebView2 == null) return;
+        string script = enable
+            ? """
+              (function(){
+                const id='__pfpad_dm__';
+                if(document.getElementById(id)) return;
+                const s=document.createElement('style');
+                s.id=id;
+                s.textContent=
+                  'html{filter:invert(1) hue-rotate(180deg)!important;}' +
+                  'img,video,canvas,picture,svg,iframe{filter:invert(1) hue-rotate(180deg)!important;}';
+                document.documentElement.appendChild(s);
+              })();
+              """
+            : """
+              (function(){
+                const s=document.getElementById('__pfpad_dm__');
+                if(s) s.remove();
+              })();
+              """;
+        await _webView.CoreWebView2.ExecuteScriptAsync(script);
+    }
+
     private void AddressBar_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
@@ -1092,6 +1147,7 @@ internal sealed class BrowserPanel : UserControl
         _forwardBtn.Invalidate();
         _refreshStopBtn.Invalidate();
         _devToolsBtn.Invalidate();
+        UpdateDarkModeButton();
     }
 
     private static void ApplyToolButton(Button b, Theme t)
