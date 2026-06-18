@@ -158,6 +158,7 @@ internal sealed class BrowserPanel : UserControl
         _addressBar = _addressBarPanel.TextBox;
         _addressBar.KeyDown += AddressBar_KeyDown;
         _addressBar.Enter += (_, _) => BeginInvoke(() => _addressBar.SelectAll());
+        _addressBarPanel.GlyphClicked += (_, _) => ShowSiteInfoPopup();
 
         _goBtn = MakeToolBtn("Go", "Navigate", 40);
         _devToolsBtn = MakeNavBtn("\uE943", "Developer Tools (F12)");
@@ -598,6 +599,8 @@ internal sealed class BrowserPanel : UserControl
                 SetStatus(args.IsSuccess ? "" : "Navigation failed");
                 // Apply default zoom after each navigation
                 if (_webView != null) _webView.ZoomFactor = _defaultZoom;
+                // Update site-info glyph
+                _addressBarPanel.UpdateGlyph(cw.Source ?? "");
             });
 
             // Inject YouTube ad-block script after page load (fire-and-forget).
@@ -612,13 +615,12 @@ internal sealed class BrowserPanel : UserControl
         };
 
         cw.SourceChanged += (_, _) =>
-        {
             BeginInvoke(() =>
             {
                 _addressBar.Text = cw.Source;
+                _addressBarPanel.UpdateGlyph(cw.Source ?? "");
                 UpdateNavButtons();
             });
-        };
 
         cw.DocumentTitleChanged += (_, _) =>
             BeginInvoke(() =>
@@ -1285,6 +1287,19 @@ internal sealed class BrowserPanel : UserControl
         base.Dispose(disposing);
     }
 
+    private void ShowSiteInfoPopup()
+    {
+        string url = _webView?.CoreWebView2?.Source ?? _addressBar.Text;
+        long blocked = ContentFilterService.Instance.SessionBlockedCount;
+
+        var popup = new SiteInfoPopup(url, blocked, _currentTheme);
+
+        // Position below the address bar panel
+        var pt = _addressBarPanel.PointToScreen(new Point(0, _addressBarPanel.Height + 2));
+        popup.Location = pt;
+        popup.Show(this);
+    }
+
     private void ShowFavoritesManager()
     {
         if (_favManagerPanel == null)
@@ -1359,12 +1374,35 @@ internal sealed class BrowserPanel : UserControl
     private sealed class RoundedAddressPanel : Panel
     {
         internal readonly TextBox TextBox;
+        internal event EventHandler? GlyphClicked;
+        private readonly Label _glyph;
         private bool _focused;
         private Theme _theme;
 
         internal RoundedAddressPanel(Theme initialTheme)
         {
             _theme = initialTheme;
+
+            // Site-info glyph — left of the text box
+            _glyph = new Label
+            {
+                Text      = "\uE946",           // info glyph (Segoe MDL2 Assets)
+                Font      = new Font("Segoe MDL2 Assets", 10f),
+                ForeColor = Color.FromArgb(140, initialTheme.Text.R, initialTheme.Text.G, initialTheme.Text.B),
+                BackColor = Color.Transparent,
+                AutoSize  = false,
+                Width     = 24,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor    = Cursors.Hand,
+                TabStop   = false,
+            };
+            _glyph.Click     += (_, e) => GlyphClicked?.Invoke(this, e);
+            _glyph.MouseDown += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Right)
+                    GlyphClicked?.Invoke(this, e);
+            };
+
             TextBox = new TextBox
             {
                 BorderStyle = BorderStyle.None,
@@ -1374,9 +1412,19 @@ internal sealed class BrowserPanel : UserControl
             };
             TextBox.GotFocus  += (_, _) => { _focused = true;  Invalidate(); };
             TextBox.LostFocus += (_, _) => { _focused = false; Invalidate(); };
+            Controls.Add(_glyph);
             Controls.Add(TextBox);
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
             ResizeRedraw = true;
+        }
+
+        /// <summary>Updates the glyph character and colour to match the current URL's protocol.</summary>
+        internal void UpdateGlyph(string url)
+        {
+            var info = SiteProtocolInfo.From(url);
+            _glyph.Text      = info.Glyph;
+            _glyph.ForeColor = info.GlyphColor(_theme);
+            _glyph.Invalidate();
         }
 
         internal void SetTheme(Theme t)
@@ -1384,38 +1432,33 @@ internal sealed class BrowserPanel : UserControl
             _theme = t;
             TextBox.BackColor = t.EditorBackground;
             TextBox.ForeColor = t.Text;
+            UpdateGlyph(TextBox.Text);
             Invalidate();
         }
 
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e);
+            const int glyphW = 26;
+            const int leftPad = 4;
+            const int rightPad = 10;
             int th = TextBox.PreferredHeight;
             int y  = Math.Max(0, (Height - th) / 2);
-            TextBox.SetBounds(10, y, Math.Max(0, Width - 20), th);
+            _glyph.SetBounds(leftPad, 0, glyphW, Height);
+            TextBox.SetBounds(leftPad + glyphW + 2, y, Math.Max(0, Width - leftPad - glyphW - 2 - rightPad), th);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-
-            // Paint the parent background behind the rounded corners
             g.Clear(Parent?.BackColor ?? SystemColors.Control);
-
             var rc = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
             const float radius = 6f;
-
             using var path = BuildPath(rc, radius);
-
-            // Fill
             using (var fill = new SolidBrush(_theme.EditorBackground))
                 g.FillPath(fill, path);
-
-            // Border — accent colour on focus, subdued when idle
-            Color borderColor = _focused
-                ? _theme.Accent
-                : Color.FromArgb(80, _theme.Text);
+            Color borderColor = _focused ? _theme.Accent : Color.FromArgb(80, _theme.Text);
             float borderWidth = _focused ? 1.5f : 1f;
             using var pen = new Pen(borderColor, borderWidth);
             g.DrawPath(pen, path);
@@ -1425,10 +1468,10 @@ internal sealed class BrowserPanel : UserControl
         {
             var p = new GraphicsPath();
             float d = r * 2;
-            p.AddArc(rc.Left,          rc.Top,            d, d, 180, 90);
-            p.AddArc(rc.Right - d,     rc.Top,            d, d, 270, 90);
-            p.AddArc(rc.Right - d,     rc.Bottom - d,     d, d,   0, 90);
-            p.AddArc(rc.Left,          rc.Bottom - d,     d, d,  90, 90);
+            p.AddArc(rc.Left,      rc.Top,        d, d, 180, 90);
+            p.AddArc(rc.Right - d, rc.Top,        d, d, 270, 90);
+            p.AddArc(rc.Right - d, rc.Bottom - d, d, d,   0, 90);
+            p.AddArc(rc.Left,      rc.Bottom - d, d, d,  90, 90);
             p.CloseFigure();
             return p;
         }
