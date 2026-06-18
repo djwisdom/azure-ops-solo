@@ -816,7 +816,6 @@ internal sealed class SettingsDialog : Form
             BrowserUserAgentPreset      = GetSettingValue<string>("features.browser.userAgentPreset",     _mainForm.CurrentBrowserUserAgentPreset),
             BrowserCustomUserAgent      = GetSettingValue<string>("features.browser.customUserAgent",     _mainForm.CurrentBrowserCustomUserAgent),
             BrowserShowFavoritesBar     = GetSettingValue<bool>("features.browser.showFavoritesBar",      _mainForm.CurrentBrowserShowFavoritesBar),
-            BrowserFavoritesSource      = GetSettingValue<string>("features.browser.favoritesSource",     _mainForm.CurrentBrowserFavoritesSource),
             GitAuthorName = GetSettingValue<string>("features.git.authorName", _mainForm.CurrentGitAuthorName),
             GitAuthorEmail = GetSettingValue<string>("features.git.authorEmail", _mainForm.CurrentGitAuthorEmail),
             GitDefaultBranch = GetSettingValue<string>("features.git.defaultBranch", _mainForm.CurrentGitDefaultBranch),
@@ -1008,7 +1007,6 @@ internal sealed class SettingsDialog : Form
             ["features.browser.userAgentPreset"]      = _mainForm.CurrentBrowserUserAgentPreset,
             ["features.browser.customUserAgent"]      = _mainForm.CurrentBrowserCustomUserAgent,
             ["features.browser.showFavoritesBar"]     = _mainForm.CurrentBrowserShowFavoritesBar,
-            ["features.browser.favoritesSource"]      = _mainForm.CurrentBrowserFavoritesSource,
 
             // Features - Git
             ["features.git.authorName"] = _mainForm.CurrentGitAuthorName,
@@ -1313,8 +1311,7 @@ internal sealed class SettingsDialog : Form
             "features.browser.filterPeterLowe"      => "Peter Lowe's Ad List: long-standing curated ad-server list in hosts format.",
             "features.browser.userAgentPreset"      => "Preset browser identity: default (Edge/WebView2), chrome, firefox, safari, or custom.",
             "features.browser.customUserAgent"      => "Full user-agent string used when preset is set to 'custom'.",
-            "features.browser.showFavoritesBar"     => "Show a bookmarks bar below the browser toolbar, imported from Edge or Chrome.",
-            "features.browser.favoritesSource"      => "Browser to import favorites from: 'edge' (Microsoft Edge) or 'chrome' (Google Chrome).",
+            "features.browser.showFavoritesBar"     => "Show a bookmarks bar below the browser toolbar. Use Manage Favorites to import from Edge or Chrome.",
             "features.git.authorName" => "Overrides git config user.name for commits made in Pfpad.",
             "features.git.authorEmail" => "Overrides git config user.email for commits made in Pfpad.",
             "features.git.defaultBranch" => "Branch name used when initialising a new repository.",
@@ -1426,14 +1423,8 @@ internal sealed class SettingsDialog : Form
 
         y = AddSecCheckRow(parent, y,
             "Show favorites bar",
-            "Display a bookmarks bar below the browser toolbar. Imports from Edge or Chrome.",
+            "Display a bookmarks bar below the browser toolbar. Use Manage Favorites to import from Edge or Chrome.",
             "features.browser.showFavoritesBar");
-
-        y = AddGitRadioRow(parent, y,
-            "Import source",
-            "Which browser's bookmarks to display in the favorites bar.",
-            "features.browser.favoritesSource",
-            [("edge", "Microsoft Edge"), ("chrome", "Google Chrome")]);
 
         y += 8;
         y = AddSecSectionHeader(parent, y, "Display");

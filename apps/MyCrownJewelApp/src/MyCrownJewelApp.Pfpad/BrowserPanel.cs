@@ -32,11 +32,14 @@ internal sealed class BrowserPanel : UserControl
     // ── Favorites bar ─────────────────────────────────────────────────────────
     private readonly Panel _favBar;
     private readonly FlowLayoutPanel _favFlow;
+    private readonly Panel _favActionsPanel;
+    private readonly Button _favManageBtn;
     private Button? _favOverflowBtn;          // "»" shown when items don't fit
     private ContextMenuStrip? _favOverflowMenu;
-    private List<FavItem> _favItems = [];      // parsed bookmark model
+    private FavoritesManagerPanel? _favManagerPanel;
+    private List<FavBarItem> _favItems = [];
 
-    private record FavItem(string Name, string? Url, List<FavItem>? Children);
+    private sealed record FavBarItem(string Id, string Name, string? Url, bool IsFolder, List<FavBarItem> Children);
 
     // ── Status bar ────────────────────────────────────────────────────────────
     private readonly Panel _statusBar;
@@ -95,7 +98,6 @@ internal sealed class BrowserPanel : UserControl
     private string _userAgentPreset = "default";
     private string _customUserAgent = "";
     private bool _showFavBar = false;
-    private string _favSource = "edge";
     private string? _ephemeralProfileDir;
     private readonly List<string> _historyList = new();
 
@@ -306,7 +308,6 @@ internal sealed class BrowserPanel : UserControl
             Text = "»",
             AutoSize = false,
             Width = 26,
-            Dock = DockStyle.Right,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             Cursor = Cursors.Hand,
@@ -314,15 +315,40 @@ internal sealed class BrowserPanel : UserControl
             TextAlign = ContentAlignment.MiddleCenter,
         };
         _favOverflowBtn.FlatAppearance.BorderSize = 0;
+
+        _favManageBtn = new Button
+        {
+            Text = "Manage",
+            AutoSize = false,
+            Width = 64,
+            Height = 22,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8.5f),
+            Cursor = Cursors.Hand,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _favManageBtn.FlatAppearance.BorderSize = 0;
+        _favManageBtn.Click += (_, _) => Navigate("pfpad://favorites");
+
+        _favActionsPanel = new Panel
+        {
+            Dock = DockStyle.Right,
+            Width = 70
+        };
+        _favActionsPanel.Controls.Add(_favManageBtn);
+        _favActionsPanel.Controls.Add(_favOverflowBtn);
+        _favActionsPanel.Resize += (_, _) => LayoutFavActionButtons();
+
         _favOverflowBtn.Click += (_, _) =>
         {
             if (_favOverflowMenu != null)
                 _favOverflowMenu.Show(_favOverflowBtn, new Point(0, _favOverflowBtn.Height));
         };
 
-        _favBar.Controls.Add(_favOverflowBtn);  // docked right — must be added before _favFlow
+        _favBar.Controls.Add(_favActionsPanel);
         _favBar.Controls.Add(_favFlow);
         _favBar.SizeChanged += (_, _) => { if (_favItems.Count > 0) RefreshFavLayout(); };
+        _favBar.VisibleChanged += (_, _) => { if (_favBar.Visible && _favItems.Count > 0) RefreshFavLayout(); };
 
         // Toolbar docks top, status bar docks bottom, content area fills the rest.
         // WebView2 lives inside _contentArea so it can never overlap the toolbar.
@@ -343,6 +369,7 @@ internal sealed class BrowserPanel : UserControl
         _goBtn.Click += (_, _) => Navigate(_addressBar.Text);
         _devToolsBtn.Click += (_, _) => _webView?.CoreWebView2?.OpenDevToolsWindow();
         _openExternalBtn.Click += OpenInSystemBrowser;
+        FavoritesService.Instance.Changed += HandleFavoritesChanged;
 
         ApplyTheme(_currentTheme);
     }
@@ -391,10 +418,12 @@ internal sealed class BrowserPanel : UserControl
     public void SetShowFavoritesBar(bool show, string source)
     {
         _showFavBar = show;
-        _favSource = source;
         _favBar.Visible = show;
         if (show)
-            LoadFavoritesBar(source);
+        {
+            LoadFavoritesBarFromService();
+            RefreshFavLayout();
+        }
     }
 
     /// <summary>
@@ -413,6 +442,12 @@ internal sealed class BrowserPanel : UserControl
     /// </summary>
     public void NavigateTo(string url)
     {
+        if (!string.IsNullOrWhiteSpace(url) && url.StartsWith("pfpad://favorites", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigate(url);
+            return;
+        }
+
         if (_webViewReady && _webView != null)
             Navigate(url);
         else
@@ -499,6 +534,13 @@ internal sealed class BrowserPanel : UserControl
 
         cw.NavigationStarting += (_, args) =>
         {
+            if (args.Uri.StartsWith("pfpad://favorites", StringComparison.OrdinalIgnoreCase))
+            {
+                args.Cancel = true;
+                BeginInvoke(ShowFavoritesManager);
+                return;
+            }
+
             // Localhost blocking
             if (!_allowLocalhost && IsLocalhostUri(args.Uri))
             {
@@ -639,6 +681,14 @@ internal sealed class BrowserPanel : UserControl
     {
         string url = NormalizeUrl(rawUrl);
         _addressBar.Text = url;
+
+        if (url.StartsWith("pfpad://favorites", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowFavoritesManager();
+            return;
+        }
+
+        HideFavoritesManager();
         _webView?.CoreWebView2?.Navigate(url);
     }
 
@@ -676,87 +726,10 @@ internal sealed class BrowserPanel : UserControl
         _webView.CoreWebView2.Settings.UserAgent = ua;
     }
 
-    private void LoadFavoritesBar(string source)
+    private void LoadFavoritesBarFromService()
     {
-        string[] candidatePaths = source == "chrome"
-            ? [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                  "Google", "Chrome", "User Data", "Default", "Bookmarks")]
-            : [
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                  "Microsoft", "Edge", "User Data", "Default", "Bookmarks"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                  "Microsoft", "Edge Beta", "User Data", "Default", "Bookmarks"),
-              ];
-
-        string? bookmarksFile = Array.Find(candidatePaths, File.Exists);
-
-        _favItems = [];
-        _favFlow.Controls.Clear();
-        _favOverflowBtn!.Visible = false;
-
-        if (bookmarksFile == null)
-        {
-            _favFlow.Controls.Add(new Label
-            {
-                Text = source == "chrome" ? "Chrome bookmarks not found." : "Edge bookmarks not found.",
-                AutoSize = true,
-                ForeColor = _currentTheme.Muted,
-                Font = new Font("Segoe UI", 8f),
-                BackColor = Color.Transparent,
-                Margin = new Padding(4, 4, 0, 0)
-            });
-            return;
-        }
-
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(bookmarksFile));
-            if (!doc.RootElement.TryGetProperty("roots", out var roots)) return;
-            if (!roots.TryGetProperty("bookmark_bar", out var bar)) return;
-            if (!bar.TryGetProperty("children", out var children)) return;
-
-            _favItems = ParseFavItems(children);
-            RefreshFavLayout();
-        }
-        catch
-        {
-            _favFlow.Controls.Add(new Label
-            {
-                Text = "Could not parse bookmarks.",
-                AutoSize = true,
-                ForeColor = _currentTheme.Muted,
-                Font = new Font("Segoe UI", 8f),
-                BackColor = Color.Transparent,
-                Margin = new Padding(4, 4, 0, 0)
-            });
-        }
-    }
-
-    /// <summary>
-    /// Recursively converts a JSON bookmarks array into the in-memory FavItem model.
-    /// </summary>
-    private static List<FavItem> ParseFavItems(System.Text.Json.JsonElement children)
-    {
-        var result = new List<FavItem>();
-        foreach (var item in children.EnumerateArray())
-        {
-            string type = item.TryGetProperty("type", out var t) ? t.GetString() ?? "" : "";
-            string name = item.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "(no name)";
-
-            if (type == "url")
-            {
-                string url = item.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
-                if (!string.IsNullOrEmpty(url))
-                    result.Add(new FavItem(name, url, null));
-            }
-            else if (type == "folder")
-            {
-                List<FavItem> sub = item.TryGetProperty("children", out var sc)
-                    ? ParseFavItems(sc) : [];
-                result.Add(new FavItem(name, null, sub));
-            }
-        }
-        return result;
+        _favItems = BuildFavBarItems(FavoritesService.Instance.GetRoots());
+        RefreshFavLayout();
     }
 
     /// <summary>
@@ -770,10 +743,12 @@ internal sealed class BrowserPanel : UserControl
         _favFlow.Controls.Clear();
         _favOverflowMenu?.Dispose();
         _favOverflowMenu = null;
+        LayoutFavActionButtons();
 
         if (_favItems.Count == 0 || _favBar.Width <= 0)
         {
             _favOverflowBtn!.Visible = false;
+            LayoutFavActionButtons();
             _favFlow.ResumeLayout();
             return;
         }
@@ -781,16 +756,16 @@ internal sealed class BrowserPanel : UserControl
         const int overflowBtnWidth = 30;     // reserved width for the "»" button
         const int itemMargin      = 2;        // gap between buttons
         using var font = new Font("Segoe UI", 8.5f);
-        int available = _favBar.Width - overflowBtnWidth - 4;
+        int available = _favBar.Width - _favActionsPanel.Width - overflowBtnWidth - 4;
 
-        var visible  = new List<FavItem>();
-        var overflow = new List<FavItem>();
+        var visible  = new List<FavBarItem>();
+        var overflow = new List<FavBarItem>();
         int used = 0;
 
         foreach (var item in _favItems)
         {
             string label = item.Name.Length > 20 ? item.Name[..20] + "…" : item.Name;
-            string displayLabel = item.Children != null ? "📁 " + label : label;
+            string displayLabel = item.IsFolder ? "📁 " + label : label;
             int btnWidth = TextRenderer.MeasureText(displayLabel, font).Width + 14 + itemMargin;
 
             if (used + btnWidth <= available)
@@ -808,8 +783,8 @@ internal sealed class BrowserPanel : UserControl
         foreach (var item in visible)
         {
             string label = item.Name.Length > 20 ? item.Name[..20] + "…" : item.Name;
-            string displayLabel = item.Children != null ? "📁 " + label : label;
-            var btn = MakeFavButton(displayLabel, item.Url, item.Children != null);
+            string displayLabel = item.IsFolder ? "📁 " + label : label;
+            var btn = MakeFavButton(displayLabel, item.Url, item.IsFolder);
             WireFavButton(btn, item);
             _favFlow.Controls.Add(btn);
         }
@@ -827,15 +802,16 @@ internal sealed class BrowserPanel : UserControl
             _favOverflowBtn!.Visible = false;
         }
 
+        LayoutFavActionButtons();
         _favFlow.ResumeLayout();
     }
 
     /// <summary>
     /// Wires click navigation or folder popup to an already-created fav bar button.
     /// </summary>
-    private void WireFavButton(Button btn, FavItem item)
+    private void WireFavButton(Button btn, FavBarItem item)
     {
-        if (item.Children != null)
+        if (item.IsFolder)
         {
             var menu = new ContextMenuStrip();
             ApplyContextMenuTheme(menu, _currentTheme);
@@ -859,11 +835,11 @@ internal sealed class BrowserPanel : UserControl
     /// Recursively builds a ToolStripItemCollection from a list of FavItems.
     /// Used for folder submenus and the overflow "»" dropdown.
     /// </summary>
-    private void BuildFavMenu(ToolStripItemCollection items, List<FavItem> favItems)
+    private void BuildFavMenu(ToolStripItemCollection items, List<FavBarItem> favItems)
     {
         foreach (var item in favItems)
         {
-            if (item.Children != null)
+            if (item.IsFolder)
             {
                 string label = item.Name.Length > 40 ? item.Name[..40] + "…" : item.Name;
                 var sub = new ToolStripMenuItem("📁 " + label);
@@ -1027,6 +1003,10 @@ internal sealed class BrowserPanel : UserControl
         _blockedLabel.BackColor = theme.MenuBackground;
         _progressBar.BackColor = theme.MenuBackground;
         _favBar.BackColor = theme.MenuBackground;
+        _favActionsPanel.BackColor = theme.MenuBackground;
+        _favManageBtn.BackColor = theme.MenuBackground;
+        _favManageBtn.ForeColor = theme.Text;
+        _favManageBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(40, theme.Text);
         foreach (Control c in _favFlow.Controls)
         {
             if (c is Button b)
@@ -1045,6 +1025,7 @@ internal sealed class BrowserPanel : UserControl
         }
         if (_favOverflowMenu != null)
             ApplyContextMenuTheme(_favOverflowMenu, theme);
+        _favManagerPanel?.ApplyTheme(theme);
 
         foreach (Control c in _toolbar.Controls)
             if (c is TableLayoutPanel tlp)
@@ -1266,6 +1247,7 @@ internal sealed class BrowserPanel : UserControl
     {
         if (disposing)
         {
+            FavoritesService.Instance.Changed -= HandleFavoritesChanged;
             if (_wheelFilter != null) { Application.RemoveMessageFilter(_wheelFilter); _wheelFilter = null; }
             _zoomHideTimer.Dispose();
             _zoomPollTimer.Dispose();
@@ -1278,6 +1260,72 @@ internal sealed class BrowserPanel : UserControl
             }
         }
         base.Dispose(disposing);
+    }
+
+    private void ShowFavoritesManager()
+    {
+        if (_favManagerPanel == null)
+        {
+            _favManagerPanel = new FavoritesManagerPanel(url =>
+            {
+                HideFavoritesManager();
+                if (!string.IsNullOrEmpty(url) && url != "close")
+                    Navigate(url);
+            }, _currentTheme);
+            _contentArea.Controls.Add(_favManagerPanel);
+            _favManagerPanel.BringToFront();
+        }
+
+        _favManagerPanel.Visible = true;
+        _favManagerPanel.BringToFront();
+        if (_webView != null) _webView.Visible = false;
+    }
+
+    private void HideFavoritesManager()
+    {
+        if (_favManagerPanel != null) _favManagerPanel.Visible = false;
+        if (_webView != null) _webView.Visible = true;
+    }
+
+    private void HandleFavoritesChanged()
+    {
+        if (IsDisposed)
+            return;
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(LoadFavoritesBarFromService);
+            return;
+        }
+
+        LoadFavoritesBarFromService();
+    }
+
+    private List<FavBarItem> BuildFavBarItems(List<FavItem> items)
+    {
+        return items.Select(item => new FavBarItem(
+            item.Id,
+            item.Name,
+            item.Url,
+            item.IsFolder,
+            item.IsFolder ? BuildFavBarItems(FavoritesService.Instance.GetChildren(item.Id)) : [])).ToList();
+    }
+
+    private void LayoutFavActionButtons()
+    {
+        bool showOverflow = _favOverflowMenu != null && _favOverflowMenu.Items.Count > 0;
+        if (_favOverflowBtn != null)
+            _favOverflowBtn.Visible = showOverflow;
+
+        _favActionsPanel.Width = showOverflow
+            ? _favManageBtn.Width + (_favOverflowBtn?.Width ?? 0) + 8
+            : _favManageBtn.Width + 4;
+
+        int right = _favActionsPanel.Width - 2;
+        _favManageBtn.SetBounds(right - _favManageBtn.Width, 2, _favManageBtn.Width, 22);
+
+        if (_favOverflowBtn != null)
+            _favOverflowBtn.SetBounds(_favManageBtn.Left - _favOverflowBtn.Width - 2, 2, _favOverflowBtn.Width, 22);
     }
 
     // ── Rounded address bar ──────────────────────────────────────────────────
