@@ -56,6 +56,26 @@ internal sealed class BrowserPanel : UserControl
     private Button? _zoomInBtn;
     private Button? _zoomResetBtn;
     private readonly System.Windows.Forms.Timer _zoomHideTimer;
+    private readonly System.Windows.Forms.Timer _zoomPollTimer;  // reads ZoomFactor after Ctrl+Wheel
+    private ZoomWheelFilter? _wheelFilter;
+
+    /// <summary>
+    /// Intercepts WM_MOUSEWHEEL+Ctrl at the application level so we can show the zoom
+    /// indicator even when the WebView2 host process handles the scroll natively.
+    /// </summary>
+    private sealed class ZoomWheelFilter(BrowserPanel panel) : IMessageFilter
+    {
+        private const int WM_MOUSEWHEEL = 0x020A;
+        public bool PreFilterMessage(ref Message m)
+        {
+            if (m.Msg == WM_MOUSEWHEEL && (Control.ModifierKeys & Keys.Control) != 0)
+            {
+                if (panel.IsHandleCreated)
+                    panel.BeginInvoke(panel.ScheduleZoomPoll);
+            }
+            return false; // never consume — let WebView2 handle the zoom
+        }
+    }
 
     // ── State ─────────────────────────────────────────────────────────────────
     private bool _initialized;
@@ -99,6 +119,15 @@ internal sealed class BrowserPanel : UserControl
         {
             _zoomHideTimer.Stop();
             if (_zoomPanel != null) _zoomPanel.Visible = false;
+        };
+
+        // One-shot: reads ZoomFactor ~150ms after Ctrl+Wheel so Chromium has had time to update it
+        _zoomPollTimer = new System.Windows.Forms.Timer { Interval = 150 };
+        _zoomPollTimer.Tick += (_, _) =>
+        {
+            _zoomPollTimer.Stop();
+            if (_webView != null && _webViewReady)
+                ShowZoomIndicator(_webView.ZoomFactor);
         };
 
         // ── Toolbar ──────────────────────────────────────────────────────────
@@ -551,6 +580,10 @@ internal sealed class BrowserPanel : UserControl
 
         _webView.ZoomFactorChanged += (_, _) =>
             BeginInvoke(() => ShowZoomIndicator(_webView.ZoomFactor));
+
+        // Register Ctrl+Wheel interceptor so we catch wheel-zoom that bypasses ZoomFactorChanged
+        _wheelFilter = new ZoomWheelFilter(this);
+        Application.AddMessageFilter(_wheelFilter);
 
         // ── Sub-resource content filtering (scripts, images, XHR, etc.) ──────
         cw.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
@@ -1074,6 +1107,14 @@ internal sealed class BrowserPanel : UserControl
         _zoomHideTimer.Start();
     }
 
+    /// <summary>Called by ZoomWheelFilter — restarts the poll timer so ZoomFactor is read
+    /// after Chromium has had time to apply the wheel-zoom asynchronously.</summary>
+    internal void ScheduleZoomPoll()
+    {
+        _zoomPollTimer.Stop();
+        _zoomPollTimer.Start();
+    }
+
     private void AdjustZoom(double delta)
     {
         if (_webView == null || !_webViewReady) return;
@@ -1215,6 +1256,9 @@ internal sealed class BrowserPanel : UserControl
     {
         if (disposing)
         {
+            if (_wheelFilter != null) { Application.RemoveMessageFilter(_wheelFilter); _wheelFilter = null; }
+            _zoomHideTimer.Dispose();
+            _zoomPollTimer.Dispose();
             _webView?.Dispose();
             // Clean up ephemeral temp profile so no browser data lingers on disk
             if (_ephemeralProfileDir != null)
