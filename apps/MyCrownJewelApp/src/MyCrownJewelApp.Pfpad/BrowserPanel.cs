@@ -103,6 +103,7 @@ internal sealed class BrowserPanel : UserControl
     private string _customUserAgent = "";
     private bool _showFavBar = false;
     private string? _ephemeralProfileDir;
+    private string _currentPageTitle = "";
     private readonly List<string> _historyList = new();
 
     /// <summary>Fired when the page title changes.</summary>
@@ -161,6 +162,7 @@ internal sealed class BrowserPanel : UserControl
         _addressBar.KeyDown += AddressBar_KeyDown;
         _addressBar.Enter += (_, _) => BeginInvoke(() => _addressBar.SelectAll());
         _addressBarPanel.GlyphClicked += (_, _) => ShowSiteInfoPopup();
+        _addressBarPanel.StarClicked  += (_, _) => ToggleFavorite();
 
         _goBtn = MakeToolBtn("Go", "Navigate", 40);
         _devToolsBtn = MakeNavBtn("\uE943", "Developer Tools (F12)");
@@ -606,8 +608,9 @@ internal sealed class BrowserPanel : UserControl
                 SetStatus(args.IsSuccess ? "" : "Navigation failed");
                 // Apply default zoom after each navigation
                 if (_webView != null) _webView.ZoomFactor = _defaultZoom;
-                // Update site-info glyph
+                // Update site-info glyph and star
                 _addressBarPanel.UpdateGlyph(cw.Source ?? "");
+                UpdateStarGlyph(cw.Source ?? "");
             });
 
             // Inject YouTube ad-block script after page load (fire-and-forget).
@@ -630,14 +633,16 @@ internal sealed class BrowserPanel : UserControl
             {
                 _addressBar.Text = cw.Source;
                 _addressBarPanel.UpdateGlyph(cw.Source ?? "");
+                UpdateStarGlyph(cw.Source ?? "");
                 UpdateNavButtons();
             });
 
         cw.DocumentTitleChanged += (_, _) =>
             BeginInvoke(() =>
             {
-                SetStatus(cw.DocumentTitle);
-                PageTitleChanged?.Invoke(cw.DocumentTitle);
+                _currentPageTitle = cw.DocumentTitle ?? "";
+                SetStatus(_currentPageTitle);
+                PageTitleChanged?.Invoke(_currentPageTitle);
             });
 
         _webView.ZoomFactorChanged += (_, _) =>
@@ -1040,6 +1045,153 @@ internal sealed class BrowserPanel : UserControl
         await _webView.CoreWebView2.ExecuteScriptAsync(script);
     }
 
+    // ── Star / Add to Favorites ───────────────────────────────────────────────
+
+    private void UpdateStarGlyph(string url)
+    {
+        bool isFav = FavoritesService.Instance.FindByUrl(url) != null;
+        _addressBarPanel.UpdateStar(isFav);
+    }
+
+    private void ToggleFavorite()
+    {
+        string url = _webView?.CoreWebView2?.Source ?? _addressBar.Text;
+        if (string.IsNullOrWhiteSpace(url) || url.StartsWith("about:")) return;
+
+        var existing = FavoritesService.Instance.FindByUrl(url);
+        if (existing == null)
+        {
+            // Add immediately, then show confirm/edit popup
+            string name = string.IsNullOrWhiteSpace(_currentPageTitle) ? url : _currentPageTitle;
+            var added = FavoritesService.Instance.AddUrl(name, url);
+            ShowAddFavoritePopup(added);
+        }
+        else
+        {
+            ShowAddFavoritePopup(existing);
+        }
+    }
+
+    private void ShowAddFavoritePopup(FavItem item)
+    {
+        // Position the popup below the star glyph in the address bar
+        Point starScreen = _addressBarPanel.StarScreenLocation();
+        int popupW = 290;
+        int popupH = 120;
+
+        var popup = new Form
+        {
+            FormBorderStyle = FormBorderStyle.None,
+            StartPosition   = FormStartPosition.Manual,
+            Size            = new Size(popupW, popupH),
+            ShowInTaskbar   = false,
+            BackColor       = _currentTheme.MenuBackground,
+            TopMost         = true,
+        };
+
+        // Rounded border via paint
+        popup.Paint += (_, pe) =>
+        {
+            pe.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var pen = new Pen(Color.FromArgb(80, _currentTheme.Text), 1f);
+            pe.Graphics.DrawRectangle(pen, 0, 0, popupW - 1, popupH - 1);
+        };
+
+        var titleLbl = new Label
+        {
+            Text      = "\uE735  Favorite",
+            Font      = new Font("Segoe MDL2 Assets", 9f),
+            ForeColor = _currentTheme.Text,
+            BackColor = Color.Transparent,
+            AutoSize  = false,
+            Bounds    = new Rectangle(10, 10, popupW - 20, 20),
+            TextAlign = ContentAlignment.MiddleLeft,
+        };
+        var titleLbl2 = new Label
+        {
+            Text      = "Favorite",
+            Font      = new Font("Segoe UI Semibold", 9.5f),
+            ForeColor = _currentTheme.Text,
+            BackColor = Color.Transparent,
+            AutoSize  = false,
+            Bounds    = new Rectangle(32, 10, popupW - 42, 20),
+            TextAlign = ContentAlignment.MiddleLeft,
+        };
+
+        var nameLbl = new Label
+        {
+            Text      = "Name",
+            Font      = new Font("Segoe UI", 8.5f),
+            ForeColor = _currentTheme.Muted,
+            BackColor = Color.Transparent,
+            AutoSize  = true,
+            Location  = new Point(10, 38),
+        };
+        var nameTxt = new TextBox
+        {
+            Text      = item.Name,
+            Font      = new Font("Segoe UI", 9f),
+            BackColor = _currentTheme.EditorBackground,
+            ForeColor = _currentTheme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Bounds    = new Rectangle(10, 55, popupW - 20, 24),
+        };
+
+        var doneBtn = new Button
+        {
+            Text      = "Done",
+            Font      = new Font("Segoe UI", 8.5f),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _currentTheme.Accent,
+            ForeColor = Color.White,
+            Bounds    = new Rectangle(popupW - 130, 88, 55, 24),
+        };
+        doneBtn.FlatAppearance.BorderSize = 0;
+
+        var removeBtn = new Button
+        {
+            Text      = "Remove",
+            Font      = new Font("Segoe UI", 8.5f),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Transparent,
+            ForeColor = _currentTheme.Text,
+            Bounds    = new Rectangle(popupW - 70, 88, 60, 24),
+        };
+        removeBtn.FlatAppearance.BorderSize = 1;
+        removeBtn.FlatAppearance.BorderColor = Color.FromArgb(80, _currentTheme.Text);
+
+        popup.Controls.AddRange([titleLbl, titleLbl2, nameLbl, nameTxt, doneBtn, removeBtn]);
+
+        doneBtn.Click += (_, _) =>
+        {
+            string newName = nameTxt.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(newName) && newName != item.Name)
+                FavoritesService.Instance.Rename(item.Id, newName);
+            popup.Close();
+        };
+        removeBtn.Click += (_, _) =>
+        {
+            FavoritesService.Instance.Delete(item.Id);
+            popup.Close();
+        };
+        nameTxt.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; doneBtn.PerformClick(); }
+            if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; popup.Close(); }
+        };
+        popup.Deactivate += (_, _) => popup.Close();
+        popup.KeyDown    += (_, e) => { if (e.KeyCode == Keys.Escape) popup.Close(); };
+
+        // Position: below and aligned to the star
+        popup.Location = new Point(
+            Math.Max(0, starScreen.X - popupW + 30),
+            starScreen.Y + _addressBarPanel.Height + 2);
+
+        popup.Show(FindForm());
+        nameTxt.Focus();
+        nameTxt.SelectAll();
+    }
+
     private void AddressBar_KeyDown(object? sender, KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Enter)
@@ -1065,6 +1217,7 @@ internal sealed class BrowserPanel : UserControl
         { AdjustZoom(+0.1); return true; }
         if (keyData == (Keys.Control | Keys.OemMinus) || keyData == (Keys.Control | Keys.Subtract))
         { AdjustZoom(-0.1); return true; }
+        if (keyData == (Keys.Control | Keys.D)) { ToggleFavorite(); return true; }
         if (keyData == (Keys.Control | Keys.D0) || keyData == (Keys.Control | Keys.NumPad0))
         { SetZoom(_defaultZoom); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
@@ -1384,16 +1537,16 @@ internal sealed class BrowserPanel : UserControl
 
     private void HandleFavoritesChanged()
     {
-        if (IsDisposed)
-            return;
+        if (IsDisposed) return;
 
         if (InvokeRequired)
         {
-            BeginInvoke(LoadFavoritesBarFromService);
+            BeginInvoke(HandleFavoritesChanged);
             return;
         }
 
         LoadFavoritesBarFromService();
+        UpdateStarGlyph(_webView?.CoreWebView2?.Source ?? _addressBar.Text);
     }
 
     private List<FavBarItem> BuildFavBarItems(List<FavItem> items)
@@ -1433,7 +1586,9 @@ internal sealed class BrowserPanel : UserControl
     {
         internal readonly TextBox TextBox;
         internal event EventHandler? GlyphClicked;
+        internal event EventHandler? StarClicked;
         private readonly Label _glyph;
+        private readonly Label _star;
         private bool _focused;
         private Theme _theme;
 
@@ -1461,6 +1616,21 @@ internal sealed class BrowserPanel : UserControl
                     GlyphClicked?.Invoke(this, e);
             };
 
+            // Star glyph — right of the text box
+            _star = new Label
+            {
+                Text      = "\uE734",           // FavoriteStar (empty) Segoe MDL2 Assets
+                Font      = new Font("Segoe MDL2 Assets", 11f),
+                ForeColor = Color.FromArgb(140, initialTheme.Text.R, initialTheme.Text.G, initialTheme.Text.B),
+                BackColor = Color.Transparent,
+                AutoSize  = false,
+                Width     = 26,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor    = Cursors.Hand,
+                TabStop   = false,
+            };
+            _star.Click += (_, e) => StarClicked?.Invoke(this, e);
+
             TextBox = new TextBox
             {
                 BorderStyle = BorderStyle.None,
@@ -1470,6 +1640,7 @@ internal sealed class BrowserPanel : UserControl
             };
             TextBox.GotFocus  += (_, _) => { _focused = true;  Invalidate(); };
             TextBox.LostFocus += (_, _) => { _focused = false; Invalidate(); };
+            Controls.Add(_star);
             Controls.Add(_glyph);
             Controls.Add(TextBox);
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
@@ -1485,25 +1656,43 @@ internal sealed class BrowserPanel : UserControl
             _glyph.Invalidate();
         }
 
+        /// <summary>Swaps the star between empty (not favorited) and filled (favorited).</summary>
+        internal void UpdateStar(bool isFavorited)
+        {
+            _star.Text      = isFavorited ? "\uE735" : "\uE734"; // FavoriteStarFill / FavoriteStar
+            _star.ForeColor = isFavorited
+                ? Color.FromArgb(255, 180, 0)                    // gold when filled
+                : Color.FromArgb(140, _theme.Text.R, _theme.Text.G, _theme.Text.B);
+            _star.Invalidate();
+        }
+
+        /// <summary>Returns the screen location of the star label (for popup positioning).</summary>
+        internal Point StarScreenLocation() => _star.PointToScreen(Point.Empty);
+
         internal void SetTheme(Theme t)
         {
             _theme = t;
             TextBox.BackColor = t.EditorBackground;
             TextBox.ForeColor = t.Text;
             UpdateGlyph(TextBox.Text);
+            // Re-apply star colour with new theme (preserve filled/empty state)
+            bool filled = _star.Text == "\uE735";
+            UpdateStar(filled);
             Invalidate();
         }
 
         protected override void OnLayout(LayoutEventArgs e)
         {
             base.OnLayout(e);
-            const int glyphW = 26;
+            const int glyphW  = 26;
+            const int starW   = 28;
             const int leftPad = 4;
-            const int rightPad = 10;
+            const int rightPad = 4;
             int th = TextBox.PreferredHeight;
             int y  = Math.Max(0, (Height - th) / 2);
             _glyph.SetBounds(leftPad, 0, glyphW, Height);
-            TextBox.SetBounds(leftPad + glyphW + 2, y, Math.Max(0, Width - leftPad - glyphW - 2 - rightPad), th);
+            _star.SetBounds(Width - starW - rightPad, 0, starW, Height);
+            TextBox.SetBounds(leftPad + glyphW + 2, y, Math.Max(0, Width - leftPad - glyphW - 2 - starW - rightPad - 4), th);
         }
 
         protected override void OnPaint(PaintEventArgs e)

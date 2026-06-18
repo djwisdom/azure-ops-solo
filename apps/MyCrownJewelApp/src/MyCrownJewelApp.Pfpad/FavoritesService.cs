@@ -203,6 +203,15 @@ public sealed class FavoritesService
         return GetChildren(null);
     }
 
+    /// <summary>Returns the first non-folder item whose URL matches, or null.</summary>
+    public FavItem? FindByUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || url == "about:blank") return null;
+        return Items.FirstOrDefault(i =>
+            !i.IsFolder &&
+            string.Equals(i.Url?.TrimEnd('/'), url.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
+    }
+
     private void ImportChildren(JsonElement children, string? parentId, HashSet<string> seenUrls)
     {
         foreach (var child in children.EnumerateArray())
