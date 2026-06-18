@@ -11,6 +11,8 @@ internal sealed class FavoritesManagerPanel : UserControl
     private readonly Button _addFolderButton;
     private readonly Button _importEdgeButton;
     private readonly Button _importChromeButton;
+    private readonly Button _moveUpButton;
+    private readonly Button _moveDownButton;
     private readonly Button _closeButton;
     private readonly Panel _toolbar;
     private readonly SplitContainer _splitContainer;
@@ -42,10 +44,12 @@ internal sealed class FavoritesManagerPanel : UserControl
         _addFolderButton = CreateToolbarButton("+ Add Folder");
         _importEdgeButton = CreateToolbarButton("Import from Edge");
         _importChromeButton = CreateToolbarButton("Import from Chrome");
+        _moveUpButton   = CreateToolbarButton("↑ Move Up");
+        _moveDownButton = CreateToolbarButton("↓ Move Down");
         _closeButton = CreateToolbarButton("✕ Close");
         _closeButton.Dock = DockStyle.Right;
 
-        _toolbarButtons.Controls.AddRange([_addFavoriteButton, _addFolderButton, _importEdgeButton, _importChromeButton]);
+        _toolbarButtons.Controls.AddRange([_addFavoriteButton, _addFolderButton, _importEdgeButton, _importChromeButton, _moveUpButton, _moveDownButton]);
 
         _toolbar = new Panel
         {
@@ -79,11 +83,12 @@ internal sealed class FavoritesManagerPanel : UserControl
         _splitContainer = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            FixedPanel = FixedPanel.Panel1,
-            IsSplitterFixed = true,
+            FixedPanel = FixedPanel.None,
+            IsSplitterFixed = false,
             SplitterDistance = 200,
-            SplitterWidth = 1,
-            Panel1MinSize = 160
+            SplitterWidth = 5,
+            Panel1MinSize = 120,
+            Panel2MinSize = 200,
         };
         _splitContainer.Panel1.Controls.Add(_folderTree);
         _splitContainer.Panel2.Controls.Add(_itemsList);
@@ -121,7 +126,7 @@ internal sealed class FavoritesManagerPanel : UserControl
         BackColor = theme.PanelBackground;
         ForeColor = theme.Text;
 
-        foreach (var button in new[] { _addFavoriteButton, _addFolderButton, _importEdgeButton, _importChromeButton, _closeButton })
+        foreach (var button in new[] { _addFavoriteButton, _addFolderButton, _importEdgeButton, _importChromeButton, _moveUpButton, _moveDownButton, _closeButton })
             ApplyButtonTheme(button);
 
         _toolbar.BackColor = theme.MenuBackground;
@@ -158,6 +163,8 @@ internal sealed class FavoritesManagerPanel : UserControl
         _addFolderButton.Click += (_, _) => AddFolder(GetSelectedFolderId());
         _importEdgeButton.Click += (_, _) => ImportFavorites("edge");
         _importChromeButton.Click += (_, _) => ImportFavorites("chrome");
+        _moveUpButton.Click   += (_, _) => MoveSelectedItem(-1);
+        _moveDownButton.Click += (_, _) => MoveSelectedItem(+1);
         _closeButton.Click += (_, _) => _navigateCallback("close");
 
         _folderTree.AfterSelect += (_, _) => RefreshList();
@@ -354,8 +361,15 @@ internal sealed class FavoritesManagerPanel : UserControl
                 _navigateCallback(selected.Url);
         };
 
+        var moveUpItem   = new ToolStripMenuItem("↑ Move Up");
+        moveUpItem.Click += (_, _) => MoveSelectedItem(-1);
+        var moveDownItem = new ToolStripMenuItem("↓ Move Down");
+        moveDownItem.Click += (_, _) => MoveSelectedItem(+1);
+
         _listMenu.Items.Add(renameItem);
         _listMenu.Items.Add(deleteItem);
+        _listMenu.Items.Add(moveUpItem);
+        _listMenu.Items.Add(moveDownItem);
         _listMenu.Items.Add(openItem);
     }
 
@@ -408,6 +422,23 @@ internal sealed class FavoritesManagerPanel : UserControl
             return;
 
         FavoritesService.Instance.Delete(item.Id);
+    }
+
+    private void MoveSelectedItem(int direction)
+    {
+        var selected = GetSelectedListItem();
+        if (selected == null) return;
+
+        string? parentId = selected.ParentId;
+        var siblings = FavoritesService.Instance.GetChildren(parentId);
+        int idx = siblings.FindIndex(x => x.Id == selected.Id);
+        int newIdx = idx + direction;
+        if (newIdx < 0 || newIdx >= siblings.Count) return;
+
+        // Swap orders with the neighbour
+        var neighbour = siblings[newIdx];
+        FavoritesService.Instance.Move(selected.Id, parentId, neighbour.Order);
+        FavoritesService.Instance.Move(neighbour.Id, parentId, selected.Order);
     }
 
     private void OpenSelectedListItem()
