@@ -436,9 +436,14 @@ public partial class GutterPanel : Panel
         int lineH      = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
         int totalLines = GetTotalLineCount();
 
+        // Compute the Y position of the first visible line ONCE via a single EM_POSFROMCHAR call.
+        // All other line positions are derived as anchorY + (offset * lineH), avoiding one
+        // GetPositionFromCharIndex call per visible line on every scroll-driven repaint.
+        int anchorY = ComputeAnchorY(editor, firstVisibleLine, lineH);
+
         // Pass 1: fold scope guide lines (drawn under per-line markers)
         if (ShowCodeFolds)
-            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineH);
+            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineH, anchorY);
 
         // Pass 2: per-line elements
         for (int i = 0; i < visibleLines; i++)
@@ -446,8 +451,8 @@ public partial class GutterPanel : Panel
             int lineIndex = firstVisibleLine + i;
             if (lineIndex >= totalLines) break;
 
-            int lineY = GetLineY(editor, lineIndex);
-            if (lineY < 0) continue;
+            // Anchor-based Y: single EM_POSFROMCHAR per frame rather than one per line.
+            int lineY = anchorY + i * lineH;
             if (lineY + lineH <= TopOffset)                           continue;
             if (lineY > editor.ClientSize.Height + TopOffset + 2)     break;
 
@@ -510,6 +515,25 @@ public partial class GutterPanel : Panel
         int clientH    = editor.ClientSize.Height;
         lineCount = (int)Math.Ceiling((clientH - TopOffset) / (double)lineH) + 3;
         if (lineCount < 1) lineCount = 1;
+    }
+
+    /// <summary>
+    /// Returns the Y pixel coordinate of <paramref name="firstVisibleLine"/> using a single
+    /// EM_POSFROMCHAR call.  All other lines are computed as <c>anchorY + offset * lineH</c>.
+    /// </summary>
+    private int ComputeAnchorY(RichTextBox editor, int firstVisibleLine, int lineH)
+    {
+        try
+        {
+            int charIndex = SendMessage(editor.Handle, EM_LINEINDEX, firstVisibleLine, 0);
+            if (charIndex >= 0)
+            {
+                Point pos = editor.GetPositionFromCharIndex(charIndex);
+                return pos.Y + TopOffset;
+            }
+        }
+        catch { }
+        return firstVisibleLine * lineH + TopOffset;
     }
 
     private int GetLineY(RichTextBox editor, int lineIndex)
@@ -689,7 +713,7 @@ public partial class GutterPanel : Panel
     /// Drawn before per-line markers so the box (+/−) covers the line at intersections.
     /// </summary>
     private void DrawFoldScopeLines(Graphics g, RichTextBox editor,
-                                    int firstLine, int lastLine, int lineH)
+                                    int firstLine, int lastLine, int lineH, int anchorY)
     {
         if (mainForm?.FoldingManager == null) return;
 
@@ -712,11 +736,11 @@ public partial class GutterPanel : Panel
             if (region.CloseLine < firstLine)   continue;
 
             int yStart = region.OpenLine >= firstLine
-                ? (GetLineY(editor, region.OpenLine) is int oy && oy >= 0 ? oy + lineH : areaTop)
+                ? anchorY + (region.OpenLine - firstLine) * lineH + lineH
                 : areaTop;
 
             int yEnd = region.CloseLine <= lastLine
-                ? (GetLineY(editor, region.CloseLine) is int cy && cy >= 0 ? cy : areaBot)
+                ? anchorY + (region.CloseLine - firstLine) * lineH
                 : areaBot;
 
             yStart = Math.Max(areaTop, yStart);

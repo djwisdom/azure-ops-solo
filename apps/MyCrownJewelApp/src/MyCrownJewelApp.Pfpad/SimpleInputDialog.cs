@@ -9,9 +9,8 @@ internal sealed class SimpleInputDialog : Form
     private SimpleInputDialog(string prompt, string title, string defaultValue)
     {
         Text = title;
-        Size = new Size(400, 160);
-        StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
+        StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
@@ -20,11 +19,20 @@ internal sealed class SimpleInputDialog : Form
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
+        const int margin = 14;
+        const int gap = 8;
+        const int btnW = 80;
+        const int btnH = 28;
+        const int formW = 400;
+
         var promptLabel = new Label
         {
             Text = prompt,
-            Location = new Point(12, 12),
-            AutoSize = true,
+            Left = margin,
+            Top = margin,
+            Width = formW - margin * 2,
+            AutoSize = false,
+            Height = 18,
             BackColor = Color.Transparent,
             ForeColor = theme.Text
         };
@@ -32,21 +40,26 @@ internal sealed class SimpleInputDialog : Form
         _inputBox = new TextBox
         {
             Text = defaultValue,
-            Location = new Point(12, 35),
-            Width = 360,
+            Left = margin,
             BackColor = theme.EditorBackground,
             ForeColor = theme.Text,
-            BorderStyle = BorderStyle.None
+            BorderStyle = BorderStyle.None,
+            Width = formW - margin * 2
         };
+        // Wrapper positions itself at the textbox Location; adjust top after label
+        int inputTop = promptLabel.Bottom + gap;
+        _inputBox.Top = inputTop + 2; // inside wrapper padding
         var inputBoxWrapper = FlatUiHelper.WrapFlat(_inputBox, theme);
-        inputBoxWrapper.Bounds = new Rectangle(_inputBox.Location, new Size(_inputBox.Width, _inputBox.Height + 4));
+        inputBoxWrapper.SetBounds(margin, inputTop, formW - margin * 2, _inputBox.PreferredHeight + 6);
         _inputBox.SelectAll();
+
+        int btnTop = inputBoxWrapper.Bottom + margin;
 
         Button okBtn = new()
         {
             Text = "OK",
-            Location = new Point(216, 70),
-            Width = 75,
+            Size = new Size(btnW, btnH),
+            Location = new Point(formW - margin - btnW * 2 - gap, btnTop),
             FlatStyle = FlatStyle.Flat,
             BackColor = theme.PanelBackground,
             ForeColor = theme.Text,
@@ -58,14 +71,17 @@ internal sealed class SimpleInputDialog : Form
         Button cancelBtn = new()
         {
             Text = "Cancel",
-            Location = new Point(300, 70),
-            Width = 75,
+            Size = new Size(btnW, btnH),
+            Location = new Point(formW - margin - btnW, btnTop),
             FlatStyle = FlatStyle.Flat,
             BackColor = theme.PanelBackground,
             ForeColor = theme.Text,
             FlatAppearance = { BorderColor = theme.Border, MouseOverBackColor = theme.ButtonHoverBackground },
             DialogResult = DialogResult.Cancel
         };
+
+        int clientH = btnTop + btnH + margin;
+        ClientSize = new Size(formW, clientH);
 
         Controls.AddRange(new Control[] { promptLabel, inputBoxWrapper, okBtn, cancelBtn });
         AcceptButton = okBtn;

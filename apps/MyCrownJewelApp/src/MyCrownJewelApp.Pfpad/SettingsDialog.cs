@@ -71,7 +71,7 @@ internal sealed class SettingsDialog : Form
     private ListView _workspaceSettingsList = null!;
     private Button _saveWorkspaceSettingsButton = null!;
 
-    public SettingsDialog(Form1 mainForm)
+    public SettingsDialog(Form1 mainForm, string? initialCategory = null)
     {
         _mainForm = mainForm;
         _theme = ThemeManager.Instance.CurrentTheme;
@@ -89,7 +89,38 @@ internal sealed class SettingsDialog : Form
         InitializeForm();
         LoadCurrentValues();
         BuildSettingsTree();
-        ShowCategory("editor");
+        NavigateTo(initialCategory ?? "editor");
+    }
+
+    /// <summary>
+    /// Selects the given category in the tree and shows its settings panel.
+    /// Safe to call after the dialog is shown (e.g. from an external caller).
+    /// </summary>
+    public void NavigateTo(string category)
+    {
+        // Select the matching tree node so it's highlighted
+        if (!SelectTreeNode(_settingsTree.Nodes, category))
+        {
+            // Node not found (e.g. parent node redirects) — just show directly
+            ShowCategory(category);
+        }
+        // AfterSelect fires ShowCategory automatically when node is selected
+    }
+
+    private bool SelectTreeNode(TreeNodeCollection nodes, string tag)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            if (node.Tag as string == tag)
+            {
+                _settingsTree.SelectedNode = node;
+                node.EnsureVisible();
+                return true;
+            }
+            if (node.Nodes.Count > 0 && SelectTreeNode(node.Nodes, tag))
+                return true;
+        }
+        return false;
     }
 
     private void InitializeForm()
@@ -252,6 +283,7 @@ internal sealed class SettingsDialog : Form
         featuresNode.Nodes.AddRange(new[]
         {
             new TreeNode("Terminal") { Tag = "features.terminal" },
+            new TreeNode("Browser") { Tag = "features.browser" },
             new TreeNode("Git") { Tag = "features.git" },
             new TreeNode("Keyboard Shortcuts") { Tag = "features.keyboard" },
             new TreeNode("Extensions") { Tag = "features.extensions" }
@@ -348,6 +380,10 @@ internal sealed class SettingsDialog : Form
         else if (category == "features.git")
         {
             y = AddGitSettingsUI(_contentPanel, y);
+        }
+        else if (category == "features.browser")
+        {
+            y = AddBrowserSettingsUI(_contentPanel, y);
         }
         else if (category == "application.security")
         {
@@ -767,6 +803,20 @@ internal sealed class SettingsDialog : Form
             TerminalPadding = GetSettingValue<int>("features.terminal.padding", _mainForm.CurrentTerminalPadding),
             TerminalMaxScrollback = GetSettingValue<int>("features.terminal.maxScrollback", _mainForm.CurrentTerminalMaxScrollback),
             TerminalTabTitle = GetSettingValue<string>("features.terminal.tabTitle", _mainForm.CurrentTerminalTabTitle),
+            BrowserHomepage = GetSettingValue<string>("features.browser.homepage", _mainForm.CurrentBrowserHomepage),
+            BrowserEphemeral = GetSettingValue<bool>("features.browser.ephemeral", _mainForm.CurrentBrowserEphemeral),
+            BrowserMaxHistory = GetSettingValue<int>("features.browser.maxHistory", _mainForm.CurrentBrowserMaxHistory),
+            BrowserAllowLocalhost = GetSettingValue<bool>("features.browser.allowLocalhost", _mainForm.CurrentBrowserAllowLocalhost),
+            BrowserDefaultZoom = GetSettingValue<double>("features.browser.defaultZoom", _mainForm.CurrentBrowserDefaultZoom),
+            BrowserShowInTitlebar = GetSettingValue<bool>("features.browser.showInTitlebar", _mainForm.CurrentBrowserShowInTitlebar),
+            BrowserContentFilterEnabled = GetSettingValue<bool>("features.browser.contentFilterEnabled", _mainForm.CurrentBrowserContentFilterEnabled),
+            BrowserFilterEasyList       = GetSettingValue<bool>("features.browser.filterEasyList",       _mainForm.CurrentBrowserFilterEasyList),
+            BrowserFilterEasyPrivacy    = GetSettingValue<bool>("features.browser.filterEasyPrivacy",    _mainForm.CurrentBrowserFilterEasyPrivacy),
+            BrowserFilterPeterLowe      = GetSettingValue<bool>("features.browser.filterPeterLowe",      _mainForm.CurrentBrowserFilterPeterLowe),
+            BrowserUserAgentPreset      = GetSettingValue<string>("features.browser.userAgentPreset",     _mainForm.CurrentBrowserUserAgentPreset),
+            BrowserCustomUserAgent      = GetSettingValue<string>("features.browser.customUserAgent",     _mainForm.CurrentBrowserCustomUserAgent),
+            BrowserShowFavoritesBar     = GetSettingValue<bool>("features.browser.showFavoritesBar",      _mainForm.CurrentBrowserShowFavoritesBar),
+            BrowserFavoritesSource      = GetSettingValue<string>("features.browser.favoritesSource",     _mainForm.CurrentBrowserFavoritesSource),
             GitAuthorName = GetSettingValue<string>("features.git.authorName", _mainForm.CurrentGitAuthorName),
             GitAuthorEmail = GetSettingValue<string>("features.git.authorEmail", _mainForm.CurrentGitAuthorEmail),
             GitDefaultBranch = GetSettingValue<string>("features.git.defaultBranch", _mainForm.CurrentGitDefaultBranch),
@@ -817,6 +867,14 @@ internal sealed class SettingsDialog : Form
             WsDisableFileWatcher = GetSettingValue<bool>("application.workspace.disableFileWatcher", _mainForm.CurrentWsDisableFileWatcher),
             WsMaxRecentWorkspaces = GetSettingValue<int>("application.workspace.maxRecentWorkspaces", _mainForm.CurrentWsMaxRecentWorkspaces),
             WsMaxRecentFiles = GetSettingValue<int>("application.workspace.maxRecentFiles", _mainForm.CurrentWsMaxRecentFiles),
+            WsFollowActiveFile = GetSettingValue<bool>("application.workspace.followActiveFile", _mainForm.CurrentWsFollowActiveFile),
+            WsSortFoldersFirst = GetSettingValue<bool>("application.workspace.sortFoldersFirst", _mainForm.CurrentWsSortFoldersFirst),
+            WsSingleClickOpen = GetSettingValue<bool>("application.workspace.singleClickOpen", _mainForm.CurrentWsSingleClickOpen),
+            WsConfirmDelete = GetSettingValue<bool>("application.workspace.confirmDelete", _mainForm.CurrentWsConfirmDelete),
+            WsShowGitStatus = GetSettingValue<bool>("application.workspace.showGitStatus", _mainForm.CurrentWsShowGitStatus),
+            WsShowIgnoredFiles = GetSettingValue<bool>("application.workspace.showIgnoredFiles", _mainForm.CurrentWsShowIgnoredFiles),
+            WsCompactFolders = GetSettingValue<bool>("application.workspace.compactFolders", _mainForm.CurrentWsCompactFolders),
+            WsShowFileCount = GetSettingValue<bool>("application.workspace.showFileCount", _mainForm.CurrentWsShowFileCount),
             VimModeEnabled = GetSettingValue<bool>("features.behavior.vimMode", _mainForm.CurrentVimMode),
             StickyScrollEnabled = GetSettingValue<bool>("editor.appearance.stickyScroll", _mainForm.CurrentStickyScroll),
             TabWidth = GetSettingValue<int>("workbench.editor.tabWidth", _mainForm.CurrentTabWidth),
@@ -936,6 +994,22 @@ internal sealed class SettingsDialog : Form
             ["features.terminal.maxScrollback"] = _mainForm.CurrentTerminalMaxScrollback,
             ["features.terminal.tabTitle"] = _mainForm.CurrentTerminalTabTitle,
 
+            // Features - Browser
+            ["features.browser.homepage"] = _mainForm.CurrentBrowserHomepage,
+            ["features.browser.ephemeral"] = _mainForm.CurrentBrowserEphemeral,
+            ["features.browser.maxHistory"] = _mainForm.CurrentBrowserMaxHistory,
+            ["features.browser.allowLocalhost"] = _mainForm.CurrentBrowserAllowLocalhost,
+            ["features.browser.defaultZoom"] = _mainForm.CurrentBrowserDefaultZoom,
+            ["features.browser.showInTitlebar"] = _mainForm.CurrentBrowserShowInTitlebar,
+            ["features.browser.contentFilterEnabled"] = _mainForm.CurrentBrowserContentFilterEnabled,
+            ["features.browser.filterEasyList"]       = _mainForm.CurrentBrowserFilterEasyList,
+            ["features.browser.filterEasyPrivacy"]    = _mainForm.CurrentBrowserFilterEasyPrivacy,
+            ["features.browser.filterPeterLowe"]      = _mainForm.CurrentBrowserFilterPeterLowe,
+            ["features.browser.userAgentPreset"]      = _mainForm.CurrentBrowserUserAgentPreset,
+            ["features.browser.customUserAgent"]      = _mainForm.CurrentBrowserCustomUserAgent,
+            ["features.browser.showFavoritesBar"]     = _mainForm.CurrentBrowserShowFavoritesBar,
+            ["features.browser.favoritesSource"]      = _mainForm.CurrentBrowserFavoritesSource,
+
             // Features - Git
             ["features.git.authorName"] = _mainForm.CurrentGitAuthorName,
             ["features.git.authorEmail"] = _mainForm.CurrentGitAuthorEmail,
@@ -993,6 +1067,14 @@ internal sealed class SettingsDialog : Form
             ["application.workspace.disableFileWatcher"] = _mainForm.CurrentWsDisableFileWatcher,
             ["application.workspace.maxRecentWorkspaces"] = _mainForm.CurrentWsMaxRecentWorkspaces,
             ["application.workspace.maxRecentFiles"] = _mainForm.CurrentWsMaxRecentFiles,
+            ["application.workspace.followActiveFile"] = _mainForm.CurrentWsFollowActiveFile,
+            ["application.workspace.sortFoldersFirst"] = _mainForm.CurrentWsSortFoldersFirst,
+            ["application.workspace.singleClickOpen"] = _mainForm.CurrentWsSingleClickOpen,
+            ["application.workspace.confirmDelete"] = _mainForm.CurrentWsConfirmDelete,
+            ["application.workspace.showGitStatus"] = _mainForm.CurrentWsShowGitStatus,
+            ["application.workspace.showIgnoredFiles"] = _mainForm.CurrentWsShowIgnoredFiles,
+            ["application.workspace.compactFolders"] = _mainForm.CurrentWsCompactFolders,
+            ["application.workspace.showFileCount"] = _mainForm.CurrentWsShowFileCount,
 
             // Workbench - Editor Management
             ["workbench.editor.tabWidth"] = _mainForm.CurrentTabWidth,            ["workbench.editor.tabHeight"] = _mainForm.CurrentTabHeight,
@@ -1118,7 +1200,7 @@ internal sealed class SettingsDialog : Form
         {
             "editor.text", "editor.cursor", "editor.find", "editor.font", "editor.formatting",
             "editor.appearance", "workbench.appearance", "workbench.editor",
-            "features.terminal", "features.git", "features.extensions",
+            "features.terminal", "features.browser", "features.git", "features.extensions",
             "features.behavior", "application.window", "application.security"
         };
     }
@@ -1139,6 +1221,7 @@ internal sealed class SettingsDialog : Form
             "workbench.editor" => "Editor Management",
             "features" => "Features",
             "features.terminal" => "Terminal",
+            "features.browser" => "Browser",
             "features.git" => "Git",
             "features.extensions" => "Extensions",
             "features.behavior" => "Behavior",
@@ -1218,6 +1301,20 @@ internal sealed class SettingsDialog : Form
             "features.terminal.padding" => "Padding (px) inside the terminal output area. 0–20.",
             "features.terminal.maxScrollback" => "Maximum lines to keep in scrollback. 500–50000.",
             "features.terminal.tabTitle" => "Custom tab title for terminal tabs. Empty = \"Terminal N\".",
+            "features.browser.homepage" => "URL to load when the browser tab is first opened or when Home is clicked.",
+            "features.browser.ephemeral" => "Use a temporary profile so cookies, cache and storage are deleted when Pfpad closes.",
+            "features.browser.maxHistory" => "Maximum number of visited URLs kept in browser history. 10–5000.",
+            "features.browser.allowLocalhost" => "Allow the integrated browser to navigate to localhost, 127.0.0.1, and [::1] URLs.",
+            "features.browser.defaultZoom" => "Default zoom level for all pages (1.0 = 100 %). Range 0.25–5.0.",
+            "features.browser.showInTitlebar" => "Show the current page title in the main window's title bar when the browser tab is active.",
+            "features.browser.contentFilterEnabled" => "Master switch for the built-in ad and tracker content filter.",
+            "features.browser.filterEasyList"       => "EasyList: removes most advertisements from web pages (~70 000 domain rules).",
+            "features.browser.filterEasyPrivacy"    => "EasyPrivacy: removes analytics, tracking pixels, and cross-site data collectors.",
+            "features.browser.filterPeterLowe"      => "Peter Lowe's Ad List: long-standing curated ad-server list in hosts format.",
+            "features.browser.userAgentPreset"      => "Preset browser identity: default (Edge/WebView2), chrome, firefox, safari, or custom.",
+            "features.browser.customUserAgent"      => "Full user-agent string used when preset is set to 'custom'.",
+            "features.browser.showFavoritesBar"     => "Show a bookmarks bar below the browser toolbar, imported from Edge or Chrome.",
+            "features.browser.favoritesSource"      => "Browser to import favorites from: 'edge' (Microsoft Edge) or 'chrome' (Google Chrome).",
             "features.git.authorName" => "Overrides git config user.name for commits made in Pfpad.",
             "features.git.authorEmail" => "Overrides git config user.email for commits made in Pfpad.",
             "features.git.defaultBranch" => "Branch name used when initialising a new repository.",
@@ -1230,8 +1327,274 @@ internal sealed class SettingsDialog : Form
             "features.extensions.treeSitterEnabled" => "Use Tree-sitter for symbol indexing in JS/TS/Python/Go/Rust and other non-C# files.",
             "features.extensions.todoScanEnabled" => "Scan files for TODO/FIXME/HACK comments and show them in the Problems panel.",
             "features.extensions.todoScanPatterns" => "Comma-separated comment tags to scan for (case-insensitive).",
+            "application.workspace.followActiveFile" => "Auto-expand and highlight the matching file in the workspace tree when you switch editor tabs.",
+            "application.workspace.sortFoldersFirst" => "Sort folders above files at each level of the workspace tree. When off, entries are sorted alphabetically together.",
+            "application.workspace.singleClickOpen" => "Open a file with a single click instead of requiring a double-click. Folders always toggle on single click.",
+            "application.workspace.confirmDelete" => "Show a confirmation dialog before permanently deleting a file or folder from the workspace context menu.",
+            "application.workspace.showGitStatus" => "Show colored status dots (Modified/Added/Deleted/Untracked) on workspace tree nodes based on git status.",
+            "application.workspace.showIgnoredFiles" => "Show git-ignored files and folders in the tree, greyed out, instead of hiding them entirely.",
+            "application.workspace.compactFolders" => "Merge single-child folder paths into a single node (e.g. src/components). Reduces scroll depth on deep project trees.",
+            "application.workspace.showFileCount" => "Show a child count badge on folder nodes, e.g. 'src (12)'.",
             _ => "No description available."
         };
+    }
+
+    private int AddBrowserSettingsUI(Panel parent, int y)
+    {
+        y = AddSecSectionHeader(parent, y, "Data Storage");
+
+        y = AddSecCheckRow(parent, y,
+            "Use ephemeral (private) session",
+            "Cookies, cache and storage are kept in a temporary folder and deleted when Pfpad closes.",
+            "features.browser.ephemeral");
+
+        y = AddWinNumericRow(parent, y,
+            "Max history entries",
+            "Maximum number of visited URLs kept in browser history. 10–5000.",
+            "features.browser.maxHistory", min: 10, max: 5000, step: 10, defaultVal: 200);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Navigation");
+
+        y = AddSecCheckRow(parent, y,
+            "Allow localhost URLs",
+            "Permit navigation to localhost, 127.0.0.1, and [::1] in the integrated browser.",
+            "features.browser.allowLocalhost");
+
+        y = AddSecTextRow(parent, y,
+            "Homepage",
+            "URL opened when the browser tab first appears or when you click Home.",
+            "features.browser.homepage");
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Content Filter");
+
+        y = AddSecCheckRow(parent, y,
+            "Enable ad & tracker blocking",
+            "Blocks requests to ad networks and tracking servers using industry-standard blocklists.",
+            "features.browser.contentFilterEnabled");
+
+        y = AddSecCheckRow(parent, y,
+            "EasyList (ads)",
+            "Removes most advertisements from web pages. ~70 000 domain rules.",
+            "features.browser.filterEasyList");
+
+        y = AddSecCheckRow(parent, y,
+            "EasyPrivacy (trackers)",
+            "Removes analytics, tracking pixels, and cross-site data collectors. ~50 000 rules.",
+            "features.browser.filterEasyPrivacy");
+
+        y = AddSecCheckRow(parent, y,
+            "Peter Lowe's Ad List",
+            "Long-standing curated ad-server list (hosts format, ~3 000 domains).",
+            "features.browser.filterPeterLowe");
+
+        // Informational: list status
+        var svc = ContentFilterService.Instance;
+        string statusText = svc.IsReady
+            ? $"🛡 Filter ready — {svc.DomainCount:N0} domains loaded."
+            : "⏳ Downloading blocklists in the background…";
+        var statusLbl = new Label
+        {
+            Text = statusText,
+            Location = new Point(20, y + 2),
+            Size = new Size(parent.Width - 24, 18),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent,
+            AutoSize = false
+        };
+        parent.Controls.Add(statusLbl);
+        y += 26;
+
+        svc.ListsReady += count =>
+        {
+            if (statusLbl.IsDisposed) return;
+            if (statusLbl.InvokeRequired)
+                statusLbl.BeginInvoke(() => statusLbl.Text = $"🛡 Filter ready — {count:N0} domains loaded.");
+            else
+                statusLbl.Text = $"🛡 Filter ready — {count:N0} domains loaded.";
+        };
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "User Agent");
+
+        y = AddBrowserUARow(parent, y);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Favorites Bar");
+
+        y = AddSecCheckRow(parent, y,
+            "Show favorites bar",
+            "Display a bookmarks bar below the browser toolbar. Imports from Edge or Chrome.",
+            "features.browser.showFavoritesBar");
+
+        y = AddGitRadioRow(parent, y,
+            "Import source",
+            "Which browser's bookmarks to display in the favorites bar.",
+            "features.browser.favoritesSource",
+            [("edge", "Microsoft Edge"), ("chrome", "Google Chrome")]);
+
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Display");
+
+        y = AddBrowserZoomRow(parent, y);
+
+        y = AddSecCheckRow(parent, y,
+            "Show page title in window title bar",
+            "When the browser tab is active, replace the window title with the current page title.",
+            "features.browser.showInTitlebar");
+
+        return y;
+    }
+
+    private int AddBrowserUARow(Panel parent, int y)
+    {
+        const string presetKey = "features.browser.userAgentPreset";
+        const string customKey = "features.browser.customUserAgent";
+        string currentPreset = _currentValues.TryGetValue(presetKey, out var pv) ? pv.ToString()! : "default";
+        string currentCustom  = _currentValues.TryGetValue(customKey, out var cv)  ? cv.ToString()! : "";
+
+        var lbl = new Label
+        {
+            Text = "User Agent",
+            Location = new Point(0, y + 4),
+            Size = new Size(160, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var desc = new Label
+        {
+            Text = "Override the browser identification string sent to web sites.",
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 200, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+
+        var combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Location = new Point(parent.Width - 196, y),
+            Width = 192,
+            Font = new Font("Segoe UI", 9),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text
+        };
+        combo.Items.AddRange(["Default (Edge / WebView2)", "Chrome", "Firefox", "Safari (macOS)", "Custom…"]);
+        int presetIdx = currentPreset switch
+        {
+            "chrome"  => 1,
+            "firefox" => 2,
+            "safari"  => 3,
+            "custom"  => 4,
+            _         => 0
+        };
+        combo.SelectedIndex = presetIdx;
+        combo.SelectedIndexChanged += (_, _) =>
+        {
+            string val = combo.SelectedIndex switch
+            {
+                1 => "chrome",
+                2 => "firefox",
+                3 => "safari",
+                4 => "custom",
+                _ => "default"
+            };
+            _currentValues[presetKey] = val;
+        };
+        parent.Controls.Add(combo);
+        y += 50;
+
+        // Custom UA text field
+        var customLbl = new Label
+        {
+            Text = "Custom UA string",
+            Location = new Point(0, y + 4),
+            Size = new Size(160, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(customLbl);
+
+        var customTxt = new TextBox
+        {
+            Text = currentCustom,
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 4, 22),
+            Font = new Font("Segoe UI", 8.5f),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        customTxt.TextChanged += (_, _) => _currentValues[customKey] = customTxt.Text;
+        parent.Controls.Add(customTxt);
+        y += 56;
+
+        return y;
+    }
+
+    private int AddBrowserZoomRow(Panel parent, int y)
+    {
+        const string key = "features.browser.defaultZoom";
+        double current = _currentValues.TryGetValue(key, out var v) && v is double d ? d : 1.0;
+
+        var lbl = new Label
+        {
+            Text = "Default zoom level",
+            Location = new Point(0, y + 4),
+            Size = new Size(260, 20),
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(lbl);
+
+        var desc = new Label
+        {
+            Text = "Zoom factor applied to all pages (1.0 = 100 %). Range 0.25–5.0.",
+            Location = new Point(0, y + 24),
+            Size = new Size(parent.Width - 124, 20),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(desc);
+
+        var spinner = new NumericUpDown
+        {
+            Width = 80,
+            Minimum = 25,
+            Maximum = 500,
+            Increment = 25,
+            DecimalPlaces = 0,
+            Value = (decimal)Math.Clamp(Math.Round(current * 100), 25, 500),
+            Location = new Point(parent.Width - 124, y),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            Tag = key
+        };
+        // Store as double fraction (100 → 1.0)
+        spinner.ValueChanged += (s, e) => _currentValues[key] = (double)spinner.Value / 100.0;
+        // Suffix label "%" aligned next to spinner
+        var pct = new Label
+        {
+            Text = "%",
+            Location = new Point(parent.Width - 124 + 84, y + 4),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 9),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(spinner);
+        parent.Controls.Add(pct);
+        return y + 50;
     }
 
     private int AddGitSettingsUI(Panel parent, int y)
@@ -2577,100 +2940,98 @@ internal sealed class SettingsDialog : Form
 
     private int AddWorkspaceSettingsUI(Panel parent, int y)
     {
-        // ── Explorer Behavior ─────────────────────────────────────────────────
         y = AddSecSectionHeader(parent, y, "Explorer Behavior");
-
-        y = AddSecCheckRow(parent, y,
-            "Show all files by default",
+        y = AddSecCheckRow(parent, y, "Show all files by default",
             "Display every file, not just recognized text/code types. Equivalent to the toolbar toggle.",
             "application.workspace.showAllFiles");
-
-        // Excluded directories text row
-        var exLbl = new Label
-        {
-            Text = "Additional excluded directories",
-            Location = new Point(0, y + 4),
-            Size = new Size(260, 20),
-            ForeColor = _theme.Text,
-            Font = new Font("Segoe UI", 9),
-            BackColor = Color.Transparent
-        };
-        parent.Controls.Add(exLbl);
-        var exDesc = new Label
-        {
-            Text = "Comma-separated names (e.g. dist,__pycache__,.cache). Added on top of the built-in list (bin, obj, node_modules, .vs…).",
-            Location = new Point(0, y + 24),
-            Size = new Size(parent.Width - 20, 28),
-            ForeColor = _theme.Muted,
-            Font = new Font("Segoe UI", 7.5f),
-            BackColor = Color.Transparent
-        };
-        parent.Controls.Add(exDesc);
-        string curEx = _currentValues.TryGetValue("application.workspace.excludedDirs", out var exv) ? exv.ToString()! : "";
-        var exTxt = new TextBox
-        {
-            Width = parent.Width - 20,
-            Height = 22,
-            Location = new Point(0, y + 54),
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.FixedSingle,
-            Text = curEx,
-            Tag = "application.workspace.excludedDirs"
-        };
-        exTxt.TextChanged += (s, e) => _currentValues["application.workspace.excludedDirs"] = exTxt.Text;
-        parent.Controls.Add(exTxt);
-        y += 82;
-
-        y = AddSecCheckRow(parent, y,
-            "Auto-collapse folders when opening a file",
+        y = AddSecCheckRow(parent, y, "Auto-collapse folders when opening a file",
             "Collapse other open top-level folders when you open a file, keeping the tree tidy.",
             "application.workspace.autoCollapse");
+        y = AddSecCheckRow(parent, y, "Single-click to open files",
+            "Open a file with a single click. Folders always toggle expand/collapse on single click.",
+            "application.workspace.singleClickOpen");
+        y = AddSecCheckRow(parent, y, "Confirm before deleting",
+            "Show a confirmation dialog before permanently deleting files or folders from the workspace.",
+            "application.workspace.confirmDelete");
 
-        // Tree item height
-        y = AddWinNumericRow(parent, y,
-            "Tree row height (px)",
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "Display");
+        y = AddSecCheckRow(parent, y, "Follow active file",
+            "Auto-expand and highlight the file matching the active editor tab when you switch tabs.",
+            "application.workspace.followActiveFile");
+        y = AddSecCheckRow(parent, y, "Sort folders first",
+            "Show folders above files at each level. When off, folders and files are sorted alphabetically together.",
+            "application.workspace.sortFoldersFirst");
+        y = AddSecCheckRow(parent, y, "Show git status decorations",
+            "Show colored status dots (Modified / Added / Deleted / Untracked) on tree nodes.",
+            "application.workspace.showGitStatus");
+        y = AddSecCheckRow(parent, y, "Show ignored files (greyed out)",
+            "Include git-ignored files in the tree, displayed in muted color instead of hidden.",
+            "application.workspace.showIgnoredFiles");
+        y = AddSecCheckRow(parent, y, "Compact folders",
+            "Merge single-child folder paths into one node (e.g. src/components). Reduces depth on nested projects.",
+            "application.workspace.compactFolders");
+        y = AddSecCheckRow(parent, y, "Show file count on folders",
+            "Show a child count badge on folder nodes, e.g. 'src (12)'.",
+            "application.workspace.showFileCount");
+        y = AddWinNumericRow(parent, y, "Tree row height (px)",
             "Height of each row in the workspace tree. 20 = compact, 26 = normal, 32 = spacious.",
             "application.workspace.treeItemHeight", min: 16, max: 40, step: 2, defaultVal: 26);
-
-        // Tree indent
-        y = AddWinNumericRow(parent, y,
-            "Tree indent per level (px)",
+        y = AddWinNumericRow(parent, y, "Tree indent per level (px)",
             "Horizontal indentation per nesting level. Default 24.",
             "application.workspace.treeIndent", min: 8, max: 48, step: 4, defaultVal: 24);
 
         y += 8;
-        // ── File Watcher ──────────────────────────────────────────────────────
-        y = AddSecSectionHeader(parent, y, "File Watcher");
+        y = AddSecSectionHeader(parent, y, "Additional Excluded Directories");
+        var exLbl = new Label
+        {
+            Text = "Comma-separated names (e.g. dist,__pycache__,.cache). Added on top of built-in list (bin, obj, node_modules, .vs…).",
+            Location = new Point(0, y),
+            Size = new Size(parent.Width - 20, 32),
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 7.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(exLbl);
+        y += 36;
+        string curEx = _currentValues.TryGetValue("application.workspace.excludedDirs", out var exv) ? exv.ToString()! : "";
+        var exTxt = new TextBox
+        {
+            Width = parent.Width - 20,
+            Height = 60,
+            Multiline = true,
+            Location = new Point(0, y),
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Text = curEx,
+            Tag = "application.workspace.excludedDirs",
+            ScrollBars = ScrollBars.Vertical
+        };
+        exTxt.TextChanged += (s, e) => _currentValues["application.workspace.excludedDirs"] = exTxt.Text;
+        parent.Controls.Add(exTxt);
+        y += 68;
 
-        y = AddSecCheckRow(parent, y,
-            "Disable file watcher (manual refresh only)",
+        y += 8;
+        y = AddSecSectionHeader(parent, y, "File Watcher");
+        y = AddSecCheckRow(parent, y, "Disable file watcher (manual refresh only)",
             "Stop watching the workspace folder for changes. Use the ↺ refresh button instead. Reduces CPU on large repos.",
             "application.workspace.disableFileWatcher");
-
-        y = AddWinNumericRow(parent, y,
-            "Refresh debounce (ms)",
+        y = AddWinNumericRow(parent, y, "Refresh debounce (ms)",
             "How long to wait after a file-system event before refreshing the tree. Default 500 ms.",
             "application.workspace.watcherDebounceMs", min: 100, max: 5000, step: 100, defaultVal: 500);
 
         y += 8;
-        // ── Recent Lists ──────────────────────────────────────────────────────
         y = AddSecSectionHeader(parent, y, "Recent Lists");
-
-        y = AddWinNumericRow(parent, y,
-            "Maximum recent workspaces",
+        y = AddWinNumericRow(parent, y, "Maximum recent workspaces",
             "How many folders appear in File > Recent Workspaces.",
             "application.workspace.maxRecentWorkspaces", min: 5, max: 50, step: 5, defaultVal: 10);
-
-        y = AddWinNumericRow(parent, y,
-            "Maximum recent files",
+        y = AddWinNumericRow(parent, y, "Maximum recent files",
             "How many files appear in File > Recent Files.",
             "application.workspace.maxRecentFiles", min: 5, max: 50, step: 5, defaultVal: 10);
 
         y += 16;
-        // ── Workspace Root ────────────────────────────────────────────────────
         y = AddSecSectionHeader(parent, y, "Workspace Root");
-
         var pathLabel = new Label
         {
             Text = "Current root:",
@@ -2681,7 +3042,6 @@ internal sealed class SettingsDialog : Form
             Font = new Font("Segoe UI", 9)
         };
         parent.Controls.Add(pathLabel);
-
         _workspacePathText = new TextBox
         {
             Location = new Point(100, y),
@@ -2693,7 +3053,6 @@ internal sealed class SettingsDialog : Form
             ReadOnly = true
         };
         parent.Controls.Add(_workspacePathText);
-
         var browseBtn = new Button
         {
             Text = "Browse…",
@@ -2707,7 +3066,6 @@ internal sealed class SettingsDialog : Form
         browseBtn.Click += BrowseWorkspaceButton_Click;
         parent.Controls.Add(browseBtn);
         y += 35;
-
         var statusLabel = new Label
         {
             Text = GetWorkspaceSettingsStatus(),
@@ -2720,12 +3078,18 @@ internal sealed class SettingsDialog : Form
         parent.Controls.Add(statusLabel);
         y += 25;
 
-        // ── Workspace-specific overrides (JSON list) ──────────────────────────
-        y = AddSecSectionHeader(parent, y, "Per-workspace Overrides (.pfpad/settings.json)");
+        y += 16;
+        var overridesSection = new CollapsibleSection(_theme, "Per-workspace Overrides (.pfpad/settings.json)")
+        {
+            Location = new Point(0, y),
+            Width = parent.Width - 20
+        };
+        parent.Controls.Add(overridesSection);
+        var overridesParent = overridesSection.ContentPanel;
 
         _workspaceSettingsList = new ThemeAwareListView(_theme)
         {
-            Location = new Point(0, y),
+            Location = new Point(0, 0),
             Size = new Size(parent.Width - 20, 160),
             View = View.Details,
             FullRowSelect = true,
@@ -2736,13 +3100,12 @@ internal sealed class SettingsDialog : Form
         _workspaceSettingsList.Columns.Add("Description", 200);
         LoadWorkspaceSettings();
         PopulateWorkspaceSettingsList();
-        parent.Controls.Add(_workspaceSettingsList);
-        y += 170;
+        overridesParent.Controls.Add(_workspaceSettingsList);
 
         var addBtn = new Button
         {
             Text = "Add Setting",
-            Location = new Point(0, y),
+            Location = new Point(0, 170),
             Size = new Size(100, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
@@ -2750,12 +3113,12 @@ internal sealed class SettingsDialog : Form
             FlatAppearance = { BorderColor = _theme.Border }
         };
         addBtn.Click += AddWorkspaceSettingButton_Click;
-        parent.Controls.Add(addBtn);
+        overridesParent.Controls.Add(addBtn);
 
         var removeBtn = new Button
         {
             Text = "Remove",
-            Location = new Point(108, y),
+            Location = new Point(108, 170),
             Size = new Size(80, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.PanelBackground,
@@ -2763,22 +3126,24 @@ internal sealed class SettingsDialog : Form
             FlatAppearance = { BorderColor = _theme.Border }
         };
         removeBtn.Click += RemoveWorkspaceSettingButton_Click;
-        parent.Controls.Add(removeBtn);
+        overridesParent.Controls.Add(removeBtn);
 
         _saveWorkspaceSettingsButton = new Button
         {
             Text = "Save to Workspace",
-            Location = new Point(parent.Width - 160, y),
-            Size = new Size(140, 28),
+            Location = new Point(parent.Width - 180, 170),
+            Size = new Size(160, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = _theme.Accent,
             ForeColor = Color.White,
             FlatAppearance = { BorderColor = _theme.Accent }
         };
         _saveWorkspaceSettingsButton.Click += SaveWorkspaceSettingsButton_Click;
-        parent.Controls.Add(_saveWorkspaceSettingsButton);
+        overridesParent.Controls.Add(_saveWorkspaceSettingsButton);
 
-        return y + 40;
+        overridesSection.Height = 230;
+        y += overridesSection.Height + 10;
+        return y;
     }
 
     private string GetWorkspaceSettingsStatus()
@@ -3647,15 +4012,16 @@ internal sealed class SettingsDialog : Form
     {
         switch (key)
         {
-            case var k when k.Contains("wordWrap") || k.Contains("syntaxHighlighting") ||
+            case var k when value is bool bVal &&
+                           (k.Contains("wordWrap") || k.Contains("syntaxHighlighting") ||
                            k.Contains("columnGuide") || k.Contains("gutter") || k.Contains("statusBar") ||
                            k.Contains("hoverLineHighlight") || k.Contains("insertSpaces") ||
                            k.Contains("autoIndent") || k.Contains("smartTabs") || k.Contains("elasticTabs") ||
                            k.Contains("showWhitespace") || k.Contains("minimap") || k.Contains("stickyScroll") ||
                            k.Contains("rainbowBrackets") || k.Contains("breadcrumbs") ||
                            k.Contains("vimMode") || k.Contains("autoSave") || k.Contains("analyzers") ||
-                           k.Contains("fontWeight") || k.Contains("scrollbar"):
-                return new ToggleSwitch(_theme) { Checked = (bool)value, Tag = key };
+                           k.Contains("fontWeight") || k.Contains("scrollbar")):
+                return new ToggleSwitch(_theme) { Checked = bVal, Tag = k };
 
             case var k when k.Contains("lineHighlight"):
                 var combo = new ComboBox
@@ -3728,7 +4094,7 @@ internal sealed class SettingsDialog : Form
                     BackColor = _theme.EditorBackground,
                     ForeColor = _theme.Text
                 };
-                sizeUpDown.Value = (decimal)(float)value;
+                sizeUpDown.Value = value is float fv ? (decimal)fv : value is int fsiv ? (decimal)fsiv : (decimal)Convert.ToSingle(value);
                 sizeUpDown.Tag = key;
                 sizeUpDown.ValueChanged += SettingControl_ValueChanged;
                 return sizeUpDown;
@@ -3744,7 +4110,7 @@ internal sealed class SettingsDialog : Form
                     BackColor = _theme.EditorBackground,
                     ForeColor = _theme.Text
                 };
-                terminalFontSize.Value = (decimal)(float)value;
+                terminalFontSize.Value = value is float tfv ? (decimal)tfv : value is int tfsiv ? (decimal)tfsiv : (decimal)Convert.ToSingle(value);
                 terminalFontSize.Tag = key;
                 terminalFontSize.ValueChanged += SettingControl_ValueChanged;
                 return terminalFontSize;

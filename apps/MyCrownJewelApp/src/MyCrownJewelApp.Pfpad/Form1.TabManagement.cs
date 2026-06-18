@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -77,7 +77,7 @@ namespace MyCrownJewelApp.Pfpad
 
             // Create tab page and add to end
             var tabPage = new TabPage(newDoc.DisplayName) { Tag = newDoc };
-            tabControl.TabPages.Add(tabPage);
+            InsertEditorTabPage(tabPage);
 
             // Switch to new tab and ensure visible
             tabControl.SelectedIndex = newIndex;
@@ -143,7 +143,7 @@ namespace MyCrownJewelApp.Pfpad
                 _docManager.Add(doc);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-                tabControl.TabPages.Add(tabPage);
+                InsertEditorTabPage(tabPage);
                 tabControl.SelectedIndex = newIndex; // triggers SwitchToTab when handle exists
                 activeDocIndex = newIndex;
                 EnsureSelectedTabVisible();
@@ -201,7 +201,7 @@ namespace MyCrownJewelApp.Pfpad
             _docManager.Add(doc);
             int newIndex = documents.Count - 1;
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-            tabControl.TabPages.Add(tabPage);
+            InsertEditorTabPage(tabPage);
             tabControl.SelectedIndex = newIndex;
             activeDocIndex = newIndex;
             EnsureSelectedTabVisible();
@@ -300,6 +300,16 @@ namespace MyCrownJewelApp.Pfpad
 
         internal void CloseCurrentTab()
         {
+            if (_activeBrowserPanel != null)
+            {
+                int tabIdx = tabControl.SelectedIndex;
+                if (tabIdx >= documents.Count)
+                {
+                    CloseBrowserTab(tabIdx);
+                    return;
+                }
+            }
+
             if (documents.Count <= 1) return; // always keep at least one tab
             if (activeDocIndex < 0 || activeDocIndex >= documents.Count) return;
 
@@ -353,6 +363,12 @@ namespace MyCrownJewelApp.Pfpad
         // happens when selecting + closing a non-active tab.
         private void CloseTabAt(int index)
         {
+            if (index >= documents.Count)
+            {
+                CloseBrowserTab(index);
+                return;
+            }
+
             if (documents.Count <= 1) return;
             if (index < 0 || index >= documents.Count) return;
 
@@ -422,6 +438,7 @@ namespace MyCrownJewelApp.Pfpad
             UpdateMarkdownPreview();
             UpdateEncodingLabel();
             _workspacePanel?.SetActiveFile(doc.FilePath);
+            _workspacePanel?.RevealFile(doc.FilePath ?? "");
         }
 
         // Load EditorDocument state into editor and UI
@@ -524,12 +541,22 @@ namespace MyCrownJewelApp.Pfpad
 
         private void TabControl_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            if (tabControl.SelectedIndex >= 0 && tabControl.SelectedIndex < documents.Count)
+            int selectedIndex = tabControl.SelectedIndex;
+
+            if (selectedIndex >= 0 && selectedIndex < documents.Count)
             {
-                SwitchToTab(tabControl.SelectedIndex);
+                ShowEditorArea();
+                SwitchToTab(selectedIndex);
             }
+            else if (selectedIndex >= documents.Count && selectedIndex < tabControl.TabPages.Count)
+            {
+                if (tabControl.TabPages[selectedIndex].Tag is BrowserPanel browserPanel)
+                    SwitchToBrowserTab(browserPanel);
+            }
+
             RefreshGitRepo();
             UpdateMarkdownPreview();
+            UpdateStatusBarVisibility();
         }
 
         private void TabControl_DoubleClick(object? sender, EventArgs e)
@@ -556,13 +583,13 @@ namespace MyCrownJewelApp.Pfpad
             {
                 for (int i = 0; i < tabControl.TabPages.Count; i++)
                 {
-                    var rect = tabControl.GetTabRect(i);
+                    var rect = i < _tabRects.Count ? _tabRects[i] : tabControl.GetTabRect(i);
                     if (rect.Contains(e.Location))
                     {
                         // Check close button (×) — always visible, same position as draw
                         int btnSize = 16;
                         int btnX = rect.Right - 22;
-                        int btnY = rect.Top + 3;
+                        int btnY = rect.Top + (rect.Height - 16) / 2;
                         var btnRect = new Rectangle(btnX, btnY, btnSize, btnSize);
                         // Respect close button visibility setting
                         bool closeVisible = _tabCloseButtonVisibility switch
@@ -786,7 +813,7 @@ namespace MyCrownJewelApp.Pfpad
                     // Add the dragged EditorDocument to the new form
                     detachedForm._docManager.Add(doc);
                     var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-                    detachedForm.tabControl.TabPages.Add(tabPage);
+                    detachedForm.InsertEditorTabPage(tabPage);
                     detachedForm.tabControl.SelectedIndex = 0;
                     detachedForm.activeDocIndex = 0;
                     detachedForm.LoadDocument(doc);
@@ -855,7 +882,7 @@ namespace MyCrownJewelApp.Pfpad
         {
             _docManager.Add(doc);
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-            tabControl.TabPages.Add(tabPage);
+            InsertEditorTabPage(tabPage);
 
             // Make the dropped tab active
             int newIndex = documents.Count - 1;
@@ -1077,7 +1104,7 @@ namespace MyCrownJewelApp.Pfpad
                 _docManager.Add(_splitDocument);
                 int newIndex = documents.Count - 1;
                 var tabPage = new TabPage(_splitDocumentTitle ?? _splitDocument.DisplayName) { Tag = _splitDocument };
-                tabControl.TabPages.Add(tabPage);
+                InsertEditorTabPage(tabPage);
                 tabControl.SelectedIndex = newIndex;
             }
 
@@ -1151,14 +1178,14 @@ namespace MyCrownJewelApp.Pfpad
 
             for (int i = 0; i < tabControl.TabPages.Count; i++)
             {
-                var rect = tabControl.GetTabRect(i);
+                var rect = i < _tabRects.Count ? _tabRects[i] : tabControl.GetTabRect(i);
                 if (rect.Contains(e.Location))
                 {
                     overAnyTab = true;
                     newHoverIndex = i;
                     int buttonSize = 16;
                     int btnX = rect.Right - 22;
-                    int btnY = rect.Top + 3;
+                    int btnY = rect.Top + (rect.Height - 16) / 2;
                     newCloseBounds = new Rectangle(btnX, btnY, buttonSize, buttonSize);
                     break;
             }
@@ -1212,93 +1239,105 @@ namespace MyCrownJewelApp.Pfpad
 
         private void TabControl_DrawItem(object? sender, DrawItemEventArgs e)
         {
-            if (tabControl == null || tabControl.TabPages.Count == 0) return;
-            if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
-            if (e.Index < 0 || e.Index >= documents.Count) return;
+            // WM_PAINT is fully handled by TabStripBackgroundWindow.PaintTabStrip;
+            // this DrawItem callback is no longer invoked.
+        }
 
-            if (tabControl == null || tabControl.TabPages.Count == 0) return;
-            if (e.Index < 0 || e.Index >= tabControl.TabPages.Count) return;
-            if (e.Index < 0 || e.Index >= documents.Count) return;
+        /// <summary>
+        /// Paints the entire editor tab strip without any COMCTL rendering.
+        /// Called from TabStripBackgroundWindow.WndProc on WM_PAINT.
+        /// </summary>
+        internal void PaintTabStrip(Graphics g)
+        {
+            if (tabControl == null || tabControl.IsDisposed) return;
 
             var theme = _themeManager.CurrentTheme;
-            var tabRect = e.Bounds;
+            var client = tabControl.ClientRectangle;
 
-            bool isSelected = (e.Index == tabControl.SelectedIndex);
-            bool isHovered = (e.Index == hoveredTabIndex);
+            // Fill the whole strip with the strip background
+            using (var bg = new SolidBrush(theme.MenuBackground))
+                g.FillRectangle(bg, client);
 
-            Color backColor;
-            if (isSelected)
-                backColor = theme.EditorBackground;
-            else if (isHovered)
-                backColor = theme.ButtonHoverBackground;
-            else
-                backColor = theme.MenuBackground;
-
-            using (var brush = new SolidBrush(backColor))
+            // Build sequential (gap-free) tab rects using COMCTL's widths
+            _tabRects.Clear();
+            int x = 0;
+            for (int i = 0; i < tabControl.TabCount; i++)
             {
-                e.Graphics.FillRectangle(brush, tabRect);
+                int w = tabControl.GetTabRect(i).Width;
+                _tabRects.Add(new Rectangle(x, 0, w, client.Height));
+                x += w;
             }
 
-            // Tab icon
-            var doc = e.Index < documents.Count ? documents[e.Index] : null;
-            if (_tabShowFileIcons && doc?.FilePath != null)
+            for (int i = 0; i < _tabRects.Count; i++)
             {
-                int iconIdx = FileIconProvider.GetIconIndex(doc.FilePath);
-                if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
+                bool sel = i == tabControl.SelectedIndex;
+                bool hov = i == hoveredTabIndex;
+                var r = _tabRects[i];
+
+                // Tab background — flush fill, no gaps
+                Color tabBg = sel ? theme.EditorBackground
+                            : hov  ? theme.ButtonHoverBackground
+                                   : theme.MenuBackground;
+                using (var tabBgBrush = new SolidBrush(tabBg))
+                    g.FillRectangle(tabBgBrush, r);
+
+                // Blue accent top (2px) for active tab
+                if (sel)
                 {
-                    var iconRect = new Rectangle(tabRect.X + 8, tabRect.Y + 3, 16, 16);
-                    e.Graphics.DrawImage(FileIconProvider.ImageList.Images[iconIdx], iconRect);
+                    using var accentPen = new Pen(theme.Accent, 2);
+                    g.DrawLine(accentPen, r.Left, r.Top + 1, r.Right, r.Top + 1);
                 }
-            }
 
-            // Tab text
-            string text = tabControl.TabPages[e.Index].Text;
-            bool showClose = _tabCloseButtonVisibility switch
-            {
-                "active" => isSelected,
-                "hover" => isSelected || isHovered,
-                "never" => false,
-                _ => true   // "always"
-            };
-            int textOffset = (_tabShowFileIcons && doc?.FilePath != null) ? 28 : 8;
-            int textRightMargin = showClose ? 22 : 6;
-            var textRect = new Rectangle(
-                tabRect.X + textOffset, tabRect.Y + 3,
-                tabRect.Right - textRightMargin - tabRect.X - textOffset, tabRect.Height - 4);
+                // Content starts below the accent
+                const int contentTop = 5;
+                int contentLeft = r.X + 8;
 
-            TextRenderer.DrawText(e.Graphics, text, tabControl.Font, textRect,
-                isSelected ? theme.Text : theme.Muted,
-                TextFormatFlags.Left | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix |
-                TextFormatFlags.EndEllipsis);
+                bool isDocTab = i < documents.Count;
 
-            // Draw borders
-            if (!isSelected)
-            {
-                // Hide borders for inactive tabs by drawing over with background color
-                using (var pen = new Pen(backColor, 1))
+                // File icon (document tabs only)
+                if (isDocTab && _tabShowFileIcons)
                 {
-                    e.Graphics.DrawRectangle(pen, tabRect.X, tabRect.Y, tabRect.Width - 1, tabRect.Height - 1);
+                    var doc = documents[i];
+                    if (doc.FilePath != null)
+                    {
+                        int iconIdx = FileIconProvider.GetIconIndex(doc.FilePath);
+                        if (iconIdx >= 0 && iconIdx < FileIconProvider.ImageList.Images.Count)
+                        {
+                            g.DrawImage(FileIconProvider.ImageList.Images[iconIdx],
+                                         new Rectangle(contentLeft, r.Y + contentTop, 16, 16));
+                            contentLeft += 20;
+                        }
+                    }
                 }
-            }
-            else
-            {
-                // Draw top border for active tab
-                using (var pen = new Pen(theme.Text, 1))
-                {
-                    e.Graphics.DrawLine(pen, tabRect.Left, tabRect.Top, tabRect.Right - 1, tabRect.Top);
-                }
-                // Accent underline
-                using var accentPen = new Pen(theme.Accent, 2);
-                e.Graphics.DrawLine(accentPen, tabRect.Left, tabRect.Bottom - 2, tabRect.Right, tabRect.Bottom - 2);
-            }
 
-            // Close button (×) — visibility controlled by setting
-            if (showClose)
-            {
-                var closeRect = new Rectangle(tabRect.Right - 22, tabRect.Y + 3, 16, 16);
-                using var xFont = new Font("Segoe UI", 11, FontStyle.Bold);
-                TextRenderer.DrawText(e.Graphics, "\u00D7", xFont, closeRect, theme.Muted,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+                // Close ×
+                bool showClose = _tabCloseButtonVisibility switch
+                {
+                    "active" => sel,
+                    "hover"  => sel || hov,
+                    "never"  => false,
+                    _        => true
+                };
+                int contentRight = r.Right - (showClose ? 24 : 8);
+
+                if (showClose)
+                {
+                    var closeRect = new Rectangle(r.Right - 22, r.Y + contentTop, 16, 16);
+                    using var xFont = new Font("Segoe UI", 10);
+                    TextRenderer.DrawText(g, "\u00D7", xFont, closeRect,
+                        _closeButtonHovered && sel ? theme.Text : theme.Muted,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.SingleLine);
+                }
+
+                // Label
+                string text = tabControl.TabPages[i].Text;
+                var textRect = new Rectangle(contentLeft, r.Y + contentTop,
+                                             contentRight - contentLeft, r.Height - contentTop);
+                TextRenderer.DrawText(g, text, tabControl.Font, textRect,
+                    sel ? theme.Text : theme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.SingleLine |
+                    TextFormatFlags.NoPrefix);
             }
         }
 

@@ -143,7 +143,9 @@ namespace MyCrownJewelApp.Pfpad
         private void TabControl_Paint(object? sender, PaintEventArgs e)
         {
             var theme = _themeManager.CurrentTheme;
-            e.Graphics.Clear(theme.MenuBackground);
+            // Fill the entire client rect (covers COMCTL separator line and any unfilled gaps)
+            using var bg = new SolidBrush(theme.MenuBackground);
+            e.Graphics.FillRectangle(bg, tabControl.ClientRectangle);
         }
 
         private void TabControl_HandleCreated(object? sender, EventArgs e)
@@ -196,16 +198,20 @@ namespace MyCrownJewelApp.Pfpad
 
         // Native-window subclass that paints the tab strip background with the current theme.
         private TabStripBackgroundWindow? _tabStripWindow;
-        private TabStripBackgroundWindow? _terminalTabStripWindow;
+        private TerminalTabBgWindow? _terminalTabStripWindow;
 
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
+            private const int WM_PAINT      = 0x000F;
             private const int WM_ERASEBKGND = 0x0014;
-            private const int WM_HSCROLL = 0x0114;
-            private const int SB_LINELEFT = 0;
-            private const int SB_LINERIGHT = 1;
+            private const int WM_HSCROLL    = 0x0114;
+            private const int SB_LINELEFT   = 0;
+            private const int SB_LINERIGHT  = 1;
             private readonly Form1 _owner;
             private readonly TabControl _target;
+
+            [DllImport("user32.dll")]
+            private static extern bool ValidateRect(IntPtr hWnd, IntPtr lpRect);
 
             public TabStripBackgroundWindow(Form1 owner, TabControl target)
             {
@@ -218,31 +224,57 @@ namespace MyCrownJewelApp.Pfpad
                 switch (m.Msg)
                 {
                     case WM_ERASEBKGND:
-                        var theme = _owner._themeManager.CurrentTheme;
-                        using (var g = Graphics.FromHdc(m.WParam))
-                        using (var brush = new SolidBrush(theme.MenuBackground))
-                        {
-                            g.FillRectangle(brush, _target.ClientRectangle);
-                        }
-                        m.Result = (IntPtr)1;
+                        m.Result = (IntPtr)1;   // prevent flicker; WM_PAINT fills everything
+                        return;
+                    case WM_PAINT:
+                        // Validate dirty region so Windows doesn't loop WM_PAINT
+                        ValidateRect(Handle, IntPtr.Zero);
+                        // Paint entirely ourselves — zero COMCTL rendering, zero borders
+                        using (var g = Graphics.FromHwnd(Handle))
+                            _owner.PaintTabStrip(g);
                         return;
                     case WM_HSCROLL:
+                    {
+                        int code = (int)(m.WParam.ToInt64() & 0xFFFF);
+                        if (code == SB_LINELEFT)
                         {
-                            int code = (int)(m.WParam.ToInt64() & 0xFFFF);
-                            if (code == SB_LINELEFT)
-                            {
-                                if (_target.SelectedIndex > 0)
-                                    _target.SelectedIndex--;
-                                return;
-                            }
-                            if (code == SB_LINERIGHT)
-                            {
-                                if (_target.SelectedIndex < _target.TabCount - 1)
-                                    _target.SelectedIndex++;
-                                return;
-                            }
-                            break;
+                            if (_target.SelectedIndex > 0)
+                                _target.SelectedIndex--;
+                            return;
                         }
+                        if (code == SB_LINERIGHT)
+                        {
+                            if (_target.SelectedIndex < _target.TabCount - 1)
+                                _target.SelectedIndex++;
+                            return;
+                        }
+                        break;
+                    }
+                }
+                base.WndProc(ref m);
+            }
+        }
+
+        /// <summary>
+        /// Lightweight NativeWindow subclass for the terminal tab strip.
+        /// Fills the strip background with the theme colour on WM_ERASEBKGND,
+        /// then lets WinForms handle WM_PAINT normally so DrawItem fires per tab.
+        /// </summary>
+        private sealed class TerminalTabBgWindow : NativeWindow
+        {
+            private const int WM_ERASEBKGND = 0x0014;
+            private readonly ThemeManager _themeManager;
+
+            public TerminalTabBgWindow(ThemeManager tm) => _themeManager = tm;
+
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == WM_ERASEBKGND)
+                {
+                    using var g = Graphics.FromHdc(m.WParam);
+                    g.Clear(_themeManager.CurrentTheme.MenuBackground);
+                    m.Result = (IntPtr)1;
+                    return;
                 }
                 base.WndProc(ref m);
             }
@@ -250,6 +282,29 @@ namespace MyCrownJewelApp.Pfpad
 
 
         #endregion
+
+        /// <summary>
+        /// TabControl subclass that applies TCS_BUTTONS via CreateParams.
+        /// With TCS_BUTTONS there is no content-area border below the tab strip,
+        /// so the tab buttons fill the exact control height with no reserved panel.
+        /// </summary>
+        private sealed class FlatButtonTabControl : TabControl
+        {
+            private const int TCS_BUTTONS      = 0x0100;
+            private const int TCS_FLATBUTTONS  = 0x0008;
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    var cp = base.CreateParams;
+                    // TCS_BUTTONS removes the content-area border entirely.
+                    // TCS_FLATBUTTONS removes the inter-button gap/raised border.
+                    cp.Style |= TCS_BUTTONS | TCS_FLATBUTTONS;
+                    return cp;
+                }
+            }
+        }
+
         #region Syntax Highlighting (async, incremental, visible-range)
 
         private Color GetKeywordColor() => _themeManager.CurrentTheme.KeywordColor;

@@ -108,7 +108,9 @@ using Microsoft.Extensions.DependencyInjection;
             _workspacePanel?.ApplyWorkspaceSettings(
                 _wsShowAllFiles, _wsExcludedDirs,
                 _wsTreeItemHeight, _wsTreeIndent,
-                _wsAutoCollapse, _wsWatcherDebounceMs, _wsDisableFileWatcher);
+                _wsAutoCollapse, _wsWatcherDebounceMs, _wsDisableFileWatcher,
+                _wsFollowActiveFile, _wsSortFoldersFirst, _wsSingleClickOpen, _wsConfirmDelete,
+                _wsShowGitStatus, _wsShowIgnoredFiles, _wsCompactFolders, _wsShowFileCount);
             _sessionManager.MaxRecentWorkspaces = Math.Clamp(_wsMaxRecentWorkspaces, 5, 50);
             _sessionManager.MaxRecentFiles = Math.Clamp(_wsMaxRecentFiles, 5, 50);
         }
@@ -281,13 +283,151 @@ using Microsoft.Extensions.DependencyInjection;
             _docManager.Add(doc);
             int newIndex = documents.Count - 1;
             var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-            tabControl.TabPages.Add(tabPage);
+            InsertEditorTabPage(tabPage);
             tabControl.SelectedIndex = newIndex;
             activeDocIndex = newIndex;
             LoadDocument(doc);
             UpdateWindowTitle();
             UpdateTabTitle(newIndex);
             EnsureSelectedTabVisible();
+        }
+
+        private void InsertEditorTabPage(TabPage tabPage)
+        {
+            int insertIndex = Math.Max(0, documents.Count - 1);
+            tabControl.TabPages.Insert(insertIndex, tabPage);
+        }
+
+        /// <summary>
+        /// Creates a new browser tab in the main editor tab strip.
+        /// </summary>
+        internal void OpenNewBrowserTab(string? url = null)
+        {
+            var browserPanel = new BrowserPanel();
+            ConfigureBrowserPanel(browserPanel);
+
+            browserPanel.Dock = DockStyle.Fill;
+            browserPanel.Visible = false;
+            _terminalSplitContainer?.Panel1.Controls.Add(browserPanel);
+            _browserPanels.Add(browserPanel);
+
+            var page = new TabPage("🌐 New Tab") { Tag = browserPanel };
+            tabControl.TabPages.Add(page);
+
+            browserPanel.PageTitleChanged += title =>
+            {
+                if (IsDisposed || page.IsDisposed) return;
+                BeginInvoke(() =>
+                {
+                    string tabText = string.IsNullOrWhiteSpace(title)
+                        ? "🌐 Browser"
+                        : "🌐 " + (title.Length > 25 ? title[..25] + "…" : title);
+                    page.Text = tabText;
+                    if (_activeBrowserPanel == browserPanel && _browserShowInTitlebar)
+                        Text = string.IsNullOrWhiteSpace(title) ? "Personal Flip Pad" : $"{title} — Personal Flip Pad";
+                });
+            };
+
+            if (!string.IsNullOrWhiteSpace(url))
+                browserPanel.NavigateTo(url);
+
+            tabControl.SelectedIndex = tabControl.TabPages.Count - 1;
+            EnsureSelectedTabVisible();
+        }
+
+        /// <summary>
+        /// Applies current browser settings to a BrowserPanel instance.
+        /// </summary>
+        private void ConfigureBrowserPanel(BrowserPanel browserPanel)
+        {
+            browserPanel.SetTheme(_themeManager.CurrentTheme);
+            browserPanel.SetHomepage(_browserHomepage);
+            browserPanel.SetEphemeral(_browserEphemeral);
+            browserPanel.SetMaxHistory(_browserMaxHistory);
+            browserPanel.SetAllowLocalhost(_browserAllowLocalhost);
+            browserPanel.SetDefaultZoom(_browserDefaultZoom);
+            browserPanel.SetShowInTitlebar(_browserShowInTitlebar);
+            browserPanel.SetContentFilterEnabled(_browserContentFilterEnabled);
+            browserPanel.SetUserAgent(_browserUserAgentPreset, _browserCustomUserAgent);
+            browserPanel.SetShowFavoritesBar(_browserShowFavoritesBar, _browserFavoritesSource);
+        }
+
+        /// <summary>
+        /// Switches the main content area to show the given BrowserPanel.
+        /// </summary>
+        internal void SwitchToBrowserTab(BrowserPanel browserPanel)
+        {
+            if (_activeBrowserPanel == null && activeDocIndex >= 0 && activeDocIndex < documents.Count)
+                SaveCurrentDocument();
+
+            mainTable.Visible = false;
+            if (_activeBrowserPanel != null && _activeBrowserPanel != browserPanel)
+                _activeBrowserPanel.Visible = false;
+
+            _activeBrowserPanel = browserPanel;
+            browserPanel.Visible = true;
+            browserPanel.BringToFront();
+            browserPanel.EnsureInitialized();
+            browserPanel.FocusAddressBar();
+
+            UpdateWindowTitle();
+        }
+
+        /// <summary>
+        /// Returns to the editor view.
+        /// </summary>
+        internal void ShowEditorArea()
+        {
+            if (_activeBrowserPanel != null)
+            {
+                _activeBrowserPanel.Visible = false;
+                _activeBrowserPanel = null;
+            }
+
+            mainTable.Visible = true;
+            mainTable.BringToFront();
+            UpdateWindowTitle();
+        }
+
+        /// <summary>
+        /// Closes the browser tab at the given tabControl index.
+        /// </summary>
+        internal void CloseBrowserTab(int tabIndex)
+        {
+            if (tabIndex < 0 || tabIndex >= tabControl.TabPages.Count) return;
+            var page = tabControl.TabPages[tabIndex];
+            if (page.Tag is not BrowserPanel browserPanel) return;
+
+            tabControl.SuspendLayout();
+            try
+            {
+                bool wasActive = _activeBrowserPanel == browserPanel;
+                if (wasActive)
+                {
+                    browserPanel.Visible = false;
+                    _activeBrowserPanel = null;
+                    mainTable.Visible = true;
+                    mainTable.BringToFront();
+                }
+
+                tabControl.TabPages.RemoveAt(tabIndex);
+                _browserPanels.Remove(browserPanel);
+                _terminalSplitContainer?.Panel1.Controls.Remove(browserPanel);
+                page.Dispose();
+                browserPanel.Dispose();
+
+                if (wasActive && documents.Count > 0 && tabControl.TabPages.Count > 0)
+                {
+                    int editorIndex = Math.Min(Math.Max(0, tabIndex - 1), documents.Count - 1);
+                    tabControl.SelectedIndex = editorIndex;
+                    ShowEditorArea();
+                    SwitchToTab(editorIndex);
+                }
+            }
+            finally
+            {
+                tabControl.ResumeLayout();
+            }
         }
 
         // State
@@ -336,6 +476,9 @@ using Microsoft.Extensions.DependencyInjection;
 
         // Terminal state
         private BuildOutputPanel? _buildOutputPanel;
+        private TabPage? _buildOutputPage;   // kept for show/hide when C# context changes
+        private readonly List<BrowserPanel> _browserPanels = [];
+        private BrowserPanel? _activeBrowserPanel;
         private TabControl? _terminalTabControl;
         private SplitContainer? _terminalSplitContainer;
         private Button? _terminalNewTabButton;
@@ -343,6 +486,20 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _terminalVisible = false;
         private int _terminalHeight = 200;
         private string _terminalShell = "";
+        private string _browserHomepage = "about:blank";
+        private bool _browserEphemeral = false;
+        private int _browserMaxHistory = 200;
+        private bool _browserAllowLocalhost = true;
+        private double _browserDefaultZoom = 1.0;
+        private bool _browserShowInTitlebar = false;
+        private bool _browserContentFilterEnabled = true;
+        private bool _browserFilterEasyList = true;
+        private bool _browserFilterEasyPrivacy = true;
+        private bool _browserFilterPeterLowe = true;
+        private string _browserUserAgentPreset = "default";
+        private string _browserCustomUserAgent = "";
+        private bool _browserShowFavoritesBar = false;
+        private string _browserFavoritesSource = "edge";
         private string _terminalFontFace = "";
         private float _terminalFontSize = 0f;
         private bool _terminalFontBold = false;
@@ -398,7 +555,9 @@ using Microsoft.Extensions.DependencyInjection;
         private SplitContainer? _workspaceSplitContainer;
         private WorkspacePanel? _workspacePanel;
         private SolutionExplorerPanel? _solutionExplorerPanel;
-        private TabControl? _sideTopTabs;
+        private Panel? _sideTabHeader;
+        private Panel? _sideContentArea;
+        private int _sideTabIndex;
         private bool _workspaceVisible;
         private int _workspaceWidth = 200;
         private string _workspaceRoot = "";
@@ -427,6 +586,14 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _wsDisableFileWatcher = false;
         private int _wsMaxRecentWorkspaces = 10;
         private int _wsMaxRecentFiles = 10;
+        private bool _wsFollowActiveFile = true;
+        private bool _wsSortFoldersFirst = true;
+        private bool _wsSingleClickOpen = false;
+        private bool _wsConfirmDelete = true;
+        private bool _wsShowGitStatus = true;
+        private bool _wsShowIgnoredFiles = false;
+        private bool _wsCompactFolders = true;
+        private bool _wsShowFileCount = false;
 
         // AIOps
         private MyCrownJewelApp.Pfpad.AIOps.AIOpsEngine? _aiopsEngine;
@@ -514,6 +681,7 @@ using Microsoft.Extensions.DependencyInjection;
         internal int activeDocIndex { get => _docManager.ActiveIndex; set => _docManager.ActiveIndex = value; }
         private int nextUntitledNumber { get => _docManager.NextUntitledNumber; set => _docManager.NextUntitledNumber = value; }
         private int? hoveredTabIndex = null;
+        private readonly List<Rectangle> _tabRects = new();
         private Rectangle? closeButtonBounds = null;
         private bool _closeButtonHovered = false;
 
@@ -599,6 +767,7 @@ using Microsoft.Extensions.DependencyInjection;
         private readonly SessionManager _sessionManager = null!;
         private bool _cliArgsProvided;
         private bool _workspaceRootFromCli;
+        private bool _blankSlate;
 
         // Performance profiler
         private PerformanceProfilerDialog? _profilerDialog;
@@ -811,6 +980,20 @@ using Microsoft.Extensions.DependencyInjection;
         public int CurrentTerminalMaxScrollback => _terminalMaxScrollback;
         public string CurrentTerminalStartingDirectory => _terminalStartingDirectory;
         public string CurrentTerminalTabTitle => _terminalTabTitle;
+        public string CurrentBrowserHomepage => _browserHomepage;
+        public bool CurrentBrowserEphemeral => _browserEphemeral;
+        public int CurrentBrowserMaxHistory => _browserMaxHistory;
+        public bool CurrentBrowserAllowLocalhost => _browserAllowLocalhost;
+        public double CurrentBrowserDefaultZoom => _browserDefaultZoom;
+        public bool CurrentBrowserShowInTitlebar => _browserShowInTitlebar;
+        public bool CurrentBrowserContentFilterEnabled => _browserContentFilterEnabled;
+        public bool CurrentBrowserFilterEasyList => _browserFilterEasyList;
+        public bool CurrentBrowserFilterEasyPrivacy => _browserFilterEasyPrivacy;
+        public bool CurrentBrowserFilterPeterLowe => _browserFilterPeterLowe;
+        public string CurrentBrowserUserAgentPreset  => _browserUserAgentPreset;
+        public string CurrentBrowserCustomUserAgent  => _browserCustomUserAgent;
+        public bool CurrentBrowserShowFavoritesBar   => _browserShowFavoritesBar;
+        public string CurrentBrowserFavoritesSource  => _browserFavoritesSource;
         public string CurrentGitAuthorName => _gitAuthorName;
         public string CurrentGitAuthorEmail => _gitAuthorEmail;
         public string CurrentGitDefaultBranch => _gitDefaultBranch;
@@ -879,6 +1062,14 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentWsDisableFileWatcher => _wsDisableFileWatcher;
         public int CurrentWsMaxRecentWorkspaces => _wsMaxRecentWorkspaces;
         public int CurrentWsMaxRecentFiles => _wsMaxRecentFiles;
+        public bool CurrentWsFollowActiveFile => _wsFollowActiveFile;
+        public bool CurrentWsSortFoldersFirst => _wsSortFoldersFirst;
+        public bool CurrentWsSingleClickOpen => _wsSingleClickOpen;
+        public bool CurrentWsConfirmDelete => _wsConfirmDelete;
+        public bool CurrentWsShowGitStatus => _wsShowGitStatus;
+        public bool CurrentWsShowIgnoredFiles => _wsShowIgnoredFiles;
+        public bool CurrentWsCompactFolders => _wsCompactFolders;
+        public bool CurrentWsShowFileCount => _wsShowFileCount;
         public int CurrentTabWidth => _tabWidth;
         public int CurrentTabHeight => _tabHeight;
         public bool CurrentTabShowFileIcons => _tabShowFileIcons;
@@ -966,6 +1157,17 @@ using Microsoft.Extensions.DependencyInjection;
                   AddToRecentWorkspaces(_workspaceRoot);
               }
 
+              // Blank-slate new project window: force workspace panel open for the
+              // new project dir regardless of the previously-saved _workspaceVisible state.
+              if (_blankSlate && !string.IsNullOrEmpty(_workspaceRoot))
+              {
+                  BeginInvoke(() =>
+                  {
+                      if (!_workspaceVisible)
+                          ToggleWorkspace();
+                  });
+              }
+
               // Don't restore session if CLI args were provided OR if there are already documents loaded
               // (which could happen from CLI args or if user already opened files)
               if (!_cliArgsProvided && documents.Count <= 1 && _winRestoreSession)
@@ -1027,6 +1229,11 @@ using Microsoft.Extensions.DependencyInjection;
                         newWindow = true;
                         continue;
                     }
+                    if (arg == "--blank")
+                    {
+                        _blankSlate = true;
+                        continue;
+                    }
                     if (Directory.Exists(arg))
                     {
                         _workspaceRoot = arg;
@@ -1068,7 +1275,7 @@ using Microsoft.Extensions.DependencyInjection;
                         _docManager.Add(doc);
                         int newIndex = documents.Count - 1;
                         var tabPage = new TabPage(doc.DisplayName) { Tag = doc };
-                        tabControl.TabPages.Add(tabPage);
+                        InsertEditorTabPage(tabPage);
                         tabControl.SelectedIndex = newIndex;
                         activeDocIndex = newIndex;
                         EnsureSelectedTabVisible();
@@ -1303,7 +1510,7 @@ using Microsoft.Extensions.DependencyInjection;
             _breadcrumbDebounce = new System.Windows.Forms.Timer { Interval = BreadcrumbDebounceMs };
             _breadcrumbDebounce.Tick += (s, e) => { _breadcrumbDebounce.Stop(); UpdateBreadcrumbs(); };
             textEditor.SelectionChanged += (s, e) => DebounceBreadcrumbs();
-            textEditor.VScroll += (s, e) => { UpdateBreadcrumbsSync(); gutterPanel?.RefreshGutter(); };
+            textEditor.VScroll += (s, e) => gutterPanel?.Invalidate();
             UpdateBreadcrumbs();
 
             // Initialize rainbow brackets from loaded settings
@@ -1347,6 +1554,8 @@ using Microsoft.Extensions.DependencyInjection;
             {
                 _scrollHighlightTimer.Stop();
                 RequestVisibleHighlight();
+                try { UpdateStickyHeaders(); } catch { }
+                UpdateBreadcrumbsSync();
             };
 
             // Lock-key indicator: polls CapsLock / NumLock / ScrollLock every 500ms
@@ -1591,8 +1800,13 @@ using Microsoft.Extensions.DependencyInjection;
                  const int UISF_HIDEFOCUS = 0x1;
                  SendMessage(_terminalTabControl.Handle, WM_UPDATEUISTATE,
                      (UISF_HIDEFOCUS << 16) | UIS_SET, IntPtr.Zero);
+                 // NOTE: do NOT add TabStripBackgroundWindow here — it intercepts WM_PAINT
+                 // and calls PaintTabStrip() which renders the *editor* document tabs.
+                 // The terminal uses OwnerDrawFixed + TerminalTabControl_DrawItem instead.
+                 // TerminalTabBgWindow fills the strip background with the theme colour
+                 // via WM_ERASEBKGND, then lets WinForms trigger DrawItem per tab.
                  _terminalTabStripWindow?.ReleaseHandle();
-                 _terminalTabStripWindow = new TabStripBackgroundWindow(this, _terminalTabControl);
+                 _terminalTabStripWindow = new TerminalTabBgWindow(_themeManager);
                  _terminalTabStripWindow.AssignHandle(_terminalTabControl.Handle);
              };
              _terminalTabControl.HandleDestroyed += (s, e) =>
@@ -1655,20 +1869,20 @@ using Microsoft.Extensions.DependencyInjection;
              _terminalSplitContainer.Panel2.Controls.Add(_terminalTabControl);
              _terminalSplitContainer.Panel2.Controls.Add(_terminalNewTabButton);
 
-             // Add the persistent "Output" tab (Build Output) at index 0
+             // Add the persistent "Output" tab (Build Output) at index 0 — hidden until C# context
              _buildOutputPanel = new BuildOutputPanel();
              _buildOutputPanel.SetTheme(_themeManager.CurrentTheme);
              _buildOutputPanel.DiagnosticNavigated += (path, line) => { OpenFileInNewTab(path); GoToLine(line); };
              _buildOutputPanel.BuildRequested += () => { if (_solutionExplorerPanel != null) _ = _solutionExplorerPanel.BuildCurrentSolutionAsync(); };
              _buildOutputPanel.CancelRequested += () => _solutionExplorerPanel?.CancelBuild();
-             var buildOutputPage = new TabPage("Output")
+             _buildOutputPage = new TabPage("Output")
              {
                  BackColor = _themeManager.CurrentTheme.EditorBackground,
                  Tag = "output"
              };
              _buildOutputPanel.Dock = DockStyle.Fill;
-             buildOutputPage.Controls.Add(_buildOutputPanel);
-             _terminalTabControl?.TabPages.Insert(0, buildOutputPage);
+             _buildOutputPage.Controls.Add(_buildOutputPanel);
+             // Not inserted here — UpdateStatusBarVisibility() adds/removes it based on C# context
 
              // Insert split container into row 2, shift status up
              mainLayout.Controls.Add(_terminalSplitContainer, 0, 2);
@@ -1779,7 +1993,7 @@ using Microsoft.Extensions.DependencyInjection;
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
                           OpenFileInNewTab(path);
                   };
-                  _solutionExplorerPanel.CloseRequested += () => ToggleSolutionExplorer();
+                  _solutionExplorerPanel.CloseRequested += () => SetSideTab(0);
                   _solutionExplorerPanel.SolutionLoaded += (slnPath) =>
                   {
                       string? slnDir = Path.GetDirectoryName(slnPath);
@@ -1795,8 +2009,8 @@ using Microsoft.Extensions.DependencyInjection;
                       _buildOutputPanel?.SetBusy(true);
                       _buildOutputPanel?.AppendLine($"Build started: {Path.GetFileName(targetPath)}", false);
                       if (_terminalTabControl != null)
-                          foreach (TabPage tp in _terminalTabControl.TabPages)
-                              if (tp.Tag as string == "output") { _terminalTabControl.SelectedTab = tp; break; }
+                          if (_terminalTabControl != null && _buildOutputPage != null)
+                              _terminalTabControl.SelectedTab = _buildOutputPage;
                       ShowTerminal();
                   };
                   _solutionExplorerPanel.BuildOutputLine += (line, isErr) => _buildOutputPanel?.AppendLine(line, isErr);
@@ -1808,27 +2022,26 @@ using Microsoft.Extensions.DependencyInjection;
                   };
                   _solutionExplorerPanel.SetTheme(_themeManager.CurrentTheme);
 
-                  _sideTopTabs = new TabControl
+                  // Custom side-tab header: COMCTL-free, zero white strip
+                  _sideTabIndex = 0;
+                  _sideTabHeader = new Panel
                   {
-                      Dock = DockStyle.Fill,
-                      DrawMode = TabDrawMode.OwnerDrawFixed,
-                      SizeMode = TabSizeMode.Fixed,
-                      ItemSize = new Size(0, 24),
-                      Font = new Font("Segoe UI", 8f),
-                      Padding = new Point(8, 3)
+                      Dock = DockStyle.Top,
+                      Height = 24,
+                      BackColor = _themeManager.CurrentTheme.MenuBackground
                   };
-                  _sideTopTabs.DrawItem += SideTopTabs_DrawItem;
+                  _sideTabHeader.Paint += SideTabHeader_Paint;
+                  _sideTabHeader.MouseClick += SideTabHeader_MouseClick;
 
-                  var explorerTab = new TabPage("Explorer") { BackColor = _themeManager.CurrentTheme.MenuBackground };
-                  explorerTab.Controls.Add(_workspacePanel);
+                  _sideContentArea = new Panel { Dock = DockStyle.Fill, BackColor = _themeManager.CurrentTheme.MenuBackground };
+
                   _workspacePanel.Dock = DockStyle.Fill;
-
-                  var solutionTab = new TabPage("Solution") { BackColor = _themeManager.CurrentTheme.MenuBackground };
-                  solutionTab.Controls.Add(_solutionExplorerPanel);
                   _solutionExplorerPanel.Dock = DockStyle.Fill;
+                  _sideContentArea.Controls.Add(_workspacePanel); // Explorer shown by default
 
-                  _sideTopTabs.TabPages.Add(explorerTab);
-                  _sideTopTabs.TabPages.Add(solutionTab);
+                  var sideTopContainer = new Panel { Dock = DockStyle.Fill };
+                  sideTopContainer.Controls.Add(_sideContentArea);
+                  sideTopContainer.Controls.Add(_sideTabHeader);
 
                   _sidebarSplit = new SplitContainer
                   {
@@ -1841,7 +2054,7 @@ using Microsoft.Extensions.DependencyInjection;
                       BorderStyle = BorderStyle.None,
                       Panel2Collapsed = !_gitPanelVisible && !_symbolPanelVisible
                   };
-                  _sidebarSplit.Panel1.Controls.Add(_sideTopTabs);
+                  _sidebarSplit.Panel1.Controls.Add(sideTopContainer);
                   _sidebarSplit.Panel2.Controls.Add(_botSidebarSplit);
                   _sidebarSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
                   _sidebarSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
@@ -2415,11 +2628,15 @@ using Microsoft.Extensions.DependencyInjection;
             
             this.BackColor = theme.Background;
             this.ForeColor = theme.Text;
+            if (mainLayout != null)
+                mainLayout.BackColor = theme.EditorBackground;
             if (menuStrip != null)
             {
                 menuStrip.Renderer = new ThemeAwareMenuRenderer(theme);
                 menuStrip.BackColor = theme.MenuBackground;
                 menuStrip.ForeColor = theme.Text;
+                if (_hardeningLabel != null)
+                    _hardeningLabel.BackColor = theme.MenuBackground;
             }
             if (textEditor != null)
             {
@@ -2656,6 +2873,14 @@ using Microsoft.Extensions.DependencyInjection;
                 _wsDisableFileWatcher = settings.WsDisableFileWatcher;
                 _wsMaxRecentWorkspaces = settings.WsMaxRecentWorkspaces;
                 _wsMaxRecentFiles = settings.WsMaxRecentFiles;
+                _wsFollowActiveFile = settings.WsFollowActiveFile;
+                _wsSortFoldersFirst = settings.WsSortFoldersFirst;
+                _wsSingleClickOpen = settings.WsSingleClickOpen;
+                _wsConfirmDelete = settings.WsConfirmDelete;
+                _wsShowGitStatus = settings.WsShowGitStatus;
+                _wsShowIgnoredFiles = settings.WsShowIgnoredFiles;
+                _wsCompactFolders = settings.WsCompactFolders;
+                _wsShowFileCount = settings.WsShowFileCount;
                 // Editor Management settings
                 _tabWidth = Math.Clamp(settings.TabWidth, 60, 300);
                 _tabHeight = Math.Clamp(settings.TabHeight, 22, 40);
@@ -2850,6 +3075,20 @@ using Microsoft.Extensions.DependencyInjection;
                 TerminalPadding = _terminalPadding,
                 TerminalMaxScrollback = _terminalMaxScrollback,
                 TerminalTabTitle = _terminalTabTitle,
+                BrowserHomepage               = _browserHomepage,
+                BrowserEphemeral              = _browserEphemeral,
+                BrowserMaxHistory             = _browserMaxHistory,
+                BrowserAllowLocalhost         = _browserAllowLocalhost,
+                BrowserDefaultZoom            = _browserDefaultZoom,
+                BrowserShowInTitlebar         = _browserShowInTitlebar,
+                BrowserContentFilterEnabled   = _browserContentFilterEnabled,
+                BrowserFilterEasyList         = _browserFilterEasyList,
+                BrowserFilterEasyPrivacy      = _browserFilterEasyPrivacy,
+                BrowserFilterPeterLowe        = _browserFilterPeterLowe,
+                BrowserUserAgentPreset        = _browserUserAgentPreset,
+                BrowserCustomUserAgent        = _browserCustomUserAgent,
+                BrowserShowFavoritesBar       = _browserShowFavoritesBar,
+                BrowserFavoritesSource        = _browserFavoritesSource,
                 GitAuthorName = _gitAuthorName,
                 GitAuthorEmail = _gitAuthorEmail,
                 GitDefaultBranch = _gitDefaultBranch,
@@ -2894,6 +3133,14 @@ using Microsoft.Extensions.DependencyInjection;
                 WsDisableFileWatcher = _wsDisableFileWatcher,
                 WsMaxRecentWorkspaces = _wsMaxRecentWorkspaces,
                 WsMaxRecentFiles = _wsMaxRecentFiles,
+                WsFollowActiveFile = _wsFollowActiveFile,
+                WsSortFoldersFirst = _wsSortFoldersFirst,
+                WsSingleClickOpen = _wsSingleClickOpen,
+                WsConfirmDelete = _wsConfirmDelete,
+                WsShowGitStatus = _wsShowGitStatus,
+                WsShowIgnoredFiles = _wsShowIgnoredFiles,
+                WsCompactFolders = _wsCompactFolders,
+                WsShowFileCount = _wsShowFileCount,
                 TabWidth = _tabWidth,
                 TabHeight = _tabHeight,
                 TabShowFileIcons = _tabShowFileIcons,
@@ -3062,6 +3309,38 @@ using Microsoft.Extensions.DependencyInjection;
             _terminalPadding = Math.Clamp(settings.TerminalPadding, 0, 20);
             _terminalMaxScrollback = Math.Clamp(settings.TerminalMaxScrollback, 500, 50000);
             _terminalTabTitle = settings.TerminalTabTitle ?? "";
+            _browserHomepage = string.IsNullOrWhiteSpace(settings.BrowserHomepage)
+                ? "about:blank" : settings.BrowserHomepage;
+            _browserEphemeral = settings.BrowserEphemeral;
+            _browserMaxHistory = Math.Clamp(settings.BrowserMaxHistory, 10, 5000);
+            _browserAllowLocalhost = settings.BrowserAllowLocalhost;
+            _browserDefaultZoom = Math.Clamp(settings.BrowserDefaultZoom, 0.25, 5.0);
+            _browserShowInTitlebar = settings.BrowserShowInTitlebar;
+            _browserContentFilterEnabled = settings.BrowserContentFilterEnabled;
+            _browserFilterEasyList       = settings.BrowserFilterEasyList;
+            _browserFilterEasyPrivacy    = settings.BrowserFilterEasyPrivacy;
+            _browserFilterPeterLowe      = settings.BrowserFilterPeterLowe;
+            _browserUserAgentPreset = settings.BrowserUserAgentPreset;
+            _browserCustomUserAgent = settings.BrowserCustomUserAgent ?? "";
+            _browserShowFavoritesBar = settings.BrowserShowFavoritesBar;
+            _browserFavoritesSource = settings.BrowserFavoritesSource ?? "edge";
+            foreach (var bp in _browserPanels)
+            {
+                bp.SetHomepage(_browserHomepage);
+                bp.SetEphemeral(_browserEphemeral);
+                bp.SetMaxHistory(_browserMaxHistory);
+                bp.SetAllowLocalhost(_browserAllowLocalhost);
+                bp.SetDefaultZoom(_browserDefaultZoom);
+                bp.SetShowInTitlebar(_browserShowInTitlebar);
+                bp.SetContentFilterEnabled(_browserContentFilterEnabled);
+                bp.SetUserAgent(_browserUserAgentPreset, _browserCustomUserAgent);
+                bp.SetShowFavoritesBar(_browserShowFavoritesBar, _browserFavoritesSource);
+            }
+            ContentFilterService.Instance.Configure(
+                _browserContentFilterEnabled,
+                _browserFilterEasyList,
+                _browserFilterEasyPrivacy,
+                _browserFilterPeterLowe);
             ApplyTerminalSettingsToAll();
 
             // Apply git settings
@@ -3125,6 +3404,14 @@ using Microsoft.Extensions.DependencyInjection;
             _wsDisableFileWatcher = settings.WsDisableFileWatcher;
             _wsMaxRecentWorkspaces = settings.WsMaxRecentWorkspaces;
             _wsMaxRecentFiles = settings.WsMaxRecentFiles;
+            _wsFollowActiveFile = settings.WsFollowActiveFile;
+            _wsSortFoldersFirst = settings.WsSortFoldersFirst;
+            _wsSingleClickOpen = settings.WsSingleClickOpen;
+            _wsConfirmDelete = settings.WsConfirmDelete;
+            _wsShowGitStatus = settings.WsShowGitStatus;
+            _wsShowIgnoredFiles = settings.WsShowIgnoredFiles;
+            _wsCompactFolders = settings.WsCompactFolders;
+            _wsShowFileCount = settings.WsShowFileCount;
             ApplyWorkspaceSettings();
 
             // Editor Management settings
@@ -3548,13 +3835,13 @@ internal void ToggleGutter()
                 _workspacePanel.SetTheme(theme);
             if (_solutionExplorerPanel != null)
                 _solutionExplorerPanel.SetTheme(theme);
-            if (_sideTopTabs != null)
+            if (_sideTabHeader != null)
             {
-                _sideTopTabs.BackColor = theme.MenuBackground;
-                foreach (TabPage page in _sideTopTabs.TabPages)
-                    page.BackColor = theme.MenuBackground;
-                _sideTopTabs.Invalidate();
+                _sideTabHeader.BackColor = theme.MenuBackground;
+                _sideTabHeader.Invalidate();
             }
+            if (_sideContentArea != null)
+                _sideContentArea.BackColor = theme.MenuBackground;
             if (_symbolPanel != null)
                 _symbolPanel.SetTheme(theme);
             if (_problemsPanel != null)
@@ -3598,6 +3885,7 @@ internal void ToggleGutter()
             if (_editorSplitContainer != null)
                 _editorSplitContainer.BackColor = theme.EditorBackground;
             _buildOutputPanel?.SetTheme(theme);
+            foreach (var bp in _browserPanels) bp.SetTheme(theme);
         }
 
         private void ApplyTerminalSettingsToAll()
@@ -3652,6 +3940,24 @@ internal void ToggleGutter()
 
             if (_secWriteStartupLog)
                 PurgeOldLogs(_secLogRetentionDays);
+
+            UpdateHardeningLabel();
+        }
+
+        private void UpdateHardeningLabel()
+        {
+            if (_hardeningLabel == null) return;
+            var (text, color) = _securityProfile switch
+            {
+                SecurityProfile.NotHardened => ("🔒 Hardening: None", Color.FromArgb(160, 160, 160)),
+                SecurityProfile.Low         => ("🔒 Hardening: Low",  Color.FromArgb(255, 140, 0)),
+                SecurityProfile.Mid         => ("🔒 Hardening: Mid",  Color.FromArgb(30, 144, 255)),
+                SecurityProfile.Max         => ("🔒 Hardening: Max",  Color.FromArgb(50, 205, 50)),
+                _                           => ("🔒 Hardening: Low",  Color.FromArgb(255, 140, 0)),
+            };
+            if (InvokeRequired) { BeginInvoke(() => { _hardeningLabel.Text = text; _hardeningLabel.ForeColor = color; }); return; }
+            _hardeningLabel.Text = text;
+            _hardeningLabel.ForeColor = color;
         }
 
         private static void PurgeOldLogs(int retentionDays)
@@ -3674,11 +3980,14 @@ internal void ToggleGutter()
 
         private string ResolveTerminalStartingDirectory()
         {
-            if (!string.IsNullOrWhiteSpace(_terminalStartingDirectory))
-                return _terminalStartingDirectory;
-
+            // Active workspace root takes priority: the terminal should always start
+            // in the context of the currently open project/folder.
+            // The Settings "Terminal Starting Directory" is a fallback for when no workspace is open.
             if (!string.IsNullOrWhiteSpace(_workspaceRoot))
                 return _workspaceRoot;
+
+            if (!string.IsNullOrWhiteSpace(_terminalStartingDirectory))
+                return _terminalStartingDirectory;
 
             return "";
         }
@@ -3738,10 +4047,12 @@ internal void ToggleGutter()
             terminal.HideTerminalRequested += () => CloseTerminalTab(terminal);
             page.Controls.Add(terminal);
 
-            _terminalTabControl?.TabPages.Add(page);
-            _terminalTabs.Add(terminal);
             if (_terminalTabControl != null)
+            {
+                _terminalTabControl.TabPages.Add(page);
                 _terminalTabControl.SelectedTab = page;
+            }
+            _terminalTabs.Add(terminal);
             RefreshTerminalTabTitles();
 
             if (_terminalVisible)
@@ -3830,6 +4141,7 @@ internal void ToggleGutter()
                 active.Start();
                 active.FocusInput();
             }
+
             PositionTerminalNewTabButton();
         }
 
@@ -4366,30 +4678,32 @@ internal void ToggleGutter()
                 {
                     int selStart = textEditor.SelectionStart;
                     int currentLine = textEditor.GetLineFromCharIndex(selStart);
-                    string prevLineText = "";
-                    if (currentLine > 0)
-                    {
-                        prevLineText = GetLineText(currentLine - 1);
-                    }
-                    // Compute indent based on previous line
-                    string indent = IndentationHelper.ComputeIndent(prevLineText, tabSize, insertSpaces);
-                    string trimmedPrev = prevLineText.Trim();
 
-                    if (_autoCloseBracesOnEnter && trimmedPrev.EndsWith('{'))
+                    // The line where Enter is pressed (may end with '{')
+                    string currentLineText = GetLineText(currentLine);
+                    string trimmedCurrent = currentLineText.TrimEnd();
+
+                    if (_autoCloseBracesOnEnter && trimmedCurrent.EndsWith('{'))
                     {
-                        // Insert inner newline + indent, then outer newline + closing brace;
-                        // leave cursor positioned after the inner indent (between the braces).
-                        string outerIndent = IndentationHelper.GetLeadingWhitespace(prevLineText);
-                        string innerText = Environment.NewLine + indent + Environment.NewLine + outerIndent + "}";
+                        // Current line ends with '{': insert inner newline + indent, then
+                        // outer newline + closing brace; position cursor between the braces.
+                        string outerIndent = IndentationHelper.GetLeadingWhitespace(currentLineText);
+                        string innerIndent = IndentationHelper.ComputeMixedIndent(
+                            IndentationHelper.GetIndentColumn(currentLineText, tabSize) + tabSize,
+                            tabSize, insertSpaces);
+                        string innerText = Environment.NewLine + innerIndent + Environment.NewLine + outerIndent + "}";
                         textEditor.SelectedText = innerText;
-                        int closePosition = selStart + Environment.NewLine.Length + indent.Length + Environment.NewLine.Length + outerIndent.Length;
+                        int closePosition = selStart + Environment.NewLine.Length + innerIndent.Length
+                                          + Environment.NewLine.Length + outerIndent.Length;
                         textEditor.RegisterAutoInsertedClose(closePosition);
-                        textEditor.SelectionStart = selStart + Environment.NewLine.Length + indent.Length;
+                        textEditor.SelectionStart = selStart + Environment.NewLine.Length + innerIndent.Length;
                         textEditor.SelectionLength = 0;
                     }
                     else
                     {
-                        // Insert newline + indent
+                        // Normal auto-indent: carry the current line's indentation forward,
+                        // adding one level when the line ends with '{' or '(' (ComputeIndent handles this).
+                        string indent = IndentationHelper.ComputeIndent(currentLineText, tabSize, insertSpaces);
                         textEditor.SelectedText = Environment.NewLine + indent;
                     }
                 }
@@ -5055,8 +5369,8 @@ internal void ToggleGutter()
             if (gutterPanel != null) gutterPanel.Invalidate();
             _scrollHighlightTimer?.Stop();
             _scrollHighlightTimer?.Start();
-            try { UpdateStickyHeaders(); } catch { }
-            PositionMinimap();
+            // Sticky headers and breadcrumbs deferred to _scrollHighlightTimer.Tick
+            // so they run once after scrolling settles rather than on every WM_VSCROLL tick.
         }
 
         private void TextEditor_MouseDown(object? sender, MouseEventArgs e)
@@ -5207,12 +5521,61 @@ internal void ToggleGutter()
         private void UpdateStatusBarVisibility()
         {
             bool hide = vimModeEnabled;
-            _buildConfigCombo.Visible = !hide;
-            roslynDropDown.Visible = !hide;
-            roslynToggleLabel.Visible = !hide;
-            themeDropDown.Visible = !hide;
-            _workspaceProjectLabel.Visible = !hide;
-            statusStrip.Items[10].Visible = !hide; // spring spacer
+            bool cs   = IsCSharpContext();
+
+            _buildConfigCombo.Visible       = !hide && cs;
+            roslynDropDown.Visible          = !hide && cs;
+            roslynToggleLabel.Visible       = !hide && cs;
+            themeDropDown.Visible           = !hide;
+            _workspaceProjectLabel.Visible  = !hide;
+            statusStrip.Items[10].Visible   = !hide; // spring spacer
+
+            // C#-only menus: visible only when a C# file or project is active
+            if (debugMenu  != null) debugMenu.Visible  = cs;
+            if (roslynMenu != null) roslynMenu.Visible = cs;
+
+            // Output tab: only relevant for C# build output — add/remove dynamically
+            if (_terminalTabControl != null && _buildOutputPage != null)
+            {
+                bool outputVisible = _terminalTabControl.TabPages.Contains(_buildOutputPage);
+                if (cs && !outputVisible)
+                {
+                    // Insert at index 0 (before terminal tabs)
+                    _terminalTabControl.TabPages.Insert(0, _buildOutputPage);
+                }
+                else if (!cs && outputVisible)
+                {
+                    // Switch away from Output tab before removing it
+                    if (_terminalTabControl.SelectedTab == _buildOutputPage)
+                    {
+                        int next = _terminalTabControl.TabPages.Count > 1 ? 1 : -1;
+                        if (next >= 0) _terminalTabControl.SelectedIndex = next;
+                    }
+                    _terminalTabControl.TabPages.Remove(_buildOutputPage);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns true when the active file is C# (.cs/.csproj/.sln) or the open
+        /// workspace contains a .csproj loaded via MSBuild.
+        /// </summary>
+        private bool IsCSharpContext()
+        {
+            // Active file extension
+            var path = GetCurrentDocument()?.FilePath ?? currentFilePath;
+            if (!string.IsNullOrEmpty(path))
+            {
+                var ext = Path.GetExtension(path).ToLowerInvariant();
+                if (ext is ".cs" or ".csproj" or ".sln" or ".vb") return true;
+            }
+            // MSBuild workspace is loaded — workspace folder has a .csproj
+            if (_roslynWorkspace.Kind == Roslyn.WorkspaceKind.MSBuild) return true;
+            // Fallback: workspace folder contains a .csproj
+            if (!string.IsNullOrEmpty(_workspaceRoot))
+                return Directory.EnumerateFiles(_workspaceRoot, "*.csproj",
+                           SearchOption.AllDirectories).Any();
+            return false;
         }
 
         private void UpdateTabControlTheme()
@@ -5681,22 +6044,37 @@ internal void ToggleGutter()
 
 
         #region Fullscreen Toggle
+        /// <summary>
+        /// Returns true when a native text-entry control (TextBox, ComboBox) other than
+        /// the main code editor has keyboard focus. Used to prevent form-level handlers
+        /// (Vim engine, etc.) from consuming clipboard or editing keys meant for controls
+        /// like the browser address bar.
+        /// </summary>
+        private static bool IsNativeTextInputFocused(Control? active)
+            => active is TextBox or ComboBox;
+
         private void Form1_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (vimModeEnabled && vimEngine != null)
+            // Skip Vim and other editor-targeted key handling when a text input
+            // control (e.g. browser address bar) has focus so it can receive
+            // clipboard shortcuts (Ctrl+V, Ctrl+C, Ctrl+A, Ctrl+Z) natively.
+            if (!IsNativeTextInputFocused(ActiveControl))
             {
-                var (key, ctrl, shift, alt) = VimStateBase.ParseKey(e.KeyData);
-                if (vimEngine.ProcessKey(key, ctrl, shift, alt))
+                if (vimModeEnabled && vimEngine != null)
                 {
-                    UpdateStatusBar();
-                    if (gutterPanel != null)
+                    var (key, ctrl, shift, alt) = VimStateBase.ParseKey(e.KeyData);
+                    if (vimEngine.ProcessKey(key, ctrl, shift, alt))
                     {
-                        gutterPanel.CurrentLine = vimEngine.GetCurrentLine() + 1;
-                        gutterPanel.Invalidate();
+                        UpdateStatusBar();
+                        if (gutterPanel != null)
+                        {
+                            gutterPanel.CurrentLine = vimEngine.GetCurrentLine() + 1;
+                            gutterPanel.Invalidate();
+                        }
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                        return;
                     }
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                    return;
                 }
             }
 
@@ -5985,8 +6363,15 @@ internal void ToggleGutter()
                 return true;
             }
 
-            // Reopen last closed tab: Ctrl+Shift+T
+            // New browser tab: Ctrl+Shift+T
             if (keyData == (Keys.Control | Keys.Shift | Keys.T))
+            {
+                OpenNewBrowserTab();
+                return true;
+            }
+
+            // Reopen last closed tab: Ctrl+Alt+Shift+T
+            if (keyData == (Keys.Control | Keys.Alt | Keys.Shift | Keys.T))
             {
                 ReopenLastClosedTab();
                 return true;

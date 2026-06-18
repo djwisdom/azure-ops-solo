@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -92,12 +92,13 @@ namespace MyCrownJewelApp.Pfpad
             {
                 // File operations
                 new("New File", "Ctrl+N", () => NewFile()),
+                new("New Browser Tab", "Ctrl+Shift+T", () => OpenNewBrowserTab()),
                 new("Open File", "Ctrl+O", () => OpenFile()),
                 new("Save", "Ctrl+S", () => SaveCurrentDocument()),
                 new("Save All", "Ctrl+Shift+S", () => SaveAllFiles()),
                 new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
                 new("Close Split", "Ctrl+Shift+W", () => CloseSplit()),
-                new("Reopen Closed Tab", "Ctrl+Shift+T", () => ReopenLastClosedTab()),
+                new("Reopen Closed Tab", "Ctrl+Alt+Shift+T", () => ReopenLastClosedTab()),
                 new("Close All Tabs", "", () => CloseAllTabs()),
                 new("Toggle Header/Source", "Alt+O", () => ToggleHeaderSource()),
                 new("Exit", "Alt+F4", () => Close()),

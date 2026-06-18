@@ -17,7 +17,7 @@ company-owned Azure resources. Managed by a single developer with AI assistance.
 
 ### Prerequisites
 - Company-managed Windows laptop with Visual Studio Professional
-- Azure CLI, PowerShell 7+, .NET 9 SDK, Terraform, Bicep CLI
+- Azure CLI, PowerShell 7+, .NET 10 SDK, Terraform, Bicep CLI
 - 2FA, VPN, company AV/EDR/Umbrella configured
 - Access to company Azure DevOps or GitHub Enterprise
 
@@ -56,16 +56,16 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad, a professional C# code editor built with .NET 9 and WinForms:
+The repository includes Pfpad **v1.0.36**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
-dotnet build --configuration Release
-# Run: bin\Release\net9.0-windows\MyCrownJewelApp.Pfpad.exe
+dotnet build --configuration Release2
+# Run: bin\Release2\net10.0-windows\MyCrownJewelApp.Pfpad.exe
 ```
 
 **Key Features:**
-- **Advanced Syntax Highlighting:** 12+ languages with incremental highlighting
+- **Advanced Syntax Highlighting:** 30+ languages with incremental highlighting
 - **Full Unicode Support:** UTF-8/16/32 with BOM detection and RTL text handling
 - **Performance Profiling:** Built-in zero-allocation sampling profiler (<3% overhead)
 - **Roslyn Integration:** Go to definition, hover tooltips, diagnostics for C#
@@ -73,7 +73,8 @@ dotnet build --configuration Release
 - **Git Integration:** Full Git operations with visual diff and merge tools
 - **Large File Support:** Up to 100MB with graceful feature degradation
 - **Terminal Integration:** Multi-tab terminals with ANSI color support
-- **23 Built-in Themes:** Dark/Light modes with VS Code-inspired schemes
+- **Built-in Browser:** WebView2 browser tabs side-by-side with editor files, with Edge-style UI, content filtering, favorites bar, and developer tools
+- **22 Built-in Themes:** Dark/Light modes with VS Code-inspired schemes
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

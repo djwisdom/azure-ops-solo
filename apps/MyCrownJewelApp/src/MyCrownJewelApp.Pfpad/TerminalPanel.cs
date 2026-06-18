@@ -180,6 +180,22 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public bool IsRunning => _conPtyMode ? (_hProcess != IntPtr.Zero && !_processExited) : (_legacyProcess is { HasExited: false });
 
     public string ShellName => Path.GetFileNameWithoutExtension(_shellPath);
+
+    /// <summary>
+    /// Sends a <c>cd</c> command to the running shell to navigate to <paramref name="path"/>.
+    /// Uses the appropriate syntax for cmd.exe vs PowerShell/Unix shells and the correct
+    /// line-ending for ConPTY vs legacy pipe mode.
+    /// </summary>
+    public void ChangeDirectory(string path)
+    {
+        if (!IsRunning || string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
+        string nl = _conPtyMode ? "\r" : "\n";
+        // cmd.exe needs /d for cross-drive navigation; PowerShell and bash accept plain cd
+        string cmd = ShellName.Equals("cmd", StringComparison.OrdinalIgnoreCase)
+            ? $"cd /d \"{path}\""
+            : $"cd \"{path}\"";
+        SendInput(cmd + nl);
+    }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public string StartingDirectory { get; set; } = "";
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]

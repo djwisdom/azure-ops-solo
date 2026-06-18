@@ -184,6 +184,12 @@ namespace MyCrownJewelApp.Pfpad
             dlg.ShowDialog(this);
         }
 
+        private void OpenSettingsSecurity(object? sender, EventArgs e)
+        {
+            using var dlg = new SettingsDialog(this, "application.security");
+            dlg.ShowDialog(this);
+        }
+
         private void RebuildExternalToolsMenu()
         {
             foreach (var item in _externalToolMenuItems)
@@ -363,22 +369,64 @@ namespace MyCrownJewelApp.Pfpad
                 _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
                 _workspaceSplitContainer.PerformLayout();
             }
-            if (_sideTopTabs != null)
-                _sideTopTabs.SelectedIndex = 1;
+            // If already showing Solution tab, toggle back to Explorer; otherwise show Solution
+            SetSideTab(_sideTabIndex == 1 ? 0 : 1);
             SaveSettings();
         }
 
-        private void SideTopTabs_DrawItem(object? sender, DrawItemEventArgs e)
+        private void SideTabHeader_Paint(object? sender, PaintEventArgs e)
         {
-            if (_sideTopTabs == null) return;
-            var tab = _sideTopTabs.TabPages[e.Index];
-            Theme t = _themeManager.CurrentTheme;
-            bool selected = e.Index == _sideTopTabs.SelectedIndex;
-            using var bgBrush = new SolidBrush(selected ? t.EditorBackground : t.MenuBackground);
-            using var fgBrush = new SolidBrush(selected ? t.Text : t.Muted);
-            e.Graphics.FillRectangle(bgBrush, e.Bounds);
-            StringFormat sf = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            e.Graphics.DrawString(tab.Text, e.Font ?? Font, fgBrush, e.Bounds, sf);
+            if (_sideTabHeader == null) return;
+            var g = e.Graphics;
+            var t = _themeManager.CurrentTheme;
+            g.Clear(t.MenuBackground);
+
+            string[] labels = ["Explorer", "Solution"];
+            float tabW = _sideTabHeader.Width / (float)labels.Length;
+            using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            using var accentBrush = new SolidBrush(Color.FromArgb(0, 120, 212));
+
+            for (int i = 0; i < labels.Length; i++)
+            {
+                bool active = i == _sideTabIndex;
+                var rect = new RectangleF(i * tabW, 0, tabW, _sideTabHeader.Height - 1f);
+                using var fg = new SolidBrush(active ? t.Text : t.Muted);
+                g.DrawString(labels[i], _sideTabHeader.Font, fg, rect, sf);
+                if (active)
+                    g.FillRectangle(accentBrush, i * tabW, _sideTabHeader.Height - 2f, tabW, 2f);
+            }
+
+            using var sepPen = new Pen(Color.FromArgb(60, t.Muted), 1f);
+            g.DrawLine(sepPen, 0, _sideTabHeader.Height - 1, _sideTabHeader.Width, _sideTabHeader.Height - 1);
+        }
+
+        private void SideTabHeader_MouseClick(object? sender, MouseEventArgs e)
+        {
+            if (_sideTabHeader == null) return;
+            int newIndex = e.X < _sideTabHeader.Width / 2 ? 0 : 1;
+            if (newIndex != _sideTabIndex)
+                SetSideTab(newIndex);
+        }
+
+        private void SetSideTab(int index)
+        {
+            _sideTabIndex = index;
+            if (_sideContentArea == null) return;
+
+            // Hide whichever panel is being removed before clearing parent
+            foreach (Control c in _sideContentArea.Controls)
+                c.Visible = false;
+
+            _sideContentArea.Controls.Clear();
+
+            Control? panel = index == 0 ? (Control?)_workspacePanel : _solutionExplorerPanel;
+            if (panel != null)
+            {
+                panel.Dock = DockStyle.Fill;
+                panel.Visible = true;
+                _sideContentArea.Controls.Add(panel);
+            }
+            _sideTabHeader?.Invalidate();
         }
 
         private void ToggleWorkspace_Click(object? sender, EventArgs e)
@@ -446,6 +494,14 @@ namespace MyCrownJewelApp.Pfpad
                 ToggleWorkspace();
             else
                 SaveSettings();
+
+            // Navigate all running terminal tabs to the new folder so the terminal
+            // is immediately in context with the opened project.
+            foreach (var terminal in _terminalTabs)
+                terminal.ChangeDirectory(path);
+
+            if (_terminalTabs.Any(t => t.IsRunning))
+                SetStatus($"Terminal navigated to: {path}");
         }
 
         private void OnWorkspaceScanStarted()

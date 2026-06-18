@@ -364,6 +364,7 @@ public sealed class PerformanceProfilerDialog : Form
 #endif
     }
 
+#if PROFILING
     private List<PerformanceSample> ReadPerformanceSamples(string filePath)
     {
         var samples = new List<PerformanceSample>();
@@ -614,6 +615,7 @@ public sealed class PerformanceProfilerDialog : Form
         // Could add more statistical views here
         Log($"Analysis complete: {analysis.TotalSamples} samples, {analysis.MethodCounts.Count} methods");
     }
+#endif
 
     private class FlameNode
     {

@@ -1,6 +1,6 @@
 # Personal Flip Pad — User Manual
 
-**Version 1.0.35.0**
+**Version 1.0.36.0**
 
 Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE for Windows. It combines code editing, DevSecOps scanning, observability intelligence, Git integration, and AI-assisted operational insights into a single workflow. pfpad also includes a built-in graded security hardening system that lets you progressively harden your environment as your needs grow.
 
@@ -15,6 +15,7 @@ Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE
 - [Git Integration](#git-integration)
 - [AIOps Features](#aiops-features)
 - [Panels](#panels)
+- [Built-in Browser](#built-in-browser)
 - [Themes and Display](#themes-and-display)
 - [Settings](#settings)
 - [Security Hardening](#security-hardening)
@@ -368,6 +369,73 @@ Access panels from the **Panel** menu:
 | Symbols | `Ctrl+Alt+S` | Document symbol tree |
 | Markdown Preview | `Ctrl+Shift+M` | Live markdown rendering |
 | Notification Center | `Ctrl+Shift+N` | Alerts and notifications |
+
+---
+
+## Built-in Browser
+
+Pfpad includes a WebView2-powered browser that opens as tabs **directly in the main editor tab strip**, side-by-side with your code files.
+
+### Opening a Browser Tab
+
+- **File > New Browser Tab** (`Ctrl+Shift+T`) — opens a new browser tab
+- Type a URL or search query in the address bar and press **Enter** or click **Go**
+- Click a tab's **×** to close it; the last file tab is always kept
+
+### Toolbar Controls
+
+| Control | Action |
+|---|---|
+| ← Back | Navigate back (Alt+Left) |
+| → Forward | Navigate forward (Alt+Right) |
+| ↺ Refresh | Reload page (F5) |
+| Address bar | Type URL or search term; **Enter** navigates |
+| Go | Navigate to the typed URL |
+| 🛠 DevTools | Open Chromium Developer Tools (F12) |
+| ⧉ | Open current page in system browser |
+
+The address bar uses a **rounded Edge-style design** that highlights with an accent border on focus.
+
+### Favorites Bar
+
+When enabled in **Settings > Features > Browser > Show Favorites Bar**, the bar below the toolbar displays your Edge bookmarks:
+
+- Items that fit appear as inline buttons
+- Overflow items appear in a **»** dropdown menu (including folder submenus)
+- The source file (`Bookmarks`) is read from the Edge profile you configure in Settings
+
+### Content Filtering
+
+When **Settings > Features > Browser > Content Filtering** is enabled, the browser blocks requests to known ad and tracker domains using:
+
+- **EasyList** — ads and banners
+- **EasyPrivacy** — tracking scripts
+- **Peter Lowe's list** — ad servers
+
+Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` interception — no extension required.
+
+### Browser Settings
+
+All browser settings live under **Settings > Features > Browser**:
+
+| Setting | Description |
+|---|---|
+| Home page | URL loaded when opening a new browser tab |
+| Max history entries | Cap on navigation history saved per tab |
+| Ephemeral storage | Discard cookies, cache, and storage after each session |
+| Allow localhost links | Enable `localhost`, `127.0.0.1`, `[::1]` navigation |
+| Default zoom | Default zoom level (%) for all pages |
+| Show in title bar | Mirror page title in the main window title bar |
+| Content filtering | Enable/disable blocklist-based ad blocking |
+| Custom user agent | Override the browser UA string sent to sites |
+| Show favorites bar | Show/hide the Edge bookmarks bar |
+| Favorites source | Path to the Edge `Bookmarks` JSON file |
+
+### Privacy Notes
+
+- By default the browser uses a **persistent profile** in `%AppData%\MyCrownJewelApp\WebView2`.
+- Enable **Ephemeral storage** in Settings for untrusted workspaces — no cookies or cache survive the session.
+- The custom user agent prevents sites from fingerprinting the browser as Microsoft Edge.
 
 ---
 

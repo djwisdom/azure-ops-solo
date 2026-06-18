@@ -121,6 +121,52 @@ public record AppSettings
     public int WsMaxRecentWorkspaces { get; init; } = 10;
     /// <summary>Maximum number of recent files to remember (5–50).</summary>
     public int WsMaxRecentFiles { get; init; } = 10;
+    /// <summary>Auto-reveal and highlight the active editor file in the workspace tree when switching tabs.</summary>
+    public bool WsFollowActiveFile { get; init; } = true;
+    /// <summary>Sort folders above files at each level of the workspace tree.</summary>
+    public bool WsSortFoldersFirst { get; init; } = true;
+    /// <summary>Open a file in the editor with a single click instead of requiring a double-click.</summary>
+    public bool WsSingleClickOpen { get; init; } = false;
+    /// <summary>Show a confirmation dialog before permanently deleting a file or folder from the workspace tree.</summary>
+    public bool WsConfirmDelete { get; init; } = true;
+    /// <summary>Show git-status color decorations (Modified/Added/Deleted/Untracked) on tree nodes.</summary>
+    public bool WsShowGitStatus { get; init; } = true;
+    /// <summary>Show git-ignored files in the tree greyed out instead of hiding them entirely.</summary>
+    public bool WsShowIgnoredFiles { get; init; } = false;
+    /// <summary>Collapse single-child folder paths into one node (e.g. src/components shown as one level).</summary>
+    public bool WsCompactFolders { get; init; } = true;
+    /// <summary>Show child file/folder count badge on folder nodes.</summary>
+    public bool WsShowFileCount { get; init; } = false;
+
+    // ── Browser Panel configuration ────────────────────────────────────────────
+    /// <summary>URL loaded when the Browser tab is opened. Defaults to about:blank.</summary>
+    public string BrowserHomepage { get; init; } = "about:blank";
+    /// <summary>Use an in-memory (ephemeral) profile — no cookies, cache, or storage persist across sessions.</summary>
+    public bool BrowserEphemeral { get; init; } = false;
+    /// <summary>Maximum number of visited URLs kept in the in-panel history list (10–5000).</summary>
+    public int BrowserMaxHistory { get; init; } = 200;
+    /// <summary>Allow navigation to localhost, 127.0.0.1, and [::1] addresses.</summary>
+    public bool BrowserAllowLocalhost { get; init; } = true;
+    /// <summary>Default zoom level for all pages (0.25–5.0; 1.0 = 100 %).</summary>
+    public double BrowserDefaultZoom { get; init; } = 1.0;
+    /// <summary>Show the current page title in the main window title bar when the Browser tab is active.</summary>
+    public bool BrowserShowInTitlebar { get; init; } = false;
+    /// <summary>Enable the built-in ad/tracker content filter.</summary>
+    public bool BrowserContentFilterEnabled { get; init; } = true;
+    /// <summary>Use the EasyList ad-blocking list.</summary>
+    public bool BrowserFilterEasyList { get; init; } = true;
+    /// <summary>Use the EasyPrivacy tracking-protection list.</summary>
+    public bool BrowserFilterEasyPrivacy { get; init; } = true;
+    /// <summary>Use Peter Lowe's ad-server list.</summary>
+    public bool BrowserFilterPeterLowe { get; init; } = true;
+    /// <summary>Preset user-agent: "default" (Edge), "chrome", "firefox", "safari", or "custom".</summary>
+    public string BrowserUserAgentPreset { get; init; } = "default";
+    /// <summary>Custom user-agent string used when <see cref="BrowserUserAgentPreset"/> is "custom".</summary>
+    public string BrowserCustomUserAgent { get; init; } = "";
+    /// <summary>Show the favorites/bookmarks bar below the browser toolbar.</summary>
+    public bool BrowserShowFavoritesBar { get; init; } = false;
+    /// <summary>Source for the favorites bar: "edge" or "chrome".</summary>
+    public string BrowserFavoritesSource { get; init; } = "edge";
 
     // ── Find / Replace configuration ───────────────────────────────────────────
     /// <summary>Default case-sensitive matching when opening the Find/Replace dialog.</summary>

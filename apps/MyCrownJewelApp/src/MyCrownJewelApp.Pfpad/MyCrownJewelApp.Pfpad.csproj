@@ -9,10 +9,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
-    <ApplicationVersion>1.0.35.0</ApplicationVersion>
-    <Version>1.0.35.0</Version>
-    <AssemblyVersion>1.0.35.0</AssemblyVersion>
-    <FileVersion>1.0.35.0</FileVersion>
+    <ApplicationVersion>1.0.36.0</ApplicationVersion>
+    <Version>1.0.36.0</Version>
+    <AssemblyVersion>1.0.36.0</AssemblyVersion>
+    <FileVersion>1.0.36.0</FileVersion>
     <Company>Personal Flip Pad</Company>
     <Description>AIOps-aware developer editor with code editing, DevSecOps scanning, observability intelligence, Git integration, Roslyn IntelliSense, minimap, Vim mode, flat theme system, graded security hardening (Not Hardened / Low / Mid / Max) with DPAPI-encrypted settings and guided transition wizard, and AI-assisted operational insights.</Description>
     <Copyright>Copyright (c) Dennis O. Esternon 2026</Copyright>
@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.*" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.*" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="5.3.*" />
     <PackageReference Include="Microsoft.CodeAnalysis.Features" Version="5.3.*" />

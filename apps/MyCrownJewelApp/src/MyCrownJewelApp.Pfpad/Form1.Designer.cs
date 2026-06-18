@@ -5,8 +5,10 @@ partial class Form1
     private System.ComponentModel.IContainer components = null;
 
     private MenuStrip menuStrip;
+    private ToolStripLabel _hardeningLabel;
     private ToolStripMenuItem fileMenu;
     private ToolStripMenuItem newTabMenuItem;
+    private ToolStripMenuItem newBrowserTabMenuItem;
     private ToolStripMenuItem newWindowMenuItem;
     private ToolStripMenuItem newProjectMenuItem;
     private ToolStripMenuItem openMenuItem;
@@ -142,6 +144,7 @@ partial class Form1
     internal ToolStripMenuItem disableAllBreakpointsMenuItem;
     internal ToolStripMenuItem removeAllBreakpointsMenuItem;
     private ToolStripMenuItem debugMenu;
+    private ToolStripMenuItem roslynMenu;
 
     internal ToolStripMenuItem restartAnalyzersMenuItem;
     internal ToolStripMenuItem toggleAnalyzersMenuItem;
@@ -149,7 +152,7 @@ partial class Form1
     internal ToolStripStatusLabel roslynToggleLabel;
     internal ToolStripDropDownButton roslynDropDown;
 
-    private TabControl tabControl;
+    private FlatButtonTabControl tabControl;
     private TableLayoutPanel mainLayout;
     private SplitContainer splitContainer;
     private TableLayoutPanel mainTable;
@@ -203,6 +206,7 @@ partial class Form1
         menuStrip = new MenuStrip();
         fileMenu = new ToolStripMenuItem("&File");
         newTabMenuItem = new ToolStripMenuItem("New Tab", null, NewTab_Click, Keys.Control | Keys.T);
+        newBrowserTabMenuItem = new ToolStripMenuItem("New Browser Tab", null, NewBrowserTab_Click, Keys.Control | Keys.Shift | Keys.T);
         newWindowMenuItem = new ToolStripMenuItem("New Window", null, NewWindow_Click, Keys.Control | Keys.Shift | Keys.N);
         newProjectMenuItem = new ToolStripMenuItem("New &Project...", null, NewProject_Click, Keys.Control | Keys.Shift | Keys.N);
         openMenuItem = new ToolStripMenuItem("&Open...", null, Open_Click, Keys.Control | Keys.O);
@@ -221,6 +225,7 @@ partial class Form1
         exitMenuItem = new ToolStripMenuItem("E&xit", null, Exit_Click);
         // Build File menu
         fileMenu.DropDownItems.Add(newTabMenuItem);
+        fileMenu.DropDownItems.Add(newBrowserTabMenuItem);
         fileMenu.DropDownItems.Add(newWindowMenuItem);
         fileMenu.DropDownItems.Add(newProjectMenuItem);
         fileMenu.DropDownItems.Add(openMenuItem);
@@ -534,7 +539,7 @@ partial class Form1
         performanceMenu.DropDownItems.Add(profilerMenuItem);
 
         // Roslyn control submenu
-        var roslynMenu = new ToolStripMenuItem("&Roslyn");
+        roslynMenu = new ToolStripMenuItem("&Roslyn");
         restartAnalyzersMenuItem = new ToolStripMenuItem("&Restart Analyzers", null, null, Keys.Control | Keys.Shift | Keys.R);
         toggleAnalyzersMenuItem = new ToolStripMenuItem("&Toggle Analyzers", null, null, Keys.Control | Keys.Alt | Keys.A);
         toggleAnalyzersMenuItem.CheckOnClick = true;
@@ -594,18 +599,31 @@ partial class Form1
         helpMenu.DropDownItems.Add(new ToolStripSeparator());
         helpMenu.DropDownItems.Add(aboutMenuItem);
         menuStrip.Items.Add(helpMenu);
+
+        // Hardening level indicator — right-aligned, bold, color-coded, click opens Settings
+        _hardeningLabel = new ToolStripLabel("🔒 Hardening: Low");
+        _hardeningLabel.Alignment = ToolStripItemAlignment.Right;
+        _hardeningLabel.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        _hardeningLabel.ForeColor = Color.FromArgb(255, 140, 0);
+        _hardeningLabel.Margin = new Padding(0, 0, 12, 0);
+        _hardeningLabel.ToolTipText = "Current security hardening level — click to open Settings";
+        _hardeningLabel.Click += (s, e) => OpenSettingsSecurity(s, EventArgs.Empty);
+        menuStrip.Items.Add(_hardeningLabel);
+
         menuStrip.Dock = DockStyle.Fill;
+        menuStrip.Margin = new Padding(0);
 
         // Tab Control for multi-file editing
-        tabControl = new TabControl();
+        tabControl = new FlatButtonTabControl();
         tabControl.Dock = DockStyle.Fill;
+        tabControl.Margin = new Padding(0);
         tabControl.Multiline = false;
         tabControl.HotTrack = true;
         tabControl.DrawMode = TabDrawMode.OwnerDrawFixed;
         tabControl.Alignment = TabAlignment.Top;
         tabControl.SizeMode = TabSizeMode.Normal;
-        tabControl.ItemSize = new Size(0, 38);
-        tabControl.Padding = new Point(20, 6);
+        tabControl.ItemSize = new Size(0, 40);
+        tabControl.Padding = new Point(20, 0);
         tabControl.Cursor = Cursors.Hand;
         tabControl.SelectedIndexChanged += TabControl_SelectedIndexChanged;
         tabControl.MouseDown += TabControl_MouseDown;
@@ -627,7 +645,7 @@ partial class Form1
         mainTable.RowCount = 1;
         mainTable.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         mainTable.Dock = DockStyle.Fill;
-        mainTable.Margin = new Padding(0);
+        mainTable.Margin = new Padding(0, 4, 0, 0);
         mainTable.Padding = new Padding(0);
 
         // Editor panel wraps textEditor + minimap + ruler, with minimap docked to right
@@ -839,7 +857,7 @@ partial class Form1
         mainLayout.ColumnCount = 1;
         mainLayout.RowCount = 4;
         mainLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // row 0: menu
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50)); // row 1: tabs
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); // row 1: tabs (fills ItemSize.Height exactly)
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F)); // row 2: editor
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));  // row 3: status (fixed)
         mainLayout.Margin = new Padding(0);

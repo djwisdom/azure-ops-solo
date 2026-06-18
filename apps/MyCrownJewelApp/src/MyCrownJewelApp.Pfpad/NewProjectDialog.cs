@@ -41,6 +41,7 @@ internal sealed class NewProjectDialog : Form
     private Button _createButton = null!;
     private Button _cancelButton = null!;
     private Label _statusLabel = null!;
+    private CheckBox _openInNewWindowCheckBox = null!;
     private bool _creating;
 
     private List<ProjectTemplate> _allTemplates = new();
@@ -49,8 +50,8 @@ internal sealed class NewProjectDialog : Form
     {
         _mainForm = mainForm;
         Text = "New Project";
-        Size = new Size(700, 560);
-        MinimumSize = new Size(700, 560);
+        Size = new Size(700, 590);
+        MinimumSize = new Size(700, 590);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -135,6 +136,16 @@ internal sealed class NewProjectDialog : Form
         _statusLabel = new Label { Text = "", Location = new Point(12, y), Size = new Size(662, 30), ForeColor = Color.Gray };
         y += 34;
 
+        // ── Open in new window ────────────────────────────────────────────────
+        _openInNewWindowCheckBox = new CheckBox
+        {
+            Text = "&Open in new window (blank slate editor — no previous tabs or terminal)",
+            Location = new Point(12, y),
+            AutoSize = true,
+            Checked = true
+        };
+        y += 30;
+
         // ── Buttons ───────────────────────────────────────────────────────────
         _createButton = new Button { Text = "&Create", Location = new Point(510, y), Width = 80, Height = 28 };
         _createButton.Click += CreateButton_Click;
@@ -148,6 +159,7 @@ internal sealed class NewProjectDialog : Form
             _solutionCheckBox, _frameworkLabel, _frameworkCombo,
             _gitCheckBox, _standardLabel, _standardCombo,
             _statusLabel,
+            _openInNewWindowCheckBox,
             _createButton, _cancelButton
         });
 
@@ -1827,7 +1839,22 @@ echo ""Done.""
             _statusLabel.Text = "Project created successfully!";
             _statusLabel.ForeColor = FlatUiHelper.SuccessColor(ThemeManager.Instance.CurrentTheme);
 
-            _mainForm.BeginInvoke(() => _mainForm.OpenWorkspaceFolder(projectDir));
+            if (_openInNewWindowCheckBox.Checked)
+            {
+                // Spawn a clean pfpad instance focused on the new project.
+                // --blank suppresses session restore and forces workspace panel open.
+                string exe = Application.ExecutablePath;
+                var psi = new ProcessStartInfo(exe, $"\"{projectDir}\" --blank")
+                {
+                    UseShellExecute = true
+                };
+                Process.Start(psi);
+            }
+            else
+            {
+                _mainForm.BeginInvoke(() => _mainForm.OpenWorkspaceFolder(projectDir));
+            }
+
             await Task.Delay(500);
             DialogResult = DialogResult.OK;
             Close();

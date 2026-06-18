@@ -5,6 +5,103 @@ using LibGit2Sharp;
 
 namespace MyCrownJewelApp.Pfpad;
 
+/// <summary>
+/// TreeView subclass that prevents COMCTL32 v6 from overpainting our owner-draw
+/// selection colours with the UxTheme blue highlight.
+///
+/// Root cause: COMCTL32 v6 (visual styles) draws its selection via NM_CUSTOMDRAW
+/// CDDS_POSTPAINT, which fires AFTER all per-item DrawNode callbacks.  Returning
+/// CDRF_SKIPDEFAULT for that stage stops the blue paint entirely.  AfterPaint then
+/// lets WorkspacePanel overdraw the correctly-selected node with theme colours.
+/// </summary>
+internal sealed class OwnerDrawTreeView : TreeView
+{
+    private const int WM_LBUTTONDOWN   = 0x0201;
+    private const int WM_PAINT         = 0x000F;
+    private const int WM_SETFOCUS      = 0x0007;
+    private const int WM_KILLFOCUS     = 0x0008;
+    private const int WM_ERASEBKGND    = 0x0014;
+    private const int WM_NOTIFY        = 0x004E;
+    private const int WM_REFLECT       = 0x2000;
+    private const int NM_CUSTOMDRAW    = -12;
+    private const int CDDS_POSTPAINT   = 0x00000002;
+    private const int CDRF_SKIPDEFAULT = 0x00000004;
+
+    // TVM_GETFIRSTVISIBLE (TV_FIRST+21=0x1115): returns HTREEITEM of topmost visible node.
+    // TVM_SELECTITEM      (TV_FIRST+11=0x110B): with TVGN_FIRSTVISIBLE(5) scrolls without selecting.
+    private const int TVM_GETFIRSTVISIBLE = 0x1115;
+    private const int TVM_SELECTITEM      = 0x110B;
+    private const int TVGN_FIRSTVISIBLE   = 5;
+
+    private static readonly int _nmhdrCodeOffset = IntPtr.Size * 2;
+    private static readonly int _drawStageOffset  = IntPtr.Size * 2 + 4;
+
+    [DllImport("user32.dll")]   private static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int SetWindowTheme(IntPtr hwnd, string? pszSubAppName, string? pszSubIdList);
+
+    /// <summary>Raised after every WM_PAINT cycle; WorkspacePanel uses this to overdraw the selected node.</summary>
+    public event EventHandler? AfterPaint;
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        // Disable UxTheme for this control. With visual styles active, COMCTL32 v6 draws the
+        // themed blue selection at CDDS_POSTPAINT, which ignores CDRF_SKIPDEFAULT from DrawNode.
+        // Disabling the theme forces classic NM_CUSTOMDRAW behaviour where CDRF_SKIPDEFAULT works.
+        SetWindowTheme(Handle, " ", " ");
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_ERASEBKGND)
+        {
+            using var g = Graphics.FromHdc(m.WParam);
+            g.Clear(BackColor);
+            m.Result = (IntPtr)1;
+            return;
+        }
+
+        // COMCTL32 calls TVM_ENSUREVISIBLE internally for WM_LBUTTONDOWN, scrolling
+        // the tree even when the clicked item is already fully visible.
+        // Save the first-visible node handle and restore it after the click so the
+        // viewport stays put. TVM_SELECTITEM(TVGN_FIRSTVISIBLE) scrolls without
+        // setting the caret, so it won't trigger our AfterSelect handler.
+        if (m.Msg == WM_LBUTTONDOWN)
+        {
+            IntPtr savedFirst = SendMessage(Handle, TVM_GETFIRSTVISIBLE, IntPtr.Zero, IntPtr.Zero);
+            base.WndProc(ref m);
+            IntPtr newFirst = SendMessage(Handle, TVM_GETFIRSTVISIBLE, IntPtr.Zero, IntPtr.Zero);
+            if (savedFirst != IntPtr.Zero && savedFirst != newFirst)
+                SendMessage(Handle, TVM_SELECTITEM, (IntPtr)TVGN_FIRSTVISIBLE, savedFirst);
+            return;
+        }
+
+        // Suppress CDDS_POSTPAINT as a belt-and-suspenders guard (in case theme isn't fully stripped).
+        if (m.Msg == WM_REFLECT + WM_NOTIFY && m.LParam != IntPtr.Zero)
+        {
+            int code = Marshal.ReadInt32(m.LParam, _nmhdrCodeOffset);
+            if (code == NM_CUSTOMDRAW)
+            {
+                int dwDrawStage = Marshal.ReadInt32(m.LParam, _drawStageOffset);
+                if (dwDrawStage == CDDS_POSTPAINT)
+                {
+                    m.Result = (IntPtr)CDRF_SKIPDEFAULT;
+                    return;
+                }
+            }
+        }
+
+        base.WndProc(ref m);
+
+        if (m.Msg == WM_PAINT)
+            AfterPaint?.Invoke(this, EventArgs.Empty);
+
+        if (m.Msg == WM_SETFOCUS || m.Msg == WM_KILLFOCUS)
+            Invalidate();
+    }
+}
+
 internal sealed partial class WorkspacePanel : UserControl
 {
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
@@ -31,7 +128,7 @@ internal sealed partial class WorkspacePanel : UserControl
             SetWindowLong(hWnd, GWL_STYLE, style & ~TVS_LINESATROOT);
     }
 
-    private readonly TreeView _tree;
+    private readonly OwnerDrawTreeView _tree;
     private readonly Panel _modernHeader;
     private readonly Label _workspaceTitle;
     private readonly Button _refreshButton;
@@ -59,6 +156,7 @@ internal sealed partial class WorkspacePanel : UserControl
     private FileSystemWatcher? _fileWatcher;
     private string _searchFilter = "";
     private TreeNode? _hoveredNode;
+    private TreeNode? _selectedNode;       // mirrors _tree.SelectedNode for context menus / keyboard nav
     private string? _activeFilePath;
     private HashSet<string>? _searchResultFiles;
     private Dictionary<string, GitStatusType>? _gitStatusCache;
@@ -67,11 +165,21 @@ internal sealed partial class WorkspacePanel : UserControl
     // .gitignore patterns loaded for the current root — raw pattern strings.
     private List<string> _gitignorePatterns = [];
     private TreeNode? _favoritesRoot;
+    private Label _footerLabel = null!;
+    private Button _newFileButton = null!;
 
     // Configurable via ApplyWorkspaceSettings()
     private HashSet<string> _additionalExcludedDirs = new(StringComparer.OrdinalIgnoreCase);
     private bool _autoCollapse = false;
     private bool _disableFileWatcher = false;
+    private bool _followActiveFile = true;
+    private bool _sortFoldersFirst = true;
+    private bool _singleClickOpen = false;
+    private bool _confirmDelete = true;
+    private bool _showGitStatus = true;
+    private bool _showIgnoredFiles = false;
+    private bool _compactFolders = true;
+    private bool _wsShowFileCount = false;
 
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
@@ -93,6 +201,39 @@ internal sealed partial class WorkspacePanel : UserControl
     {
         _searchResultFiles = null;
         RefreshTreeHighlight();
+    }
+
+    /// <summary>Expand the tree to the given file path and select it (respects followActiveFile setting).</summary>
+    public void RevealFile(string filePath)
+    {
+        if (!_followActiveFile || string.IsNullOrEmpty(filePath) || !IsHandleCreated) return;
+        _activeFilePath = filePath;
+        BeginInvoke(() =>
+        {
+            var node = FindNodeForPath(_tree.Nodes, filePath);
+            if (node != null)
+                SelectNode(node);
+        });
+    }
+
+    private TreeNode? FindNodeForPath(TreeNodeCollection nodes, string filePath)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            if (node.Tag is FileNodeTag tag)
+            {
+                if (string.Equals(tag.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                    return node;
+                if (Directory.Exists(tag.FilePath) &&
+                    filePath.StartsWith(tag.FilePath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                {
+                    EnsureNodePopulated(node);
+                    var found = FindNodeForPath(node.Nodes, filePath);
+                    if (found != null) return found;
+                }
+            }
+        }
+        return null;
     }
 
     public string RootPath => _rootPath;
@@ -147,7 +288,7 @@ internal sealed partial class WorkspacePanel : UserControl
         AutoScaleMode = AutoScaleMode.Font;
         MinimumSize = new Size(100, 60);
 
-        _tree = new TreeView
+        _tree = new OwnerDrawTreeView
         {
             Dock = DockStyle.Fill,
             BorderStyle = BorderStyle.None,
@@ -170,6 +311,10 @@ internal sealed partial class WorkspacePanel : UserControl
         _tree.MouseLeave += Tree_MouseLeave;
         _tree.DrawNode += Tree_DrawNode;
         _tree.KeyDown += Tree_KeyDown;
+        _tree.AfterSelect += (s, e) =>
+        {
+            _selectedNode = e.Node; // mirror native selection — no null-forcing needed
+        };
         _tree.DragEnter += (s, e) => { if (e.Data?.GetDataPresent(DataFormats.FileDrop) == true) e.Effect = DragDropEffects.Copy; };
         _tree.DragDrop += Tree_DragDrop;
         _tree.AllowDrop = true;
@@ -183,7 +328,7 @@ internal sealed partial class WorkspacePanel : UserControl
         _modernHeader = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 60,
+            Height = 62,
             Padding = new Padding(6, 4, 6, 4)
         };
 
@@ -305,6 +450,17 @@ internal sealed partial class WorkspacePanel : UserControl
         };
         _closeButton.Click += (s, e) => CloseRequested?.Invoke();
 
+        _modernHeader.SizeChanged += (s, e) =>
+        {
+            int availableWidth = _modernHeader.Width - 12 - 28 - 24;
+            if (availableWidth > 60)
+            {
+                _searchBoxBorder.Width = availableWidth;
+                _searchButton.Location = new Point(_searchBoxBorder.Right + 2, 30);
+                _clearSearchButton.Location = new Point(_searchButton.Right + 2, 30);
+            }
+        };
+
         _modernHeader.Controls.AddRange(new Control[] {
             _workspaceTitle, _refreshButton, _collapseButton, _closeButton,
             _searchBoxBorder, _searchButton, _clearSearchButton
@@ -331,7 +487,7 @@ internal sealed partial class WorkspacePanel : UserControl
             BackColor = Color.Transparent,
             FlatAppearance = { BorderSize = 0 },
             Cursor = Cursors.Hand,
-            Visible = false // Hide for now
+            Visible = true
         };
         _projectFilterButton.Click += (s, e) =>
         {
@@ -340,6 +496,7 @@ internal sealed partial class WorkspacePanel : UserControl
             if (!string.IsNullOrEmpty(_rootPath))
                 RefreshTree();
         };
+        new ToolTip().SetToolTip(_projectFilterButton, "Filter to project files only");
 
         // Show all files button
         _showAllFilesButton = new Button
@@ -361,7 +518,21 @@ internal sealed partial class WorkspacePanel : UserControl
                 RefreshTree();
         };
 
-        _modernHeader.Controls.AddRange(new Control[] { _projectFilterButton, _showAllFilesButton });
+        _newFileButton = new Button
+        {
+            Text = "➕",
+            Font = new Font("Segoe UI", 9),
+            FlatStyle = FlatStyle.Flat,
+            Size = new Size(28, 24),
+            Location = new Point(116, 2),
+            BackColor = Color.Transparent,
+            FlatAppearance = { BorderSize = 0 },
+            Cursor = Cursors.Hand
+        };
+        _newFileButton.Click += (s, e) => CreateNewFile();
+        new ToolTip().SetToolTip(_newFileButton, "New file in selected folder");
+
+        _modernHeader.Controls.AddRange(new Control[] { _projectFilterButton, _showAllFilesButton, _newFileButton });
 
         _fileContextMenu = new ContextMenuStrip();
         var openItem = new ToolStripMenuItem("Open", null, (s, e) => OpenSelectedNode());
@@ -395,8 +566,19 @@ internal sealed partial class WorkspacePanel : UserControl
             new ToolStripMenuItem("Delete", null, (s, e) => DeleteSelected())
         });
 
-        Controls.Add(_modernHeader);
+        _footerLabel = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 18,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Font = new Font("Segoe UI", 7.5f),
+            Padding = new Padding(6, 0, 0, 0),
+            Text = ""
+        };
+
         Controls.Add(_tree);
+        Controls.Add(_footerLabel);
+        Controls.Add(_modernHeader);
 
         // Debounced refresh timer (used by both polling fallback and FileSystemWatcher)
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 500 };
@@ -439,7 +621,7 @@ internal sealed partial class WorkspacePanel : UserControl
         foreach (var btn in new Button[] {
             _refreshButton, _collapseButton, _closeButton,
             _searchButton, _clearSearchButton,
-            _projectFilterButton, _showAllFilesButton })
+            _projectFilterButton, _showAllFilesButton, _newFileButton })
         {
             btn.BackColor = Color.Transparent;
             btn.ForeColor = theme.Text;
@@ -450,6 +632,9 @@ internal sealed partial class WorkspacePanel : UserControl
         _fileContextMenu.BackColor = theme.MenuBackground;
         _fileContextMenu.ForeColor = theme.Text;
         _fileContextMenu.Renderer = new ThemeAwareMenuRenderer(theme);
+        _footerLabel.BackColor = theme.MenuBackground;
+        _footerLabel.ForeColor = theme.Muted;
+        UpdateFooter();
 
         ApplyScrollbarTheme(_tree.Handle);
     }
@@ -477,7 +662,7 @@ internal sealed partial class WorkspacePanel : UserControl
             var rootNode = CreateDirectoryNode(path);
             _tree.Nodes.Add(rootNode);
             RefreshFavorites();
-            _tree.SelectedNode = rootNode;
+            SelectNode(rootNode);
             // Detect project files for filtering
             DetectProjectFiles();
             UpdateShowAllFilesVisual();
@@ -559,6 +744,22 @@ internal sealed partial class WorkspacePanel : UserControl
         SaveExpandedState();
         RefreshNodeRecursive(_tree.Nodes[0], _rootPath);
         RestoreExpandedState();
+    }
+
+    private void RebuildTreeFromRoot()
+    {
+        CancelScan();
+        if (string.IsNullOrEmpty(_rootPath) || !Directory.Exists(_rootPath)) return;
+        _tree.Nodes.Clear();
+        var rootNode = CreateDirectoryNode(_rootPath);
+        _tree.Nodes.Add(rootNode);
+        RefreshFavorites();
+        SelectNode(rootNode);
+        RefreshGitStatusIndicators();
+        if (IsHandleCreated)
+            BeginInvoke(() => PopulateDirectoryAsync(rootNode, _rootPath));
+        else
+            rootNode.Expand();
     }
 
     private readonly HashSet<string> _expandedPaths = new(StringComparer.OrdinalIgnoreCase);
@@ -773,36 +974,96 @@ private TreeNode CreateDirectoryNode(string dirPath)
         {
             var dirs = new List<string>();
             var files = new List<string>();
+            var ignoredDirs = new List<string>();
+            var ignoredFiles = new List<string>();
 
             foreach (var d in Directory.EnumerateDirectories(dirPath))
             {
                 string name = Path.GetFileName(d);
-                if (!name.StartsWith('.') && !IsIgnoredDirectory(name) && !ShouldIgnoreByGitignore(d))
+                if (name.StartsWith('.') || IsIgnoredDirectory(name)) continue;
+                if (ShouldIgnoreByGitignore(d))
+                {
+                    if (_showIgnoredFiles) ignoredDirs.Add(d);
+                }
+                else
+                {
                     dirs.Add(d);
+                }
             }
 
             foreach (var f in Directory.EnumerateFiles(dirPath))
             {
                 string ext = Path.GetExtension(f);
-                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f) && !ShouldIgnoreByGitignore(f))
+                if (!ShouldIncludeFile(f)) continue;
+                if (ShouldIgnoreByGitignore(f))
+                {
+                    if (_showIgnoredFiles && (_showAllFiles || _textExtensions.Contains(ext)))
+                        ignoredFiles.Add(f);
+                }
+                else if (_showAllFiles || _textExtensions.Contains(ext))
+                {
                     files.Add(f);
+                }
             }
 
             dirs.Sort(StringComparer.OrdinalIgnoreCase);
             files.Sort(StringComparer.OrdinalIgnoreCase);
+            ignoredDirs.Sort(StringComparer.OrdinalIgnoreCase);
+            ignoredFiles.Sort(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var d in dirs)
+            if (_sortFoldersFirst)
             {
-                var dn = CreateDirectoryNode(d);
-                node.Nodes.Add(dn);
+                foreach (var d in dirs)
+                    node.Nodes.Add(CreateDirectoryNode(d));
+                foreach (var d in ignoredDirs)
+                {
+                    var dn = CreateDirectoryNode(d);
+                    dn.Tag = new FileNodeTag(d, GitStatusType.Ignored);
+                    node.Nodes.Add(dn);
+                }
+                foreach (var f in files)
+                    node.Nodes.Add(CreateFileNode(f));
+                foreach (var f in ignoredFiles)
+                    node.Nodes.Add(CreateIgnoredFileNode(f));
             }
-
-            foreach (var f in files)
+            else
             {
-                node.Nodes.Add(CreateFileNode(f));
+                var combined = new List<(string name, Action add)>();
+                foreach (var d in dirs)
+                {
+                    var dir = d;
+                    combined.Add((Path.GetFileName(dir), () => node.Nodes.Add(CreateDirectoryNode(dir))));
+                }
+                foreach (var d in ignoredDirs)
+                {
+                    var dir = d;
+                    combined.Add((Path.GetFileName(dir), () =>
+                    {
+                        var dn = CreateDirectoryNode(dir);
+                        dn.Tag = new FileNodeTag(dir, GitStatusType.Ignored);
+                        node.Nodes.Add(dn);
+                    }));
+                }
+                foreach (var f in files)
+                {
+                    var file = f;
+                    combined.Add((Path.GetFileName(file), () => node.Nodes.Add(CreateFileNode(file))));
+                }
+                foreach (var f in ignoredFiles)
+                {
+                    var file = f;
+                    combined.Add((Path.GetFileName(file), () => node.Nodes.Add(CreateIgnoredFileNode(file))));
+                }
+                combined.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.name, b.name));
+                foreach (var (_, add) in combined)
+                    add();
             }
         }
         catch { }
+        finally
+        {
+            UpdateFooter();
+        }
     }
 
     private async void PopulateDirectoryAsync(TreeNode rootNode, string rootPath)
@@ -827,7 +1088,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             ApplyNodes(rootNode, result);
 
             rootNode.Expand();
-            _tree.SelectedNode = rootNode;
+            SelectNode(rootNode);
         }
         catch (OperationCanceledException) { }
         catch (ObjectDisposedException) { }
@@ -842,6 +1103,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 _scanCts = null;
                 cts.Dispose();
             }
+            UpdateFooter();
             ScanCompleted?.Invoke();
         }
     }
@@ -852,6 +1114,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         public string FullPath { get; init; } = "";
         public List<DirEntry> SubDirs { get; } = new();
         public List<string> Files { get; } = new();
+        public List<DirEntry> IgnoredSubDirs { get; } = new();
+        public List<string> IgnoredFiles { get; } = new();
     }
 
     private DirEntry? CollectTreeStructure(string rootPath, CancellationToken token)
@@ -879,27 +1143,42 @@ private TreeNode CreateDirectoryNode(string dirPath)
             var dirs = new List<string>();
             var files = new List<string>();
 
-            // Collect directories and files
             foreach (var d in Directory.EnumerateDirectories(dirPath))
             {
                 if (token.IsCancellationRequested) return;
                 string name = Path.GetFileName(d);
-                if (!name.StartsWith('.') && !IsIgnoredDirectory(name) && !ShouldIgnoreByGitignore(d))
+                if (name.StartsWith('.') || IsIgnoredDirectory(name)) continue;
+                if (ShouldIgnoreByGitignore(d))
+                {
+                    if (_showIgnoredFiles) entry.IgnoredSubDirs.Add(new DirEntry { Name = name, FullPath = d });
+                }
+                else
+                {
                     dirs.Add(d);
+                }
             }
 
             foreach (var f in Directory.EnumerateFiles(dirPath))
             {
                 if (token.IsCancellationRequested) return;
                 string ext = Path.GetExtension(f);
-                if ((_showAllFiles || _textExtensions.Contains(ext)) && ShouldIncludeFile(f) && !ShouldIgnoreByGitignore(f))
+                if (!ShouldIncludeFile(f)) continue;
+                if (ShouldIgnoreByGitignore(f))
+                {
+                    if (_showIgnoredFiles && (_showAllFiles || _textExtensions.Contains(ext)))
+                        entry.IgnoredFiles.Add(f);
+                }
+                else if (_showAllFiles || _textExtensions.Contains(ext))
+                {
                     files.Add(f);
+                }
             }
 
             dirs.Sort(StringComparer.OrdinalIgnoreCase);
             files.Sort(StringComparer.OrdinalIgnoreCase);
+            entry.IgnoredSubDirs.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Name, b.Name));
+            entry.IgnoredFiles.Sort(StringComparer.OrdinalIgnoreCase);
 
-            // Sequential processing (parallel would be too complex with the existing structure)
             foreach (var d in dirs)
             {
                 if (token.IsCancellationRequested) return;
@@ -919,18 +1198,109 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void ApplyNodes(TreeNode parentNode, DirEntry entry)
     {
-        foreach (var sub in entry.SubDirs)
+        if (_sortFoldersFirst)
+        {
+            foreach (var sub in entry.SubDirs)
+                AddDirNode(parentNode, sub, false);
+            foreach (var sub in entry.IgnoredSubDirs)
+                AddDirNode(parentNode, sub, true);
+            foreach (var f in entry.Files)
+                parentNode.Nodes.Add(CreateFileNode(f));
+            foreach (var f in entry.IgnoredFiles)
+                parentNode.Nodes.Add(CreateIgnoredFileNode(f));
+        }
+        else
+        {
+            var combined = new List<(string name, Action add)>();
+            foreach (var sub in entry.SubDirs)
+            {
+                var s = sub;
+                combined.Add((s.Name, () => AddDirNode(parentNode, s, false)));
+            }
+            foreach (var sub in entry.IgnoredSubDirs)
+            {
+                var s = sub;
+                combined.Add((s.Name, () => AddDirNode(parentNode, s, true)));
+            }
+            foreach (var f in entry.Files)
+            {
+                var file = f;
+                combined.Add((Path.GetFileName(file), () => parentNode.Nodes.Add(CreateFileNode(file))));
+            }
+            foreach (var f in entry.IgnoredFiles)
+            {
+                var file = f;
+                combined.Add((Path.GetFileName(file), () => parentNode.Nodes.Add(CreateIgnoredFileNode(file))));
+            }
+            combined.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.name, b.name));
+            foreach (var (_, add) in combined)
+                add();
+        }
+
+        if (_wsShowFileCount)
+        {
+            int total = entry.SubDirs.Count + entry.Files.Count
+                      + entry.IgnoredSubDirs.Count + entry.IgnoredFiles.Count;
+            if (total > 0)
+                parentNode.Text = $"{parentNode.Text} ({total})";
+        }
+    }
+
+    private void AddDirNode(TreeNode parentNode, DirEntry sub, bool ignored)
+    {
+        if (_compactFolders)
+        {
+            var chain = sub;
+            var displayName = sub.Name;
+            while (chain.SubDirs.Count == 1 && chain.Files.Count == 0
+                   && chain.IgnoredSubDirs.Count == 0 && chain.IgnoredFiles.Count == 0)
+            {
+                chain = chain.SubDirs[0];
+                displayName += "/" + chain.Name;
+            }
+            var node = CreateDirectoryNode(chain.FullPath);
+            node.Nodes.Clear();
+            if (ignored) node.Tag = new FileNodeTag(chain.FullPath, GitStatusType.Ignored);
+            if (displayName != chain.Name) node.Text = displayName;
+            parentNode.Nodes.Add(node);
+            ApplyNodes(node, chain);
+        }
+        else
         {
             var node = CreateDirectoryNode(sub.FullPath);
-            // Recursive population fills children immediately — remove the "Loading..."
-            // placeholder so ApplyNodes' children aren't appended alongside it.
             node.Nodes.Clear();
+            if (ignored) node.Tag = new FileNodeTag(sub.FullPath, GitStatusType.Ignored);
             parentNode.Nodes.Add(node);
             ApplyNodes(node, sub);
         }
-        foreach (var f in entry.Files)
+    }
+
+    private TreeNode CreateIgnoredFileNode(string filePath)
+    {
+        var node = CreateFileNode(filePath);
+        node.Tag = new FileNodeTag(filePath, GitStatusType.Ignored);
+        return node;
+    }
+
+    private void UpdateFooter()
+    {
+        if (_footerLabel == null || !IsHandleCreated) return;
+        int files = 0, dirs = 0;
+        CountNodes(_tree.Nodes, ref files, ref dirs);
+        _footerLabel.Text = $"  {files} file{(files != 1 ? "s" : "")}, {dirs} folder{(dirs != 1 ? "s" : "")}";
+    }
+
+    private static void CountNodes(TreeNodeCollection nodes, ref int files, ref int dirs)
+    {
+        foreach (TreeNode node in nodes)
         {
-            parentNode.Nodes.Add(CreateFileNode(f));
+            if (node.Tag is FileNodeTag tag)
+            {
+                if (File.Exists(tag.FilePath)) files++;
+                else if (Directory.Exists(tag.FilePath)) dirs++;
+            }
+            if (node.Nodes.Count > 0 && !(node.Nodes.Count == 1 && node.Nodes[0].Text == "Loading..."))
+                CountNodes(node.Nodes, ref files, ref dirs);
         }
     }
 
@@ -1260,14 +1630,21 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void Tree_DrawNode(object? sender, DrawTreeNodeEventArgs e)
     {
+        e.DrawDefault = false; // Always suppress native selection/focus drawing
         var theme = ThemeManager.Instance.CurrentTheme;
         var node = e.Node;
         var bounds = e.Bounds;
 
+        if (node == null || bounds.Width == 0) return;
+
         // Background
         Color backColor;
 #pragma warning disable CS8602 // node is not null in DrawNode
-        if (node != null && _multiSelectedNodes.Contains(node))
+        // Use e.State to detect selection — COMCTL's actual caret state, always in sync with what it paints.
+        // SetWindowTheme(" "," ") (classic mode) ensures CDRF_SKIPDEFAULT truly prevents any COMCTL override,
+        // so whatever we draw here is the final result.
+        bool isSelected = (e.State & TreeNodeStates.Selected) != 0 || _multiSelectedNodes.Contains(node);
+        if (isSelected)
         {
             backColor = theme.ButtonHoverBackground;
         }
@@ -1275,9 +1652,12 @@ private TreeNode CreateDirectoryNode(string dirPath)
         {
             backColor = node.BackColor;
         }
-        else if (node == _hoveredNode) // Full-width hover highlight
+        else if (node == _hoveredNode) // VS Code-style subtle hover
         {
-            backColor = Color.FromArgb(120, theme.ButtonHoverBackground);
+            // Neutral tint: white overlay on dark themes, black overlay on light themes
+            backColor = theme.IsLight
+                ? Color.FromArgb(38, Color.Black)
+                : Color.FromArgb(40, Color.White);
         }
         else
         {
@@ -1287,13 +1667,33 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
         // For selected or hovered, draw full width
         Rectangle drawBounds = bounds;
-        if (_multiSelectedNodes.Contains(node) || node == _hoveredNode)
+        if (isSelected || node == _hoveredNode)
         {
             drawBounds = new Rectangle(0, bounds.Y, _tree.ClientSize.Width, bounds.Height);
         }
 
-        using (var brush = new SolidBrush(backColor))
+        // Always clear the full row with panel background first to prevent artifacts
+        using (var bgBrush = new SolidBrush(theme.MenuBackground))
+            e.Graphics.FillRectangle(bgBrush, drawBounds);
+
+        if (node == _hoveredNode && !isSelected)
         {
+            // VS Code-style: rounded pill with visible but not aggressive tint
+            Color hoverColor = theme.IsLight
+                ? Color.FromArgb(38, Color.Black)
+                : Color.FromArgb(35, Color.White);
+            var hoverRect = new Rectangle(drawBounds.X + 2, drawBounds.Y + 1,
+                                          drawBounds.Width - 4, drawBounds.Height - 2);
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var roundPath = RoundedRect(hoverRect, 3);
+            using var hoverBrush = new SolidBrush(hoverColor);
+            e.Graphics.FillPath(hoverBrush, roundPath);
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.Default;
+        }
+        else if (backColor != theme.MenuBackground)
+        {
+            // Selection or search highlight — flat fill
+            using var brush = new SolidBrush(backColor);
             e.Graphics.FillRectangle(brush, drawBounds);
         }
 
@@ -1308,19 +1708,25 @@ private TreeNode CreateDirectoryNode(string dirPath)
         GitStatusType gitStatus = GitStatusType.None;
         if (node.Tag is FileNodeTag fileTag)
         {
-            gitStatus = fileTag.GitStatus;
+            gitStatus = _showGitStatus ? fileTag.GitStatus : GitStatusType.None;
         }
 
-        // Calculate text bounds accounting for status indicator
-        int statusIndicatorSize = gitStatus != GitStatusType.None ? 8 : 0;
-        int statusIndicatorMargin = gitStatus != GitStatusType.None ? 6 : 0;
+        if (!_showGitStatus && node.Tag is FileNodeTag ignoredTag && ignoredTag.GitStatus == GitStatusType.Ignored)
+            gitStatus = GitStatusType.Ignored;
+
+        int statusIndicatorSize = (gitStatus != GitStatusType.None && gitStatus != GitStatusType.Ignored) ? 8 : 0;
+        int statusIndicatorMargin = (gitStatus != GitStatusType.None && gitStatus != GitStatusType.Ignored) ? 6 : 0;
 
         var textBounds = new Rectangle(bounds.X + (node.Level * _tree.Indent) + 22 + statusIndicatorSize + statusIndicatorMargin, bounds.Y + 2,
                                        bounds.Width - (node.Level * _tree.Indent) - 22 - statusIndicatorSize - statusIndicatorMargin, bounds.Height - 4);
 
-        // Text color
+        // Text color — always theme.Text for selected/hovered so light themes stay dark
         Color textColor;
-        if (node.BackColor != Color.Transparent) // Search highlight
+        if (gitStatus == GitStatusType.Ignored)
+        {
+            textColor = ThemeManager.Instance.CurrentTheme.Muted;
+        }
+        else if (node.BackColor != Color.Transparent) // Search highlight
         {
             textColor = node.ForeColor;
         }
@@ -1332,8 +1738,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         TextRenderer.DrawText(e.Graphics, node.Text, _tree.Font, textBounds, textColor,
                              TextFormatFlags.VerticalCenter | TextFormatFlags.PathEllipsis);
 
-        // Draw Git status indicator
-        if (gitStatus != GitStatusType.None)
+        // Draw Git status indicator (never draw the dot for Ignored — muted text is the visual)
+        if (gitStatus != GitStatusType.None && gitStatus != GitStatusType.Ignored)
         {
             Color statusColor = GetGitStatusColor(gitStatus, theme);
             int indicatorX = bounds.X + (node.Level * _tree.Indent) + 22;
@@ -1350,6 +1756,12 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 e.Graphics.DrawEllipse(pen, indicatorX, indicatorY, statusIndicatorSize, statusIndicatorSize);
             }
         }
+
+        // Suppress native focus rectangle that COMCTL32 draws as a dotted border
+        if ((e.State & TreeNodeStates.Focused) != 0)
+            ControlPaint.DrawFocusRectangle(e.Graphics,
+                new Rectangle(bounds.X, bounds.Y, _tree.ClientSize.Width, bounds.Height),
+                theme.Text, backColor);
     }
 
     private void Tree_MouseDown(object? sender, MouseEventArgs e)
@@ -1370,14 +1782,22 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 {
                     _multiSelectedNodes.Add(hit.Node);
                 }
-                _tree.SelectedNode = hit.Node; // Keep for keyboard navigation
+                SelectNode(hit.Node); // Keep for keyboard navigation
             }
             else
             {
                 // Single selection
                 _multiSelectedNodes.Clear();
                 _multiSelectedNodes.Add(hit.Node);
-                _tree.SelectedNode = hit.Node;
+                SelectNode(hit.Node);
+            }
+
+            // Single-click open for files
+            if (_singleClickOpen && e.Clicks == 1 && hit.Node?.Tag is FileNodeTag scoTag
+                && File.Exists(scoTag.FilePath) && scoTag.GitStatus != GitStatusType.Ignored)
+            {
+                if (_autoCollapse) CollapseOtherFolders(hit.Node);
+                FileOpenRequested?.Invoke(scoTag.FilePath);
             }
         }
         else if (e.Button == MouseButtons.Right)
@@ -1387,7 +1807,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
             {
                 _multiSelectedNodes.Clear();
                 _multiSelectedNodes.Add(hit.Node);
-                _tree.SelectedNode = hit.Node;
+                SelectNode(hit.Node);
             }
             _fileContextMenu.Show(_tree, e.Location);
         }
@@ -1412,8 +1832,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void OpenSelectedNode()
     {
-        if (_tree.SelectedNode != null)
-            OpenNode(_tree.SelectedNode);
+        if (_selectedNode != null)
+            OpenNode(_selectedNode);
     }
 
     private void OpenNode(TreeNode node)
@@ -1461,10 +1881,17 @@ private TreeNode CreateDirectoryNode(string dirPath)
     public void ApplyWorkspaceSettings(
         bool showAllFiles, string excludedDirs,
         int itemHeight, int indent,
-        bool autoCollapse, int watcherDebounceMs, bool disableFileWatcher)
+        bool autoCollapse, int watcherDebounceMs, bool disableFileWatcher,
+        bool followActiveFile, bool sortFoldersFirst, bool singleClickOpen, bool confirmDelete,
+        bool showGitStatus, bool showIgnoredFiles, bool compactFolders, bool showFileCount)
     {
         bool filterChanged = _showAllFiles != showAllFiles
-            || _disableFileWatcher != disableFileWatcher;
+            || _disableFileWatcher != disableFileWatcher
+            || _showIgnoredFiles != showIgnoredFiles;
+        bool displayChanged = _showGitStatus != showGitStatus
+            || _wsShowFileCount != showFileCount
+            || _sortFoldersFirst != sortFoldersFirst
+            || _compactFolders != compactFolders;
 
         _showAllFiles = showAllFiles;
         _additionalExcludedDirs = new HashSet<string>(
@@ -1474,6 +1901,14 @@ private TreeNode CreateDirectoryNode(string dirPath)
         _tree.Indent = Math.Clamp(indent, 8, 48);
         _autoCollapse = autoCollapse;
         _refreshTimer.Interval = Math.Clamp(watcherDebounceMs, 100, 5000);
+        _followActiveFile = followActiveFile;
+        _sortFoldersFirst = sortFoldersFirst;
+        _singleClickOpen = singleClickOpen;
+        _confirmDelete = confirmDelete;
+        _showGitStatus = showGitStatus;
+        _showIgnoredFiles = showIgnoredFiles;
+        _compactFolders = compactFolders;
+        _wsShowFileCount = showFileCount;
 
         if (disableFileWatcher && !_disableFileWatcher)
         {
@@ -1483,13 +1918,15 @@ private TreeNode CreateDirectoryNode(string dirPath)
         _disableFileWatcher = disableFileWatcher;
 
         UpdateShowAllFilesVisual();
-        if (filterChanged && !string.IsNullOrEmpty(_rootPath))
-            RefreshTree();
+        if ((filterChanged || displayChanged) && !string.IsNullOrEmpty(_rootPath))
+            RebuildTreeFromRoot();
+        else if (displayChanged && _tree.IsHandleCreated)
+            _tree.Invalidate();
     }
 
     private void OpenContainingFolder()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null)
         {
             string dir = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? "";
@@ -1506,7 +1943,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void CopyPath()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null)
         {
             try { Clipboard.SetText(path); }
@@ -1555,7 +1992,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private string? GetSelectedDirectory()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null)
         {
             if (System.IO.Directory.Exists(path)) return path;
@@ -1688,9 +2125,16 @@ private TreeNode CreateDirectoryNode(string dirPath)
         }
     }
 
+    private void SelectNode(TreeNode? node)
+    {
+        _selectedNode = node;
+        _tree.SelectedNode = node; // let COMCTL own selection — SetWindowTheme classic mode ensures CDRF_SKIPDEFAULT works
+        _tree.Refresh();
+    }
+
     private void OpenToSide()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null && File.Exists(path))
         {
             FileOpenRequested?.Invoke(path); // For now, just open normally - tab system handles "to side"
@@ -1699,7 +2143,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void RevealInExplorer()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null)
         {
             string dir = Directory.Exists(path) ? path : Path.GetDirectoryName(path) ?? "";
@@ -1716,7 +2160,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void CopyRelativePath()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null && !string.IsNullOrEmpty(_rootPath))
         {
             try
@@ -1730,42 +2174,61 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void RenameSelected()
     {
-        if (_tree.SelectedNode != null)
+        var node = _selectedNode;
+        if (node == null) return;
+        var path = GetNodePath(node);
+        if (path == null) return;
+
+        bool isDir = Directory.Exists(path);
+        string oldName = Path.GetFileName(path);
+        string? newName = SimpleInputDialog.Show(ParentForm!, "New name:", isDir ? "Rename Folder" : "Rename File", oldName);
+        if (string.IsNullOrWhiteSpace(newName) || newName == oldName) return;
+
+        string newPath = Path.Combine(Path.GetDirectoryName(path)!, newName);
+        try
         {
-            _tree.SelectedNode.BeginEdit();
+            if (isDir)
+                Directory.Move(path, newPath);
+            else
+                File.Move(path, newPath);
+            RefreshTree();
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Could not rename: {ex.Message}", "Rename Failed",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
     private void DeleteSelected()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null)
         {
             string itemType = Directory.Exists(path) ? "folder" : "file";
             string itemName = Path.GetFileName(path);
 
-            var result = ThemedMessageBox.Show(
-                $"Are you sure you want to delete the {itemType} '{itemName}'?",
-                "Delete Item",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-
-            if (result == DialogResult.Yes)
+            if (_confirmDelete)
             {
-                try
-                {
-                    if (Directory.Exists(path))
-                        Directory.Delete(path, true);
-                    else if (File.Exists(path))
-                        File.Delete(path);
+                var dlgResult = ThemedMessageBox.Show(
+                    $"Are you sure you want to delete the {itemType} '{itemName}'?",
+                    "Delete Item", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (dlgResult != DialogResult.Yes) return;
+            }
 
-                    RefreshTree();
-                }
-                catch (Exception ex)
-                {
-                    ThemedMessageBox.Show($"Failed to delete item: {ex.Message}", "Delete Failed",
-                                  MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+                else if (File.Exists(path))
+                    File.Delete(path);
+
+                RefreshTree();
+            }
+            catch (Exception ex)
+            {
+                ThemedMessageBox.Show($"Failed to delete item: {ex.Message}", "Delete Failed",
+                              MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }
@@ -1780,27 +2243,28 @@ private TreeNode CreateDirectoryNode(string dirPath)
             ? $"Are you sure you want to delete the {itemType} '{Path.GetFileName(items[0])}'?"
             : $"Are you sure you want to delete {items.Count} selected items?";
 
-        var result = ThemedMessageBox.Show(message, "Delete Items", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-        if (result == DialogResult.Yes)
+        if (_confirmDelete)
         {
-            try
+            var dlgResult = ThemedMessageBox.Show(message, "Delete Items", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            if (dlgResult != DialogResult.Yes) return;
+        }
+
+        try
+        {
+            foreach (var path in items)
             {
-                foreach (var path in items)
-                {
-                    if (Directory.Exists(path))
-                        Directory.Delete(path, true);
-                    else if (File.Exists(path))
-                        File.Delete(path);
-                }
-                RefreshTree();
-                _multiSelectedNodes.Clear();
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+                else if (File.Exists(path))
+                    File.Delete(path);
             }
-            catch (Exception ex)
-            {
-                ThemedMessageBox.Show($"Failed to delete items: {ex.Message}", "Delete Failed",
-                              MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            RefreshTree();
+            _multiSelectedNodes.Clear();
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show($"Failed to delete items: {ex.Message}", "Delete Failed",
+                          MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1821,7 +2285,7 @@ private TreeNode CreateDirectoryNode(string dirPath)
 
     private void AddToFavorites()
     {
-        var path = GetNodePath(_tree.SelectedNode);
+        var path = GetNodePath(_selectedNode);
         if (path != null)
         {
             if (_favorites.Add(path))
@@ -2179,6 +2643,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         {
             if (node.Tag is FileNodeTag existingTag && File.Exists(existingTag.FilePath))
             {
+                if (existingTag.GitStatus == GitStatusType.Ignored)
+                    continue;
                 GitStatusType gitStatus = GetGitStatusType(existingTag.FilePath);
                 node.Tag = existingTag with { GitStatus = gitStatus };
             }
@@ -2196,6 +2662,14 @@ private TreeNode CreateDirectoryNode(string dirPath)
                 GitStatusType gitStatus = GetDirectoryGitStatusType(dirPath);
                 node.Tag = new FileNodeTag(dirPath, gitStatus);
             }
+            else if (node.Tag is FileNodeTag existingDirTag && Directory.Exists(existingDirTag.FilePath))
+            {
+                if (existingDirTag.GitStatus != GitStatusType.Ignored)
+                {
+                    GitStatusType gitStatus = GetDirectoryGitStatusType(existingDirTag.FilePath);
+                    node.Tag = existingDirTag with { GitStatus = gitStatus };
+                }
+            }
 
             // Recursively update child nodes
             UpdateGitStatusInNodes(node.Nodes);
@@ -2210,7 +2684,8 @@ private TreeNode CreateDirectoryNode(string dirPath)
         Deleted,
         Renamed,
         Untracked,
-        Conflicted
+        Conflicted,
+        Ignored
     }
 
     private record FileNodeTag(string FilePath, GitStatusType GitStatus);
@@ -2249,8 +2724,21 @@ private TreeNode CreateDirectoryNode(string dirPath)
             GitStatusType.Renamed => Color.FromArgb(150, 150, 255),  // Blue - renamed
             GitStatusType.Untracked => Color.FromArgb(150, 150, 150), // Gray - untracked
             GitStatusType.Conflicted => Color.FromArgb(255, 100, 255), // Magenta - conflicted
+            GitStatusType.Ignored => theme.Muted,
             _ => theme.Text // None - use default text color
         };
+    }
+
+    private static System.Drawing.Drawing2D.GraphicsPath RoundedRect(Rectangle bounds, int radius)
+    {
+        int d = radius * 2;
+        var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+        path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+        path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+        path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private void LoadFavorites()

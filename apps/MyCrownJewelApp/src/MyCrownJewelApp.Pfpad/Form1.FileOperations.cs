@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -236,6 +236,26 @@ namespace MyCrownJewelApp.Pfpad
 
         private void UpdateWindowTitle()
         {
+            if (_activeBrowserPanel != null)
+            {
+                if (!_browserShowInTitlebar)
+                {
+                    Text = "Personal Flip Pad";
+                    return;
+                }
+
+                string browserTitle = tabControl.SelectedIndex >= documents.Count && tabControl.SelectedIndex < tabControl.TabPages.Count
+                    ? tabControl.TabPages[tabControl.SelectedIndex].Text
+                    : "";
+                if (browserTitle.StartsWith("🌐 "))
+                    browserTitle = browserTitle[2..].TrimStart();
+
+                Text = string.IsNullOrWhiteSpace(browserTitle) || browserTitle is "New Tab" or "Browser"
+                    ? "Personal Flip Pad"
+                    : $"{browserTitle} — Personal Flip Pad";
+                return;
+            }
+
             string baseTitle = currentFilePath != null 
                 ? $"Personal Flip Pad - {Path.GetFileName(currentFilePath)}"
                 : "Personal Flip Pad - Untitled";
@@ -350,7 +370,8 @@ namespace MyCrownJewelApp.Pfpad
         #region File Menu Handlers
 
         private void NewTab_Click(object? sender, EventArgs e) => NewFile();
-private void NewWindow_Click(object? sender, EventArgs e)
+        private void NewBrowserTab_Click(object? sender, EventArgs e) => OpenNewBrowserTab();
+        private void NewWindow_Click(object? sender, EventArgs e)
         {
             System.Diagnostics.Process.Start(Application.ExecutablePath, "--new-window");
         }
@@ -370,7 +391,7 @@ private void NewWindow_Click(object? sender, EventArgs e)
             {
                 string path = ofd.FileName;
                 if (_solutionExplorerPanel == null) return;
-                if (_sideTopTabs != null) _sideTopTabs.SelectedIndex = 1;
+                SetSideTab(1);
                 if (_workspaceSplitContainer?.Panel1Collapsed == true)
                     ToggleWorkspace();
                 _solutionExplorerPanel.LoadSolution(path);

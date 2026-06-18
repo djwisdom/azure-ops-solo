@@ -12,6 +12,7 @@ namespace MyCrownJewelApp.Pfpad
     private CurrentLineHighlightMode _highlightMode = CurrentLineHighlightMode.Off;
     private Color _highlightColor = Color.FromArgb(80, 60, 60, 60);
     private bool _scrollInProgress;
+    private int  _wheelAccumulator;   // tracks sub-notch delta for precision mice
     private System.Windows.Forms.Timer? _scrollDebounceTimer;
         private System.Threading.PeriodicTimer? _blinkPeriodicTimer;
         private CancellationTokenSource? _blinkCts;
@@ -1558,6 +1559,7 @@ namespace MyCrownJewelApp.Pfpad
     protected override void WndProc(ref Message m)
     {
         const int WM_PAINT = 0x000F;
+        const int WM_CHAR  = 0x0102;
         const int WM_VSCROLL = 0x0115;
         const int WM_HSCROLL = 0x0114;
         const int WM_SIZE = 0x0005;
@@ -1567,6 +1569,7 @@ namespace MyCrownJewelApp.Pfpad
         const int WM_MOUSEWHEEL = 0x020A;
         const int WM_SETFOCUS = 0x0007;
         const int WM_KILLFOCUS = 0x0008;
+        const int WM_SETREDRAW = 0x000B;
 
         switch (m.Msg)
         {
@@ -1715,9 +1718,12 @@ namespace MyCrownJewelApp.Pfpad
                     if (!ctrlDown && MouseWheelScrollLines > 0)
                     {
                         int rawDelta = (short)((m.WParam.ToInt64() >> 16) & 0xFFFF);
-                        int clicks = Math.Abs(rawDelta) / 120;
-                        int lines = clicks * MouseWheelScrollLines;
-                        SendMessage(Handle, EM_LINESCROLL, 0, rawDelta > 0 ? -lines : lines);
+                        _wheelAccumulator += rawDelta;
+                        int clicks = _wheelAccumulator / 120;
+                        if (clicks == 0) return;         // sub-notch delta — wait for more
+                        _wheelAccumulator -= clicks * 120;
+                        int lines = Math.Abs(clicks) * MouseWheelScrollLines;
+                        SendMessage(Handle, EM_LINESCROLL, 0, clicks > 0 ? -lines : lines);
                         return;
                     }
                     base.WndProc(ref m);
@@ -1747,7 +1753,21 @@ namespace MyCrownJewelApp.Pfpad
             case WM_LBUTTONUP:
             case WM_SETFOCUS:
             case WM_KILLFOCUS:
-                                break;
+                break;
+            case WM_CHAR:
+                // Suppress all intermediate screen updates during character insertion.
+                // Without this, RICHEDIT calls ScrollWindowEx when the caret scrolls
+                // the line horizontally, which physically shifts screen pixels left before
+                // our double-buffered WM_PAINT handler runs — causing a one-character
+                // leftward flicker on lines wider than the editor viewport.
+                SendMessage(Handle, WM_SETREDRAW, 0, 0);
+                try   { base.WndProc(ref m); }
+                finally
+                {
+                    SendMessage(Handle, WM_SETREDRAW, 1, 0);
+                    Invalidate();
+                }
+                return;
         }
 
         base.WndProc(ref m);

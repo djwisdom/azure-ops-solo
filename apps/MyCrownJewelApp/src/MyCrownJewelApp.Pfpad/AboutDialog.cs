@@ -457,6 +457,18 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Vim mode, snippets, command palette, folding, bookmarks, and multi-tab session restore");
         featuresText.AppendLine("• Large-file degradation safeguards to keep the editor responsive");
         featuresText.AppendLine();
+        featuresText.AppendLine("Built-in browser (v1.0.36):");
+        featuresText.AppendLine("• WebView2-powered browser tabs in the main editor tab strip — side-by-side with file tabs");
+        featuresText.AppendLine("• Multiple independent browser tabs (Ctrl+Shift+T); each with full navigation history");
+        featuresText.AppendLine("• Edge-style rounded address bar with focus accent, owner-drawn in theme colours");
+        featuresText.AppendLine("• Large distinct nav buttons (Back, Forward, Refresh) matching Edge sizing");
+        featuresText.AppendLine("• Go button + Developer Tools (F12) with Segoe MDL2 Assets glyphs");
+        featuresText.AppendLine("• Favorites bar imported from Edge with overflow '»' dropdown for off-screen items");
+        featuresText.AppendLine("• Enterprise ad/tracker blocking via EasyList, EasyPrivacy, Peter Lowe blocklists");
+        featuresText.AppendLine("• Configurable user agent to prevent Edge fingerprinting");
+        featuresText.AppendLine("• Ephemeral profile mode for untrusted workspaces (no cookies/cache persisted)");
+        featuresText.AppendLine("• Per-session settings: homepage, max history, localhost links, default zoom, title bar display");
+        featuresText.AppendLine();
         featuresText.AppendLine("Security hardening:");
         featuresText.AppendLine("• Graded security profiles: Not Hardened → Low → Mid → Max");
         featuresText.AppendLine("• Guided transition wizard with per-step live status, rollback on failure, and auto-backups");
@@ -567,7 +579,7 @@ public sealed partial class AboutDialog : Form
 
         AddPageRow(layout, CreateWrappingLabel("Personal Flip Pad is built as a WinForms editor shell with .NET, custom controls, and theme-aware UI infrastructure.", _contentWidth, _theme.Muted), _sectionGap);
         AddPageRow(layout, CreateLabel("Third-party acknowledgements", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
-        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows DPAPI (System.Security.Cryptography) for at-rest settings encryption\r\n• App icon generated at runtime via GDI+ (AppIconFactory)", _contentWidth, _theme.Muted), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• Microsoft WebView2 for the integrated browser\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows DPAPI (System.Security.Cryptography) for at-rest settings encryption\r\n• EasyList, EasyPrivacy, Peter Lowe blocklists for browser content filtering\r\n• App icon generated at runtime via GDI+ (AppIconFactory)", _contentWidth, _theme.Muted), _rowGap);
         AddPageRow(layout, CreateWrappingLabel("Thanks to the broader OSS ecosystem that makes desktop developer tooling possible.", _contentWidth, _theme.Disabled));
 
         page.Controls.Add(layout);
