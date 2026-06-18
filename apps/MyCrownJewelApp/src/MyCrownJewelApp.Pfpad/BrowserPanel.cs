@@ -52,9 +52,9 @@ internal sealed class BrowserPanel : UserControl
     // ── Zoom indicator (status bar) ───────────────────────────────────────────
     private Panel? _zoomPanel;
     private Label? _zoomLabel;
-    private Button? _zoomOutBtn;
-    private Button? _zoomInBtn;
-    private Button? _zoomResetBtn;
+    private Label? _zoomOutBtn;
+    private Label? _zoomInBtn;
+    private Label? _zoomResetBtn;
     private readonly System.Windows.Forms.Timer _zoomHideTimer;
     private readonly System.Windows.Forms.Timer _zoomPollTimer;  // reads ZoomFactor after Ctrl+Wheel
     private ZoomWheelFilter? _wheelFilter;
@@ -1031,12 +1031,11 @@ internal sealed class BrowserPanel : UserControl
         {
             _zoomPanel.BackColor = theme.MenuBackground;
             if (_zoomLabel != null) { _zoomLabel.ForeColor = theme.Text; _zoomLabel.BackColor = theme.MenuBackground; }
-            foreach (var btn in new[] { _zoomOutBtn, _zoomInBtn, _zoomResetBtn })
+            foreach (var lbl in new[] { _zoomOutBtn, _zoomInBtn, _zoomResetBtn })
             {
-                if (btn == null) continue;
-                btn.BackColor = theme.MenuBackground;
-                btn.ForeColor = theme.Text;
-                btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(40, theme.Text);
+                if (lbl == null) continue;
+                lbl.BackColor = theme.MenuBackground;
+                lbl.ForeColor = theme.Text;
             }
         }
 
@@ -1120,22 +1119,22 @@ internal sealed class BrowserPanel : UserControl
         _webView.ZoomFactor = Math.Clamp(factor, 0.25, 5.0);
     }
 
-    private Button MakeZoomBtn(string text, string tip, Rectangle bounds, Font font)
+    private Label MakeZoomBtn(string text, string tip, Rectangle bounds, Font font)
     {
-        var btn = new Button
+        var lbl = new Label
         {
             Text = text,
             AutoSize = false,
             Bounds = bounds,
-            FlatStyle = FlatStyle.Flat,
             Font = font,
             Cursor = Cursors.Hand,
             TextAlign = ContentAlignment.MiddleCenter,
-            Padding = Padding.Empty,   // remove default internal padding that bottom-clips text
+            BorderStyle = BorderStyle.FixedSingle,
         };
-        btn.FlatAppearance.BorderSize = 1;
-        _toolTip.SetToolTip(btn, tip);
-        return btn;
+        _toolTip.SetToolTip(lbl, tip);
+        lbl.MouseEnter += (_, _) => lbl.BackColor = Color.FromArgb(60, _currentTheme.Text);
+        lbl.MouseLeave += (_, _) => lbl.BackColor = _currentTheme.MenuBackground;
+        return lbl;
     }
 
     /// <summary>
