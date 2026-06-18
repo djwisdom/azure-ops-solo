@@ -1701,7 +1701,7 @@ internal sealed class BrowserPanel : UserControl
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Parent?.BackColor ?? SystemColors.Control);
             var rc = new RectangleF(0.5f, 0.5f, Width - 1f, Height - 1f);
-            const float radius = 6f;
+            const float radius = 18f;
             using var path = BuildPath(rc, radius);
             using (var fill = new SolidBrush(_theme.EditorBackground))
                 g.FillPath(fill, path);
