@@ -55,6 +55,7 @@ public sealed partial class AboutDialog : Form
     private readonly List<Button> _tabButtons = new();
     private readonly Dictionary<Button, Panel> _tabPages = new();
     private readonly Dictionary<Button, Panel> _tabUnderlines = new();
+    private Label? _securityProfileLabel;
 
     [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
     private static partial int SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
@@ -559,7 +560,17 @@ public sealed partial class AboutDialog : Form
         AddInfoRow(grid, "Theme", _themeName);
         AddInfoRow(grid, "Open files", _openFileCount.ToString());
         AddInfoRow(grid, "Workspace", string.IsNullOrWhiteSpace(_workspaceRoot) ? "Not set" : _workspaceRoot!);
-        AddInfoRow(grid, "Security profile", SecurityEnforcementService.CurrentProfile.ToString());
+
+        // Build security profile row inline so we can keep a live reference to the value label.
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        int secRowIndex = grid.RowCount++;
+        var secKey = CreateLabel("Security profile", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text);
+        secKey.Margin = new Padding(0, 0, Scale(12), _rowGap);
+        _securityProfileLabel = CreateWrappingLabel(SecurityEnforcementService.CurrentProfile.ToString(), valueColW - Scale(4), _theme.Muted);
+        _securityProfileLabel.Margin = new Padding(0, 0, 0, _rowGap);
+        grid.Controls.Add(secKey, 0, secRowIndex);
+        grid.Controls.Add(_securityProfileLabel, 1, secRowIndex);
+
         AddInfoRow(grid, "Commit", _commit);
         AddInfoRow(grid, "Build date", _buildDate);
 
@@ -621,6 +632,10 @@ public sealed partial class AboutDialog : Form
             if (_tabUnderlines.TryGetValue(button, out var underline))
                 underline.Visible = isSelected;
         }
+
+        // Refresh live fields before displaying the selected page.
+        if (_securityProfileLabel != null)
+            _securityProfileLabel.Text = SecurityEnforcementService.CurrentProfile.ToString();
 
         _pageHost.SuspendLayout();
         _pageHost.Controls.Clear();

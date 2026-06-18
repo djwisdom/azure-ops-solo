@@ -2254,7 +2254,7 @@ internal sealed class SettingsDialog : Form
 
     private int AddSecurityProfileSelector(Panel parent, int y)
     {
-        int profileVal = _currentValues.TryGetValue("application.security.profile", out var pv) && pv is int pi ? pi : (int)SecurityProfile.Low;
+        int profileVal = _currentValues.TryGetValue("application.security.profile", out var pv) && pv is int pi ? pi : (int)_mainForm.CurrentSecurityProfile;
         var currentProfile = (SecurityProfile)profileVal;
 
         string[] profileLabels = ["Not Hardened", "Low", "Mid", "Max"];

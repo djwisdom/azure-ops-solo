@@ -318,6 +318,16 @@ internal sealed class SecurityProfileTransitionDialog : Form
         Close();
     }
 
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        // If transition already completed successfully (possibly with warnings), treat
+        // any close — including the title-bar X — as confirmation so the profile change
+        // is not silently reverted by the caller's DialogResult.Cancel check.
+        if (TransitionCompleted && DialogResult != DialogResult.OK)
+            DialogResult = DialogResult.OK;
+        base.OnFormClosing(e);
+    }
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.Escape && !_running)
