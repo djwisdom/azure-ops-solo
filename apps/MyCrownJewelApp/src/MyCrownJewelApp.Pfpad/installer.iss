@@ -1,8 +1,8 @@
 [Setup]
-AppId=YOUR-APP-ID-HERE
+AppId=24f5ed45-72b9-4500-b561-8f0ce49ea480
 AppName=Personal Flip Pad
-AppVersion=1.0.32.0
-AppVerName=Personal Flip Pad 1.0.32.0
+AppVersion=1.0.36.0
+AppVerName=Personal Flip Pad 1.0.36.0
 AppPublisher=Personal Flip Pad
 AppPublisherURL=https://github.com/djwisdom/azure-ops-solo
 AppSupportURL=https://github.com/djwisdom/azure-ops-solo/issues
@@ -12,7 +12,7 @@ DefaultGroupName=Personal Flip Pad
 AllowNoIcons=yes
 
 OutputDir=.
-OutputBaseFilename=PersonalFlipPad-1.0.32.0
+OutputBaseFilename=PersonalFlipPad-Setup-1.0.36.0
 ; SetupIconFile=app.ico
 Compression=lzma
 SolidCompression=yes
@@ -158,7 +158,7 @@ Root: HKCR; Subkey: "*\OpenWithProgids\MyCrownJewelApp.Pfpad"; ValueType: string
 ; Store installation information
 Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "Version"; ValueData: "1.0.32.0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "Version"; ValueData: "1.0.36.0"; Flags: uninsdeletekey
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
