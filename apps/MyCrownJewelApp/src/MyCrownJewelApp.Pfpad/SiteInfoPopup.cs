@@ -1,239 +1,427 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
 
 namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
-/// Borderless floating panel shown when the user clicks the site-info glyph
-/// in the browser address bar.  Mirrors Edge's "View site information" flyout.
-/// Auto-dismisses when it loses activation.
+/// Edge-style "View site information" flyout popup.
+/// Shows protocol/security info, with drill-down panels for
+/// Certificate, Cookies, Trackers, and Permissions.
 /// </summary>
 internal sealed class SiteInfoPopup : Form
 {
-    // ── Layout constants ──────────────────────────────────────────────────────
-    private const int PopupWidth   = 320;
-    private const int HeaderHeight = 56;
-    private const int RowHeight    = 36;
-    private const int Padding      = 12;
+    private const int W           = 330;
+    private const int HeaderH     = 64;
+    private const int RowH        = 38;
+    private const int Pad         = 14;
+    private const int GlyphColW   = 28;
+    private const float SmallFont = 8.5f;
+    private const float MedFont   = 9.5f;
 
-    // ── Construction ─────────────────────────────────────────────────────────
+    private readonly Theme _theme;
+    private readonly SiteProtocolInfo _info;
+    private readonly long _blockCount;
+    private readonly CoreWebView2? _cw;
 
-    internal SiteInfoPopup(string url, long blockCount, Theme theme)
+    // Navigation stack
+    private readonly Panel _host;           // fills client area
+    private Panel _currentPanel;
+
+    internal SiteInfoPopup(string url, long blockCount, Theme theme, CoreWebView2? cw)
     {
+        _theme      = theme;
+        _info       = SiteProtocolInfo.From(url);
+        _blockCount = blockCount;
+        _cw         = cw;
+
         FormBorderStyle = FormBorderStyle.None;
         StartPosition   = FormStartPosition.Manual;
         ShowInTaskbar   = false;
-        TopMost         = false;
         AutoScaleMode   = AutoScaleMode.None;
+        BackColor       = theme.Border;
+        Padding         = new Padding(1);   // 1px border
 
-        var info   = SiteProtocolInfo.From(url);
-        var rows   = BuildRows(info, blockCount);
-        int height = HeaderHeight + rows.Count * RowHeight + Padding;
+        _host = new Panel { Dock = DockStyle.Fill, BackColor = theme.MenuBackground };
+        Controls.Add(_host);
 
-        ClientSize = new Size(PopupWidth, height);
+        _currentPanel = BuildMainPanel();
+        _host.Controls.Add(_currentPanel);
+        UpdateSize();
 
-        // ── Drop-shadow border ────────────────────────────────────────────────
-        var border = new Panel
-        {
-            Dock      = DockStyle.Fill,
-            BackColor = theme.Border,
-            Padding   = new Padding(1)
-        };
+        Deactivate += (_, _) => Close();
+    }
 
-        // ── Inner panel ───────────────────────────────────────────────────────
-        var inner = new Panel
-        {
-            Dock      = DockStyle.Fill,
-            BackColor = theme.MenuBackground,
-        };
+    // ── Navigation ────────────────────────────────────────────────────────────
 
-        // ── Header ────────────────────────────────────────────────────────────
-        var header = new Panel
-        {
-            Dock      = DockStyle.Top,
-            Height    = HeaderHeight,
-            BackColor = theme.MenuBackground,
-            Padding   = new Padding(Padding, 10, Padding, 0),
-        };
+    private void Navigate(Panel next)
+    {
+        _host.Controls.Clear();
+        _currentPanel = next;
+        _host.Controls.Add(next);
+        UpdateSize();
+    }
 
-        var glyphLbl = new Label
-        {
-            Text      = info.Glyph,
-            Font      = new Font("Segoe MDL2 Assets", 14f),
-            ForeColor = info.GlyphColor(theme),
-            AutoSize  = true,
-            Location  = new Point(Padding, 10),
-        };
+    private void GoBack() => Navigate(BuildMainPanel());
 
-        string domain = info.Domain;
-        var domainLbl = new Label
-        {
-            Text      = domain,
-            Font      = new Font("Segoe UI Semibold", 10f, FontStyle.Bold),
-            ForeColor = theme.Text,
-            AutoSize  = false,
-            Width     = PopupWidth - Padding * 3 - 22,
-            Height    = 20,
-            Location  = new Point(Padding + 26, 8),
-            TextAlign = ContentAlignment.MiddleLeft,
-        };
+    private void UpdateSize()
+    {
+        // Let the panel compute its preferred height from its controls
+        int h = _currentPanel.Controls.Cast<Control>().Sum(c => c.Height) + 2;
+        ClientSize = new Size(W, Math.Max(80, h));
+        _currentPanel.Bounds = new Rectangle(0, 0, W, h);
+    }
 
-        var statusLbl = new Label
-        {
-            Text      = info.StatusText,
-            Font      = new Font("Segoe UI", 8.5f),
-            ForeColor = info.StatusColor(theme),
-            AutoSize  = false,
-            Width     = PopupWidth - Padding * 2,
-            Height    = 16,
-            Location  = new Point(Padding + 26, 28),
-            TextAlign = ContentAlignment.MiddleLeft,
-        };
+    // ── Main panel ────────────────────────────────────────────────────────────
 
-        header.Controls.Add(glyphLbl);
-        header.Controls.Add(domainLbl);
-        header.Controls.Add(statusLbl);
-
-        // ── Divider ───────────────────────────────────────────────────────────
-        var divider = new Panel
-        {
-            Dock      = DockStyle.Top,
-            Height    = 1,
-            BackColor = theme.Border,
-        };
-
-        // ── Rows ──────────────────────────────────────────────────────────────
-        var rowsPanel = new Panel
-        {
-            Dock      = DockStyle.Fill,
-            BackColor = theme.MenuBackground,
-        };
-
+    private Panel BuildMainPanel()
+    {
+        var p = new Panel { AutoSize = false, BackColor = _theme.MenuBackground };
         int y = 0;
-        foreach (var (glyph, glyphFont, label, detail) in rows)
+
+        // Header
+        var header = BuildHeader();
+        header.Location = new Point(0, y);
+        p.Controls.Add(header);
+        y += header.Height;
+
+        // Divider
+        p.Controls.Add(MakeDivider(y)); y += 1;
+
+        // Rows
+        foreach (var row in BuildMainRows())
         {
-            var row = BuildRow(glyph, glyphFont, label, detail, y, theme);
-            rowsPanel.Controls.Add(row);
-            y += RowHeight;
+            row.Location = new Point(0, y);
+            p.Controls.Add(row);
+            y += row.Height;
         }
 
-        inner.Controls.Add(rowsPanel);
-        inner.Controls.Add(divider);
-        inner.Controls.Add(header);
-        border.Controls.Add(inner);
-        Controls.Add(border);
+        p.Height = y;
+        return p;
+    }
 
-        // Dismiss on lost activation
-        Deactivate += (_, _) => Close();
+    private Panel BuildHeader()
+    {
+        var h = new Panel { Height = HeaderH, BackColor = _theme.MenuBackground };
+
+        var glyphLbl = MakeLabel(_info.Glyph, new Font("Segoe MDL2 Assets", 13f),
+                                  _info.GlyphColor(_theme), new Rectangle(Pad, 10, 22, 22));
+
+        var domainLbl = MakeLabel(_info.Domain, new Font("Segoe UI", 10f, FontStyle.Bold),
+                                   _theme.Text, new Rectangle(Pad + 26, 8, W - Pad * 2 - 26, 22));
+        domainLbl.TextAlign = ContentAlignment.MiddleLeft;
+
+        var statusLbl = MakeLabel(_info.StatusText, new Font("Segoe UI", SmallFont),
+                                   _info.StatusColor(_theme), new Rectangle(Pad + 26, 32, W - Pad * 2 - 26, 18));
+        statusLbl.TextAlign = ContentAlignment.MiddleLeft;
+
+        h.Controls.Add(glyphLbl);
+        h.Controls.Add(domainLbl);
+        h.Controls.Add(statusLbl);
+        return h;
+    }
+
+    private IEnumerable<Panel> BuildMainRows()
+    {
+        // 1. Certificate / connection
+        string certLabel = _info.IsHttps  ? "Certificate is valid"        :
+                           _info.IsHttp   ? "Connection is not secure"     :
+                           _info.IsFile   ? "Viewing a local file"         :
+                                            _info.Protocol + ":// page";
+        string certGlyph = _info.IsHttps  ? "\uE72E" :
+                           _info.IsFile   ? "\uE8A5" : "\uE946";
+        Color  certColor = _info.IsHttps  ? Color.FromArgb(0, 160, 80)
+                         : _info.IsHttp   ? Color.FromArgb(200, 110, 0)
+                         :                  Color.FromArgb(120, _theme.Text.R, _theme.Text.G, _theme.Text.B);
+        yield return BuildRow(certGlyph, certLabel, null, certColor, () => Navigate(BuildCertPanel()));
+
+        // 2. Cookies — load count async, show "…" until ready
+        var cookieRow = BuildRow("\uE8C1", "Cookies and site data", "…",
+                                  null, () => Navigate(BuildCookiesPanel()));
+        yield return cookieRow;
+        if (_cw != null)
+            _ = LoadCookieCountAsync(cookieRow);
+
+        // 3. Trackers
+        string trackerDetail = _blockCount == 0 ? "None blocked" : $"{_blockCount} blocked";
+        yield return BuildRow("\uE711", "Trackers blocked (session)", trackerDetail,
+                               null, () => Navigate(BuildTrackersPanel()));
+
+        // 4. Permissions
+        yield return BuildRow("\uE770", "Permissions for this site", null,
+                               null, () => Navigate(BuildPermissionsPanel()));
+    }
+
+    private async Task LoadCookieCountAsync(Panel cookieRow)
+    {
+        try
+        {
+            var cookies = await _cw!.CookieManager
+                .GetCookiesAsync(_info.Url).ConfigureAwait(false);
+            int n = cookies?.Count ?? 0;
+            string text = n == 0 ? "None in use" : n == 1 ? "1 in use" : $"{n} in use";
+            if (!IsDisposed && cookieRow.IsHandleCreated)
+                cookieRow.BeginInvoke(() =>
+                {
+                    foreach (Control c in cookieRow.Controls)
+                        if (c.Tag is string t && t == "detail")
+                            c.Text = text;
+                });
+        }
+        catch { /* swallow — cookie API unavailable */ }
+    }
+
+    // ── Detail panels ─────────────────────────────────────────────────────────
+
+    private Panel BuildCertPanel()
+    {
+        var rows = new List<(string, string)>
+        {
+            ("Connection",  _info.IsHttps ? "TLS encrypted (HTTPS)" : _info.IsHttp ? "Not encrypted (HTTP)" : _info.Protocol),
+            ("Host",        _info.Domain),
+        };
+        if (_info.IsHttps)
+            rows.Add(("Issued to",  _info.Domain));
+
+        return BuildDetailPanel("Certificate", rows);
+    }
+
+    private Panel BuildCookiesPanel()
+    {
+        var detail = new List<(string, string)>
+        {
+            ("Site",    _info.Domain),
+            ("Status",  "Loading…"),
+        };
+        var p = BuildDetailPanel("Cookies and site data", detail);
+
+        // Async-fill the cookie list
+        if (_cw != null)
+            _ = FillCookieDetailAsync(p);
+
+        return p;
+    }
+
+    private async Task FillCookieDetailAsync(Panel p)
+    {
+        try
+        {
+            var cookies = await _cw!.CookieManager
+                .GetCookiesAsync(_info.Url).ConfigureAwait(false);
+            if (cookies == null || IsDisposed) return;
+
+            string summary = cookies.Count == 0 ? "No cookies in use"
+                           : cookies.Count == 1  ? "1 cookie in use"
+                           : $"{cookies.Count} cookies in use";
+
+            var distinct = cookies
+                .Select(c => c.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
+
+            if (!IsDisposed && p.IsHandleCreated)
+                p.BeginInvoke(() => ReplaceCookieDetail(p, summary, distinct));
+        }
+        catch { }
+    }
+
+    private void ReplaceCookieDetail(Panel p, string summary, List<string> names)
+    {
+        // Find and replace the status row label
+        foreach (Control c in p.Controls)
+        {
+            if (c.Tag is string t && t == "detail-status")
+            {
+                c.Text = summary;
+                break;
+            }
+        }
+
+        // Append cookie name rows below existing controls
+        int y = p.Controls.Cast<Control>().Max(c => c.Bottom) + 2;
+        foreach (string name in names)
+        {
+            var lbl = MakeLabel("  · " + name, new Font("Segoe UI", SmallFont),
+                                 Color.FromArgb(160, _theme.Text.R, _theme.Text.G, _theme.Text.B),
+                                 new Rectangle(Pad + GlyphColW, y, W - Pad * 2 - GlyphColW, 20));
+            lbl.TextAlign = ContentAlignment.MiddleLeft;
+            p.Controls.Add(lbl);
+            y += 20;
+        }
+        p.Height = y + 8;
+        UpdateSize();
+    }
+
+    private Panel BuildTrackersPanel()
+    {
+        string status = _blockCount == 0 ? "No trackers blocked this session"
+                      : $"{_blockCount} tracker{(_blockCount == 1 ? "" : "s")} blocked this session";
+        var detail = new List<(string, string)>
+        {
+            ("Tracking prevention", "Enabled (blocklists)"),
+            ("Blocked this session", _blockCount.ToString()),
+            ("Status", status),
+        };
+        return BuildDetailPanel("Tracker blocking", detail);
+    }
+
+    private Panel BuildPermissionsPanel()
+    {
+        var detail = new List<(string, string)>
+        {
+            ("Camera",          "Ask (default)"),
+            ("Microphone",      "Ask (default)"),
+            ("Location",        "Ask (default)"),
+            ("Notifications",   "Ask (default)"),
+            ("JavaScript",      "Allowed"),
+            ("Cookies",         "Allowed"),
+        };
+        return BuildDetailPanel("Permissions for this site", detail);
+    }
+
+    private Panel BuildDetailPanel(string title, List<(string Key, string Val)> rows)
+    {
+        var p = new Panel { AutoSize = false, BackColor = _theme.MenuBackground };
+        int y = 0;
+
+        // Back button row
+        var backBtn = new Button
+        {
+            Text      = "‹  " + title,
+            FlatStyle = FlatStyle.Flat,
+            Font      = new Font("Segoe UI", MedFont, FontStyle.Bold),
+            ForeColor = _theme.Accent,
+            BackColor = _theme.MenuBackground,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Location  = new Point(0, 0),
+            Size      = new Size(W, 38),
+            Cursor    = Cursors.Hand,
+        };
+        backBtn.FlatAppearance.BorderSize = 0;
+        backBtn.FlatAppearance.MouseOverBackColor = Color.FromArgb(20, _theme.Text);
+        backBtn.Click += (_, _) => GoBack();
+        p.Controls.Add(backBtn);
+        y += 38;
+
+        p.Controls.Add(MakeDivider(y)); y += 1;
+
+        foreach (var (key, val) in rows)
+        {
+            int rowY = y;
+            var keyLbl = MakeLabel(key, new Font("Segoe UI", SmallFont),
+                                    Color.FromArgb(160, _theme.Text.R, _theme.Text.G, _theme.Text.B),
+                                    new Rectangle(Pad, rowY, 120, RowH));
+            keyLbl.TextAlign = ContentAlignment.MiddleLeft;
+
+            var valLbl = MakeLabel(val, new Font("Segoe UI", SmallFont),
+                                    _theme.Text,
+                                    new Rectangle(Pad + 124, rowY, W - Pad * 2 - 124, RowH));
+            valLbl.TextAlign = ContentAlignment.MiddleLeft;
+            if (key == "Status") valLbl.Tag = "detail-status";
+
+            p.Controls.Add(keyLbl);
+            p.Controls.Add(valLbl);
+            y += RowH;
+        }
+
+        p.Height = y + 8;
+        return p;
     }
 
     // ── Row builder ───────────────────────────────────────────────────────────
 
-    private static Panel BuildRow(string glyph, Font glyphFont, string label, string? detail,
-                                   int y, Theme theme)
+    private Panel BuildRow(string glyph, string label, string? detail, Color? glyphColor, Action onClick)
     {
         var row = new Panel
         {
-            Location  = new Point(0, y),
-            Size      = new Size(PopupWidth, RowHeight),
-            BackColor = theme.MenuBackground,
+            Size      = new Size(W, RowH),
+            BackColor = _theme.MenuBackground,
+            Cursor    = Cursors.Hand,
         };
 
-        var glyphLbl = new Label
-        {
-            Text      = glyph,
-            Font      = glyphFont,
-            ForeColor = Color.FromArgb(160, theme.Text),
-            AutoSize  = false,
-            Size      = new Size(24, RowHeight),
-            Location  = new Point(Padding, 0),
-            TextAlign = ContentAlignment.MiddleCenter,
-        };
+        var glyphLbl = MakeLabel(glyph, new Font("Segoe MDL2 Assets", 10f),
+                                  glyphColor ?? Color.FromArgb(140, _theme.Text.R, _theme.Text.G, _theme.Text.B),
+                                  new Rectangle(Pad, 0, GlyphColW, RowH));
+        glyphLbl.TextAlign = ContentAlignment.MiddleCenter;
 
-        var labelLbl = new Label
-        {
-            Text      = label,
-            Font      = new Font("Segoe UI", 8.5f),
-            ForeColor = theme.Text,
-            AutoSize  = false,
-            Location  = new Point(Padding + 26, 0),
-            Size      = new Size(detail != null ? 155 : 230, RowHeight),
-            TextAlign = ContentAlignment.MiddleLeft,
-        };
+        int labelW = detail != null ? 160 : W - Pad * 2 - GlyphColW - 18;
+        var labelLbl = MakeLabel(label, new Font("Segoe UI", SmallFont), _theme.Text,
+                                  new Rectangle(Pad + GlyphColW, 0, labelW, RowH));
+        labelLbl.TextAlign = ContentAlignment.MiddleLeft;
+
+        var chevron = MakeLabel("\uE76C", new Font("Segoe MDL2 Assets", 8f),
+                                 Color.FromArgb(120, _theme.Text.R, _theme.Text.G, _theme.Text.B),
+                                 new Rectangle(W - Pad - 14, 0, 14, RowH));
+        chevron.TextAlign = ContentAlignment.MiddleRight;
 
         row.Controls.Add(glyphLbl);
         row.Controls.Add(labelLbl);
+        row.Controls.Add(chevron);
 
         if (detail != null)
         {
-            var detailLbl = new Label
-            {
-                Text      = detail,
-                Font      = new Font("Segoe UI", 8.5f),
-                ForeColor = Color.FromArgb(160, theme.Text),
-                AutoSize  = false,
-                Location  = new Point(Padding + 26 + 160, 0),
-                Size      = new Size(PopupWidth - Padding * 2 - 186, RowHeight),
-                TextAlign = ContentAlignment.MiddleRight,
-            };
+            var detailLbl = MakeLabel(detail, new Font("Segoe UI", SmallFont),
+                                       Color.FromArgb(140, _theme.Text.R, _theme.Text.G, _theme.Text.B),
+                                       new Rectangle(Pad + GlyphColW + labelW, 0, W - Pad * 2 - GlyphColW - labelW - 18, RowH));
+            detailLbl.TextAlign = ContentAlignment.MiddleRight;
+            detailLbl.Tag = "detail";
             row.Controls.Add(detailLbl);
         }
 
-        // Subtle hover highlight
-        row.MouseEnter += (_, _) => row.BackColor = Color.FromArgb(20, theme.Text);
-        row.MouseLeave += (_, _) => row.BackColor = theme.MenuBackground;
-        foreach (Control c in row.Controls)
-        {
-            c.MouseEnter += (_, _) => row.BackColor = Color.FromArgb(20, theme.Text);
-            c.MouseLeave += (_, _) => row.BackColor = theme.MenuBackground;
-        }
+        // Hover + click on whole row including all child labels
+        Action<object?, EventArgs> hover = (_, _) => row.BackColor = Color.FromArgb(20, _theme.Text);
+        Action<object?, EventArgs> leave = (_, _) => row.BackColor = _theme.MenuBackground;
+        Action<object?, EventArgs> click = (_, _) => onClick();
+        ApplyToAll(row, hover, leave, click);
 
         return row;
     }
 
-    // ── Row content ───────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static System.Collections.Generic.List<(string, Font, string, string?)>
-        BuildRows(SiteProtocolInfo info, long blockCount)
+    private static Label MakeLabel(string text, Font font, Color fore, Rectangle bounds)
     {
-        var mdl2  = new Font("Segoe MDL2 Assets", 10f);
-        var emoji = new Font("Segoe UI Symbol", 10f);
-
-        var rows = new System.Collections.Generic.List<(string, Font, string, string?)>();
-
-        // Security detail row
-        if (info.IsHttps)
+        return new Label
         {
-            rows.Add(("\uE72E", mdl2, "Certificate is valid", null));
-        }
-        else if (info.IsHttp)
-        {
-            rows.Add(("\uE946", mdl2, "Your connection is not secure", null));
-        }
-        else if (info.IsFile)
-        {
-            rows.Add(("\uE8A5", mdl2, "Viewing a local file", null));
-        }
-        else
-        {
-            rows.Add(("\uE946", mdl2, info.Protocol, null));
-        }
-
-        // Trackers row
-        string blockedText = blockCount == 0 ? "None blocked" : $"{blockCount} blocked";
-        rows.Add(("\uE711", mdl2, "Trackers blocked this session", blockedText));
-
-        // Cookies row (static info)
-        rows.Add(("\uE8C1", mdl2, "Cookies and site data", null));
-
-        // Permissions row
-        rows.Add(("\uE770", mdl2, "Permissions for this site", null));
-
-        return rows;
+            Text      = text,
+            Font      = font,
+            ForeColor = fore,
+            AutoSize  = false,
+            Bounds    = bounds,
+        };
     }
 
-    // ── Keyboard dismiss ─────────────────────────────────────────────────────
+    private Panel MakeDivider(int y)
+    {
+        return new Panel
+        {
+            Location  = new Point(0, y),
+            Size      = new Size(W, 1),
+            BackColor = _theme.Border,
+        };
+    }
+
+    private static void ApplyToAll(Panel row,
+        Action<object?, EventArgs> enter, Action<object?, EventArgs> leave,
+        Action<object?, EventArgs> click)
+    {
+        row.MouseEnter += new EventHandler(enter);
+        row.MouseLeave += new EventHandler(leave);
+        row.Click      += new EventHandler(click);
+        foreach (Control c in row.Controls)
+        {
+            c.MouseEnter += new EventHandler(enter);
+            c.MouseLeave += new EventHandler(leave);
+            c.Click      += new EventHandler(click);
+        }
+    }
+
     protected override bool ProcessDialogKey(Keys keyData)
     {
         if (keyData == Keys.Escape) { Close(); return true; }
@@ -241,64 +429,39 @@ internal sealed class SiteInfoPopup : Form
     }
 }
 
-// ── Protocol info helper ──────────────────────────────────────────────────────
+// ── Protocol/domain info ──────────────────────────────────────────────────────
 
 internal sealed record SiteProtocolInfo(
-    string Url,
-    string Protocol,
-    string Domain,
-    string Glyph,       // Segoe MDL2 Assets char
-    string StatusText,
-    bool IsHttps,
-    bool IsHttp,
-    bool IsFile)
+    string Url, string Protocol, string Domain,
+    string Glyph, string StatusText,
+    bool IsHttps, bool IsHttp, bool IsFile)
 {
     internal static SiteProtocolInfo From(string url)
     {
-        if (string.IsNullOrWhiteSpace(url))
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
             return Unknown(url);
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-            return Unknown(url);
-
-        string scheme = uri.Scheme.ToLowerInvariant();
-
-        return scheme switch
+        return uri.Scheme.ToLowerInvariant() switch
         {
-            "https" => new SiteProtocolInfo(url, "HTTPS", uri.Host,
-                           "\uE72E", "Connection is secure",
-                           true, false, false),
-
-            "http"  => new SiteProtocolInfo(url, "HTTP", uri.Host,
-                           "\uE946", "Connection is not secure",
-                           false, true, false),
-
-            "file"  => new SiteProtocolInfo(url, "file", "Local file",
-                           "\uE8A5", "You are viewing a local file",
-                           false, false, true),
-
-            "about" => new SiteProtocolInfo(url, "about", url,
-                           "\uE946", "Browser internal page",
-                           false, false, false),
-
-            _       => new SiteProtocolInfo(url, scheme, uri.Host.Length > 0 ? uri.Host : url,
-                           "\uE946", $"{scheme}:// page",
-                           false, false, false),
+            "https" => new(url, "HTTPS", uri.Host, "\uE72E", "Connection is secure",   true,  false, false),
+            "http"  => new(url, "HTTP",  uri.Host, "\uE946", "Connection is not secure", false, true,  false),
+            "file"  => new(url, "file",  "Local file", "\uE8A5", "Viewing a local file", false, false, true),
+            "about" => new(url, "about", url, "\uE946", "Browser internal page", false, false, false),
+            var s   => new(url, s, uri.Host.Length > 0 ? uri.Host : url, "\uE946", $"{s}:// page", false, false, false),
         };
     }
 
     private static SiteProtocolInfo Unknown(string url) =>
-        new(url, "", url.Length > 40 ? url[..40] + "…" : url,
-            "\uE946", "", false, false, false);
+        new(url, "", url.Length > 40 ? url[..40] + "…" : url, "\uE946", "", false, false, false);
 
-    internal Color GlyphColor(Theme theme) =>
-        IsHttps  ? Color.FromArgb(0, 160, 80)   :
-        IsHttp   ? Color.FromArgb(200, 120, 0)  :
-        IsFile   ? Color.FromArgb(80, 140, 200) :
-                   Color.FromArgb(140, theme.Text.R, theme.Text.G, theme.Text.B);
+    internal Color GlyphColor(Theme t) =>
+        IsHttps ? Color.FromArgb(0, 160, 80) :
+        IsHttp  ? Color.FromArgb(200, 120, 0) :
+        IsFile  ? Color.FromArgb(80, 140, 200) :
+                  Color.FromArgb(140, t.Text.R, t.Text.G, t.Text.B);
 
-    internal Color StatusColor(Theme theme) =>
-        IsHttps  ? Color.FromArgb(0, 160, 80)  :
-        IsHttp   ? Color.FromArgb(200, 100, 0) :
-                   Color.FromArgb(160, theme.Text.R, theme.Text.G, theme.Text.B);
+    internal Color StatusColor(Theme t) =>
+        IsHttps ? Color.FromArgb(0, 160, 80) :
+        IsHttp  ? Color.FromArgb(200, 100, 0) :
+                  Color.FromArgb(160, t.Text.R, t.Text.G, t.Text.B);
 }

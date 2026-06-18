@@ -1292,7 +1292,8 @@ internal sealed class BrowserPanel : UserControl
         string url = _webView?.CoreWebView2?.Source ?? _addressBar.Text;
         long blocked = ContentFilterService.Instance.SessionBlockedCount;
 
-        var popup = new SiteInfoPopup(url, blocked, _currentTheme);
+        var cw = _webView?.CoreWebView2;
+        var popup = new SiteInfoPopup(url, blocked, _currentTheme, cw);
 
         // Position below the address bar panel
         var pt = _addressBarPanel.PointToScreen(new Point(0, _addressBarPanel.Height + 2));
