@@ -49,6 +49,14 @@ internal sealed class BrowserPanel : UserControl
     private Panel? _initPanel;      // spinner shown during WebView2 init
     private Panel? _fallbackPanel;  // shown if WebView2 runtime is missing
 
+    // ── Zoom indicator (status bar) ───────────────────────────────────────────
+    private Panel? _zoomPanel;
+    private Label? _zoomLabel;
+    private Button? _zoomOutBtn;
+    private Button? _zoomInBtn;
+    private Button? _zoomResetBtn;
+    private readonly System.Windows.Forms.Timer _zoomHideTimer;
+
     // ── State ─────────────────────────────────────────────────────────────────
     private bool _initialized;
     private bool _webViewReady;
@@ -85,6 +93,13 @@ internal sealed class BrowserPanel : UserControl
     public BrowserPanel()
     {
         _currentTheme = ThemeManager.Instance.CurrentTheme;
+
+        _zoomHideTimer = new System.Windows.Forms.Timer { Interval = 3000 };
+        _zoomHideTimer.Tick += (_, _) =>
+        {
+            _zoomHideTimer.Stop();
+            if (_zoomPanel != null) _zoomPanel.Visible = false;
+        };
 
         // ── Toolbar ──────────────────────────────────────────────────────────
         _toolbar = new Panel
@@ -193,6 +208,48 @@ internal sealed class BrowserPanel : UserControl
         };
         _statusBar.Controls.Add(_statusLabel);
         _statusBar.Controls.Add(_blockedLabel);
+
+        // ── Zoom indicator widget ─────────────────────────────────────────────
+        _zoomLabel = new Label
+        {
+            Text = "100%",
+            AutoSize = false,
+            Width = 40,
+            Dock = DockStyle.Left,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 8f, FontStyle.Bold),
+        };
+        _zoomOutBtn = MakeZoomBtn("−", "Zoom out (Ctrl+−)");
+        _zoomInBtn  = MakeZoomBtn("+", "Zoom in (Ctrl++)");
+        _zoomResetBtn = MakeZoomBtn("Reset", "Reset zoom to default");
+        _zoomResetBtn.Width = 42;
+
+        _zoomOutBtn.Click  += (_, _) => AdjustZoom(-0.1);
+        _zoomInBtn.Click   += (_, _) => AdjustZoom(+0.1);
+        _zoomResetBtn.Click += (_, _) => SetZoom(_defaultZoom);
+
+        var zoomFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Padding = new Padding(2, 0, 2, 0),
+            Margin = new Padding(0),
+        };
+        zoomFlow.Controls.Add(_zoomLabel);
+        zoomFlow.Controls.Add(_zoomOutBtn);
+        zoomFlow.Controls.Add(_zoomInBtn);
+        zoomFlow.Controls.Add(_zoomResetBtn);
+
+        _zoomPanel = new Panel
+        {
+            Dock = DockStyle.Right,
+            Width = 152,
+            Visible = false,
+        };
+        _zoomPanel.Controls.Add(zoomFlow);
+        _statusBar.Controls.Add(_zoomPanel);
+
         _statusBar.Controls.Add(_openExternalBtn);
 
         // ── Content area (holds init placeholder, WebView2, or fallback) ────────
@@ -491,6 +548,9 @@ internal sealed class BrowserPanel : UserControl
                 SetStatus(cw.DocumentTitle);
                 PageTitleChanged?.Invoke(cw.DocumentTitle);
             });
+
+        _webView.ZoomFactorChanged += (_, _) =>
+            BeginInvoke(() => ShowZoomIndicator(_webView.ZoomFactor));
 
         // ── Sub-resource content filtering (scripts, images, XHR, etc.) ──────
         cw.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
@@ -903,6 +963,12 @@ internal sealed class BrowserPanel : UserControl
             _addressBar.SelectAll();
             return true;
         }
+        if (keyData == (Keys.Control | Keys.Oemplus) || keyData == (Keys.Control | Keys.Add))
+        { AdjustZoom(+0.1); return true; }
+        if (keyData == (Keys.Control | Keys.OemMinus) || keyData == (Keys.Control | Keys.Subtract))
+        { AdjustZoom(-0.1); return true; }
+        if (keyData == (Keys.Control | Keys.D0) || keyData == (Keys.Control | Keys.NumPad0))
+        { SetZoom(_defaultZoom); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -939,6 +1005,19 @@ internal sealed class BrowserPanel : UserControl
             if (c is TableLayoutPanel tlp)
                 foreach (Control btn in tlp.Controls)
                     if (btn is Button b) ApplyToolButton(b, theme);
+
+        if (_zoomPanel != null)
+        {
+            _zoomPanel.BackColor = theme.MenuBackground;
+            if (_zoomLabel != null) { _zoomLabel.ForeColor = theme.Text; _zoomLabel.BackColor = theme.MenuBackground; }
+            foreach (var btn in new[] { _zoomOutBtn, _zoomInBtn, _zoomResetBtn })
+            {
+                if (btn == null) continue;
+                btn.BackColor = theme.MenuBackground;
+                btn.ForeColor = theme.Text;
+                btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(40, theme.Text);
+            }
+        }
 
         ApplyToolButton(_openExternalBtn, theme);
 
@@ -985,6 +1064,52 @@ internal sealed class BrowserPanel : UserControl
     }
 
     private readonly ToolTip _toolTip = new();
+
+    private void ShowZoomIndicator(double factor)
+    {
+        if (_zoomLabel == null || _zoomPanel == null) return;
+        _zoomLabel.Text = $"{(int)Math.Round(factor * 100)}%";
+        _zoomPanel.Visible = true;
+        _zoomHideTimer.Stop();
+        _zoomHideTimer.Start();
+    }
+
+    private void AdjustZoom(double delta)
+    {
+        if (_webView == null || !_webViewReady) return;
+        double steps = delta > 0
+            ? new[] { 0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0 }
+                .FirstOrDefault(s => s > _webView.ZoomFactor + 0.01, 5.0)
+            : new[] { 5.0, 4.0, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.1, 1.0, 0.9, 0.8, 0.75, 0.67, 0.5, 0.33, 0.25 }
+                .FirstOrDefault(s => s < _webView.ZoomFactor - 0.01, 0.25);
+        SetZoom(steps);
+    }
+
+    private void SetZoom(double factor)
+    {
+        if (_webView == null || !_webViewReady) return;
+        _webView.ZoomFactor = Math.Clamp(factor, 0.25, 5.0);
+    }
+
+    private Button MakeZoomBtn(string text, string tip)
+    {
+        var btn = new Button
+        {
+            Text = text,
+            AutoSize = false,
+            Width = 24,
+            Height = 18,
+            Dock = DockStyle.Left,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 8f),
+            Cursor = Cursors.Hand,
+            Margin = new Padding(1, 0, 1, 0),
+            TextAlign = ContentAlignment.MiddleCenter,
+        };
+        btn.FlatAppearance.BorderSize = 0;
+        _toolTip.SetToolTip(btn, tip);
+        return btn;
+    }
 
     /// <summary>
     /// Creates an owner-drawn navigation button with Edge-style rounded hover highlight
