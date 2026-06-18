@@ -1008,10 +1008,10 @@ internal sealed class BrowserPanel : UserControl
 
     private void UpdateDarkModeButton()
     {
-        // Accent blue when active, normal foreground when inactive.
-        _darkModeBtn.ForeColor = _darkModeActive
-            ? Color.FromArgb(0, 153, 204)
-            : _currentTheme.Text;
+        // Swap glyph: crescent moon when off (invite to go dark),
+        // sunrays when on (invite to go back to light).
+        _darkModeBtn.Tag = _darkModeActive ? "\uE706" : "\uE793";
+        _toolTip.SetToolTip(_darkModeBtn, _darkModeActive ? "Restore page to original colors" : "Make page dark");
         _darkModeBtn.Invalidate();
     }
 
