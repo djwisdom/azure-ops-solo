@@ -85,11 +85,13 @@ internal sealed class FavoritesManagerPanel : UserControl
             Dock = DockStyle.Fill,
             FixedPanel = FixedPanel.None,
             IsSplitterFixed = false,
-            SplitterDistance = 200,
             SplitterWidth = 5,
             Panel1MinSize = 120,
             Panel2MinSize = 200,
         };
+        // SplitterDistance cannot be set before the control has real width;
+        // set it once on the first layout pass instead.
+        _splitContainer.Layout += OnSplitContainerFirstLayout;
         _splitContainer.Panel1.Controls.Add(_folderTree);
         _splitContainer.Panel2.Controls.Add(_itemsList);
 
@@ -155,6 +157,15 @@ internal sealed class FavoritesManagerPanel : UserControl
         }
 
         base.Dispose(disposing);
+    }
+
+    private void OnSplitContainerFirstLayout(object? sender, LayoutEventArgs e)
+    {
+        if (_splitContainer.Width <= _splitContainer.Panel1MinSize + _splitContainer.Panel2MinSize + _splitContainer.SplitterWidth)
+            return;
+
+        _splitContainer.Layout -= OnSplitContainerFirstLayout;  // one-shot
+        _splitContainer.SplitterDistance = Math.Max(_splitContainer.Panel1MinSize, 220);
     }
 
     private void WireEvents()
