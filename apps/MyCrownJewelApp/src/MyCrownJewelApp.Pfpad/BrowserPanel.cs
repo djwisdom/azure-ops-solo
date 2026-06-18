@@ -1117,6 +1117,7 @@ internal sealed class BrowserPanel : UserControl
     {
         if (_webView == null || !_webViewReady) return;
         _webView.ZoomFactor = Math.Clamp(factor, 0.25, 5.0);
+        ShowZoomIndicator(_webView.ZoomFactor);
     }
 
     private Label MakeZoomBtn(string text, string tip, Rectangle bounds, Font font)
