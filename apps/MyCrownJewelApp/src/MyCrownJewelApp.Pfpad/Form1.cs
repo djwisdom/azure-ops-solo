@@ -2857,7 +2857,7 @@ using Microsoft.Extensions.DependencyInjection;
                 _secWriteStartupLog = settings.SecWriteStartupLog;
                 _secLogRetentionDays = settings.SecLogRetentionDays;
                 _secHighlightHardcodedSecrets = settings.SecHighlightHardcodedSecrets;
-                // Window settings
+                SecurityEnforcementService.CurrentProfile = _securityProfile;
                 _winRememberBounds = settings.WinRememberBounds;
                 _winLaunchMaximized = settings.WinLaunchMaximized;
                 _winRestoreSession = settings.WinRestoreSession;
