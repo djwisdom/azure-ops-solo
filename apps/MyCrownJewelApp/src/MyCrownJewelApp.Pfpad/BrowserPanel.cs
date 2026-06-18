@@ -1131,6 +1131,7 @@ internal sealed class BrowserPanel : UserControl
             Font = font,
             Cursor = Cursors.Hand,
             TextAlign = ContentAlignment.MiddleCenter,
+            Padding = Padding.Empty,   // remove default internal padding that bottom-clips text
         };
         btn.FlatAppearance.BorderSize = 1;
         _toolTip.SetToolTip(btn, tip);
