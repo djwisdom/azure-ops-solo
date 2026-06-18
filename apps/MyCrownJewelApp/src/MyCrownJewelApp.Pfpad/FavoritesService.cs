@@ -117,6 +117,22 @@ public sealed class FavoritesService
         PersistAndNotify();
     }
 
+    /// <summary>
+    /// Swaps the display order of two siblings in a single save + Changed notification.
+    /// Used by Move Up / Move Down so the list rebuilds only once.
+    /// </summary>
+    public void SwapOrder(string idA, string idB)
+    {
+        var a = FindById(idA);
+        var b = FindById(idB);
+        if (a == null || b == null) return;
+
+        int orderA = a.Order;
+        SetItem(a with { Order = b.Order });
+        SetItem(b with { Order = orderA });
+        PersistAndNotify();
+    }
+
     public void Move(string id, string? newParentId, int newOrder)
     {
         var item = FindById(id);

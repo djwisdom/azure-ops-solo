@@ -23,6 +23,7 @@ internal sealed class FavoritesManagerPanel : UserControl
     private readonly ContextMenuStrip _listMenu;
     private readonly ContextMenuStrip _treeMenu;
     private Theme _theme;
+    private string? _pendingRestoreId;   // item to re-select after next RefreshList
 
     public FavoritesManagerPanel(Action<string> navigateCallback, Theme theme)
     {
@@ -230,6 +231,12 @@ internal sealed class FavoritesManagerPanel : UserControl
         };
 
         _itemsList.MouseDoubleClick += (_, _) => OpenSelectedListItem();
+        _itemsList.KeyDown += (_, e) =>
+        {
+            // Alt+Up / Alt+Down moves the selected item without leaving the list
+            if (e.Alt && e.KeyCode == Keys.Up)   { MoveSelectedItem(-1); e.Handled = true; }
+            if (e.Alt && e.KeyCode == Keys.Down) { MoveSelectedItem(+1); e.Handled = true; }
+        };
         _itemsList.MouseUp += (_, e) =>
         {
             if (e.Button != MouseButtons.Right)
@@ -330,6 +337,21 @@ internal sealed class FavoritesManagerPanel : UserControl
                 var row = new ListViewItem(displayName) { Tag = item };
                 row.SubItems.Add(item.Url ?? "");
                 _itemsList.Items.Add(row);
+            }
+
+            // Restore selection after a Move Up / Move Down rebuild
+            if (_pendingRestoreId != null)
+            {
+                foreach (ListViewItem lvi in _itemsList.Items)
+                {
+                    if (lvi.Tag is FavItem fi && fi.Id == _pendingRestoreId)
+                    {
+                        lvi.Selected = true;
+                        lvi.EnsureVisible();
+                        break;
+                    }
+                }
+                _pendingRestoreId = null;
             }
         }
         finally
@@ -486,10 +508,9 @@ internal sealed class FavoritesManagerPanel : UserControl
         int newIdx = idx + direction;
         if (newIdx < 0 || newIdx >= siblings.Count) return;
 
-        // Swap orders with the neighbour
-        var neighbour = siblings[newIdx];
-        FavoritesService.Instance.Move(selected.Id, parentId, neighbour.Order);
-        FavoritesService.Instance.Move(neighbour.Id, parentId, selected.Order);
+        _pendingRestoreId = selected.Id;   // restore selection after rebuild
+        FavoritesService.Instance.SwapOrder(selected.Id, siblings[newIdx].Id);
+        // Changed fires once → RefreshList rebuilds → RestoreSelection picks up _pendingRestoreId
     }
 
     private void OpenSelectedListItem()
