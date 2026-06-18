@@ -1587,17 +1587,31 @@ internal sealed class BrowserPanel : UserControl
         /// <summary>
         /// Custom Label that mirrors the glyph horizontally when displaying the
         /// magnifying glass (\uE721) so it faces left like Edge's search icon.
+        /// Background is intentionally left to the parent (RoundedAddressPanel) so
+        /// the rounded corners are not clipped by a solid fill.
         /// </summary>
         private sealed class GlyphLabel : Label
         {
             private const string SearchGlyph = "\uE721";
 
+            internal GlyphLabel()
+            {
+                SetStyle(
+                    ControlStyles.UserPaint |
+                    ControlStyles.AllPaintingInWmPaint |
+                    ControlStyles.OptimizedDoubleBuffer |
+                    ControlStyles.SupportsTransparentBackColor, true);
+                BackColor = Color.Transparent;
+            }
+
+            // No-op: parent (RoundedAddressPanel) owns the background fill.
+            protected override void OnPaintBackground(PaintEventArgs e) { }
+
             protected override void OnPaint(PaintEventArgs e)
             {
                 var g = e.Graphics;
-                g.Clear(Parent?.BackColor ?? BackColor);
-                g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                g.TextRenderingHint  = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                g.SmoothingMode     = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
                 bool mirror = Text == SearchGlyph;
                 if (mirror)
