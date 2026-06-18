@@ -1584,10 +1584,42 @@ internal sealed class BrowserPanel : UserControl
     /// </summary>
     private sealed class RoundedAddressPanel : Panel
     {
+        /// <summary>
+        /// Custom Label that mirrors the glyph horizontally when displaying the
+        /// magnifying glass (\uE721) so it faces left like Edge's search icon.
+        /// </summary>
+        private sealed class GlyphLabel : Label
+        {
+            private const string SearchGlyph = "\uE721";
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.Clear(Parent?.BackColor ?? BackColor);
+                g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.TextRenderingHint  = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                bool mirror = Text == SearchGlyph;
+                if (mirror)
+                {
+                    g.TranslateTransform(Width, 0);
+                    g.ScaleTransform(-1, 1);
+                }
+                using var brush = new SolidBrush(ForeColor);
+                using var fmt   = new StringFormat
+                {
+                    Alignment     = StringAlignment.Center,
+                    LineAlignment = StringAlignment.Center,
+                };
+                g.DrawString(Text, Font, brush, new RectangleF(0, 0, Width, Height), fmt);
+                if (mirror) g.ResetTransform();
+            }
+        }
+
         internal readonly TextBox TextBox;
         internal event EventHandler? GlyphClicked;
         internal event EventHandler? StarClicked;
-        private readonly Label _glyph;
+        private readonly GlyphLabel _glyph;
         private readonly Label _star;
         private bool _focused;
         private Theme _theme;
@@ -1597,7 +1629,7 @@ internal sealed class BrowserPanel : UserControl
             _theme = initialTheme;
 
             // Site-info glyph — left of the text box
-            _glyph = new Label
+            _glyph = new GlyphLabel
             {
                 Text      = "\uE721",           // Search (magnifying glass) — initial empty state
                 Font      = new Font("Segoe MDL2 Assets", 10f),
