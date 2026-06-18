@@ -1599,7 +1599,7 @@ internal sealed class BrowserPanel : UserControl
             // Site-info glyph — left of the text box
             _glyph = new Label
             {
-                Text      = "\uE946",           // info glyph (Segoe MDL2 Assets)
+                Text      = "\uE721",           // Search (magnifying glass) — initial empty state
                 Font      = new Font("Segoe MDL2 Assets", 10f),
                 ForeColor = Color.FromArgb(140, initialTheme.Text.R, initialTheme.Text.G, initialTheme.Text.B),
                 BackColor = Color.Transparent,
@@ -1638,13 +1638,41 @@ internal sealed class BrowserPanel : UserControl
                 BackColor   = initialTheme.EditorBackground,
                 ForeColor   = initialTheme.Text,
             };
-            TextBox.GotFocus  += (_, _) => { _focused = true;  Invalidate(); };
+            TextBox.GotFocus  += (_, _) => { _focused = true;  Invalidate(); UpdateGlyphForInput(TextBox.Text); };
             TextBox.LostFocus += (_, _) => { _focused = false; Invalidate(); };
+            TextBox.TextChanged += (_, _) => { if (TextBox.Focused) UpdateGlyphForInput(TextBox.Text); };
             Controls.Add(_star);
             Controls.Add(_glyph);
             Controls.Add(TextBox);
             SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
             ResizeRedraw = true;
+        }
+
+        /// <summary>Updates glyph based on what the user is currently typing.</summary>
+        private void UpdateGlyphForInput(string text)
+        {
+            bool looksLikeUrl = !string.IsNullOrWhiteSpace(text) && LooksLikeUrl(text.Trim());
+            _glyph.Text = string.IsNullOrWhiteSpace(text) || !looksLikeUrl
+                ? "\uE721"   // magnifying glass — empty or search query
+                : "\uE774";  // globe — looks like a domain/URL
+            _glyph.ForeColor = Color.FromArgb(140, _theme.Text.R, _theme.Text.G, _theme.Text.B);
+            _glyph.Cursor    = Cursors.IBeam;   // not clickable while typing
+            _glyph.Invalidate();
+            // Dim star to empty while typing
+            _star.Text      = "\uE734";
+            _star.ForeColor = Color.FromArgb(100, _theme.Text.R, _theme.Text.G, _theme.Text.B);
+            _star.Invalidate();
+        }
+
+        private static bool LooksLikeUrl(string text)
+        {
+            if (text.StartsWith("http://",  StringComparison.OrdinalIgnoreCase) ||
+                text.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                text.StartsWith("file:///", StringComparison.OrdinalIgnoreCase) ||
+                text.StartsWith("ftp://",   StringComparison.OrdinalIgnoreCase))
+                return true;
+            // Has a dot and no spaces → likely a domain (e.g. gmail.com, 192.168.1.1)
+            return text.Contains('.') && !text.Contains(' ');
         }
 
         /// <summary>Updates the glyph character and colour to match the current URL's protocol.</summary>
@@ -1653,6 +1681,7 @@ internal sealed class BrowserPanel : UserControl
             var info = SiteProtocolInfo.From(url);
             _glyph.Text      = info.Glyph;
             _glyph.ForeColor = info.GlyphColor(_theme);
+            _glyph.Cursor    = Cursors.Hand;
             _glyph.Invalidate();
         }
 
