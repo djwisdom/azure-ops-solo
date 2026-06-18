@@ -87,11 +87,12 @@ internal sealed class FavoritesManagerPanel : UserControl
             IsSplitterFixed = false,
             SplitterWidth = 5,
             Panel1MinSize = 120,
-            Panel2MinSize = 200,
+            Panel2MinSize = 150,
         };
-        // SplitterDistance cannot be set before the control has real width;
-        // set it once on the first layout pass instead.
-        _splitContainer.Layout += OnSplitContainerFirstLayout;
+        // Set SplitterDistance after the control has real width.
+        // SizeChanged fires once the parent sizes us; we clamp to the valid range
+        // and unsubscribe so it only applies the initial split once.
+        _splitContainer.SizeChanged += OnSplitContainerFirstSize;
         _splitContainer.Panel1.Controls.Add(_folderTree);
         _splitContainer.Panel2.Controls.Add(_itemsList);
 
@@ -159,13 +160,14 @@ internal sealed class FavoritesManagerPanel : UserControl
         base.Dispose(disposing);
     }
 
-    private void OnSplitContainerFirstLayout(object? sender, LayoutEventArgs e)
+    private void OnSplitContainerFirstSize(object? sender, EventArgs e)
     {
-        if (_splitContainer.Width <= _splitContainer.Panel1MinSize + _splitContainer.Panel2MinSize + _splitContainer.SplitterWidth)
-            return;
+        int min = _splitContainer.Panel1MinSize;
+        int max = _splitContainer.Width - _splitContainer.Panel2MinSize - _splitContainer.SplitterWidth;
+        if (max < min) return;               // still too narrow — wait for next event
 
-        _splitContainer.Layout -= OnSplitContainerFirstLayout;  // one-shot
-        _splitContainer.SplitterDistance = Math.Max(_splitContainer.Panel1MinSize, 220);
+        _splitContainer.SizeChanged -= OnSplitContainerFirstSize;
+        _splitContainer.SplitterDistance = Math.Clamp(220, min, max);
     }
 
     private void WireEvents()
