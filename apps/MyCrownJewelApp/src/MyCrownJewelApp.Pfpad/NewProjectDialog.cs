@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -25,165 +26,457 @@ internal sealed class NewProjectDialog : Form
     // ── Controls ──────────────────────────────────────────────────────────────
     private readonly Form1 _mainForm;
     private ComboBox _langFilter = null!;
+    private TextBox _searchBox = null!;
     private ListView _templateList = null!;
     private TextBox _nameTextBox = null!;
     private TextBox _locationTextBox = null!;
     private Button _browseButton = null!;
-    // dotnet-specific
     private CheckBox _solutionCheckBox = null!;
     private Label _frameworkLabel = null!;
     private ComboBox _frameworkCombo = null!;
-    // C/C++-specific
     private CheckBox _gitCheckBox = null!;
     private Label _standardLabel = null!;
     private ComboBox _standardCombo = null!;
-
     private Button _createButton = null!;
     private Button _cancelButton = null!;
     private Label _statusLabel = null!;
     private CheckBox _openInNewWindowCheckBox = null!;
+    private Label _tplNameLabel = null!;
+    private Label _tplTagsLabel = null!;
+    private Label _pathPreviewLabel = null!;
+    private Panel _optionsPanel = null!;
+    private Panel _templateHeaderPanel = null!;
+    private Panel _tabStripPanel = null!;
+    private Panel _footerBar = null!;
+    private string _activeLangTab = "All";
+    private readonly List<Button> _langTabButtons = new();
     private bool _creating;
 
-    private List<ProjectTemplate> _allTemplates = new();
+    private readonly List<ProjectTemplate> _allTemplates = new();
 
     public NewProjectDialog(Form1 mainForm)
     {
         _mainForm = mainForm;
         Text = "New Project";
-        Size = new Size(700, 590);
-        MinimumSize = new Size(700, 590);
+        Size = new Size(860, 620);
+        MinimumSize = new Size(720, 500);
         StartPosition = FormStartPosition.CenterParent;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
         MinimizeBox = false;
         ShowInTaskbar = false;
+        ShowIcon = false;
 
         InitializeForm();
         ApplyTheme();
         BuildBuiltInTemplates();
         LoadDotnetTemplates();
-        PopulateTemplateList("All");
+        ApplySearchAndFilter();
         LoadDotnetFrameworks();
+
+        Load += (_, _) => NativeThemed.ApplyThemeToChildScrollbars(this, !ThemeManager.Instance.CurrentTheme.IsLight);
     }
 
     private void InitializeForm()
     {
-        int y = 12;
+        var theme = ThemeManager.Instance.CurrentTheme;
 
-        // ── Language filter row ───────────────────────────────────────────────
-        var filterLabel = new Label { Text = "&Language:", Location = new Point(12, y + 3), AutoSize = true };
-        _langFilter = new ComboBox
+        SuspendLayout();
+        _langFilter = new ComboBox();
+
+        _searchBox = new TextBox
         {
-            Location = new Point(80, y),
-            Width = 120,
-            DropDownStyle = ComboBoxStyle.DropDownList
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            PlaceholderText = "🔍  Search templates…"
         };
-        _langFilter.Items.AddRange(new object[] { "All", "C#", "C", "C++", "Bicep", "Terraform", "Python", "JavaScript", "TypeScript", "Go", "Ruby", "Shell", "PowerShell", "YAML", "SQL" });
-        _langFilter.SelectedIndex = 0;
-        _langFilter.SelectedIndexChanged += (s, e) => PopulateTemplateList(_langFilter.SelectedItem as string ?? "All");
-        y += 34;
+        _searchBox.TextChanged += (_, _) => ApplySearchAndFilter();
 
-        // ── Template list ─────────────────────────────────────────────────────
-        var templateLabel = new Label { Text = "&Template:", Location = new Point(12, y), AutoSize = true };
-        y += 16;
         _templateList = new ListView
         {
-            Location = new Point(12, y),
-            Size = new Size(662, 180),
-            View = View.Details,
+            Dock = DockStyle.Fill,
+            View = View.Tile,
+            MultiSelect = false,
             FullRowSelect = true,
             HideSelection = false,
-            HeaderStyle = ColumnHeaderStyle.Clickable
+            BorderStyle = BorderStyle.None,
+            HeaderStyle = ColumnHeaderStyle.None,
+            OwnerDraw = true,
+            ShowGroups = false,
+            UseCompatibleStateImageBehavior = false,
+            TileSize = new Size(280, 48)
         };
-        _templateList.Columns.Add("Short Name", 140);
-        _templateList.Columns.Add("Template Name", 280);
-        _templateList.Columns.Add("Language", 70);
-        _templateList.Columns.Add("Tags", 140);
         _templateList.SelectedIndexChanged += TemplateList_SelectedIndexChanged;
-        y += 188;
+        _templateList.DrawItem += TemplateList_DrawItem;
+        _templateList.Resize += (_, _) => UpdateTemplateListTileSize();
 
-        // ── Project name ──────────────────────────────────────────────────────
-        var nameLabel = new Label { Text = "Project &name:", Location = new Point(12, y), AutoSize = true };
-        y += 16;
-        _nameTextBox = new TextBox { Text = "MyApp", Location = new Point(12, y), Width = 330 };
-        y += 32;
+        _nameTextBox = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 0, 0, 10),
+            Text = "MyApp"
+        };
+        _nameTextBox.TextChanged += (_, _) => UpdatePathPreview();
 
-        // ── Location ──────────────────────────────────────────────────────────
-        var locationLabel = new Label { Text = "&Location:", Location = new Point(12, y), AutoSize = true };
-        y += 16;
-        _locationTextBox = new TextBox { Location = new Point(12, y), Width = 560 };
-        _browseButton = new Button { Text = "&Browse...", Location = new Point(580, y - 1), Width = 94, Height = 26 };
+        _locationTextBox = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty
+        };
+        _locationTextBox.TextChanged += (_, _) => UpdatePathPreview();
+
+        _browseButton = new Button
+        {
+            Text = "&Browse...",
+            Dock = DockStyle.Fill,
+            Width = 80,
+            Margin = new Padding(10, 0, 0, 0)
+        };
         _browseButton.Click += BrowseButton_Click;
 
         string? wsRoot = _mainForm.WorkspaceRoot;
-        if (!string.IsNullOrEmpty(wsRoot)) { var p = Directory.GetParent(wsRoot); if (p != null) _locationTextBox.Text = p.FullName; }
+        if (!string.IsNullOrEmpty(wsRoot))
+        {
+            var parent = Directory.GetParent(wsRoot);
+            if (parent != null)
+                _locationTextBox.Text = parent.FullName;
+        }
         if (string.IsNullOrEmpty(_locationTextBox.Text))
             _locationTextBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        y += 32;
 
-        // ── dotnet-specific options ────────────────────────────────────────────
-        _solutionCheckBox = new CheckBox { Text = "Create &solution file (.sln)", Location = new Point(12, y), AutoSize = true, Checked = true };
-        _frameworkLabel = new Label { Text = "&Framework:", Location = new Point(340, y + 3), AutoSize = true };
-        _frameworkCombo = new ComboBox { Location = new Point(420, y), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
+        _solutionCheckBox = new CheckBox
+        {
+            Text = "Create &solution file (.sln)",
+            AutoSize = true,
+            Checked = true,
+            Margin = new Padding(0, 4, 14, 0)
+        };
+        _frameworkLabel = new Label
+        {
+            Text = "&Framework:",
+            AutoSize = true,
+            Margin = new Padding(0, 7, 6, 0)
+        };
+        _frameworkCombo = new ComboBox
+        {
+            Width = 150,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Margin = new Padding(0, 0, 14, 0)
+        };
 
-        // ── C/C++ specific options ────────────────────────────────────────────
-        _gitCheckBox = new CheckBox { Text = "Initialize &Git repository", Location = new Point(12, y), AutoSize = true, Checked = true, Visible = false };
-        _standardLabel = new Label { Text = "&Standard:", Location = new Point(340, y + 3), AutoSize = true, Visible = false };
-        _standardCombo = new ComboBox { Location = new Point(420, y), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, Visible = false };
-        y += 34;
+        _gitCheckBox = new CheckBox
+        {
+            Text = "Initialize &Git repository",
+            AutoSize = true,
+            Checked = true,
+            Visible = false,
+            Margin = new Padding(0, 4, 14, 0)
+        };
+        _standardLabel = new Label
+        {
+            Text = "&Standard:",
+            AutoSize = true,
+            Visible = false,
+            Margin = new Padding(0, 7, 6, 0)
+        };
+        _standardCombo = new ComboBox
+        {
+            Width = 150,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Visible = false,
+            Margin = Padding.Empty
+        };
 
-        // ── Status label ──────────────────────────────────────────────────────
-        _statusLabel = new Label { Text = "", Location = new Point(12, y), Size = new Size(662, 30), ForeColor = Color.Gray };
-        y += 34;
+        _statusLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
 
-        // ── Open in new window ────────────────────────────────────────────────
         _openInNewWindowCheckBox = new CheckBox
         {
             Text = "&Open in new window (blank slate editor — no previous tabs or terminal)",
-            Location = new Point(12, y),
             AutoSize = true,
-            Checked = true
+            Checked = true,
+            Margin = new Padding(0, 8, 0, 0)
         };
-        y += 30;
 
-        // ── Buttons ───────────────────────────────────────────────────────────
-        _createButton = new Button { Text = "&Create", Location = new Point(510, y), Width = 80, Height = 28 };
+        _createButton = new Button
+        {
+            Text = "&Create",
+            AutoSize = true,
+            Width = 96,
+            Height = 32,
+            Margin = new Padding(10, 0, 0, 0)
+        };
         _createButton.Click += CreateButton_Click;
-        _cancelButton = new Button { Text = "Cancel", Location = new Point(600, y), Width = 80, Height = 28, DialogResult = DialogResult.Cancel };
 
-        Controls.AddRange(new Control[] {
-            filterLabel, _langFilter,
-            templateLabel, _templateList,
-            nameLabel, _nameTextBox,
-            locationLabel, _locationTextBox, _browseButton,
-            _solutionCheckBox, _frameworkLabel, _frameworkCombo,
-            _gitCheckBox, _standardLabel, _standardCombo,
-            _statusLabel,
-            _openInNewWindowCheckBox,
-            _createButton, _cancelButton
-        });
+        _cancelButton = new Button
+        {
+            Text = "Cancel",
+            AutoSize = true,
+            Width = 96,
+            Height = 32,
+            Margin = Padding.Empty,
+            DialogResult = DialogResult.Cancel
+        };
+
+        var footerButtons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty
+        };
+        footerButtons.Controls.Add(_cancelButton);
+        footerButtons.Controls.Add(_createButton);
+
+        _footerBar = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 52,
+            Padding = new Padding(16, 10, 16, 10)
+        };
+        _footerBar.Paint += (_, e) =>
+        {
+            var currentTheme = ThemeManager.Instance.CurrentTheme;
+            using var pen = new Pen(currentTheme.Border);
+            e.Graphics.DrawLine(pen, 0, 0, _footerBar.Width, 0);
+        };
+        _footerBar.Controls.Add(footerButtons);
+        _footerBar.Controls.Add(_statusLabel);
+
+        var searchRow = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 36,
+            Padding = new Padding(12, 6, 12, 4),
+            BackColor = Color.Transparent
+        };
+        searchRow.Controls.Add(_searchBox);
+
+        _tabStripPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 30,
+            Padding = new Padding(6, 0, 6, 0)
+        };
+        var tabFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            AutoScroll = false
+        };
+        foreach (var tabName in new[] { "All", "C#", "C/C++", "Web", "Script", "IaC" })
+            tabFlow.Controls.Add(CreateLanguageTabButton(tabName));
+        _tabStripPanel.Controls.Add(tabFlow);
+
+        var leftPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+        leftPanel.Controls.Add(_templateList);
+        leftPanel.Controls.Add(_tabStripPanel);
+        leftPanel.Controls.Add(searchRow);
+
+        _tplNameLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            AutoEllipsis = true,
+            Font = new Font("Segoe UI", 14f, FontStyle.Bold),
+            Height = 28,
+            Text = "Select a template →"
+        };
+        _tplTagsLabel = new Label
+        {
+            Dock = DockStyle.Top,
+            AutoEllipsis = true,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
+            Height = 18,
+            Text = "Choose a template to configure your new project."
+        };
+
+        _templateHeaderPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 70,
+            Padding = new Padding(14),
+            BackColor = theme.PanelBackground
+        };
+        _templateHeaderPanel.Controls.Add(_tplTagsLabel);
+        _templateHeaderPanel.Controls.Add(_tplNameLabel);
+
+        var bodyTable = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            RowCount = 5,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        bodyTable.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        bodyTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        for (int i = 0; i < 5; i++)
+            bodyTable.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        Label CreateFieldLabel(string text) => new()
+        {
+            Text = text,
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 6, 12, 14)
+        };
+
+        var locationRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0, 0, 0, 8),
+            Padding = Padding.Empty
+        };
+        locationRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        locationRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        locationRow.Controls.Add(_locationTextBox, 0, 0);
+        locationRow.Controls.Add(_browseButton, 1, 0);
+
+        _pathPreviewLabel = new Label
+        {
+            AutoSize = true,
+            Margin = new Padding(0, 0, 0, 12),
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular)
+        };
+
+        _optionsPanel = new Panel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = theme.PanelBackground
+        };
+        _optionsPanel.Paint += (_, e) =>
+        {
+            var currentTheme = ThemeManager.Instance.CurrentTheme;
+            using var pen = new Pen(currentTheme.Border);
+            var rect = _optionsPanel.ClientRectangle;
+            rect.Width -= 1;
+            rect.Height -= 1;
+            e.Graphics.DrawRectangle(pen, rect);
+        };
+
+        var optionsFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        optionsFlow.Controls.Add(_solutionCheckBox);
+        optionsFlow.Controls.Add(_frameworkLabel);
+        optionsFlow.Controls.Add(_frameworkCombo);
+        optionsFlow.Controls.Add(_gitCheckBox);
+        optionsFlow.Controls.Add(_standardLabel);
+        optionsFlow.Controls.Add(_standardCombo);
+        _optionsPanel.Controls.Add(optionsFlow);
+
+        bodyTable.Controls.Add(CreateFieldLabel("Project name"), 0, 0);
+        bodyTable.Controls.Add(_nameTextBox, 1, 0);
+        bodyTable.Controls.Add(CreateFieldLabel("Location"), 0, 1);
+        bodyTable.Controls.Add(locationRow, 1, 1);
+        bodyTable.Controls.Add(_pathPreviewLabel, 0, 2);
+        bodyTable.SetColumnSpan(_pathPreviewLabel, 2);
+        bodyTable.Controls.Add(_optionsPanel, 0, 3);
+        bodyTable.SetColumnSpan(_optionsPanel, 2);
+        bodyTable.Controls.Add(_openInNewWindowCheckBox, 0, 4);
+        bodyTable.SetColumnSpan(_openInNewWindowCheckBox, 2);
+
+        var formBody = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(16),
+            BackColor = Color.Transparent,
+            AutoScroll = true
+        };
+        formBody.Controls.Add(bodyTable);
+
+        var rightPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
+        rightPanel.Controls.Add(formBody);
+        rightPanel.Controls.Add(_templateHeaderPanel);
+
+        var splitContainer = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+            IsSplitterFixed = false,
+            Panel1MinSize = 260,
+            Panel2MinSize = 340,
+            BorderStyle = BorderStyle.None,
+            SplitterWidth = 6
+        };
+        splitContainer.Panel1.Controls.Add(leftPanel);
+        splitContainer.Panel2.Controls.Add(rightPanel);
+
+        Controls.Add(splitContainer);
+        Controls.Add(_footerBar);
 
         AcceptButton = _createButton;
         CancelButton = _cancelButton;
+        Load += (_, _) =>
+        {
+            int maxDistance = Math.Max(splitContainer.Panel1MinSize, splitContainer.Width - splitContainer.Panel2MinSize - splitContainer.SplitterWidth);
+            splitContainer.SplitterDistance = Math.Min(320, maxDistance);
+            UpdateTemplateListTileSize();
+        };
+
+        UpdatePathPreview();
+        ResumeLayout(performLayout: true);
     }
 
     private void TemplateList_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        if (_templateList.SelectedItems.Count == 0) return;
+        if (_templateList.SelectedItems.Count == 0)
+        {
+            _tplNameLabel.Text = "Select a template →";
+            _tplTagsLabel.Text = "Choose a template to configure your new project.";
+            _solutionCheckBox.Visible = false;
+            _frameworkLabel.Visible = false;
+            _frameworkCombo.Visible = false;
+            _gitCheckBox.Visible = false;
+            _standardLabel.Visible = false;
+            _standardCombo.Visible = false;
+            _optionsPanel.Visible = false;
+            return;
+        }
+
         var tpl = _templateList.SelectedItems[0].Tag as ProjectTemplate;
+        _tplNameLabel.Text = tpl?.Name ?? "Select a template →";
+        _tplTagsLabel.Text = string.IsNullOrWhiteSpace(tpl?.Tags)
+            ? "Choose a template to configure your new project."
+            : $"{tpl!.Language} • {tpl.Tags}";
+
         bool isCsOrDotnet = tpl == null || tpl.Language == "C#";
-        bool isCOrCpp     = tpl?.Language is "C" or "C++";
-        bool isIaC        = tpl?.Language is "Bicep" or "Terraform";
+        bool isCOrCpp = tpl?.Language is "C" or "C++";
+        bool isIaC = tpl?.Language is "Bicep" or "Terraform";
         bool isNativeOrScript = tpl?.Language is "Python" or "JavaScript" or "TypeScript" or "Go" or "Ruby" or "Shell" or "PowerShell" or "YAML" or "SQL";
 
         _solutionCheckBox.Visible = isCsOrDotnet;
-        _frameworkLabel.Visible   = isCsOrDotnet;
-        _frameworkCombo.Visible   = isCsOrDotnet;
-
-        // Native, script, and IaC templates show git init; only C/C++ shows language standard
-        _gitCheckBox.Visible   = isCOrCpp || isIaC || isNativeOrScript;
+        _frameworkLabel.Visible = isCsOrDotnet;
+        _frameworkCombo.Visible = isCsOrDotnet;
+        _gitCheckBox.Visible = isCOrCpp || isIaC || isNativeOrScript;
         _standardLabel.Visible = isCOrCpp;
         _standardCombo.Visible = isCOrCpp;
+        _optionsPanel.Visible = isCsOrDotnet || isCOrCpp || isIaC || isNativeOrScript;
 
         if (isCOrCpp)
         {
@@ -192,8 +485,214 @@ internal sealed class NewProjectDialog : Form
                 _standardCombo.Items.AddRange(new object[] { "c17", "c11", "c99", "c89" });
             else
                 _standardCombo.Items.AddRange(new object[] { "c++20", "c++17", "c++14", "c++11" });
-            if (_standardCombo.Items.Count > 0) _standardCombo.SelectedIndex = 0;
+            if (_standardCombo.Items.Count > 0)
+                _standardCombo.SelectedIndex = 0;
         }
+    }
+
+    private void ApplySearchAndFilter()
+    {
+        string query = _searchBox.Text.Trim().ToLowerInvariant();
+        string langFilter = _activeLangTab switch
+        {
+            "C#" => "C#",
+            "C/C++" => "C/C++",
+            "Web" => "Web",
+            "Script" => "Script",
+            "IaC" => "IaC",
+            _ => "All"
+        };
+        PopulateTemplateList(langFilter, query);
+    }
+
+    private Button CreateLanguageTabButton(string tabName)
+    {
+        var button = new Button
+        {
+            Text = tabName,
+            AutoSize = true,
+            Height = 28,
+            Margin = new Padding(0, 0, 4, 0),
+            Padding = new Padding(10, 0, 10, 0),
+            FlatStyle = FlatStyle.Flat,
+            TabStop = false,
+            Tag = tabName,
+            TextAlign = ContentAlignment.MiddleCenter,
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.Click += (_, _) =>
+        {
+            _activeLangTab = tabName;
+            ApplyTheme();
+            ApplySearchAndFilter();
+        };
+        button.Paint += LanguageTabButton_Paint;
+        _langTabButtons.Add(button);
+        return button;
+    }
+
+    private void LanguageTabButton_Paint(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button button)
+            return;
+
+        var theme = ThemeManager.Instance.CurrentTheme;
+        bool active = string.Equals(button.Tag as string, _activeLangTab, StringComparison.Ordinal);
+        if (!active)
+            return;
+
+        using var brush = new SolidBrush(theme.Accent);
+        e.Graphics.FillRectangle(brush, 0, button.Height - 2, button.Width, 2);
+    }
+
+    private void TemplateList_DrawItem(object? sender, DrawListViewItemEventArgs e)
+    {
+        if (e.Item.Tag is not ProjectTemplate tpl)
+        {
+            e.DrawDefault = true;
+            return;
+        }
+
+        var theme = ThemeManager.Instance.CurrentTheme;
+        bool selected = e.Item.Selected;
+        var bounds = e.Bounds;
+
+        using (var backgroundBrush = new SolidBrush(selected ? Blend(theme.PanelBackground, theme.Accent, 0.18f) : theme.EditorBackground))
+            e.Graphics.FillRectangle(backgroundBrush, bounds);
+
+        if (selected)
+        {
+            using var accentBrush = new SolidBrush(theme.Accent);
+            e.Graphics.FillRectangle(accentBrush, new Rectangle(bounds.Left, bounds.Top, 3, bounds.Height));
+        }
+
+        var badgeRect = new Rectangle(bounds.Left + 12, bounds.Top + Math.Max(10, (bounds.Height - 28) / 2), 28, 28);
+        var badgeColor = GetLanguageBadgeColor(tpl.Language, theme);
+        var previousSmoothing = e.Graphics.SmoothingMode;
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using (var path = CreateRoundedRectanglePath(badgeRect, 8))
+        using (var badgeBrush = new SolidBrush(badgeColor))
+        {
+            e.Graphics.FillPath(badgeBrush, path);
+        }
+        e.Graphics.SmoothingMode = previousSmoothing;
+
+        using var badgeFont = new Font("Segoe UI", 8.5f, FontStyle.Bold);
+        using var nameFont = new Font("Segoe UI", 9.5f, FontStyle.Bold);
+        using var tagsFont = new Font("Segoe UI", 8f, FontStyle.Regular);
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            GetLanguageBadgeText(tpl.Language),
+            badgeFont,
+            badgeRect,
+            GetReadableTextColor(badgeColor),
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        int textLeft = badgeRect.Right + 12;
+        int textWidth = Math.Max(40, bounds.Right - textLeft - 12);
+        var nameBounds = new Rectangle(textLeft, bounds.Top + 7, textWidth, 20);
+        var tagsBounds = new Rectangle(textLeft, bounds.Top + 24, textWidth, 16);
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            tpl.Name,
+            nameFont,
+            nameBounds,
+            theme.Text,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            tpl.Tags,
+            tagsFont,
+            tagsBounds,
+            theme.Muted,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+        if (selected && _templateList.Focused)
+            e.DrawFocusRectangle();
+    }
+
+    private void UpdatePathPreview()
+    {
+        string combinedPath = Path.Combine(_locationTextBox.Text.Trim(), _nameTextBox.Text.Trim());
+        _pathPreviewLabel.Text = combinedPath;
+    }
+
+    private void UpdateTemplateListTileSize()
+    {
+        if (_templateList.Width > 0)
+            _templateList.TileSize = new Size(Math.Max(220, _templateList.ClientSize.Width - 4), 48);
+    }
+
+    private static GraphicsPath CreateRoundedRectanglePath(Rectangle bounds, int radius)
+    {
+        int diameter = Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height));
+        var path = new GraphicsPath();
+        if (diameter <= 0)
+        {
+            path.AddRectangle(bounds);
+            return path;
+        }
+
+        var arc = new Rectangle(bounds.Location, new Size(diameter, diameter));
+        path.AddArc(arc, 180, 90);
+        arc.X = bounds.Right - diameter;
+        path.AddArc(arc, 270, 90);
+        arc.Y = bounds.Bottom - diameter;
+        path.AddArc(arc, 0, 90);
+        arc.X = bounds.Left;
+        path.AddArc(arc, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
+    private static Color GetLanguageBadgeColor(string language, Theme theme) => language switch
+    {
+        "C#" => Color.FromArgb(104, 33, 122),
+        "C" or "C++" => Color.FromArgb(0, 94, 167),
+        "JavaScript" or "TypeScript" => Color.FromArgb(241, 156, 31),
+        "Go" => Color.FromArgb(0, 173, 181),
+        "Python" => Color.FromArgb(52, 120, 246),
+        _ => theme.Accent
+    };
+
+    private static string GetLanguageBadgeText(string language) => language switch
+    {
+        "JavaScript" => "JS",
+        "TypeScript" => "TS",
+        "PowerShell" => "PS",
+        "Python" => "Py",
+        "Terraform" => "TF",
+        "Bicep" => "Bp",
+        "Shell" => "Sh",
+        "Ruby" => "Rb",
+        _ when language.Length <= 3 => language,
+        _ => language[..Math.Min(2, language.Length)]
+    };
+
+    private static Color Blend(Color baseColor, Color mixColor, float amount)
+    {
+        amount = Math.Clamp(amount, 0f, 1f);
+        int r = (int)Math.Round(baseColor.R + ((mixColor.R - baseColor.R) * amount));
+        int g = (int)Math.Round(baseColor.G + ((mixColor.G - baseColor.G) * amount));
+        int b = (int)Math.Round(baseColor.B + ((mixColor.B - baseColor.B) * amount));
+        return Color.FromArgb(r, g, b);
+    }
+
+    private static Color GetReadableTextColor(Color color)
+    {
+        double luminance = (0.299 * color.R) + (0.587 * color.G) + (0.114 * color.B);
+        return luminance >= 150 ? Color.Black : Color.White;
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!ThemeManager.Instance.CurrentTheme.IsLight)
+            NativeThemed.ApplyDarkModeToWindow(Handle);
     }
 
     // ── Built-in templates ────────────────────────────────────────────────────
@@ -1672,25 +2171,66 @@ echo ""Done.""
 
     // ── Template list population ──────────────────────────────────────────────
 
-    private void PopulateTemplateList(string langFilter)
+    private void PopulateTemplateList(string langFilter, string query = "")
     {
+        ProjectTemplate? selectedTemplate = _templateList.SelectedItems.Count > 0
+            ? _templateList.SelectedItems[0].Tag as ProjectTemplate
+            : null;
+
+        _templateList.BeginUpdate();
         _templateList.Items.Clear();
-        var filtered = langFilter == "All"
-            ? _allTemplates
-            : _allTemplates.Where(t => t.Language == langFilter).ToList();
+
+        IEnumerable<ProjectTemplate> filtered = _allTemplates.Where(t => MatchesLanguageFilter(t, langFilter));
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            filtered = filtered.Where(t =>
+                t.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                t.ShortName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                t.Tags.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
 
         foreach (var tpl in filtered)
         {
-            var item = new ListViewItem(tpl.ShortName);
-            item.SubItems.Add(tpl.Name);
-            item.SubItems.Add(tpl.Language);
-            item.SubItems.Add(tpl.Tags);
-            item.Tag = tpl;
+            var item = new ListViewItem(tpl.Name) { Tag = tpl };
             _templateList.Items.Add(item);
         }
 
-        if (_templateList.Items.Count > 0)
-            _templateList.Items[0].Selected = true;
+        _templateList.EndUpdate();
+        UpdateTemplateListTileSize();
+
+        if (_templateList.Items.Count == 0)
+        {
+            _tplNameLabel.Text = "Select a template →";
+            _tplTagsLabel.Text = string.IsNullOrWhiteSpace(query)
+                ? "No templates available for this category."
+                : "No templates match your search.";
+            _optionsPanel.Visible = false;
+            return;
+        }
+
+        var selectedItem = selectedTemplate != null
+            ? _templateList.Items.Cast<ListViewItem>().FirstOrDefault(i => ReferenceEquals(i.Tag, selectedTemplate))
+            : null;
+        (selectedItem ?? _templateList.Items[0]).Selected = true;
+        (selectedItem ?? _templateList.Items[0]).Focused = true;
+    }
+
+    private static bool MatchesLanguageFilter(ProjectTemplate template, string langFilter)
+    {
+        return langFilter switch
+        {
+            "All" => true,
+            "C/C++" => template.Language is "C" or "C++",
+            "Web" => template.Tags.Contains("Web", StringComparison.OrdinalIgnoreCase)
+                || template.Name.Contains("Web", StringComparison.OrdinalIgnoreCase)
+                || template.Name.Contains("HTTP", StringComparison.OrdinalIgnoreCase)
+                || template.Name.Contains("Express", StringComparison.OrdinalIgnoreCase),
+            "Script" => template.Tags.Contains("Script", StringComparison.OrdinalIgnoreCase)
+                || template.Language is "Python" or "JavaScript" or "TypeScript" or "Go" or "Ruby" or "Shell" or "PowerShell",
+            "IaC" => template.Language is "Bicep" or "Terraform"
+                || template.Tags.Contains("IaC", StringComparison.OrdinalIgnoreCase),
+            _ => template.Language == langFilter,
+        };
     }
 
     private void LoadDotnetTemplates()
@@ -1789,17 +2329,99 @@ echo ""Done.""
         BackColor = theme.Background;
         ForeColor = theme.Text;
 
-        foreach (Control c in Controls)
+        void ApplyToTree(Control control)
         {
-            if (c is TextBox tb) { tb.BackColor = theme.EditorBackground; tb.ForeColor = theme.Text; }
-            else if (c is ComboBox cb) { cb.BackColor = theme.EditorBackground; cb.ForeColor = theme.Text; }
-            else if (c is Button btn) { btn.BackColor = theme.PanelBackground; btn.ForeColor = theme.Text; }
-            else if (c is CheckBox chk) { chk.ForeColor = theme.Text; }
-            else if (c is Label lbl) { lbl.ForeColor = theme.Text; }
+            switch (control)
+            {
+                case TextBox tb:
+                    tb.BackColor = theme.EditorBackground;
+                    tb.ForeColor = theme.Text;
+                    tb.BorderStyle = BorderStyle.FixedSingle;
+                    break;
+                case ComboBox cb:
+                    cb.BackColor = theme.EditorBackground;
+                    cb.ForeColor = theme.Text;
+                    cb.FlatStyle = FlatStyle.Flat;
+                    break;
+                case Button btn:
+                    btn.FlatStyle = FlatStyle.Flat;
+                    btn.ForeColor = theme.Text;
+                    btn.BackColor = theme.PanelBackground;
+                    btn.FlatAppearance.BorderColor = theme.Border;
+                    btn.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
+                    btn.FlatAppearance.MouseDownBackColor = Blend(theme.PanelBackground, theme.Accent, 0.18f);
+                    break;
+                case CheckBox chk:
+                    chk.ForeColor = theme.Text;
+                    chk.BackColor = Color.Transparent;
+                    break;
+                case Label lbl:
+                    lbl.ForeColor = theme.Text;
+                    lbl.BackColor = Color.Transparent;
+                    break;
+                case ListView lv:
+                    lv.BackColor = theme.EditorBackground;
+                    lv.ForeColor = theme.Text;
+                    lv.BorderStyle = BorderStyle.None;
+                    break;
+                case SplitContainer split:
+                    split.BackColor = theme.Border;
+                    break;
+                case FlowLayoutPanel flow:
+                    flow.BackColor = Color.Transparent;
+                    break;
+                case TableLayoutPanel table:
+                    table.BackColor = Color.Transparent;
+                    break;
+                case Panel panel:
+                    panel.BackColor = theme.Background;
+                    break;
+            }
+
+            foreach (Control child in control.Controls)
+                ApplyToTree(child);
         }
-        _templateList.BackColor = theme.EditorBackground;
-        _templateList.ForeColor = theme.Text;
+
+        ApplyToTree(this);
+
+        _footerBar.BackColor = theme.Background;
+        _tabStripPanel.BackColor = theme.MenuBackground;
+        _templateHeaderPanel.BackColor = theme.PanelBackground;
+        _optionsPanel.BackColor = theme.PanelBackground;
+
+        _tplNameLabel.ForeColor = theme.Accent;
+        _tplTagsLabel.ForeColor = theme.Muted;
+        _pathPreviewLabel.ForeColor = theme.Muted;
+        if (string.IsNullOrEmpty(_statusLabel.Text) || _statusLabel.ForeColor.ToArgb() == Color.DimGray.ToArgb())
+            _statusLabel.ForeColor = theme.Muted;
+
+        _createButton.BackColor = theme.Accent;
+        _createButton.ForeColor = GetReadableTextColor(theme.Accent);
+        _createButton.FlatAppearance.BorderColor = theme.Border;
+        _createButton.FlatAppearance.MouseOverBackColor = Blend(theme.Accent, Color.White, theme.IsLight ? 0.08f : 0.12f);
+        _createButton.FlatAppearance.MouseDownBackColor = Blend(theme.Accent, Color.Black, theme.IsLight ? 0.08f : 0.12f);
+
+        _cancelButton.BackColor = theme.PanelBackground;
+        _cancelButton.ForeColor = theme.Text;
+        _cancelButton.FlatAppearance.BorderColor = theme.Border;
+
+        foreach (var tabButton in _langTabButtons)
+        {
+            bool active = string.Equals(tabButton.Tag as string, _activeLangTab, StringComparison.Ordinal);
+            tabButton.BackColor = theme.MenuBackground;
+            tabButton.ForeColor = active ? theme.Text : theme.Muted;
+            tabButton.Font = new Font("Segoe UI", 9f, active ? FontStyle.Bold : FontStyle.Regular);
+            tabButton.FlatAppearance.BorderSize = 0;
+            tabButton.FlatAppearance.MouseOverBackColor = Blend(theme.MenuBackground, theme.Accent, 0.08f);
+            tabButton.FlatAppearance.MouseDownBackColor = Blend(theme.MenuBackground, theme.Accent, 0.14f);
+            tabButton.Invalidate();
+        }
+
+        _templateList.Invalidate();
+        _optionsPanel.Invalidate();
+        _footerBar.Invalidate();
     }
+
 
     private void BrowseButton_Click(object? sender, EventArgs e)
     {
