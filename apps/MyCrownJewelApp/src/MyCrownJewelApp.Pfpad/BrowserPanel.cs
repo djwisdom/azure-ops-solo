@@ -38,7 +38,8 @@ internal sealed class BrowserPanel : UserControl
     private readonly Button _favManageBtn;
     private Button? _favOverflowBtn;          // "»" shown when items don't fit
     private ContextMenuStrip? _favOverflowMenu;
-    private List<FavBarItem> _favOverflowItems = [];   // built lazily on first click
+    private List<FavBarItem> _favOverflowItems = [];
+    private System.Windows.Forms.Timer? _overflowRebuildTimer; // debounce pre-build after resize
     private FavoritesManagerPanel? _favManagerPanel;
     private List<FavBarItem> _favItems = [];
     private Font? _favFont;                   // cached — avoids GDI leak per-button
@@ -352,13 +353,16 @@ internal sealed class BrowserPanel : UserControl
 
         _favOverflowBtn.Click += (_, _) =>
         {
-            // Build the overflow menu lazily on first click — avoids creating
-            // hundreds of ToolStripMenuItems at layout time for large bookmark sets.
-            if (_favOverflowMenu == null && _favOverflowItems.Count > 0)
+            // If the debounce timer is still pending, build synchronously now so the
+            // click is never blocked by a pending background build.
+            if (_overflowRebuildTimer?.Enabled == true)
             {
-                _favOverflowMenu = new ContextMenuStrip();
-                ApplyContextMenuTheme(_favOverflowMenu, _currentTheme);
-                BuildFavMenu(_favOverflowMenu.Items, _favOverflowItems);
+                _overflowRebuildTimer.Stop();
+                RebuildOverflowMenu();
+            }
+            else if (_favOverflowMenu == null && _favOverflowItems.Count > 0)
+            {
+                RebuildOverflowMenu();
             }
             _favOverflowMenu?.Show(_favOverflowBtn, new Point(0, _favOverflowBtn.Height));
         };
@@ -829,18 +833,45 @@ internal sealed class BrowserPanel : UserControl
             _favFlow.Controls.Add(btn);
         }
 
-        // Store overflow items — menu is built lazily on first click of "»"
+        // Store overflow items and schedule background pre-build after resize settles.
         _favOverflowItems = overflow;
         _favOverflowMenu?.Dispose();
         _favOverflowMenu = null;
 
         if (overflow.Count > 0)
+        {
             _favOverflowBtn!.Visible = true;
+            // Debounce: start/restart a 300ms timer so rapid resize events don't
+            // each trigger a full ToolStripMenuItem rebuild. When the timer fires
+            // (resize has settled) the menu is pre-built on the idle UI thread.
+            _overflowRebuildTimer ??= CreateOverflowRebuildTimer();
+            _overflowRebuildTimer.Stop();
+            _overflowRebuildTimer.Start();
+        }
         else
+        {
             _favOverflowBtn!.Visible = false;
+            _overflowRebuildTimer?.Stop();
+        }
 
         LayoutFavActionButtons();
         _favFlow.ResumeLayout();
+    }
+
+    private System.Windows.Forms.Timer CreateOverflowRebuildTimer()
+    {
+        var t = new System.Windows.Forms.Timer { Interval = 250 };
+        t.Tick += (_, _) => { t.Stop(); RebuildOverflowMenu(); };
+        return t;
+    }
+
+    private void RebuildOverflowMenu()
+    {
+        if (_favOverflowItems.Count == 0) return;
+        _favOverflowMenu?.Dispose();
+        _favOverflowMenu = new ContextMenuStrip();
+        ApplyContextMenuTheme(_favOverflowMenu, _currentTheme);
+        BuildFavMenu(_favOverflowMenu.Items, _favOverflowItems);
     }
 
     /// <summary>
@@ -1484,6 +1515,9 @@ internal sealed class BrowserPanel : UserControl
             _zoomPollTimer.Dispose();
             _favFont?.Dispose();
             _favFont = null;
+            _overflowRebuildTimer?.Stop();
+            _overflowRebuildTimer?.Dispose();
+            _overflowRebuildTimer = null;
             _favOverflowMenu?.Dispose();
             _webView?.Dispose();
             // Clean up ephemeral temp profile so no browser data lingers on disk
