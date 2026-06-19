@@ -246,11 +246,18 @@ namespace MyCrownJewelApp.Pfpad
             try
             {
                 // Run in terminal panel instead of separate window
-                var terminal = ActiveTerminal ?? AddTerminalTab(null);
+                var terminal = ActiveTerminal ?? _terminalHost?.AddTerminalTab(
+                    string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell,
+                    _themeManager.CurrentTheme,
+                    _terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap,
+                    _terminalScrollbarVisible, _terminalPadding, _terminalMaxScrollback,
+                    new TerminalPanel.SecuritySettings(_secConfirmUrlOpen, _secAllowHttpUrls),
+                    ResolveTerminalStartingDirectory());
+                if (terminal == null) return;
                 terminal.ClearOutput();
                 var projectName = Path.GetFileName(projectDir);
-                if (_terminalTabControl?.SelectedTab is TabPage tab)
-                    tab.Text = projectName;
+                terminal.CustomTabTitle = projectName;
+                _terminalHost?.RefreshTabTitles();
                 ShowTerminal();
                 string runCmd = ResolveRunCommand();
                 terminal.SendInput($"{runCmd} --project \"{projectDir}\"\r\n");

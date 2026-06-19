@@ -198,7 +198,6 @@ namespace MyCrownJewelApp.Pfpad
 
         // Native-window subclass that paints the tab strip background with the current theme.
         private TabStripBackgroundWindow? _tabStripWindow;
-        private TerminalTabBgWindow? _terminalTabStripWindow;
 
         private sealed class TabStripBackgroundWindow : NativeWindow
         {
@@ -250,31 +249,6 @@ namespace MyCrownJewelApp.Pfpad
                         }
                         break;
                     }
-                }
-                base.WndProc(ref m);
-            }
-        }
-
-        /// <summary>
-        /// Lightweight NativeWindow subclass for the terminal tab strip.
-        /// Fills the strip background with the theme colour on WM_ERASEBKGND,
-        /// then lets WinForms handle WM_PAINT normally so DrawItem fires per tab.
-        /// </summary>
-        private sealed class TerminalTabBgWindow : NativeWindow
-        {
-            private const int WM_ERASEBKGND = 0x0014;
-            private readonly ThemeManager _themeManager;
-
-            public TerminalTabBgWindow(ThemeManager tm) => _themeManager = tm;
-
-            protected override void WndProc(ref Message m)
-            {
-                if (m.Msg == WM_ERASEBKGND)
-                {
-                    using var g = Graphics.FromHdc(m.WParam);
-                    g.Clear(_themeManager.CurrentTheme.MenuBackground);
-                    m.Result = (IntPtr)1;
-                    return;
                 }
                 base.WndProc(ref m);
             }

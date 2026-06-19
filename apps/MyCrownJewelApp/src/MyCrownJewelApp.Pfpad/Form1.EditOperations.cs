@@ -497,10 +497,10 @@ namespace MyCrownJewelApp.Pfpad
 
             // Navigate all running terminal tabs to the new folder so the terminal
             // is immediately in context with the opened project.
-            foreach (var terminal in _terminalTabs)
+            foreach (var terminal in AllTerminals)
                 terminal.ChangeDirectory(path);
 
-            if (_terminalTabs.Any(t => t.IsRunning))
+            if (AllTerminals.Any(t => t.IsRunning))
                 SetStatus($"Terminal navigated to: {path}");
         }
 

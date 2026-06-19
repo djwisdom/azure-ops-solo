@@ -1,4 +1,4 @@
- using System;
+﻿ using System;
  using System.Collections.Generic;
  using System.ComponentModel;
  using System.Drawing;
@@ -475,14 +475,10 @@ using Microsoft.Extensions.DependencyInjection;
         private VimEngine? vimEngine;
 
         // Terminal state
-        private BuildOutputPanel? _buildOutputPanel;
-        private TabPage? _buildOutputPage;   // kept for show/hide when C# context changes
         private readonly List<BrowserPanel> _browserPanels = [];
         private BrowserPanel? _activeBrowserPanel;
-        private TabControl? _terminalTabControl;
+        private TerminalHostPanel? _terminalHost;
         private SplitContainer? _terminalSplitContainer;
-        private Button? _terminalNewTabButton;
-        private readonly List<TerminalPanel> _terminalTabs = new();
         private bool _terminalVisible = false;
         private int _terminalHeight = 200;
         private string _terminalShell = "";
@@ -665,8 +661,9 @@ using Microsoft.Extensions.DependencyInjection;
         private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 400 };
         private string _lastHoveredWord = "";
 
-        private TerminalPanel? ActiveTerminal =>
-            _terminalTabControl?.SelectedTab?.Tag as TerminalPanel;
+        private TerminalPanel? ActiveTerminal => _terminalHost?.ActiveTerminal;
+        private IReadOnlyList<TerminalPanel> AllTerminals => _terminalHost?.AllTerminals ?? Array.Empty<TerminalPanel>();
+        private BuildOutputPanel? BuildOutput => _terminalHost?.BuildOutput;
 
         // Minimap state
         private ToolStripMenuItem minimapMenuItem = null!;
@@ -1770,86 +1767,22 @@ using Microsoft.Extensions.DependencyInjection;
                   }
               };
 
-             // Initialize integrated terminal with tab support
-             var defaultShell = string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell;
+              // Initialize integrated terminal host
+              var defaultShell = string.IsNullOrEmpty(_terminalShell) ? null : _terminalShell;
+              _terminalHost = new TerminalHostPanel();
+              _terminalHost.SetTheme(_themeManager.CurrentTheme);
+              _terminalHost.CustomTabTitle = _terminalTabTitle;
+              _terminalHost.Dock = DockStyle.Fill;
+              _terminalHost.BuildOutput.DiagnosticNavigated += (path, line) => { OpenFileInNewTab(path); GoToLine(line); };
+              _terminalHost.BuildOutput.BuildRequested += () => { if (_solutionExplorerPanel != null) _ = _solutionExplorerPanel.BuildCurrentSolutionAsync(); };
+              _terminalHost.BuildOutput.CancelRequested += () => _solutionExplorerPanel?.CancelBuild();
+              _terminalHost.TabCountChanged += count => { if (count == 0) HideTerminal(); };
+              _terminalHost.AddTerminalTab(defaultShell, _themeManager.CurrentTheme,
+                  _terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap,
+                  _terminalScrollbarVisible, _terminalPadding, _terminalMaxScrollback,
+                  new TerminalPanel.SecuritySettings(_secConfirmUrlOpen, _secAllowHttpUrls),
+                  ResolveTerminalStartingDirectory());
 
-             // Tab control for multiple terminal sessions
-             _terminalTabControl = new TabControl
-             {
-                 Dock = DockStyle.Fill,
-                 Padding = new Point(12, 4),
-                 Margin = new Padding(0),
-                 ItemSize = new Size(140, 26),
-                 HotTrack = true,
-                 DrawMode = TabDrawMode.OwnerDrawFixed,
-                 Alignment = TabAlignment.Top,
-                 BackColor = _themeManager.CurrentTheme.MenuBackground
-             };
-             _terminalTabControl.HandleCreated += (s, e) =>
-             {
-                 SetWindowTheme(_terminalTabControl.Handle, "", "");
-                 int style = GetWindowLong(_terminalTabControl.Handle, GWL_STYLE);
-                 style = style & ~WS_BORDER;
-                 const int TCS_FLATBUTTONS = 0x0008;
-                 style |= TCS_FLATBUTTONS;
-                 SetWindowLong(_terminalTabControl.Handle, GWL_STYLE, style);
-                 int exStyle = GetWindowLong(_terminalTabControl.Handle, GWL_EXSTYLE);
-                 exStyle &= ~WS_EX_CLIENTEDGE;
-                 SetWindowLong(_terminalTabControl.Handle, GWL_EXSTYLE, exStyle);
-                 const uint SWP_FRAMECHANGED = 0x0020;
-                 const uint SWP_NOACTIVATE = 0x0010;
-                 const uint SWP_NOMOVE = 0x0002;
-                 const uint SWP_NOSIZE = 0x0001;
-                 const uint SWP_NOZORDER = 0x0004;
-                 SetWindowPos(_terminalTabControl.Handle, IntPtr.Zero, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
-                 var theme = _themeManager.CurrentTheme;
-                 SendMessage(_terminalTabControl.Handle, TCM_SETBKCOLOR, IntPtr.Zero,
-                     ColorTranslator.ToWin32(theme.MenuBackground));
-                 const int WM_UPDATEUISTATE = 0x0128;
-                 const int UIS_SET = 1;
-                 const int UISF_HIDEFOCUS = 0x1;
-                 SendMessage(_terminalTabControl.Handle, WM_UPDATEUISTATE,
-                     (UISF_HIDEFOCUS << 16) | UIS_SET, IntPtr.Zero);
-                 // NOTE: do NOT add TabStripBackgroundWindow here — it intercepts WM_PAINT
-                 // and calls PaintTabStrip() which renders the *editor* document tabs.
-                 // The terminal uses OwnerDrawFixed + TerminalTabControl_DrawItem instead.
-                 // TerminalTabBgWindow fills the strip background with the theme colour
-                 // via WM_ERASEBKGND, then lets WinForms trigger DrawItem per tab.
-                 _terminalTabStripWindow?.ReleaseHandle();
-                 _terminalTabStripWindow = new TerminalTabBgWindow(_themeManager);
-                 _terminalTabStripWindow.AssignHandle(_terminalTabControl.Handle);
-             };
-             _terminalTabControl.HandleDestroyed += (s, e) =>
-             {
-                 _terminalTabStripWindow?.ReleaseHandle();
-                 _terminalTabStripWindow = null;
-             };
-             _terminalTabControl.DrawItem += TerminalTabControl_DrawItem;
-             _terminalTabControl.MouseDown += TerminalTabControl_MouseDown;
-             _terminalTabControl.SelectedIndexChanged += TerminalTabControl_SelectedIndexChanged;
-             _terminalTabControl.Resize += (s, e) => PositionTerminalNewTabButton();
-
-             // Create first terminal tab
-             AddTerminalTab(defaultShell);
-
-             // "+" button positioned in the tab strip area
-             _terminalNewTabButton = new Button
-             {
-                 Text = "+",
-                 Font = new Font("Segoe UI", 11, FontStyle.Bold),
-                 FlatStyle = FlatStyle.Flat,
-                 Size = new Size(22, 26),
-                 Cursor = Cursors.Hand,
-                 TabStop = false,
-                 UseVisualStyleBackColor = false,
-                 BackColor = _themeManager.CurrentTheme.MenuBackground,
-                 ForeColor = _themeManager.CurrentTheme.Text
-             };
-             _terminalNewTabButton.FlatAppearance.BorderSize = 0;
-             _terminalNewTabButton.Click += (s, e) => AddTerminalTab(defaultShell);
-
-             // Replace editor row with a draggable SplitContainer (editor top, terminal bottom)
              _terminalSplitContainer = new SplitContainer
              {
                  Dock = DockStyle.Fill,
@@ -1868,32 +1801,14 @@ using Microsoft.Extensions.DependencyInjection;
                      - _terminalSplitContainer.SplitterDistance
                      - _terminalSplitContainer.SplitterWidth);
 
-             // Panel1: existing editor (mainTable with gutter, editor, minimap)
              mainLayout.SuspendLayout();
              mainLayout.Controls.Remove(mainTable);
              _terminalSplitContainer.Panel1.Controls.Add(mainTable);
              mainTable.Dock = DockStyle.Fill;
              _terminalSplitContainer.Panel1.BackColor = _themeManager.CurrentTheme.EditorBackground;
 
-             // Panel2: tab control + new-tab button
              _terminalSplitContainer.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
-             _terminalSplitContainer.Panel2.Controls.Add(_terminalTabControl);
-             _terminalSplitContainer.Panel2.Controls.Add(_terminalNewTabButton);
-
-             // Add the persistent "Output" tab (Build Output) at index 0 — hidden until C# context
-             _buildOutputPanel = new BuildOutputPanel();
-             _buildOutputPanel.SetTheme(_themeManager.CurrentTheme);
-             _buildOutputPanel.DiagnosticNavigated += (path, line) => { OpenFileInNewTab(path); GoToLine(line); };
-             _buildOutputPanel.BuildRequested += () => { if (_solutionExplorerPanel != null) _ = _solutionExplorerPanel.BuildCurrentSolutionAsync(); };
-             _buildOutputPanel.CancelRequested += () => _solutionExplorerPanel?.CancelBuild();
-             _buildOutputPage = new TabPage("Output")
-             {
-                 BackColor = _themeManager.CurrentTheme.EditorBackground,
-                 Tag = "output"
-             };
-             _buildOutputPanel.Dock = DockStyle.Fill;
-             _buildOutputPage.Controls.Add(_buildOutputPanel);
-             // Not inserted here — UpdateStatusBarVisibility() adds/removes it based on C# context
+             _terminalSplitContainer.Panel2.Controls.Add(_terminalHost);
 
              // Insert split container into row 2, shift status up
              mainLayout.Controls.Add(_terminalSplitContainer, 0, 2);
@@ -2020,18 +1935,16 @@ using Microsoft.Extensions.DependencyInjection;
                   };
                   _solutionExplorerPanel.BuildStarted += (targetPath) =>
                   {
-                      _buildOutputPanel?.Clear();
-                      _buildOutputPanel?.SetBusy(true);
-                      _buildOutputPanel?.AppendLine($"Build started: {Path.GetFileName(targetPath)}", false);
-                      if (_terminalTabControl != null)
-                          if (_terminalTabControl != null && _buildOutputPage != null)
-                              _terminalTabControl.SelectedTab = _buildOutputPage;
+                      BuildOutput?.Clear();
+                      BuildOutput?.SetBusy(true);
+                      BuildOutput?.AppendLine($"Build started: {Path.GetFileName(targetPath)}", false);
+                      _terminalHost?.ShowBuildOutput();
                       ShowTerminal();
                   };
-                  _solutionExplorerPanel.BuildOutputLine += (line, isErr) => _buildOutputPanel?.AppendLine(line, isErr);
+                  _solutionExplorerPanel.BuildOutputLine += (line, isErr) => BuildOutput?.AppendLine(line, isErr);
                   _solutionExplorerPanel.BuildFinished += (result) =>
                   {
-                      _buildOutputPanel?.ShowResult(result);
+                      BuildOutput?.ShowResult(result);
                       if (!result.Success && _problemsPanel != null)
                           BeginInvoke(() => _problemsPanelVisible = true);
                   };
@@ -3831,8 +3744,7 @@ internal void ToggleGutter()
             _terminalVisible = true;
             terminalMenuItem.Checked = true;
 
-            foreach (var t in _terminalTabs)
-                t.Start();
+            _terminalHost?.StartAllVisible();
 
             _terminalSplitContainer.Panel2Collapsed = false;
 
@@ -3842,8 +3754,7 @@ internal void ToggleGutter()
             _terminalSplitContainer.SplitterDistance = available - _terminalHeight;
 
             _terminalSplitContainer.PerformLayout();
-            ActiveTerminal?.FocusInput();
-            PositionTerminalNewTabButton();
+            _terminalHost?.FocusActiveTerminal();
         }
 
         private void HideTerminal()
@@ -3862,26 +3773,13 @@ internal void ToggleGutter()
 
         private void UpdateTerminalTheme()
         {
-            foreach (var t in _terminalTabs)
-                t.SetTheme(_themeManager.CurrentTheme);
+            _terminalHost?.SetTheme(_themeManager.CurrentTheme);
             var theme = _themeManager.CurrentTheme;
             if (_terminalSplitContainer != null)
             {
                 _terminalSplitContainer.BackColor = theme.MenuBackground;
                 _terminalSplitContainer.Panel1.BackColor = theme.EditorBackground;
                 _terminalSplitContainer.Panel2.BackColor = theme.MenuBackground;
-            }
-            if (_terminalTabControl != null)
-            {
-                _terminalTabControl.BackColor = theme.MenuBackground;
-                if (_terminalTabControl.IsHandleCreated)
-                    SendMessage(_terminalTabControl.Handle, TCM_SETBKCOLOR, IntPtr.Zero,
-                        (IntPtr)ColorTranslator.ToWin32(theme.MenuBackground));
-            }
-            if (_terminalNewTabButton != null)
-            {
-                _terminalNewTabButton.BackColor = theme.MenuBackground;
-                _terminalNewTabButton.ForeColor = theme.Text;
             }
             if (_workspacePanel != null)
                 _workspacePanel.SetTheme(theme);
@@ -3936,21 +3834,17 @@ internal void ToggleGutter()
                 _aiopsRunbookPanel.SetTheme(theme);
             if (_editorSplitContainer != null)
                 _editorSplitContainer.BackColor = theme.EditorBackground;
-            _buildOutputPanel?.SetTheme(theme);
             foreach (var bp in _browserPanels) bp.SetTheme(theme);
         }
 
         private void ApplyTerminalSettingsToAll()
         {
-            foreach (var terminal in _terminalTabs)
-            {
-                terminal.CustomTabTitle = _terminalTabTitle;
+            _terminalHost?.CustomTabTitle = _terminalTabTitle;
+            _terminalHost?.ApplyTerminalSettingsToAll(_terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap, _terminalScrollbarVisible, _terminalPadding);
+            _terminalHost?.SetMaxScrollbackAll(_terminalMaxScrollback);
+            foreach (var terminal in AllTerminals)
                 terminal.StartingDirectory = ResolveTerminalStartingDirectory();
-                terminal.ApplyTerminalSettings(_terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap, _terminalScrollbarVisible, _terminalPadding);
-                terminal.SetMaxScrollback(_terminalMaxScrollback);
-            }
-
-            RefreshTerminalTabTitles();
+            _terminalHost?.RefreshTabTitles();
         }
 
         private void ApplyGitSettings()
@@ -4065,10 +3959,9 @@ internal void ToggleGutter()
             _lintEngine.SastEnabled = _secSastEnabled;
             _lintEngine.HighlightHardcodedSecrets = _secHighlightHardcodedSecrets;
 
-            foreach (var terminal in _terminalTabs)
-                terminal.ApplySecuritySettings(new TerminalPanel.SecuritySettings(
-                    ConfirmUrlOpen: _secConfirmUrlOpen,
-                    AllowHttpUrls: _secAllowHttpUrls));
+            _terminalHost?.ApplySecuritySettingsToAll(new TerminalPanel.SecuritySettings(
+                ConfirmUrlOpen: _secConfirmUrlOpen,
+                AllowHttpUrls: _secAllowHttpUrls));
 
             if (_secWriteStartupLog)
                 PurgeOldLogs(_secLogRetentionDays);
@@ -4122,173 +4015,6 @@ internal void ToggleGutter()
                 return _terminalStartingDirectory;
 
             return "";
-        }
-
-        private void RefreshTerminalTabTitles()
-        {
-            foreach (var terminal in _terminalTabs)
-            {
-                if (FindTerminalTabPage(terminal) is { } page)
-                    page.Text = GetTerminalTabTitle(terminal);
-            }
-        }
-
-        private TabPage? FindTerminalTabPage(TerminalPanel terminal)
-        {
-            if (_terminalTabControl == null)
-                return null;
-
-            foreach (TabPage page in _terminalTabControl.TabPages)
-            {
-                if (page.Tag == terminal)
-                    return page;
-            }
-
-            return null;
-        }
-
-        private string GetTerminalTabTitle(TerminalPanel terminal)
-        {
-            if (!string.IsNullOrWhiteSpace(terminal.CustomTabTitle))
-                return terminal.CustomTabTitle;
-
-            int tabIndex = _terminalTabs.IndexOf(terminal);
-            int tabNumber = tabIndex >= 0 ? tabIndex + 1 : _terminalTabs.Count + 1;
-            return $"Terminal {tabNumber}";
-        }
-
-        private TerminalPanel AddTerminalTab(string? shellPath)
-        {
-            var terminal = new TerminalPanel(shellPath);
-            terminal.SetTheme(_themeManager.CurrentTheme);
-            terminal.CustomTabTitle = _terminalTabTitle;
-            terminal.StartingDirectory = ResolveTerminalStartingDirectory();
-            terminal.ApplyTerminalSettings(_terminalFontFace, _terminalFontSize, _terminalFontBold, _terminalWordWrap, _terminalScrollbarVisible, _terminalPadding);
-            terminal.SetMaxScrollback(_terminalMaxScrollback);
-            terminal.ApplySecuritySettings(new TerminalPanel.SecuritySettings(
-                ConfirmUrlOpen: _secConfirmUrlOpen,
-                AllowHttpUrls: _secAllowHttpUrls));
-
-            var page = new TabPage(GetTerminalTabTitle(terminal))
-            {
-                BackColor = _themeManager.CurrentTheme.EditorBackground,
-                ToolTipText = shellPath ?? "Default shell",
-                Tag = terminal
-            };
-            terminal.Dock = DockStyle.Fill;
-            terminal.HideTerminalRequested += () => CloseTerminalTab(terminal);
-            page.Controls.Add(terminal);
-
-            if (_terminalTabControl != null)
-            {
-                _terminalTabControl.TabPages.Add(page);
-                _terminalTabControl.SelectedTab = page;
-            }
-            _terminalTabs.Add(terminal);
-            RefreshTerminalTabTitles();
-
-            if (_terminalVisible)
-                terminal.Start();
-
-            PositionTerminalNewTabButton();
-            return terminal;
-        }
-
-        private void CloseTerminalTab(TerminalPanel terminal)
-        {
-            if (_terminalTabControl == null) return;
-            TabPage? page = null;
-            foreach (TabPage tp in _terminalTabControl.TabPages)
-            {
-                if (tp.Tag == terminal) { page = tp; break; }
-            }
-            if (page == null) return;
-
-            terminal.Kill();
-            _terminalTabControl.TabPages.Remove(page);
-            _terminalTabs.Remove(terminal);
-            terminal.Dispose();
-
-            if (_terminalTabs.Count == 0)
-                HideTerminal();
-            RefreshTerminalTabTitles();
-            PositionTerminalNewTabButton();
-        }
-
-        private void TerminalTabControl_DrawItem(object? sender, DrawItemEventArgs e)
-        {
-            var tc = (TabControl)sender!;
-            if (e.Index < 0 || e.Index >= tc.TabPages.Count) return;
-            var page = tc.TabPages[e.Index];
-            var bounds = tc.GetTabRect(e.Index);
-            bounds.Height = tc.ItemSize.Height;
-
-            var theme = _themeManager.CurrentTheme;
-            bool isSelected = (e.Index == tc.SelectedIndex);
-
-            Color backColor = isSelected
-                ? theme.EditorBackground
-                : theme.MenuBackground;
-
-            using var bgBrush = new SolidBrush(backColor);
-            e.Graphics.FillRectangle(bgBrush, bounds);
-
-            TextRenderer.DrawText(e.Graphics, page.Text, e.Font ?? tc.Font,
-                new Rectangle(bounds.X + 4, bounds.Y + 3, bounds.Width - 22, bounds.Height - 4),
-                isSelected ? theme.Text : theme.Muted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-
-            if (isSelected)
-            {
-                using var accentPen = new Pen(theme.Accent, 2);
-                e.Graphics.DrawLine(accentPen, bounds.Left, bounds.Bottom - 2, bounds.Right, bounds.Bottom - 2);
-            }
-
-            var closeRect = new Rectangle(bounds.Right - 17, bounds.Y + 5, 14, 14);
-            TextRenderer.DrawText(e.Graphics, "\u00D7", e.Font ?? tc.Font,
-                closeRect, theme.Muted,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-        }
-
-        private void TerminalTabControl_MouseDown(object? sender, MouseEventArgs e)
-        {
-            var tc = (TabControl)sender!;
-            for (int i = 0; i < tc.TabPages.Count; i++)
-            {
-                var bounds = tc.GetTabRect(i);
-                var closeRect = new Rectangle(bounds.Right - 17, bounds.Y + 5, 14, 14);
-                if (closeRect.Contains(e.Location) && tc.TabPages[i].Tag is TerminalPanel tp)
-                {
-                    CloseTerminalTab(tp);
-                    return;
-                }
-            }
-        }
-
-        private void TerminalTabControl_SelectedIndexChanged(object? sender, EventArgs e)
-        {
-            var active = ActiveTerminal;
-            if (active != null && _terminalSplitContainer is { Panel2Collapsed: false })
-            {
-                active.Start();
-                active.FocusInput();
-            }
-
-            PositionTerminalNewTabButton();
-        }
-
-        private void PositionTerminalNewTabButton()
-        {
-            if (_terminalNewTabButton == null || _terminalTabControl == null) return;
-            if (_terminalTabControl.Parent == null) return;
-
-            var strip = _terminalTabControl;
-            int x = strip.Left + strip.Width - _terminalNewTabButton.Width - 2;
-            int y = strip.Top + 2;
-            if (x < strip.Left) x = strip.Left;
-            _terminalNewTabButton.Location = new Point(x, y);
-            _terminalNewTabButton.BringToFront();
-            _terminalNewTabButton.Visible = true;
         }
 
         private void MinimapMenuItem_Click(object? sender, EventArgs e)
@@ -5672,25 +5398,10 @@ internal void ToggleGutter()
             ApplyCSharpMenuItemVisibility(cs);
 
             // Output tab: only relevant for C# build output — add/remove dynamically
-            if (_terminalTabControl != null && _buildOutputPage != null)
-            {
-                bool outputVisible = _terminalTabControl.TabPages.Contains(_buildOutputPage);
-                if (cs && !outputVisible)
-                {
-                    // Insert at index 0 (before terminal tabs)
-                    _terminalTabControl.TabPages.Insert(0, _buildOutputPage);
-                }
-                else if (!cs && outputVisible)
-                {
-                    // Switch away from Output tab before removing it
-                    if (_terminalTabControl.SelectedTab == _buildOutputPage)
-                    {
-                        int next = _terminalTabControl.TabPages.Count > 1 ? 1 : -1;
-                        if (next >= 0) _terminalTabControl.SelectedIndex = next;
-                    }
-                    _terminalTabControl.TabPages.Remove(_buildOutputPage);
-                }
-            }
+            if (cs)
+                _terminalHost?.ShowBuildOutput();
+            else
+                _terminalHost?.HideBuildOutput();
         }
 
         /// <summary>
@@ -6245,7 +5956,12 @@ internal void ToggleGutter()
             {
                 AzureMonitorConnector = new MyCrownJewelApp.Pfpad.AIOps.AzureMonitorConnector(settings.AzureMonitor),
                 AzureDevOpsConnector = new MyCrownJewelApp.Pfpad.AIOps.AzureDevOpsConnector(settings.AzureDevOps),
-                KubernetesConnector = new MyCrownJewelApp.Pfpad.AIOps.KubernetesConnector(settings.Kubernetes)
+                KubernetesConnector = new MyCrownJewelApp.Pfpad.AIOps.KubernetesConnector(settings.Kubernetes),
+                PrometheusConnector = new MyCrownJewelApp.Pfpad.AIOps.PrometheusConnector(settings.Prometheus),
+                PagerDutyConnector = new MyCrownJewelApp.Pfpad.AIOps.PagerDutyConnector(settings.PagerDuty),
+                GitHubActionsConnector = new MyCrownJewelApp.Pfpad.AIOps.GitHubActionsConnector(settings.GitHubActions),
+                GitLabConnector = new MyCrownJewelApp.Pfpad.AIOps.GitLabConnector(settings.GitLab),
+                BitbucketConnector = new MyCrownJewelApp.Pfpad.AIOps.BitbucketConnector(settings.Bitbucket)
             };
             dlg.SettingsSaved += newSettings =>
             {
@@ -6421,10 +6137,7 @@ internal void ToggleGutter()
             _gitPanel?.Dispose();
             _notificationFeed.Dispose();
             _notificationCenter?.Dispose();
-            foreach (var t in _terminalTabs) t.Dispose();
-            _terminalTabs.Clear();
-            _terminalTabControl?.Dispose();
-            _terminalNewTabButton?.Dispose();
+            _terminalHost?.Dispose();
             _debugSession.Dispose();
             _debugVariablesPanel?.Dispose();
             _debugCallStackPanel?.Dispose();

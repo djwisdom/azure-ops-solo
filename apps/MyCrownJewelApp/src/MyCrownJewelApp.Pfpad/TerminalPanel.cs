@@ -162,13 +162,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private int _historyIndex = -1;
     private int _maxScrollback = 5000;
     private SecuritySettings _securitySettings = new(ConfirmUrlOpen: false, AllowHttpUrls: true);
-    private readonly ToolStrip _headerStrip;
-    private readonly ToolStripLabel _shellLabel;
-    private readonly ToolStripButton _closeButton;
-    private readonly ToolStripButton _clearButton;
-    private readonly ToolStripButton _copyButton;
-    private readonly ToolStripButton _stopButton;
-
     // Output that arrives before the window handle is created (early-init terminal) is buffered
     // here and flushed once the handle becomes available.
     private readonly List<string> _preHandleOutputBuffer = new();
@@ -250,79 +243,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         };
         _inputContainer.Controls.Add(_inputBox);
 
-        _closeButton = new ToolStripButton
-        {
-            Text = "\u00D7",
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            DisplayStyle = ToolStripItemDisplayStyle.Text,
-            Alignment = ToolStripItemAlignment.Right,
-            Margin = new Padding(0, 0, 2, 0),
-            AutoSize = false,
-            Width = 22,
-            Height = 22
-        };
-        _closeButton.Click += (s, e) => HideTerminalRequested?.Invoke();
-
-        _shellLabel = new ToolStripLabel
-        {
-            Text = $"Terminal  [{ShellName}]",
-            Font = new Font("Segoe UI", 8.25f),
-            Margin = new Padding(4, 0, 0, 0)
-        };
-
-        _clearButton = new ToolStripButton
-        {
-            Text = "\u2399",
-            Font = new Font("Segoe UI", 10),
-            DisplayStyle = ToolStripItemDisplayStyle.Text,
-            AutoSize = false,
-            Width = 22,
-            Height = 22,
-            ToolTipText = "Clear output"
-        };
-        _clearButton.Click += (s, e) => ClearOutput();
-
-        _copyButton = new ToolStripButton
-        {
-            Text = "\u29C9",  // ⧉ two joined squares — copy icon (BMP safe)
-            Font = new Font("Segoe UI", 9),
-            DisplayStyle = ToolStripItemDisplayStyle.Text,
-            AutoSize = false,
-            Width = 22,
-            Height = 22,
-            ToolTipText = "Copy selection (or all if nothing selected)"
-        };
-        _copyButton.Click += (s, e) => CopyOutputSelection();
-
-        _stopButton = new ToolStripButton
-        {
-            Text = "\u25A0",
-            Font = new Font("Segoe UI", 10),
-            DisplayStyle = ToolStripItemDisplayStyle.Text,
-            AutoSize = false,
-            Width = 22,
-            Height = 22,
-            ToolTipText = "Send Ctrl+C to interrupt"
-        };
-        _stopButton.Click += (s, e) => SendCtrlC();
-
-        _headerStrip = new ToolStrip
-        {
-            Dock = DockStyle.Top,
-            GripStyle = ToolStripGripStyle.Hidden,
-            Padding = new Padding(2, 0, 0, 0),
-            AutoSize = false,
-            Height = 24,
-            Renderer = new FlatToolStripRenderer()
-        };
-
-        _headerStrip.Items.Add(_shellLabel);
-        _headerStrip.Items.Add(_stopButton);
-        _headerStrip.Items.Add(new ToolStripSeparator { Alignment = ToolStripItemAlignment.Right });
-        _headerStrip.Items.Add(_copyButton);
-        _headerStrip.Items.Add(_clearButton);
-        _headerStrip.Items.Add(_closeButton);
-
         // Right-click context menu on the output box
         var outputMenu = new ContextMenuStrip();
         var menuCopySelection = new ToolStripMenuItem("Copy Selection\tCtrl+Shift+C");
@@ -342,7 +262,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
         Controls.Add(_outputBox);
         Controls.Add(_inputContainer);
-        Controls.Add(_headerStrip);
 
         // Flush any output buffered before the window handle was available.
         HandleCreated += (_, _) => FlushPreHandleOutputBuffer();
@@ -402,9 +321,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
         Color bg = theme.TerminalBackground;
         Color fg = theme.TerminalForeground;
-        Color headerBg = theme.TerminalHeaderBackground;
-        Color mutedFg = theme.Muted;
-        Color border = theme.Border;
         _inputBg = theme.TerminalInputBackground;
         _inputBgFocused = theme.IsLight ? ControlPaint.Light(theme.TerminalInputBackground) : ControlPaint.LightLight(theme.TerminalInputBackground);
 
@@ -422,16 +338,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         _inputBox.ForeColor = fg;
 
         _inputContainer.BackColor = bg;
-
-        _headerStrip.BackColor = headerBg;
-        _headerStrip.ForeColor = fg;
-
-        _shellLabel.ForeColor = mutedFg;
-
-        _closeButton.ForeColor = fg;
-        _clearButton.ForeColor = mutedFg;
-        _copyButton.ForeColor = mutedFg;
-        _stopButton.ForeColor = theme.IsLight ? Color.FromArgb(200, 50, 50) : Color.FromArgb(255, 100, 100);
 
         if (_outputBox.ContextMenuStrip is { } menu)
         {
@@ -1071,7 +977,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         ResetAnsiState();
     }
 
-    private void CopyOutputSelection()
+    public void CopyOutputSelection()
     {
         if (_outputBox.SelectionLength > 0)
             Clipboard.SetText(_outputBox.SelectedText);

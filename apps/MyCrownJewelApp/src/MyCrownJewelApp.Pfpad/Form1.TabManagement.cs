@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -986,10 +986,8 @@ namespace MyCrownJewelApp.Pfpad
                     _splitIsHorizontal = true;
 
                     // Hide any terminal content and put the split editor in Panel2
-                    if (_terminalTabControl?.Parent == _terminalSplitContainer!.Panel2)
-                        _terminalTabControl.Visible = false;
-                    if (_terminalNewTabButton?.Parent == _terminalSplitContainer.Panel2)
-                        _terminalNewTabButton.Visible = false;
+                    if (_terminalHost?.Parent == _terminalSplitContainer!.Panel2)
+                        _terminalHost.Visible = false;
 
                     _terminalSplitContainer.Panel2.Controls.Add(_splitEditor);
                     _terminalSplitContainer.Panel2Collapsed = false;
@@ -1061,8 +1059,7 @@ namespace MyCrownJewelApp.Pfpad
                 // Horizontal split: remove _splitEditor from _terminalSplitContainer.Panel2
                 _terminalSplitContainer.Panel2.Controls.Remove(_splitEditor);
                 // Restore terminal visibility
-                if (_terminalTabControl != null) _terminalTabControl.Visible = true;
-                if (_terminalNewTabButton != null) _terminalNewTabButton.Visible = true;
+                if (_terminalHost != null) _terminalHost.Visible = true;
                 // Collapse Panel2 if terminal was not visible before the split
                 if (!_terminalVisible)
                     _terminalSplitContainer.Panel2Collapsed = true;
