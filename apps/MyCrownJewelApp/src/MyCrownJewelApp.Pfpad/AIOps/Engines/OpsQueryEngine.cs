@@ -1,8 +1,9 @@
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public class OpsQueryEngine
+public sealed class OpsQueryEngine
 {
-    public List<OpsQueryMessage> ConversationHistory { get; } = new();
+    private readonly List<OpsQueryMessage> _conversationHistory = new();
+    public IReadOnlyList<OpsQueryMessage> ConversationHistory => _conversationHistory;
 
     public OpsQueryResponse Query(
         string question,
@@ -43,12 +44,12 @@ public class OpsQueryEngine
         }
 
         var response = new OpsQueryResponse(answer, confidence, evidence, recommendations, isGuess, disclaimer, intent);
-        ConversationHistory.Add(new OpsQueryMessage(ChatRole.User, question, DateTimeOffset.UtcNow));
-        ConversationHistory.Add(new OpsQueryMessage(ChatRole.Assistant, answer, DateTimeOffset.UtcNow, evidence, confidence));
+        _conversationHistory.Add(new OpsQueryMessage(ChatRole.User, question, DateTimeOffset.UtcNow));
+        _conversationHistory.Add(new OpsQueryMessage(ChatRole.Assistant, answer, DateTimeOffset.UtcNow, evidence, confidence));
         return response;
     }
 
-    public void ClearHistory() => ConversationHistory.Clear();
+    public void ClearHistory() => _conversationHistory.Clear();
 
     private static string ClassifyIntent(string question)
     {

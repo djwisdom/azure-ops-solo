@@ -2,13 +2,29 @@ using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public sealed class ObservabilityAdvisor
+public sealed partial class ObservabilityAdvisor
 {
-    public Task<IReadOnlyList<ObservabilityGap>> AnalyzeAsync(string filePath, string content, CancellationToken ct = default)
+    [GeneratedRegex(@"\bthrow\b")]
+    private static partial Regex ThrowRegex();
+
+    [GeneratedRegex(@"ILogger\.|_logger\.Log(Error|Warning)", RegexOptions.IgnoreCase)]
+    private static partial Regex LoggerCallRegex();
+
+    [GeneratedRegex(@"\b(Meter|Counter|Histogram)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex MetricsApiRegex();
+
+    [GeneratedRegex(@"await\s+_http\w*\.GetAsync", RegexOptions.IgnoreCase)]
+    private static partial Regex HttpGetAsyncRegex();
+
+    // Method-finder regex: compiled once at class load.
+    [GeneratedRegex(@"(?ms)(?<attrs>(\s*\[[^\]]+\]\s*)*)(?<signature>(public|private|internal|protected)\s+(?:async\s+)?[^{;=]+?\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\([^\)]*\)\s*)\{")]
+    private static partial Regex MethodFinderRegex();
+
+    public ValueTask<IReadOnlyList<ObservabilityGap>> AnalyzeAsync(string filePath, string content, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         if (!filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
-            return Task.FromResult<IReadOnlyList<ObservabilityGap>>([]);
+            return ValueTask.FromResult<IReadOnlyList<ObservabilityGap>>([]);
 
         var gaps = new List<ObservabilityGap>();
         foreach (var method in FindMethods(content))
@@ -25,20 +41,20 @@ public sealed class ObservabilityAdvisor
                     "using var activity = _activitySource.StartActivity(\"" + method.Name + "\");\nactivity?.SetTag(\"code.function\", nameof(" + method.Name + "));"));
             }
 
-            if (Regex.IsMatch(body, @"\bthrow\b") && !Regex.IsMatch(body, @"ILogger\.|_logger\.Log(Error|Warning)", RegexOptions.IgnoreCase))
+            if (ThrowRegex().IsMatch(body) && !LoggerCallRegex().IsMatch(body))
             {
                 gaps.Add(CreateGap(filePath, method.LineNumber, "Logging", "Exception path does not emit structured warning/error logs.",
                     "_logger.LogError(ex, \"" + method.Name + " failed for {OperationId}\", operationId);"));
             }
 
             if ((method.Name.StartsWith("Process", StringComparison.OrdinalIgnoreCase) || method.Name.StartsWith("Calculate", StringComparison.OrdinalIgnoreCase))
-                && !Regex.IsMatch(body, @"\b(Meter|Counter|Histogram)\b", RegexOptions.IgnoreCase))
+                && !MetricsApiRegex().IsMatch(body))
             {
                 gaps.Add(CreateGap(filePath, method.LineNumber, "Metrics", "Processing method is missing explicit metric instrumentation.",
                     "_processedCounter.Add(1, new KeyValuePair<string, object?>(\"method\", nameof(" + method.Name + ")));"));
             }
 
-            if (Regex.IsMatch(body, @"await\s+_http\w*\.GetAsync", RegexOptions.IgnoreCase) && !body.Contains("StartActivity", StringComparison.Ordinal))
+            if (HttpGetAsyncRegex().IsMatch(body) && !body.Contains("StartActivity", StringComparison.Ordinal))
             {
                 gaps.Add(CreateGap(filePath, method.LineNumber, "Tracing", "Outbound HttpClient call is not wrapped in an Activity span.",
                     "using var activity = _activitySource.StartActivity(\"http " + method.Name + "\");\nactivity?.SetTag(\"http.client\", true);\nvar response = await _http.GetAsync(url, cancellationToken);"));
@@ -51,10 +67,11 @@ public sealed class ObservabilityAdvisor
             }
         }
 
-        return Task.FromResult<IReadOnlyList<ObservabilityGap>>(gaps
+        IReadOnlyList<ObservabilityGap> result = gaps
             .GroupBy(g => $"{g.Category}:{g.FilePath}:{g.LineNumber}:{g.Description}", StringComparer.Ordinal)
             .Select(g => g.First())
-            .ToList());
+            .ToList();
+        return ValueTask.FromResult(result);
     }
 
     private static ObservabilityGap CreateGap(string filePath, int lineNumber, string category, string description, string suggestion)
@@ -71,8 +88,7 @@ public sealed class ObservabilityAdvisor
 
     private static IEnumerable<MethodBlock> FindMethods(string content)
     {
-        var regex = new Regex(@"(?ms)(?<attrs>(\s*\[[^\]]+\]\s*)*)(?<signature>(public|private|internal|protected)\s+(?:async\s+)?[^{;=]+?\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\([^\)]*\)\s*)\{", RegexOptions.Compiled);
-        foreach (Match match in regex.Matches(content))
+        foreach (Match match in MethodFinderRegex().Matches(content))
         {
             int openBrace = match.Index + match.Length - 1;
             int closeBrace = FindMatchingBrace(content, openBrace);
@@ -107,16 +123,7 @@ public sealed class ObservabilityAdvisor
     }
 
     private static int GetLineNumber(string content, int index)
-    {
-        int line = 1;
-        for (int i = 0; i < Math.Min(index, content.Length); i++)
-        {
-            if (content[i] == '\n')
-                line++;
-        }
-
-        return line;
-    }
+        => content.AsSpan(0, Math.Min(index, content.Length)).Count('\n') + 1;
 
     private readonly record struct MethodBlock(string Name, string Attributes, string Signature, string Body, int LineNumber);
 }

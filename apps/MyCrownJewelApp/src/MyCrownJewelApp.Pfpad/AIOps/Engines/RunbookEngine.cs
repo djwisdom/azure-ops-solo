@@ -1,16 +1,20 @@
-using System.Diagnostics;
-using System.Text.RegularExpressions;
-
-namespace MyCrownJewelApp.Pfpad.AIOps;
-
-public class RunbookEngine
-{
-    private static readonly IReadOnlySet<string> _safePrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "kubectl get", "kubectl describe", "kubectl logs", "kubectl top",
-        "git log", "git status", "git diff",
-        "dotnet --version", "docker ps", "docker images"
-    };
+using System.Collections.Frozen;
+using System.Diagnostics;
+using System.Text.RegularExpressions;
+
+namespace MyCrownJewelApp.Pfpad.AIOps;
+
+public sealed partial class RunbookEngine
+{
+    private static readonly FrozenSet<string> _safePrefixes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "kubectl get", "kubectl describe", "kubectl logs", "kubectl top",
+        "git log", "git status", "git diff",
+        "dotnet --version", "docker ps", "docker images"
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    [GeneratedRegex(@"""[^""]+""|\S+")]
+    private static partial Regex CommandTokenizerRegex();
 
     public event Action<RunbookExecutionResult>? ExecutionCompleted;
     public event Action<Runbook, RunbookStep>? ApprovalRequested;
@@ -76,53 +80,50 @@ public class RunbookEngine
         return result;
     }
 
-    private static async Task<(bool Success, string Output)> ExecuteCommandAsync(string command, TimeSpan timeout, CancellationToken ct)
-    {
-        var tokens = Regex.Matches(command, "\"[^\"]+\"|\\S+")
-            .Select(match => match.Value.Trim('"'))
-            .Where(token => !string.IsNullOrWhiteSpace(token))
-            .ToList();
-        if (tokens.Count == 0)
-            return (false, "No command provided.");
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = tokens[0],
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        foreach (string token in tokens.Skip(1))
-            startInfo.ArgumentList.Add(token);
-
-        using var process = new Process { StartInfo = startInfo };
-        process.Start();
-
-        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-        Task<string> stderrTask = process.StandardError.ReadToEndAsync(ct);
-        Task waitTask = process.WaitForExitAsync(ct);
-        Task completed = await Task.WhenAny(waitTask, Task.Delay(timeout, ct)).ConfigureAwait(false);
-        if (completed != waitTask)
-        {
-            try
-            {
-                if (!process.HasExited)
-                    process.Kill(true);
-            }
-            catch
-            {
-            }
-
-            return (false, $"Command timed out after {timeout.TotalSeconds:F0}s.");
-        }
-
-        await waitTask.ConfigureAwait(false);
-        string stdout = await stdoutTask.ConfigureAwait(false);
-        string stderr = await stderrTask.ConfigureAwait(false);
-        string output = string.Join(Environment.NewLine, new[] { stdout, stderr }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
-        if (string.IsNullOrWhiteSpace(output))
-            output = $"Exit code {process.ExitCode}.";
-        return (process.ExitCode == 0, output);
-    }
-}
+    private static async Task<(bool Success, string Output)> ExecuteCommandAsync(string command, TimeSpan timeout, CancellationToken ct)
+    {
+        var tokens = CommandTokenizerRegex().Matches(command)
+            .Select(match => match.Value.Trim('"'))
+            .Where(token => !string.IsNullOrWhiteSpace(token))
+            .ToList();
+        if (tokens.Count == 0)
+            return (false, "No command provided.");
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = tokens[0],
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (string token in tokens.Skip(1))
+            startInfo.ArgumentList.Add(token);
+
+        using var process = new Process { StartInfo = startInfo };
+        process.Start();
+
+        Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync(ct);
+
+        // Use a linked CTS so the timeout delay is cancelled as soon as the process exits.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+            return (false, $"Command timed out after {timeout.TotalSeconds:F0}s.");
+        }
+
+        string stdout = await stdoutTask.ConfigureAwait(false);
+        string stderr = await stderrTask.ConfigureAwait(false);
+        string output = string.Join(Environment.NewLine, new[] { stdout, stderr }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+        if (string.IsNullOrWhiteSpace(output))
+            output = $"Exit code {process.ExitCode}.";
+        return (process.ExitCode == 0, output);
+    }
+}

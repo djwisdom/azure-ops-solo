@@ -2,10 +2,10 @@ using System.Text.Json;
 
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public class AuditLogger
+public sealed class AuditLogger
 {
     private readonly string _logFilePath;
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
 
     public AuditLogger(string? logDirectory = null)
     {

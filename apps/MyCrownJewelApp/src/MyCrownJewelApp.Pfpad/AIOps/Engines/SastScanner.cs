@@ -1,28 +1,47 @@
+using System.Collections.Frozen;
 using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public sealed class SastScanner
+public sealed partial class SastScanner
 {
-    private readonly record struct Rule(string RuleId, string Title, string Pattern, Severity Severity, SecurityCategory Category, IReadOnlySet<string> Languages, string Description, string Remediation);
+    // Shared FrozenSet instances for language filtering — allocated once, lookup O(1).
+    private static readonly FrozenSet<string> _langAll  = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "all"                  }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> _langCs   = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs"                   }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> _langCsSql= new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs", "sql"            }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> _langCsPySh= new HashSet<string>(StringComparer.OrdinalIgnoreCase){ "cs", "py", "sh"       }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> _langYaml = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "yaml", "yml"          }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> _langTf   = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tf"                   }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    private readonly record struct Rule(
+        string RuleId, string Title, Regex Pattern,
+        Severity Severity, SecurityCategory Category,
+        FrozenSet<string> Languages, string Description, string Remediation);
+
+    // Regex compiled once with NonBacktracking (DFA — prevents ReDoS; O(N) match time).
     private static readonly IReadOnlyList<Rule> Rules =
     [
-        new("CWE-89", "SQL Injection", @"(string\.Format|StringFormat|Execute|Query).*\+.*", Severity.High, SecurityCategory.Injection, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs", "sql" }, "Dynamic SQL appears to be assembled with string concatenation.", "Use parameterized queries or ORM parameters instead of concatenating SQL input."),
-        new("CWE-78", "Command Injection", @"(Process\.Start|cmd\.exe|shell_exec|os\.system).*(\+|\$\{|Request\.|Console\.ReadLine)", Severity.High, SecurityCategory.Injection, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs", "py", "sh" }, "Shell execution may include untrusted input.", "Use strict allow-lists and avoid passing user input directly into shell commands."),
-        new("CWE-22", "Path Traversal", @"(Path\.Combine.*Request\.|\.\./)", Severity.Medium, SecurityCategory.Injection, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs" }, "Potential path traversal pattern detected.", "Normalize and validate paths against an allow-listed base directory."),
-        new("CWE-338", "Insecure Random", @"(new Random\(\)|random\.Next)", Severity.Medium, SecurityCategory.Insecure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs" }, "Non-cryptographic random source used in a potentially sensitive context.", "Use RandomNumberGenerator for secrets, tokens, and security decisions."),
-        new("CWE-327", "Weak Crypto", @"(MD5\.Create|SHA1\.Create|DES\.Create|RC2\.)", Severity.High, SecurityCategory.Insecure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs" }, "Weak or obsolete cryptographic primitive detected.", "Use SHA-256 or stronger hashes and modern authenticated encryption primitives."),
-        new("CWE-798", "Hardcoded Credentials", @"(password\s*=\s*""[^""]+""|apikey\s*=\s*""[^""]+"")", Severity.Critical, SecurityCategory.Secret, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "all" }, "Hardcoded secret material found in source.", "Move credentials to secure configuration such as Azure Key Vault, user secrets, or environment variables."),
-        new("CWE-601", "Open Redirect", @"Response\.Redirect.*Request\.", Severity.Medium, SecurityCategory.Injection, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs" }, "Redirect target appears to come from the request.", "Validate redirect targets against trusted hosts or use fixed routes."),
-        new("CWE-476", "Null Deref Risk", @"(FirstOrDefault\(\)\.[A-Za-z_]|SingleOrDefault\(\)\.[A-Za-z_]|[A-Za-z_][A-Za-z0-9_]*!\.)", Severity.Low, SecurityCategory.Insecure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cs" }, "Code may dereference a value that can be null.", "Add null checks or safe navigation operators before dereferencing."),
-        new("SEC-K8S-001", "Privileged Container", @"privileged:\s*true", Severity.High, SecurityCategory.Infrastructure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "yaml", "yml" }, "Kubernetes container is configured as privileged.", "Run containers as non-privileged and grant only the capabilities that are required."),
-        new("SEC-K8S-002", "Latest Image Tag", @"image:\s*.+:latest", Severity.Medium, SecurityCategory.Infrastructure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "yaml", "yml" }, "Container image uses the latest tag.", "Pin images to immutable version or digest references."),
-        new("SEC-TF-001", "Public Storage", @"(public_access\s*=\s*true|allow_blob_public_access)", Severity.High, SecurityCategory.Infrastructure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tf" }, "Storage account appears to allow public access.", "Disable public access and restrict access with private endpoints or firewall rules."),
-        new("SEC-TF-002", "No HTTPS", @"https_only\s*=\s*false", Severity.High, SecurityCategory.Infrastructure, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tf" }, "HTTPS-only enforcement appears disabled.", "Require HTTPS/TLS for ingress and storage endpoints."),
+        new("CWE-89",  "SQL Injection",         new Regex(@"(string\.Format|StringFormat|Execute|Query).*\+.*",                          RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.High,     SecurityCategory.Injection,      _langCsSql,  "Dynamic SQL appears to be assembled with string concatenation.",                           "Use parameterized queries or ORM parameters instead of concatenating SQL input."),
+        new("CWE-78",  "Command Injection",      new Regex(@"(Process\.Start|cmd\.exe|shell_exec|os\.system).*(\+|\$\{|Request\.|Console\.ReadLine)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.High,     SecurityCategory.Injection,      _langCsPySh, "Shell execution may include untrusted input.",                                             "Use strict allow-lists and avoid passing user input directly into shell commands."),
+        new("CWE-22",  "Path Traversal",         new Regex(@"(Path\.Combine.*Request\.|\.\./)",                                          RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.Medium,   SecurityCategory.Injection,      _langCs,     "Potential path traversal pattern detected.",                                               "Normalize and validate paths against an allow-listed base directory."),
+        new("CWE-338", "Insecure Random",        new Regex(@"(new Random\(\)|random\.Next)",                                             RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.Medium,   SecurityCategory.Insecure,       _langCs,     "Non-cryptographic random source used in a potentially sensitive context.",                 "Use RandomNumberGenerator for secrets, tokens, and security decisions."),
+        new("CWE-327", "Weak Crypto",            new Regex(@"(MD5\.Create|SHA1\.Create|DES\.Create|RC2\.)",                              RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.High,     SecurityCategory.Insecure,       _langCs,     "Weak or obsolete cryptographic primitive detected.",                                       "Use SHA-256 or stronger hashes and modern authenticated encryption primitives."),
+        new("CWE-798", "Hardcoded Credentials",  new Regex(@"(password\s*=\s*""[^""]+""|apikey\s*=\s*""[^""]+"")",                      RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.Critical, SecurityCategory.Secret,         _langAll,    "Hardcoded secret material found in source.",                                               "Move credentials to secure configuration such as Azure Key Vault, user secrets, or environment variables."),
+        new("CWE-601", "Open Redirect",          new Regex(@"Response\.Redirect.*Request\.",                                             RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.Medium,   SecurityCategory.Injection,      _langCs,     "Redirect target appears to come from the request.",                                       "Validate redirect targets against trusted hosts or use fixed routes."),
+        new("CWE-476", "Null Deref Risk",        new Regex(@"(FirstOrDefault\(\)\.[A-Za-z_]|SingleOrDefault\(\)\.[A-Za-z_]|[A-Za-z_][A-Za-z0-9_]*!\.)", RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.Low,      SecurityCategory.Insecure,       _langCs,     "Code may dereference a value that can be null.",                                           "Add null checks or safe navigation operators before dereferencing."),
+        new("SEC-K8S-001", "Privileged Container",new Regex(@"privileged:\s*true",                                                       RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.High,     SecurityCategory.Infrastructure, _langYaml,   "Kubernetes container is configured as privileged.",                                        "Run containers as non-privileged and grant only the capabilities that are required."),
+        new("SEC-K8S-002", "Latest Image Tag",   new Regex(@"image:\s*.+:latest",                                                        RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.Medium,   SecurityCategory.Infrastructure, _langYaml,   "Container image uses the latest tag.",                                                     "Pin images to immutable version or digest references."),
+        new("SEC-TF-001", "Public Storage",      new Regex(@"(public_access\s*=\s*true|allow_blob_public_access)",                       RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.High,     SecurityCategory.Infrastructure, _langTf,     "Storage account appears to allow public access.",                                         "Disable public access and restrict access with private endpoints or firewall rules."),
+        new("SEC-TF-002", "No HTTPS",            new Regex(@"https_only\s*=\s*false",                                                    RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.NonBacktracking), Severity.High,     SecurityCategory.Infrastructure, _langTf,     "HTTPS-only enforcement appears disabled.",                                                 "Require HTTPS/TLS for ingress and storage endpoints."),
     ];
 
-    public Task<IReadOnlyList<SecurityFinding>> ScanAsync(string filePath, string content, CancellationToken ct = default)
+    [GeneratedRegex(@"\b(select|insert|update|delete|from|where)\b", RegexOptions.IgnoreCase)]
+    private static partial Regex SqlKeywordsRegex();
+
+    [GeneratedRegex(@"(token|secret|password|auth|session|nonce|key)", RegexOptions.IgnoreCase)]
+    private static partial Regex SecuritySensitiveRegex();
+
+    public ValueTask<IReadOnlyList<SecurityFinding>> ScanAsync(string filePath, string content, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested();
         string language = DetectLanguage(filePath);
@@ -33,12 +52,9 @@ public sealed class SastScanner
             if (!rule.Languages.Contains("all") && !rule.Languages.Contains(language))
                 continue;
 
-            var regex = new Regex(rule.Pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
-            foreach (Match match in regex.Matches(content))
+            foreach (Match match in rule.Pattern.Matches(content))
             {
                 ct.ThrowIfCancellationRequested();
-                if (!match.Success)
-                    continue;
                 if (rule.RuleId == "CWE-89" && !LooksLikeSql(match.Value, content))
                     continue;
                 if (rule.RuleId == "CWE-338" && !LooksSecuritySensitive(match.Index, content))
@@ -61,7 +77,7 @@ public sealed class SastScanner
             }
         }
 
-        return Task.FromResult<IReadOnlyList<SecurityFinding>>(Deduplicate(findings));
+        return ValueTask.FromResult<IReadOnlyList<SecurityFinding>>(Deduplicate(findings));
     }
 
     private static IReadOnlyList<SecurityFinding> Deduplicate(IEnumerable<SecurityFinding> findings)
@@ -83,13 +99,13 @@ public sealed class SastScanner
     private static bool LooksLikeSql(string matchValue, string content)
     {
         string window = GetSnippet(content, Math.Max(0, content.IndexOf(matchValue, StringComparison.Ordinal)));
-        return Regex.IsMatch(window, @"\b(select|insert|update|delete|from|where)\b", RegexOptions.IgnoreCase);
+        return SqlKeywordsRegex().IsMatch(window);
     }
 
     private static bool LooksSecuritySensitive(int index, string content)
     {
         string window = GetWindow(content, index, 120);
-        return Regex.IsMatch(window, @"(token|secret|password|auth|session|nonce|key)", RegexOptions.IgnoreCase);
+        return SecuritySensitiveRegex().IsMatch(window);
     }
 
     private static string GetSnippet(string content, int index)
@@ -109,14 +125,5 @@ public sealed class SastScanner
     }
 
     private static int GetLineNumber(string content, int index)
-    {
-        int line = 1;
-        for (int i = 0; i < Math.Min(index, content.Length); i++)
-        {
-            if (content[i] == '\n')
-                line++;
-        }
-
-        return line;
-    }
+        => content.AsSpan(0, Math.Min(index, content.Length)).Count('\n') + 1;
 }

@@ -1,10 +1,14 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public class ServiceContextEngine
+public sealed class ServiceContextEngine
 {
     private readonly List<ServiceFileMapping> _mappings = new();
+
+    // Cache glob-pattern → compiled Regex to avoid repeated Regex.Escape + new Regex() per call.
+    private static readonly ConcurrentDictionary<string, Regex> _globCache = new(StringComparer.Ordinal);
 
     public void AddMapping(ServiceFileMapping mapping)
     {
@@ -100,10 +104,14 @@ public class ServiceContextEngine
 
     private static bool GlobMatches(string input, string pattern)
     {
-        string regex = "^" + Regex.Escape(pattern)
-            .Replace(@"\*\*", ".*")
-            .Replace(@"\*", "[^/]*")
-            .Replace(@"\?", ".") + "$";
-        return Regex.IsMatch(input, regex, RegexOptions.IgnoreCase);
+        var regex = _globCache.GetOrAdd(pattern, static p =>
+        {
+            string regexPattern = "^" + Regex.Escape(p)
+                .Replace(@"\*\*", ".*")
+                .Replace(@"\*", "[^/]*")
+                .Replace(@"\?", ".") + "$";
+            return new Regex(regexPattern, RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
+        });
+        return regex.IsMatch(input);
     }
 }
