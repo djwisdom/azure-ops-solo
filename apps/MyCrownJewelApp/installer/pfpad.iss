@@ -40,10 +40,11 @@ WizardStyle=modern
 WizardSizePercent=120
 DisableWelcomePage=no
 DisableReadyPage=no
+SetupIconFile=AppIcon.ico
 
 ; Uninstall
 UninstallDisplayName={#AppName} {#AppVersion}
-UninstallDisplayIcon={app}\{#AppExeName}
+UninstallDisplayIcon={app}\AppIcon.ico
 CreateUninstallRegKey=yes
 
 ; Misc
@@ -62,16 +63,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
+; Installer wizard icon (embedded into setup exe via SetupIconFile above)
+Source: "AppIcon.ico"; DestDir: "{app}"; Flags: ignoreversion
 ; All published files — recursive
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; Start Menu
-Name: "{userprograms}\{#AppName}\{#AppName}";           Filename: "{app}\{#AppExeName}"
+Name: "{userprograms}\{#AppName}\{#AppName}";           Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"
 Name: "{userprograms}\{#AppName}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 ; Desktop (optional task)
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
 ; Offer to launch after install
