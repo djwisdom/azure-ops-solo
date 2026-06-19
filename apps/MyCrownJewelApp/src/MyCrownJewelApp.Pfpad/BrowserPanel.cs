@@ -180,7 +180,7 @@ internal sealed class BrowserPanel : UserControl
             Style = ProgressBarStyle.Marquee,
             MarqueeAnimationSpeed = 30,
             Height = 2,
-            Dock = DockStyle.Bottom,
+            Dock = DockStyle.Top,
             Visible = false
         };
 
@@ -218,7 +218,7 @@ internal sealed class BrowserPanel : UserControl
         toolTable.Controls.Add(_darkModeBtn, 6, 0);
 
         _toolbar.Controls.Add(toolTable);
-        _toolbar.Controls.Add(_progressBar);
+        // _progressBar is intentionally NOT added to _toolbar — it lives below _favBar
 
         // ── Status bar ────────────────────────────────────────────────────────
         _statusLabel = new Label
@@ -372,13 +372,17 @@ internal sealed class BrowserPanel : UserControl
         _favBar.SizeChanged += (_, _) => { if (_favItems.Count > 0) RefreshFavLayout(); };
         _favBar.VisibleChanged += (_, _) => { if (_favBar.Visible && _favItems.Count > 0) RefreshFavLayout(); };
 
-        // Toolbar docks top, status bar docks bottom, content area fills the rest.
-        // WebView2 lives inside _contentArea so it can never overlap the toolbar.
-        // NOTE: Controls added FIRST with Dock=Top are positioned topmost.
+        // Dock stacking (last added = topmost for Dock=Top):
+        //   _toolbar     → Top (topmost)
+        //   _favBar      → Top (below toolbar)
+        //   _progressBar → Top (below favBar, above content)
+        //   _statusBar   → Bottom
+        //   _contentArea → Fill (remaining space)
         Controls.Add(_contentArea);
         Controls.Add(_statusBar);
-        Controls.Add(_favBar);    // Top, below toolbar
-        Controls.Add(_toolbar);   // Top, topmost
+        Controls.Add(_progressBar);   // thin 2px loading stripe, sits just above content
+        Controls.Add(_favBar);
+        Controls.Add(_toolbar);
 
         // ── Button events ─────────────────────────────────────────────────────
         _backBtn.Click += (_, _) => _webView?.CoreWebView2?.GoBack();
