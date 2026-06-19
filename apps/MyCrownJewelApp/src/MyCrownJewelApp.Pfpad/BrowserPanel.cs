@@ -1587,8 +1587,8 @@ internal sealed class BrowserPanel : UserControl
         /// <summary>
         /// Custom Label that mirrors the glyph horizontally when displaying the
         /// magnifying glass (\uE721) so it faces left like Edge's search icon.
-        /// Background is intentionally left to the parent (RoundedAddressPanel) so
-        /// the rounded corners are not clipped by a solid fill.
+        /// Background transparency is handled by the base class (SupportsTransparentBackColor)
+        /// which copies the parent's painted region before OnPaint fires.
         /// </summary>
         private sealed class GlyphLabel : Label
         {
@@ -1604,11 +1604,9 @@ internal sealed class BrowserPanel : UserControl
                 BackColor = Color.Transparent;
             }
 
-            // No-op: parent (RoundedAddressPanel) owns the background fill.
-            protected override void OnPaintBackground(PaintEventArgs e) { }
-
             protected override void OnPaint(PaintEventArgs e)
             {
+                // Background already painted by base OnPaintBackground (transparent simulation).
                 var g = e.Graphics;
                 g.SmoothingMode     = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
