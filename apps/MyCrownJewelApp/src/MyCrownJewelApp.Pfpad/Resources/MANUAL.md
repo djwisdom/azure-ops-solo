@@ -392,17 +392,73 @@ Pfpad includes a WebView2-powered browser that opens as tabs **directly in the m
 | Address bar | Type URL or search term; **Enter** navigates |
 | Go | Navigate to the typed URL |
 | 🛠 DevTools | Open Chromium Developer Tools (F12) |
+| 🌙 / ☀️ Dark mode | Toggle page dark mode (inverts page; images/video stay natural) |
 | ⧉ | Open current page in system browser |
 
-The address bar uses a **rounded Edge-style design** that highlights with an accent border on focus.
+### Address Bar Smart Glyph
+
+The left side of the address bar shows a context-aware glyph:
+
+| Glyph | When shown |
+|---|---|
+| 🔍 Magnifying glass (facing left) | Address bar empty, or typing a plain search query |
+| 🌐 Globe | Typing a domain (e.g. `gmail.com`) or a URL with protocol |
+| 🔒 Lock | Loaded HTTPS page — click for site information |
+| ℹ Info | Loaded HTTP / local / other page — click for site information |
+
+### Add to Favorites (⭐)
+
+A star glyph sits on the **right side of the address bar**:
+
+- **☆ Empty star** — current page is not saved; click or press **Ctrl+D** to add
+- **★ Gold filled star** — current page is already a favorite; click or **Ctrl+D** to edit or remove
+- A small popup appears with the page name pre-filled; press **Enter** (or Done) to confirm, or click **Remove** to delete
+
+### View Site Information
+
+Click the **lock / info glyph** (left of address bar) on any loaded page to open a flyout with:
+
+- Protocol (HTTPS / HTTP / file)
+- Connection security and certificate details
+- **Cookies and site data** — live count fetched from the browser session
+- **Tracker blocking** — number of requests blocked by the content filter
+- **Permissions** for the site
+
+### Page Dark Mode
+
+Click the **🌙 moon button** in the toolbar to force a dark color scheme on any bright page:
+
+- Injects a CSS `filter: invert + hue-rotate(180deg)` rule
+- Images, videos, and canvases are counter-inverted so they look natural
+- Button switches to **☀️ sun** to indicate dark mode is active
+- Automatically re-applied after page reloads and in-page navigation
+- Per-tab state — dark mode on one tab does not affect others
 
 ### Favorites Bar
 
-When enabled in **Settings > Features > Browser > Show Favorites Bar**, the bar below the toolbar displays your Edge bookmarks:
+When enabled in **Settings > Features > Browser > Show Favorites Bar**, the bar below the toolbar displays your saved favorites:
 
 - Items that fit appear as inline buttons
 - Overflow items appear in a **»** dropdown menu (including folder submenus)
-- The source file (`Bookmarks`) is read from the Edge profile you configure in Settings
+- The overflow menu is **pre-built in the background** after resize settles — opening it is instant regardless of how many items are hidden
+
+#### Manage Favorites
+
+Click **Manage** in the favorites bar to open the Manage Favorites panel:
+
+- **Add Favorite** — saves the current page (or use Ctrl+D in any browser tab)
+- **Add Folder** — creates a folder to organise favorites
+- **Move Up / Move Down** — reorder with toolbar buttons or **Alt+↑** / **Alt+↓**
+- **Delete** — removes selected favorite or folder (and all its children)
+- The panel has a **draggable splitter** between the folder tree and item list
+
+### YouTube Ad Blocking
+
+When Content Filtering is enabled, the browser also blocks YouTube ads:
+
+- Known YouTube ad URL patterns are blocked at the network layer
+- A JavaScript content script auto-skips any remaining pre-roll or mid-roll ads
+- The script is injected only on `youtube.com` pages — no overhead on other sites
 
 ### Content Filtering
 
@@ -411,8 +467,9 @@ When **Settings > Features > Browser > Content Filtering** is enabled, the brows
 - **EasyList** — ads and banners
 - **EasyPrivacy** — tracking scripts
 - **Peter Lowe's list** — ad servers
+- **YouTube Ad Blocker** — URL patterns + JS skip script
 
-Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` interception — no extension required.
+Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` and `WebResourceRequested` interception — no extension required.
 
 ### Browser Settings
 
@@ -428,7 +485,7 @@ All browser settings live under **Settings > Features > Browser**:
 | Show in title bar | Mirror page title in the main window title bar |
 | Content filtering | Enable/disable blocklist-based ad blocking |
 | Custom user agent | Override the browser UA string sent to sites |
-| Show favorites bar | Show/hide the Edge bookmarks bar |
+| Show favorites bar | Show/hide the favorites bar |
 | Favorites source | Path to the Edge `Bookmarks` JSON file |
 
 ### Privacy Notes

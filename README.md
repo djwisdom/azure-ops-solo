@@ -56,7 +56,7 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.36**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.37**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
@@ -73,7 +73,7 @@ dotnet build --configuration Release2
 - **Git Integration:** Full Git operations with visual diff and merge tools
 - **Large File Support:** Up to 100MB with graceful feature degradation
 - **Terminal Integration:** Multi-tab terminals with ANSI color support
-- **Built-in Browser:** WebView2 browser tabs side-by-side with editor files, with Edge-style UI, content filtering, favorites bar, and developer tools
+- **Built-in Browser:** WebView2 browser tabs with Edge-style pill address bar (smart glyph + ⭐ star), dark mode toggle, View Site Information flyout, YouTube ad blocking, instant overflow favorites, Manage Favorites with drag-to-reorder
 - **22 Built-in Themes:** Dark/Light modes with VS Code-inspired schemes
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
