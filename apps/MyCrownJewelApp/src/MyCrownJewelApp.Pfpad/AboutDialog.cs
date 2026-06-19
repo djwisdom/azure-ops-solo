@@ -510,6 +510,13 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Oem key mapping fixed — []{};':\"`,<>/?-_=+ no longer insert spurious characters in Normal mode");
         featuresText.AppendLine("• Macro playback (@{reg}) fixed; visual indent >/< fixed; marks stability improved");
         featuresText.AppendLine();
+        featuresText.AppendLine("Git workflow & pre-PR tools (v1.0.41):");
+        featuresText.AppendLine("• Pre-commit pipeline gate: secret scan (SecretsDetector) + git hook shim (supports .git/hooks, husky v9, pre-commit tool) run before every commit");
+        featuresText.AppendLine("• Pre-commit review dialog: staged file list with diff viewer, stage/unstage toggles, secret/hook warning banner");
+        featuresText.AppendLine("• Conventional Commit composer: structured type/scope/breaking/subject/body/footer form with 72-char subject counter, live color-highlighted preview, and Signed-off-by auto-fill from git config");
+        featuresText.AppendLine("• CI status badge in Git panel header: shows latest pipeline run status (GitHub Actions) after each push, and on every refresh");
+        featuresText.AppendLine("• Template button now opens Conventional Commit composer instead of bare emoji dropdown");
+        featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 
         foreach (var package in knownPackages)

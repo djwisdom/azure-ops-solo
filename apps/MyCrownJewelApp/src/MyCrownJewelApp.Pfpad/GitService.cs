@@ -203,8 +203,14 @@ public sealed class GitService : IDisposable
         return new Signature(osUser, osEmail, DateTimeOffset.Now);
     }
 
-    public bool Commit(string message, string? authorName = null, string? authorEmail = null)
+    /// <summary>Returns the git-config author name and email without creating a full Signature.</summary>
+    public (string Name, string Email) GetAuthorInfo(string? overrideName = null, string? overrideEmail = null)
     {
+        var sig = GetSignature(overrideName, overrideEmail);
+        return (sig.Name, sig.Email);
+    }
+
+    public bool Commit(string message, string? authorName = null, string? authorEmail = null)    {
         if (_repo is null) return false;
         try
         {

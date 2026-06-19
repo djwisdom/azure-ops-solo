@@ -811,6 +811,9 @@ internal sealed class GitOperationsPanel : Panel
 
     private int _selectedDiffIndex = -1;
 
+    private readonly PreCommitPipeline _preCommitPipeline;
+    private readonly Label _ciStatusLabel;
+    private Func<string, CancellationToken, Task<(string Status, string? Conclusion)>>? _ciStatusProvider;
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
     public event Action? StatusChanged;
@@ -835,12 +838,16 @@ internal sealed class GitOperationsPanel : Panel
         bool ConfirmOverrideCommitMsg,
         bool ConfirmHiddenChanges,
         string BranchSwitchBehavior,
-        bool CommitLengthWarning
+        bool CommitLengthWarning,
+        bool RunSecretScanOnCommit = true,
+        bool RunHooksOnCommit = true,
+        bool ShowPreCommitReview = true
     );
 
     public GitPanel(GitService git)
     {
         _git = git;
+        _preCommitPipeline = new PreCommitPipeline(git);
         AutoScaleMode = AutoScaleMode.Font;
         MinimumSize = new Size(200, 200);
 
@@ -898,7 +905,17 @@ internal sealed class GitOperationsPanel : Panel
         };
         _moreActionsButton.Click += MoreActionsButton_Click;
 
-        _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _syncButton, _moreActionsButton });
+        _ciStatusLabel = new Label
+        {
+            Text = "",
+            Font = new Font("Segoe UI", 8),
+            AutoSize = true,
+            Location = new Point(0, 8),
+            Cursor = Cursors.Hand,
+            Tag = "ci"
+        };
+
+        _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _syncButton, _moreActionsButton, _ciStatusLabel });
 
         // Git Operations Panel
         _operationsPanel = new GitOperationsPanel(_git);
@@ -1408,35 +1425,18 @@ internal sealed class GitOperationsPanel : Panel
 
     private void TemplatesButton_Click(object? sender, EventArgs e)
     {
-        // Show commit message templates
-        var menu = new ContextMenuStrip();
+        var (authorName, authorEmail) = _git.GetAuthorInfo(
+            _gitSettings.AuthorName, _gitSettings.AuthorEmail);
 
-        var templates = new[]
-        {
-            ("✨ feat: ", "New feature"),
-            ("🐛 fix: ", "Bug fix"),
-            ("📚 docs: ", "Documentation"),
-            ("♻️ refactor: ", "Code refactoring"),
-            ("🎨 style: ", "Code style changes"),
-            ("✅ test: ", "Testing"),
-            ("🔧 chore: ", "Maintenance"),
-            ("⚡ perf: ", "Performance improvement"),
-            ("🔒 security: ", "Security fix"),
-            ("🚀 ci: ", "CI/CD changes")
-        };
+        using var dlg = new ConventionalCommitComposerDialog(
+            _commitMessage.Text, authorName, authorEmail);
 
-        foreach (var (prefix, description) in templates)
+        if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(dlg.ComposedMessage))
         {
-            var item = new ToolStripMenuItem($"{prefix} {description.ToLower()}", null, (s, args) =>
-            {
-                _commitMessage.Text = prefix;
-                _commitMessage.Focus();
-                _commitMessage.SelectionStart = _commitMessage.Text.Length;
-            });
-            menu.Items.Add(item);
+            _commitMessage.Text = dlg.ComposedMessage;
+            _commitMessage.Focus();
+            _commitMessage.SelectionStart = _commitMessage.Text.Length;
         }
-
-        menu.Show(_templatesBtn, new Point(0, _templatesBtn.Height));
     }
 
     private string GetStatusIcon(FileStatus state)
@@ -1538,6 +1538,8 @@ internal sealed class GitOperationsPanel : Panel
             {
                 _syncButton.Text = "⬇️ ? ↑ ?";
             }
+
+            _ = UpdateCiStatusAsync(); // refresh CI indicator on every status refresh
 
             var hasMessage = _commitMessage.Text.Trim().Length > 0;
             var hasStaged = staged.Count > 0;
@@ -1654,6 +1656,8 @@ internal sealed class GitOperationsPanel : Panel
         _branchLabel.Location = new Point(_repoNameLabel.Right + 8, 6);
         _syncButton.Location = new Point(headerWidth - _moreActionsButton.Width - _syncButton.Width - 8, 4);
         _moreActionsButton.Location = new Point(headerWidth - _moreActionsButton.Width, 4);
+        // CI label floats between branch and sync
+        _ciStatusLabel.Location = new Point(_branchLabel.Right + 10, 8);
 
         // Layout operations panel
         if (_operationsPanel != null)
@@ -1834,6 +1838,7 @@ internal sealed class GitOperationsPanel : Panel
         _pushBtn.FlatAppearance.BorderSize = 0;
         _noRepoLabel.ForeColor = theme.Muted;
         _noRepoLabel.BackColor = theme.MenuBackground;
+        _ciStatusLabel.BackColor = Color.Transparent;
 
         foreach (var c in new[] { _stageAllBtn, _unstageAllBtn, _fetchBtn, _pullBtn })
             c.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
@@ -1934,14 +1939,16 @@ internal sealed class GitOperationsPanel : Panel
         e.Graphics.DrawLine(sepPen, rect.X, rect.Bottom - 1, rect.Right, rect.Bottom - 1);
     }
 
-    private void Commit_Click(object? sender, EventArgs e)
+    private async void Commit_Click(object? sender, EventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_commitMessage.Text))
         { ThemedMessageBox.Show("Enter a commit message.", "Commit", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
         if (_staged.Count == 0)
         { ThemedMessageBox.Show("No staged changes to commit.\nClick a file to stage it, or use 'Stage All'.", "Commit", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
 
-        if (_git.Commit(_commitMessage.Text.Trim()))
+        if (!await RunPreCommitPipelineAsync().ConfigureAwait(true)) return;
+
+        if (_git.Commit(_commitMessage.Text.Trim(), _gitSettings.AuthorName, _gitSettings.AuthorEmail))
         {
             _commitMessage.Text = "";
             _diffPanel.ClearDiff();
@@ -1983,19 +1990,22 @@ internal sealed class GitOperationsPanel : Panel
         if (_staged.Count == 0)
         { ThemedMessageBox.Show("No staged changes to commit.\nClick a file to stage it, or use 'Stage All'.", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
 
-        if (_git.Commit(_commitMessage.Text.Trim()))
+        if (!await RunPreCommitPipelineAsync().ConfigureAwait(true)) return;
+
+        if (_git.Commit(_commitMessage.Text.Trim(), _gitSettings.AuthorName, _gitSettings.AuthorEmail))
         {
             _commitMessage.Text = "";
             _diffPanel.ClearDiff();
             _bodySplit.Panel2Collapsed = true;
             _selectedDiffIndex = -1;
 
-            // Try to push after commit (off the UI thread)
             try
             {
                 var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
                 if (!ok)
                     ThemedMessageBox.Show($"Commit successful, but push failed: {msg}", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else
+                    _ = UpdateCiStatusAsync(); // fire-and-forget CI status refresh after push
             }
             catch (OperationCanceledException) { }
             RefreshStatus();
@@ -2003,6 +2013,85 @@ internal sealed class GitOperationsPanel : Panel
     }
 
 
+
+    /// <summary>Injects a CI status provider. Called from Form1 after AIOps connector is ready.</summary>
+    public void SetCiStatusProvider(Func<string, CancellationToken, Task<(string Status, string? Conclusion)>> provider)
+    {
+        _ciStatusProvider = provider;
+        _ = UpdateCiStatusAsync();
+    }
+
+    private async Task UpdateCiStatusAsync()
+    {
+        if (_ciStatusProvider is null || !_git.IsActive) return;
+        string branch = _git.CurrentBranch ?? "";
+        try
+        {
+            var (status, conclusion) = await _ciStatusProvider(branch, default).ConfigureAwait(false);
+            string label = (status, conclusion) switch
+            {
+                ("Succeeded", _)    => "CI ✅",
+                ("Failed", _)       => "CI ❌",
+                ("RolledBack", _)   => "CI ❌",
+                ("Running", _)      => "CI ⏳",
+                ("Pending", _)      => "CI ⏳",
+                _                   => ""
+            };
+            Color labelColor = status switch
+            {
+                "Succeeded"             => Color.FromArgb(60, 200, 80),
+                "Failed" or "RolledBack" => Color.FromArgb(220, 70, 70),
+                _                       => ThemeManager.Instance.CurrentTheme.Muted
+            };
+            BeginInvoke(() =>
+            {
+                _ciStatusLabel.Text = label;
+                _ciStatusLabel.ForeColor = labelColor;
+                LayoutControls();
+            });
+        }
+        catch { /* CI status is optional — never break the panel */ }
+    }
+
+    private async Task<bool> RunPreCommitPipelineAsync()
+    {
+        // Stage 1: secret scan
+        IReadOnlyList<AIOps.SecurityFinding> secrets = [];
+        if (_gitSettings.RunSecretScanOnCommit)
+        {
+            try { secrets = await _preCommitPipeline.ScanSecretsAsync().ConfigureAwait(true); }
+            catch (OperationCanceledException) { return false; }
+            catch { /* non-fatal */ }
+        }
+
+        // Stage 2: hooks shim
+        bool hooksFound = false;
+        bool hooksPassed = true;
+        string hooksOutput = "";
+        if (_gitSettings.RunHooksOnCommit && _preCommitPipeline.HasHooks())
+        {
+            hooksFound = true;
+            try
+            {
+                (hooksPassed, hooksOutput) = await _preCommitPipeline.RunHooksAsync().ConfigureAwait(true);
+            }
+            catch (OperationCanceledException) { return false; }
+            catch (Exception ex) { hooksOutput = ex.Message; }
+        }
+
+        // Stage 3: review dialog — always show if there are warnings; show unconditionally if setting is on
+        bool forceShow = _gitSettings.ShowPreCommitReview;
+        bool hasWarnings = secrets.Count > 0 || (hooksFound && !hooksPassed);
+
+        if (forceShow || hasWarnings)
+        {
+            using var dlg = new PreCommitReviewDialog(_git, secrets, hooksFound, hooksPassed, hooksOutput);
+            return dlg.ShowDialog(this) == DialogResult.OK;
+        }
+
+        // If hooks failed and review was skipped, still block the commit
+        return !hooksFound || hooksPassed;
+    }
 
     public void RefreshRepo(string? filePath)
     {

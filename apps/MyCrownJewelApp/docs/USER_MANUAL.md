@@ -20,12 +20,12 @@ The short answer is "rather a lot for a solo project" — including enterprise-g
 
 ### 1.1 Installation
 
-The installer (`PersonalFlipPad-Setup-1.0.39.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
+The installer (`PersonalFlipPad-Setup-1.0.41.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
 
 ```
-PersonalFlipPad-Setup-1.0.39.0.exe /CURRENTUSER   # No admin required
-PersonalFlipPad-Setup-1.0.39.0.exe /ALLUSERS       # Admin required
-PersonalFlipPad-Setup-1.0.39.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
+PersonalFlipPad-Setup-1.0.41.0.exe /CURRENTUSER   # No admin required
+PersonalFlipPad-Setup-1.0.41.0.exe /ALLUSERS       # Admin required
+PersonalFlipPad-Setup-1.0.41.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
 ```
 
 The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 200 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, LibGit2, and advanced performance profiling tools.
@@ -767,6 +767,10 @@ Opens a panel in the sidebar with:
 - **Branch switcher**: Dropdown listing all local branches.
 - **Changes list**: Files organized into Staged, Unstaged, and Untracked sections. Status abbreviations: `[M]` modified, `[A]` added, `[D]` deleted, `[?]` untracked. Single-click to stage/unstage; double-click to open.
 - **Commit**: Textbox + button combination. Only enabled when there's both a commit message AND staged changes. The editor won't let you create empty commits.
+- **Commit Template (Conventional Commits)**: The ✏️ template button opens the **Conventional Commit Composer** — a structured dialog with type selector (feat/fix/chore/docs/refactor/perf/test/ci/style/build/revert + descriptions), optional scope, BREAKING CHANGE toggle, 72-character subject counter, multiline body and footer fields, Signed-off-by auto-fill from git config, and a live color-highlighted preview pane. The generated message is written back into the commit text box.
+- **Pre-commit pipeline gate**: Before every commit, Pfpad runs a secret scan (SecretsDetector) and any installed git hooks (`.git/hooks/pre-commit`, husky v9, pre-commit tool). If secrets or hook failures are detected, a warning banner is shown in the **Pre-commit Review Dialog** and you can abort or override.
+- **Pre-commit Review Dialog**: Shows all staged files with colored status dots, an inline diff viewer with syntax-highlighted `+`/`-`/`@@` lines, and stage/unstage toggles. Commit is only enabled if you review and confirm.
+- **CI Status Badge**: After each push (and on every panel refresh), the Git panel header shows the latest GitHub Actions pipeline run status (if GitHub Actions is configured in AIOps settings).
 - **Recent commits**: Last 30 commits with SHA, author, date, and message.
 - **Sync buttons**: Fetch, Pull, Push. Pull and Push show result dialogs on success or failure.
 

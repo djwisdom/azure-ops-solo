@@ -232,6 +232,9 @@ public record AppSettings
     public bool GitConfirmHiddenChanges { get; init; } = false;
     public string GitBranchSwitchBehavior { get; init; } = "ask";
     public bool GitCommitLengthWarning { get; init; } = false;
+    public bool GitRunSecretScanOnCommit { get; init; } = true;
+    public bool GitRunHooksOnCommit { get; init; } = true;
+    public bool GitShowPreCommitReview { get; init; } = true;
 
     // ── Application Security ────────────────────────────────────────────────────
     /// <summary>Runtime security hardening level. Controls URL validation, TLS, path canonicalization, and encryption.</summary>

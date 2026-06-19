@@ -56,7 +56,7 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.40**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.41**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
@@ -79,6 +79,7 @@ dotnet build --configuration Release2
 - **Vim Mode Expansion:** f/F/t/T/;/, char motions, r{char} replace, `{n}G` line jump, zt/zb scroll, ±/_/| navigation, Oem key mapping fix, macro playback fixed, visual indent `>`/`<` fixed
 - **Engine Hardening (.NET 10):** All engines upgraded to `FrozenSet/FrozenDictionary`, `System.Threading.Lock`, `[GeneratedRegex]` with `NonBacktracking`, `SearchValues<char/string>`, `Task.WhenAll` parallelism
 - **IncrementalHighlighter:** Dispose bug fixed (worker no longer leaks), O(1) line-position index, `@` infinite-loop fix, `#` comment support, verbatim/backtick string highlighting, hex/binary number literals
+- **Git Workflow (Pre-PR tools):** Pre-commit pipeline gate (secret scan + hook shim for .git/hooks, husky, pre-commit); staged-file review dialog with inline diff; Conventional Commit composer (type/scope/breaking/subject/body/footer, live preview, signed-off-by); CI status badge in Git panel header showing latest GitHub Actions run
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

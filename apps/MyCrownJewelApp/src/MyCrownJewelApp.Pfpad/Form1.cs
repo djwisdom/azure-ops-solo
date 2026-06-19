@@ -529,6 +529,9 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _gitConfirmHiddenChanges = false;
         private string _gitBranchSwitchBehavior = "ask";
         private bool _gitCommitLengthWarning = false;
+    private bool _gitRunSecretScanOnCommit = true;
+    private bool _gitRunHooksOnCommit = true;
+    private bool _gitShowPreCommitReview = true;
 
         // Security settings
         private SecurityProfile _securityProfile = SecurityProfile.Low;
@@ -1927,6 +1930,20 @@ using Microsoft.Extensions.DependencyInjection;
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
                   ApplyGitSettings();
+                  // Wire CI status from GitHub Actions connector if configured
+                  var _aiopsConf = _settingsService.LoadWithDecrypt()?.AIOpsConfig;
+                  if (_aiopsConf?.GitHubActions is { Enabled: true } ghSettings)
+                  {
+                      ghSettings.LoadSecretsFromEncrypted();
+                      var ciConnector = new AIOps.GitHubActionsConnector(ghSettings);
+                      _gitPanel.SetCiStatusProvider(async (branch, ct) =>
+                      {
+                          var runs = await ciConnector.GetPipelineRunsAsync(branch, count: 1, ct: ct)
+                                                      .ConfigureAwait(false);
+                          if (runs.Count == 0) return ("", null);
+                          return (runs[0].Status.ToString(), null);
+                      });
+                  }
                   _gitPanel.FileOpenRequested += (path) =>
                   {
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
@@ -3400,6 +3417,9 @@ using Microsoft.Extensions.DependencyInjection;
             _gitConfirmHiddenChanges = settings.GitConfirmHiddenChanges;
             _gitBranchSwitchBehavior = settings.GitBranchSwitchBehavior;
             _gitCommitLengthWarning = settings.GitCommitLengthWarning;
+            _gitRunSecretScanOnCommit = settings.GitRunSecretScanOnCommit;
+            _gitRunHooksOnCommit = settings.GitRunHooksOnCommit;
+            _gitShowPreCommitReview = settings.GitShowPreCommitReview;
             ApplyGitSettings();
 
             // Apply security settings
@@ -3960,7 +3980,10 @@ internal void ToggleGutter()
                 ConfirmOverrideCommitMsg: _gitConfirmOverrideCommitMsg,
                 ConfirmHiddenChanges: _gitConfirmHiddenChanges,
                 BranchSwitchBehavior: _gitBranchSwitchBehavior,
-                CommitLengthWarning: _gitCommitLengthWarning
+                CommitLengthWarning: _gitCommitLengthWarning,
+                RunSecretScanOnCommit: _gitRunSecretScanOnCommit,
+                RunHooksOnCommit: _gitRunHooksOnCommit,
+                ShowPreCommitReview: _gitShowPreCommitReview
             ));
         }
 
