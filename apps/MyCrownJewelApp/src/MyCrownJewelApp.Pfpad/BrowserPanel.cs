@@ -326,16 +326,49 @@ internal sealed class BrowserPanel : UserControl
 
         _favOverflowBtn = new Button
         {
-            Text = "»",
+            Text = "\u203A",   // › single right-pointing chevron
             AutoSize = false,
             Width = 26,
             FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 14f, FontStyle.Regular),
             Cursor = Cursors.Hand,
             Visible = false,
             TextAlign = ContentAlignment.MiddleCenter,
+            UseVisualStyleBackColor = false
         };
         _favOverflowBtn.FlatAppearance.BorderSize = 0;
+        _favOverflowBtn.FlatAppearance.MouseOverBackColor = Color.Transparent;
+        _favOverflowBtn.FlatAppearance.MouseDownBackColor = Color.Transparent;
+
+        // Owner-draw: same rounded hover highlight as MakeFavButton
+        {
+            bool hov = false, prs = false;
+            _favOverflowBtn.MouseEnter += (_, _) => { hov = true;  _favOverflowBtn.Invalidate(); };
+            _favOverflowBtn.MouseLeave += (_, _) => { hov = false; prs = false; _favOverflowBtn.Invalidate(); };
+            _favOverflowBtn.MouseDown  += (_, _) => { prs = true;  _favOverflowBtn.Invalidate(); };
+            _favOverflowBtn.MouseUp    += (_, _) => { prs = false; _favOverflowBtn.Invalidate(); };
+            _favOverflowBtn.Paint += (_, e) =>
+            {
+                var g = e.Graphics;
+                var r = _favOverflowBtn.ClientRectangle;
+                g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                using (var bg = new SolidBrush(_currentTheme.MenuBackground))
+                    g.FillRectangle(bg, r);
+                if (hov)
+                {
+                    int alpha = prs ? 48 : 20;
+                    var pad = new Rectangle(r.X + 1, r.Y + 2, r.Width - 2, r.Height - 4);
+                    using var hvrBrush = new SolidBrush(Color.FromArgb(alpha, _currentTheme.Text));
+                    using var path     = NavBtnHoverPath(pad, 5);
+                    g.FillPath(hvrBrush, path);
+                }
+                TextRenderer.DrawText(e.Graphics, _favOverflowBtn.Text, _favOverflowBtn.Font, r,
+                    _currentTheme.Text,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            };
+        }
 
         _favManageBtn = new Button
         {
