@@ -5575,6 +5575,11 @@ internal void ToggleGutter()
             // C#-only menus: visible only when a C# file or project is active
             if (debugMenu  != null) debugMenu.Visible  = cs;
             if (roslynMenu != null) roslynMenu.Visible = cs;
+            if (runMenu    != null) runMenu.Visible    = cs;
+
+            // Apply visibility to individually tagged C#-only items (Edit, Go, Panel menus)
+            // and collapse any separators that become orphaned as a result.
+            ApplyCSharpMenuItemVisibility(cs);
 
             // Output tab: only relevant for C# build output — add/remove dynamically
             if (_terminalTabControl != null && _buildOutputPage != null)
@@ -5618,6 +5623,83 @@ internal void ToggleGutter()
                 return Directory.EnumerateFiles(_workspaceRoot, "*.csproj",
                            SearchOption.AllDirectories).Any();
             return false;
+        }
+
+        /// <summary>
+        /// Walks every top-level menu and sets <see cref="ToolStripItem.Visible"/> on any item
+        /// whose <see cref="ToolStripItem.Tag"/> is the string <c>"cs"</c>. After updating item
+        /// visibility, orphaned separators (no visible items on one or both sides) are collapsed
+        /// so the menu never shows a bare horizontal rule.
+        /// </summary>
+        private void ApplyCSharpMenuItemVisibility(bool isCs)
+        {
+            if (menuStrip == null) return;
+            foreach (ToolStripItem topLevel in menuStrip.Items)
+            {
+                if (topLevel is ToolStripMenuItem menu)
+                {
+                    ApplyCsTagVisibility(menu.DropDownItems, isCs);
+                    CollapseOrphanedSeparators(menu.DropDownItems);
+                }
+            }
+        }
+
+        /// <summary>Sets Visible on all items with Tag="cs" in the collection, recursing into sub-menus.</summary>
+        private static void ApplyCsTagVisibility(ToolStripItemCollection items, bool isCs)
+        {
+            foreach (ToolStripItem item in items)
+            {
+                if (item.Tag is "cs")
+                {
+                    item.Visible = isCs;
+                }
+                else if (item is ToolStripMenuItem sub && sub.HasDropDownItems)
+                {
+                    ApplyCsTagVisibility(sub.DropDownItems, isCs);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Hides separator items that would appear at the start, end, or consecutively
+        /// (with no visible non-separator items between them) in a menu.
+        /// </summary>
+        private static void CollapseOrphanedSeparators(ToolStripItemCollection items)
+        {
+            // Step 1 — reset: make all separators visible so we start from a clean state.
+            foreach (ToolStripItem it in items)
+                if (it is ToolStripSeparator s) s.Visible = true;
+
+            // Step 2 — suppress leading separators (no visible item before them).
+            foreach (ToolStripItem it in items)
+            {
+                if (it is ToolStripSeparator s) s.Visible = false;
+                else if (it.Visible) break;   // first visible non-separator — stop
+            }
+
+            // Step 3 — suppress trailing separators (no visible item after them).
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                if (items[i] is ToolStripSeparator s) s.Visible = false;
+                else if (items[i].Visible) break;
+            }
+
+            // Step 4 — suppress consecutive separators: when two separators would appear
+            // adjacent (because all items between them are hidden), hide the second one.
+            ToolStripSeparator? pendingSep = null;
+            foreach (ToolStripItem it in items)
+            {
+                if (!it.Visible) continue;
+                if (it is ToolStripSeparator sep)
+                {
+                    if (pendingSep != null) pendingSep.Visible = false; // hide previous sep
+                    pendingSep = sep;
+                }
+                else
+                {
+                    pendingSep = null;
+                }
+            }
         }
 
         private void UpdateTabControlTheme()
