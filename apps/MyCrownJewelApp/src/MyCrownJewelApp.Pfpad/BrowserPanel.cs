@@ -320,7 +320,7 @@ internal sealed class BrowserPanel : UserControl
         _favBar = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 26,
+            Height = 34,
             Visible = false
         };
 
@@ -342,7 +342,7 @@ internal sealed class BrowserPanel : UserControl
             Text = "Manage",
             AutoSize = false,
             Width = 64,
-            Height = 22,
+            Height = 26,
             FlatStyle = FlatStyle.Flat,
             Font = new Font("Segoe UI", 8.5f),
             Cursor = Cursors.Hand,
@@ -954,12 +954,12 @@ internal sealed class BrowserPanel : UserControl
         {
             Text = text,
             AutoSize = false,
-            Height = 22,
+            Height = 26,
             Width = TextRenderer.MeasureText(text, _favFont).Width + 14,
             FlatStyle = FlatStyle.Flat,
             Font = _favFont,
             Cursor = Cursors.Hand,
-            Margin = new Padding(1, 2, 1, 2),
+            Margin = new Padding(1, 3, 1, 3),
             TextAlign = ContentAlignment.MiddleCenter,
             UseVisualStyleBackColor = false
         };
@@ -1658,10 +1658,10 @@ internal sealed class BrowserPanel : UserControl
             : _favManageBtn.Width + 4;
 
         int right = _favActionsPanel.Width - 2;
-        _favManageBtn.SetBounds(right - _favManageBtn.Width, 2, _favManageBtn.Width, 22);
+        _favManageBtn.SetBounds(right - _favManageBtn.Width, 4, _favManageBtn.Width, 26);
 
         if (_favOverflowBtn != null)
-            _favOverflowBtn.SetBounds(_favManageBtn.Left - _favOverflowBtn.Width - 2, 2, _favOverflowBtn.Width, 22);
+            _favOverflowBtn.SetBounds(_favManageBtn.Left - _favOverflowBtn.Width - 2, 4, _favOverflowBtn.Width, 26);
     }
 
     // ── Rounded address bar ──────────────────────────────────────────────────
