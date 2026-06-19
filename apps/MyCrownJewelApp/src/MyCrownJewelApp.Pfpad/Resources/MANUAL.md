@@ -1,6 +1,6 @@
 # Personal Flip Pad — User Manual
 
-**Version 1.0.38.0**
+**Version 1.0.39.0**
 
 Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE for Windows. It combines code editing, DevSecOps scanning, observability intelligence, Git integration, and AI-assisted operational insights into a single workflow. pfpad also includes a built-in graded security hardening system that lets you progressively harden your environment as your needs grow.
 
@@ -457,8 +457,11 @@ Click **Manage** in the favorites bar to open the Manage Favorites panel:
 When Content Filtering is enabled, the browser also blocks YouTube ads:
 
 - Known YouTube ad URL patterns are blocked at the network layer
-- A JavaScript content script auto-skips any remaining pre-roll or mid-roll ads
-- **Buffering ads** (non-skippable, yellow progress bar that stalls): the script immediately mutes the video, sets playback speed to 16×, and registers a `durationchange` listener — skip fires as soon as the browser resolves the ad's duration
+- A JavaScript content script auto-skips pre-roll, mid-roll, and non-skippable ads
+- **Non-skippable ads** are rushed at 16× speed — the script does **not** seek `currentTime` to `duration - 0.1` because YouTube shares the `<video>` element between ads and the main video; doing so would seek into the main video and freeze the red progress bar at ~75-80%
+- Short standalone ad segments (≤60 s) are seeked to their end for instant dismissal
+- A `MutationObserver` watches the `ad-showing` class on the player element; on removal it reliably restores `playbackRate = 1`, `muted = false`, and `volume = 1` — a 600 ms stall-recovery check then nudges the main video with `play()` if it has not resumed
+- The class watcher is re-wired after each `yt-navigate-finish` SPA navigation event
 - The script is injected only on `youtube.com` pages — no overhead on other sites
 
 ### Content Filtering
@@ -475,6 +478,10 @@ When **Settings > Features > Browser > Content Filtering** is enabled, the brows
 - **YouTube Ad Blocker** — URL patterns + JS skip script
 
 Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` and `WebResourceRequested` interception — no extension required. Each list can be individually enabled or disabled in **Settings > Security > Content Filters**.
+
+**CDN allowlist** — `ytimg.com`, `googlevideo.com`, and `ggpht.com` are permanently exempt from list-based blocking. These domains serve YouTube player scripts (`s.ytimg.com`), video streams, and channel thumbnails; blocking them causes SPA navigation to hang and thumbnails to disappear.
+
+**Parser correctness** — EasyList path-specific rules (`||domain^/path$options`) are correctly skipped; only simple whole-domain rules (`||domain^` and `||domain^$options`) contribute to the block set. This prevents rules like `||ytimg.com^*/subscribe-widget$script` from accidentally blocking the entire `ytimg.com` host.
 
 ### Browser Settings
 

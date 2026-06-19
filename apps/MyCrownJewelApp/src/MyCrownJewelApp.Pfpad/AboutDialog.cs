@@ -445,15 +445,16 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Vim mode, snippets, command palette, folding, bookmarks, and multi-tab session restore");
         featuresText.AppendLine("• Large-file degradation safeguards to keep the editor responsive");
         featuresText.AppendLine();
-        featuresText.AppendLine("Built-in browser (v1.0.38):");
+        featuresText.AppendLine("Built-in browser (v1.0.39):");
         featuresText.AppendLine("• WebView2-powered browser tabs in the main editor tab strip — side-by-side with file tabs");
         featuresText.AppendLine("• Multiple independent browser tabs (Ctrl+Shift+T); each with full navigation history");
         featuresText.AppendLine("• Edge-style pill address bar (radius 18) with smart left glyph: 🔍 magnifying glass (empty/search), 🌐 globe (domain/URL), 🔒 lock (HTTPS), ℹ info (HTTP)");
         featuresText.AppendLine("• ⭐ Add-to-favorites star on the right of the address bar — empty ☆ or filled ★ gold; click or Ctrl+D to save/edit/remove");
         featuresText.AppendLine("• 🌙/☀ Page dark mode toggle button — inverts page colors (images/video counter-inverted); persists across navigation");
         featuresText.AppendLine("• View Site Information flyout — certificate, live cookies count, tracker blocking, permissions drill-downs");
-        featuresText.AppendLine("• YouTube ad blocking: URL-pattern filter + JS content script auto-skips pre-roll and mid-roll ads");
-        featuresText.AppendLine("  — Buffering ads handled: muted + 16× speed + durationchange listener forces skip when duration resolves");
+        featuresText.AppendLine("• YouTube ad blocking: URL-pattern filter + JS content script auto-skips pre-roll, mid-roll, and non-skippable ads");
+        featuresText.AppendLine("  — Non-skippable ads rushed at 16× (no currentTime seek — prevents 75-80% progress bar hang from seeking into main video)");
+        featuresText.AppendLine("  — MutationObserver on 'ad-showing' class restores playbackRate/volume on dismissal; 600ms stall recovery nudges main video");
         featuresText.AppendLine("• Large distinct nav buttons (Back, Forward, Refresh) matching Edge sizing");
         featuresText.AppendLine("• Go button + Developer Tools (F12) with Segoe MDL2 Assets glyphs");
         featuresText.AppendLine("• Favorites bar with draggable splitter in Manage view; Move Up/Down (Alt+↑/↓); re-order persists");
@@ -464,6 +465,8 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Manage Favorites: Add Favorite (Ctrl+D), Add Folder, delete, rename — Edge favorites-style panel");
         featuresText.AppendLine("• Enterprise ad/tracker blocking via 7 blocklists:");
         featuresText.AppendLine("  EasyList, EasyPrivacy, Peter Lowe, Fanboy Annoyance, I Don't Care About Cookies, Hagezi Pro, URLhaus Malware Hosts");
+        featuresText.AppendLine("  — EasyList path-specific rules (||domain^/path) no longer over-block the entire host domain");
+        featuresText.AppendLine("  — YouTube CDN allowlist: ytimg.com, googlevideo.com, ggpht.com always exempt — prevents thumbnail/script blocking");
         featuresText.AppendLine("• Configurable user agent to prevent Edge fingerprinting");
         featuresText.AppendLine("• Ephemeral profile mode for untrusted workspaces (no cookies/cache persisted)");
         featuresText.AppendLine("• Per-session settings: homepage, max history, localhost links, default zoom, title bar display");

@@ -20,12 +20,12 @@ The short answer is "rather a lot for a solo project" — including enterprise-g
 
 ### 1.1 Installation
 
-The installer (`PersonalFlipPad-1.0.30.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
+The installer (`PersonalFlipPad-Setup-1.0.39.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
 
 ```
-PersonalFlipPad-1.0.30.0.exe /CURRENTUSER   # No admin required
-PersonalFlipPad-1.0.30.0.exe /ALLUSERS       # Admin required
-PersonalFlipPad-1.0.30.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
+PersonalFlipPad-Setup-1.0.39.0.exe /CURRENTUSER   # No admin required
+PersonalFlipPad-Setup-1.0.39.0.exe /ALLUSERS       # Admin required
+PersonalFlipPad-Setup-1.0.39.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
 ```
 
 The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 200 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, LibGit2, and advanced performance profiling tools.
