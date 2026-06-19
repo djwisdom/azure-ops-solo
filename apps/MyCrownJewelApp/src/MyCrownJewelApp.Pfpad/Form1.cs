@@ -660,6 +660,12 @@ using Microsoft.Extensions.DependencyInjection;
         private CompletionPopupForm? _completionPopup;
         private readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 400 };
         private string _lastHoveredWord = "";
+        private string? _urlUnderCursor;
+
+        // Compiled URL regex used for Ctrl+Click URL detection in the editor
+        private static readonly System.Text.RegularExpressions.Regex _editorUrlRegex = new(
+            @"https?://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+",
+            System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         private TerminalPanel? ActiveTerminal => _terminalHost?.ActiveTerminal;
         private IReadOnlyList<TerminalPanel> AllTerminals => _terminalHost?.AllTerminals ?? Array.Empty<TerminalPanel>();
@@ -1530,6 +1536,7 @@ using Microsoft.Extensions.DependencyInjection;
 
             // Hover docs + signature help
             textEditor.MouseMove += TextEditor_MouseMoveHover;
+            textEditor.MouseDown += TextEditor_MouseDown_Url;
             textEditor.KeyDown += TextEditor_KeyDownHelp;
             textEditor.KeyPress += TextEditor_KeyPressHelp;
             _hoverTimer.Tick += HoverTimer_Tick;
@@ -4311,6 +4318,16 @@ internal void ToggleGutter()
                  _hoverLine = lineNumber;
                  textEditor.Invalidate();
              }
+
+             // Ctrl+hover: show Hand cursor over URLs
+             string? hoveredUrl = (ModifierKeys & Keys.Control) != 0
+                 ? GetUrlAtCharIndex(textEditor.Text, charIdx)
+                 : null;
+             if (hoveredUrl != _urlUnderCursor)
+             {
+                 _urlUnderCursor = hoveredUrl;
+                 textEditor.Cursor = hoveredUrl != null ? Cursors.Hand : Cursors.IBeam;
+             }
              
              string word = GetWordAtCharIndex(charIdx);
              if (string.IsNullOrEmpty(word) || word == _lastHoveredWord)
@@ -4367,6 +4384,44 @@ internal void ToggleGutter()
 
             Point screenLoc = textEditor.PointToScreen(mouseLoc);
             _hoverTooltip.ShowAt(screenLoc, title, summary, first.Context);
+        }
+
+        /// <summary>Ctrl+Click on a URL in the editor opens it in the built-in browser.</summary>
+        private void TextEditor_MouseDown_Url(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left || (ModifierKeys & Keys.Control) == 0) return;
+            if (textEditor is null) return;
+
+            int charIdx = textEditor.GetCharIndexFromPosition(e.Location);
+            if (charIdx < 0 || charIdx >= textEditor.TextLength) return;
+
+            string? url = GetUrlAtCharIndex(textEditor.Text, charIdx);
+            if (!string.IsNullOrEmpty(url))
+                OpenNewBrowserTab(url);
+        }
+
+        /// <summary>Extracts a URL from the text token at the given character index without scanning the whole file.</summary>
+        private static string? GetUrlAtCharIndex(string text, int charIdx)
+        {
+            if (charIdx < 0 || charIdx >= text.Length) return null;
+
+            int start = charIdx;
+            while (start > 0 && !char.IsWhiteSpace(text[start - 1]))
+                start--;
+
+            int end = charIdx;
+            while (end < text.Length && !char.IsWhiteSpace(text[end]))
+                end++;
+
+            if (start >= end) return null;
+            string token = text.Substring(start, end - start);
+
+            var m = _editorUrlRegex.Match(token);
+            if (!m.Success) return null;
+
+            if (charIdx < start + m.Index || charIdx >= start + m.Index + m.Length) return null;
+
+            return m.Value.TrimEnd('.', ',', ';', ')', ']', '>', '"', '\'');
         }
 
         private void TextEditor_KeyPressHelp(object? sender, KeyPressEventArgs e)
