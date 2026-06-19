@@ -139,11 +139,20 @@ public sealed partial class MagicNumberRule : LintRule
 
 public sealed partial class MissingSemicolonRule : LintRule
 {
-    [GeneratedRegex(@"^\s*(return|break|continue|throw|yield\s+return|yield\s+break)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^\s*(return|break|continue|throw|yield\s+return|yield\s+break)\b", RegexOptions.Compiled)]
     private static partial Regex StatementEnd();
 
     [GeneratedRegex(@"[a-zA-Z0-9_)\]]+\s*(=|\.|\+\+|--|\[|\()", RegexOptions.Compiled)]
     private static partial Regex AssignmentOrCall();
+
+    // Declaration headers and control-flow lines that never end with ';'
+    [GeneratedRegex(
+        @"^\s*(if|else|for|foreach|while|do|switch|try|catch|finally|lock|using\s*\()" +
+        @"|^\s*(public|private|protected|internal|static|abstract|virtual|override|sealed|async|partial|readonly|extern|unsafe|new)\b" +
+        @"|^\s*(class|struct|interface|enum|record|delegate|namespace)\b" +
+        @"|^\s*(get|set|init)\s*$",
+        RegexOptions.Compiled)]
+    private static partial Regex DeclarationOrControlFlow();
 
     public override string Id => "PFP004";
     public override string Description => "Missing semicolon";
@@ -151,23 +160,51 @@ public sealed partial class MissingSemicolonRule : LintRule
 
     public override void Analyze(string text, string filePath, List<Diagnostic> diagnostics)
     {
+        // C# only — semicolons are not meaningful syntax in HTML, CSS, JS, etc.
+        if (!filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) return;
+
         var lines = text.Split('\n');
         for (int i = 0; i < lines.Length; i++)
         {
-            string raw = lines[i];
-            string l = raw.TrimEnd('\r', '\n');
+            string l = lines[i].TrimEnd('\r', '\n');
             string trimmed = l.Trim();
 
             if (string.IsNullOrWhiteSpace(trimmed)) continue;
-            // Skip lines that end with block delimiters, preprocessor, comments, attributes, labels
+            if (trimmed.EndsWith(';')) continue;
             if (trimmed.EndsWith('{') || trimmed.EndsWith('}')) continue;
-            if (trimmed.EndsWith(':') && !trimmed.StartsWith("case ") && !trimmed.StartsWith("default:")) continue;
             if (trimmed.StartsWith('#')) continue;
             if (trimmed.StartsWith("//") || trimmed.StartsWith("/*") || trimmed.StartsWith('*')) continue;
-            if (trimmed.StartsWith('[') && trimmed.EndsWith(']')) continue;
-            if (trimmed.EndsWith(';')) continue;
+            // Attributes on their own line [Foo] or [Foo(Bar)]
+            if (trimmed.StartsWith('[')) continue;
+            // case/default labels
+            if (trimmed.EndsWith(':')) continue;
 
-            // Must look like a statement: starts with keyword, identifier, or is an assignment/expression
+            // Multi-line continuation endings: operator, comma, open paren/bracket, arrow
+            char last = trimmed[^1];
+            if (last is ',' or '(' or '[' or '.' or '+' or '-' or '*' or '/'
+                      or '|' or '&' or '^' or '?' or '=' or '<' or '>' or '\\') continue;
+            if (trimmed.EndsWith("=>") || trimmed.EndsWith("&&") || trimmed.EndsWith("||")
+                || trimmed.EndsWith("??") || trimmed.EndsWith("..")) continue;
+
+            // Declaration headers / control-flow (never need a semicolon on that line)
+            if (DeclarationOrControlFlow().IsMatch(trimmed)) continue;
+
+            // Lines ending with ')' may be declaration headers (e.g. `public void Foo(int x)`)
+            // when the next non-empty line opens a block.
+            if (last == ')')
+            {
+                bool nextIsBlock = false;
+                for (int j = i + 1; j < lines.Length; j++)
+                {
+                    string next = lines[j].Trim();
+                    if (string.IsNullOrWhiteSpace(next)) continue;
+                    nextIsBlock = next.StartsWith('{') || next == "=>";
+                    break;
+                }
+                if (nextIsBlock) continue;
+            }
+
+            // Must look like an expression statement
             bool looksLikeStatement = char.IsLetter(trimmed[0])
                 || trimmed[0] == '_'
                 || trimmed[0] == '@'
