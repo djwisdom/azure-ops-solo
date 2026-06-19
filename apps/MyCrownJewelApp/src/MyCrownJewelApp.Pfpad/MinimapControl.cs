@@ -206,8 +206,7 @@ namespace MyCrownJewelApp.Pfpad
                 SendMessage(_attachedEditor.Handle, EM_LINESCROLL, 0, delta);
         }
 
-        private void PollEditor()
-        {
+        private void PollEditor()        {
             if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
 
             int total = CountLines();
@@ -455,37 +454,31 @@ namespace MyCrownJewelApp.Pfpad
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             // Do NOT call base.OnMouseWheel — that propagates the scroll to the parent editor.
-            if (_attachedEditor == null) return;
+            if (_attachedEditor == null || !_attachedEditor.IsHandleCreated) return;
 
             int linesPerNotch = Math.Max(1, SystemInformation.MouseWheelScrollLines);
             int delta = -(e.Delta / 120) * linesPerNotch;
 
-            int minimapContentLines = (int)(Height / PixelsPerLine);
-            int maxFirst = Math.Max(0, _totalLines - minimapContentLines);
-            _mapFirstLine = Math.Max(0, Math.Min(maxFirst, _mapFirstLine + delta));
-
-            MarkDirty();
-            Invalidate();
+            // Scroll the editor (not _mapFirstLine directly) so PollEditor stays in sync
+            // and doesn't reset our scroll position 300ms later.
+            SendMessage(_attachedEditor.Handle, EM_LINESCROLL, 0, delta);
+            PollEditor();
         }
 
         private const int WM_MOUSEWHEEL = 0x020A;
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == WM_MOUSEWHEEL && _attachedEditor != null)
+            if (m.Msg == WM_MOUSEWHEEL && _attachedEditor?.IsHandleCreated == true)
             {
                 int wheelData = (int)(long)m.WParam;
                 int wheelDelta = (short)(wheelData >> 16);
                 int linesPerNotch = Math.Max(1, SystemInformation.MouseWheelScrollLines);
                 int delta = -(wheelDelta / 120) * linesPerNotch;
 
-                int minimapContentLines = (int)(Height / PixelsPerLine);
-                int maxFirst = Math.Max(0, _totalLines - minimapContentLines);
-                _mapFirstLine = Math.Max(0, Math.Min(maxFirst, _mapFirstLine + delta));
-
-                MarkDirty();
-                Invalidate();
-                return; // consumed — do NOT propagate to editor
+                SendMessage(_attachedEditor.Handle, EM_LINESCROLL, 0, delta);
+                PollEditor();
+                return; // consumed
             }
             base.WndProc(ref m);
         }
@@ -571,7 +564,10 @@ namespace MyCrownJewelApp.Pfpad
             public bool PreFilterMessage(ref Message m)
             {
                 if (m.Msg != WM_MOUSEWHEEL) return false;
-                if (_minimap._attachedEditor == null || _minimap.IsDisposed || !_minimap.IsHandleCreated) return false;
+                if (_minimap.IsDisposed || !_minimap.IsHandleCreated) return false;
+
+                var editor = _minimap._attachedEditor;
+                if (editor == null || !editor.IsHandleCreated) return false;
 
                 var cursor = Control.MousePosition;
                 var bounds = _minimap.RectangleToScreen(_minimap.ClientRectangle);
@@ -582,12 +578,9 @@ namespace MyCrownJewelApp.Pfpad
                 int linesPerNotch = Math.Max(1, SystemInformation.MouseWheelScrollLines);
                 int delta = -(wheelDelta / 120) * linesPerNotch;
 
-                int minimapContentLines = (int)(_minimap.Height / PixelsPerLine);
-                int maxFirst = Math.Max(0, _minimap._totalLines - minimapContentLines);
-                _minimap._mapFirstLine = Math.Max(0, Math.Min(maxFirst, _minimap._mapFirstLine + delta));
-
-                _minimap.MarkDirty();
-                _minimap.Invalidate();
+                // Scroll the editor so the minimap poll loop stays in sync.
+                SendMessage(editor.Handle, EM_LINESCROLL, 0, delta);
+                _minimap.PollEditor();
                 return true; // consumed
             }
         }
