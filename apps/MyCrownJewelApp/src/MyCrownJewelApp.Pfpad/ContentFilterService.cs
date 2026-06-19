@@ -16,10 +16,9 @@ namespace MyCrownJewelApp.Pfpad;
 /// </summary>
 internal sealed class ContentFilterService : IDisposable
 {
-    // ── Singleton ──────────────────────────────────────────────────────────────
-    public static ContentFilterService Instance { get; } = new();
-
     // ── Blocklist catalogue ────────────────────────────────────────────────────
+    // IMPORTANT: KnownLists must be declared before Instance so the static field
+    // initializer runs first — Instance = new() calls the ctor which reads KnownLists.
 
     public enum BlocklistFormat { EasyList, Hosts }
 
@@ -84,6 +83,10 @@ internal sealed class ContentFilterService : IDisposable
             BlocklistFormat.Hosts,
             "Live feed from abuse.ch: domains actively distributing malware and ransomware"),
     ];
+
+    // ── Singleton ──────────────────────────────────────────────────────────────
+    // Declared after KnownLists so the static initializer for KnownLists runs first.
+    public static ContentFilterService Instance { get; } = new();
 
     // ── Configuration ──────────────────────────────────────────────────────────
     private const int RefreshDays    = 7;       // re-download after N days
