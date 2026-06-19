@@ -820,6 +820,14 @@ Imagine you have a console app.
 
 If you are new to debugging, this is a great first exercise.
 
+## 10.7 Context-aware menus
+
+When you have a C# file or project active, pfpad automatically shows all C#-specific menu items such as **Go to Definition**, **Rename Symbol**, **Find All References**, **Run Tests**, **Debug Tests**, the **Roslyn** menu, and the entire **Run** menu.
+
+When you switch to a non-C# file (JavaScript, Python, Markdown, plain text, etc.), those menu items are automatically hidden so the menu bar stays clean and uncluttered. Orphaned separator lines are also collapsed so you never see stray horizontal rules.
+
+This happens automatically — there is nothing to configure.
+
 ---
 
 # 11. For C Developers

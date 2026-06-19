@@ -487,6 +487,29 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Service-backed startup infrastructure with persisted session and profile data");
         featuresText.AppendLine("• Theme-aware shell, diagnostics, notifications, and workspace tooling");
         featuresText.AppendLine();
+        featuresText.AppendLine("Performance & engine hardening (v1.0.40):");
+        featuresText.AppendLine("• IncrementalHighlighter: Dispose fixed (worker no longer leaks after file close), O(1) line-position index replaces O(N²) scan");
+        featuresText.AppendLine("• IncrementalHighlighter: @ infinite-loop bug fixed; # comment, verbatim/backtick strings, hex/binary literal support added");
+        featuresText.AppendLine("• LintEngine: debounce async-fire-and-forget fixed (SynchronizationContext captured; no more cross-thread race)");
+        featuresText.AppendLine("• SnippetEngine: tab-stop $0/$1 markers stripped from inserted text; tab-stop ordering corrected");
+        featuresText.AppendLine("• RainbowBracketEngine, RepositoryAnalyticsEngine, SamplingEngine: FrozenSet/FrozenDictionary, System.Threading.Lock, Task.WhenAll");
+        featuresText.AppendLine("• All AIOps engines (SecretsDetector, SastScanner, ObservabilityAdvisor, RunbookEngine, AIOpsEngine, ServiceContextEngine): static Regex with RegexOptions.NonBacktracking (ReDoS-immune, O(N)); [GeneratedRegex]; parallel connector refresh");
+        featuresText.AppendLine("• BrowserPanel: static nav icon Font cache (eliminates per-Paint GDI leak); static zoom step arrays; _toolTip properly disposed; FrozenDictionary user-agent presets");
+        featuresText.AppendLine("• ContentFilterService: FrozenSet<string> for domain blocklist (~2× lookup speed); parallel blocklist downloads + parallel rule parsing; SearchValues<char> domain validation");
+        featuresText.AppendLine("• FavoritesService: static JsonSerializerOptions (eliminates repeated reflection on every save)");
+        featuresText.AppendLine("• YouTubeAdBlocker: SearchValues<string> SIMD multi-pattern substring matching");
+        featuresText.AppendLine();
+        featuresText.AppendLine("Context-aware menus (v1.0.40):");
+        featuresText.AppendLine("• 13 C#-only menu items (Go to Definition, Rename Symbol, Find All References, Peek Definition, Format Document, Run Tests, Debug Tests, Problems Panel, Symbols Panel, Roslyn menu) auto-hidden when non-C# file/project active");
+        featuresText.AppendLine("• Entire Run menu hidden for non-C# contexts");
+        featuresText.AppendLine("• Orphaned separators automatically collapsed — no dangling horizontal rules in any menu");
+        featuresText.AppendLine();
+        featuresText.AppendLine("Vim mode expansion (v1.0.40):");
+        featuresText.AppendLine("• f/F/t/T char-find motions + ;/, repeat; r{char} single-char replace; {n}G line-number jump; zt/zb scroll-to-top/bottom");
+        featuresText.AppendLine("• ± and | absolute column/line-start navigation; _ non-blank motion; paragraph { } motions");
+        featuresText.AppendLine("• Oem key mapping fixed — []{};':\"`,<>/?-_=+ no longer insert spurious characters in Normal mode");
+        featuresText.AppendLine("• Macro playback (@{reg}) fixed; visual indent >/< fixed; marks stability improved");
+        featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 
         foreach (var package in knownPackages)

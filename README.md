@@ -56,7 +56,7 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.39**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.40**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
@@ -75,6 +75,10 @@ dotnet build --configuration Release2
 - **Terminal Integration:** Multi-tab terminals with ANSI color support
 - **Built-in Browser:** WebView2 browser tabs with Edge-style pill address bar (smart glyph + ⭐ star), dark mode toggle, View Site Information flyout, YouTube ad blocking (non-skippable ads at 16× — no progress bar hang; MutationObserver-based volume/rate restore with 600ms stall recovery), 7 content filter lists with CDN allowlist (ytimg.com, googlevideo.com, ggpht.com) and path-specific rule parser fix, instant overflow favorites, rounded hover highlights on favorites bar, Manage Favorites with drag-to-reorder, correct pinned taskbar icon (`fp` blue tile)
 - **22 Built-in Themes:** Dark/Light modes with VS Code-inspired schemes
+- **Context-Aware Menus:** C#-only items (Go to Definition, Rename, Debug, Run Tests, Roslyn actions, etc.) automatically hidden when a non-C# file or project is active; orphaned separators automatically collapsed
+- **Vim Mode Expansion:** f/F/t/T/;/, char motions, r{char} replace, `{n}G` line jump, zt/zb scroll, ±/_/| navigation, Oem key mapping fix, macro playback fixed, visual indent `>`/`<` fixed
+- **Engine Hardening (.NET 10):** All engines upgraded to `FrozenSet/FrozenDictionary`, `System.Threading.Lock`, `[GeneratedRegex]` with `NonBacktracking`, `SearchValues<char/string>`, `Task.WhenAll` parallelism
+- **IncrementalHighlighter:** Dispose bug fixed (worker no longer leaks), O(1) line-position index, `@` infinite-loop fix, `#` comment support, verbatim/backtick string highlighting, hex/binary number literals
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

@@ -3,7 +3,7 @@
 ; Version: 1.0.35.0
 
 #define AppName      "pfpad"
-#define AppVersion   "1.0.35.0"
+#define AppVersion   "1.0.40.0"
 #define AppPublisher "MyCrownJewelApp"
 #define AppExeName   "MyCrownJewelApp.Pfpad.exe"
 #define AppId        "{{B4F2C1A3-8E7D-4F56-9C2A-D1E3F7B9A042}"

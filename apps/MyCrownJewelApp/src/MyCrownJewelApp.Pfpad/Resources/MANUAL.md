@@ -1,842 +1,1404 @@
-# Personal Flip Pad — User Manual
+# Personal Flip Pad (pfpad) Beginner's Manual
 
-**Version 1.0.39.0**
+Welcome to **Personal Flip Pad** — a Windows code editor for people who write **C#**, **C**, and **C++** and want a focused editor without a lot of ceremony.
 
-Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE for Windows. It combines code editing, DevSecOps scanning, observability intelligence, Git integration, and AI-assisted operational insights into a single workflow. pfpad also includes a built-in graded security hardening system that lets you progressively harden your environment as your needs grow.
-
----
-
-## Table of Contents
-
-- [Getting Started](#getting-started)
-- [Editor](#editor)
-- [Workspace](#workspace)
-- [Solution Explorer](#solution-explorer)
-- [Git Integration](#git-integration)
-- [AIOps Features](#aiops-features)
-- [Panels](#panels)
-- [Built-in Browser](#built-in-browser)
-- [Themes and Display](#themes-and-display)
-- [Settings](#settings)
-- [Security Hardening](#security-hardening)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
-- [Language Support](#language-support)
-- [Quick Open](#quick-open)
-- [Vim Mode](#vim-mode)
+If you're new to pfpad, don't worry. You do **not** need to memorize everything here. This manual is designed so you can read the first few sections, start working, and come back later when you need a specific feature.
 
 ---
 
-## Getting Started
+## Quick Jump
 
-### Opening Files
-
-- **File > Open** — open a single file
-- **File > Open Folder** — load a folder as a workspace
-- **File > Recent Files** — reopen previously opened files
-- Drag and drop files or folders onto the editor window
-
-### Creating Files
-
-- **File > New** (`Ctrl+N`) — create a blank document
-- **File > New from Template** — choose a language-specific starter template
-
-### Saving
-
-- **File > Save** (`Ctrl+S`) — save current file
-- **File > Save As** (`Ctrl+Shift+S`) — save with a new name
-- **File > Save All** — save all open files
-- The title bar shows a `●` indicator when a file has unsaved changes
+1. [Introduction & Philosophy](#1-introduction--philosophy)
+2. [Installing & First Launch](#2-installing--first-launch)
+3. [The Interface](#3-the-interface)
+4. [Opening Files and Projects](#4-opening-files-and-projects)
+5. [Basic Editing](#5-basic-editing)
+6. [Vim Mode](#6-vim-mode)
+7. [Customizing pfpad](#7-customizing-pfpad)
+8. [Snippets — Type Less, Code More](#8-snippets--type-less-code-more)
+9. [Git & Source Control](#9-git--source-control)
+10. [For C# Developers](#10-for-c-developers)
+11. [For C Developers](#11-for-c-developers)
+12. [For C++ Developers](#12-for-c-developers)
+13. [Built-in Browser](#13-built-in-browser)
+14. [Security Hardening](#14-security-hardening)
+15. [Keyboard Shortcuts Reference](#15-keyboard-shortcuts-reference)
+16. [Troubleshooting & FAQ](#16-troubleshooting--faq)
 
 ---
 
-## Editor
+# 1. Introduction & Philosophy
 
-### Core Editing
+pfpad is a **multi-tab Windows code editor** built for real programming work, especially in:
 
-The editor provides a full-featured code editing experience:
+- **C#**
+- **C**
+- **C++**
 
-- **Syntax highlighting** — 30+ languages supported
-- **Code folding** — collapse/expand functions, classes, blocks
-- **Elastic tabs** — tab stops align automatically to column content
-- **Multi-caret editing** — place multiple cursors with `Alt+Click`
-- **Column selection** — hold `Alt` and drag to select a rectangular region
-- **Word wrap** — toggle via View > Word Wrap (`Alt+Z`)
-- **Auto-indent** — language-aware indentation on Enter
-- **Bracket matching** — highlights matching brackets
-- **IntelliSense** — Roslyn-powered completions for C# files
+Its philosophy is simple:
 
-### Line Numbers and Gutter
+- **Open code quickly**
+- **Edit comfortably**
+- **Build and run from the editor**
+- **Debug without leaving your workflow**
+- **Stay forgiving for beginners**
 
-- **View > Line Number** — show absolute line numbers
-- **View > Relative Line Number** — show Vim-style relative numbers
-- The gutter also shows:
-  - Breakpoints (click gutter margin)
-  - Git change indicators (added/modified/deleted lines)
-  - Fold markers
+pfpad does not expect you to learn everything at once. You can begin with just:
 
-### Current Line Highlight
+- opening files,
+- typing code,
+- saving,
+- searching,
+- and using the terminal.
 
-**View > Display > Current Line Highlight** provides four modes:
+Then, when you're ready, you can add snippets, symbol navigation, Git, Vim mode, and debugging.
 
-| Mode | Effect |
-|------|--------|
-| Off | No highlight |
-| Line Number | Highlights the line number in the gutter |
-| Whole Line | Highlights the full editor line |
-| Number + Whole Line | Both gutter and editor line highlighted |
+If you come from Visual Studio, VS Code, Notepad++, Vim, or "just a terminal," pfpad can meet you where you are.
+
+---
+
+# 2. Installing & First Launch
+
+## 2.1 Install pfpad
+
+Install pfpad the same way you would install a normal Windows application.
+
+On first launch, keep your goal small:
+
+1. Start pfpad.
+2. Open a file with **Ctrl+O**.
+3. Or open a folder/project with **Ctrl+Shift+O**.
+4. Make a tiny edit.
+5. Save with **Ctrl+S**.
+
+That is enough to get productive.
+
+## 2.2 Your first five minutes
+
+A good first session looks like this:
+
+1. Press **Ctrl+Shift+O** to open your project folder.
+2. Open the **Workspace** panel with **View → Panels → Workspace**.
+3. Open a source file.
+4. Press **Ctrl+`** to open the terminal.
+5. Run your usual build command.
+6. Press **Ctrl+Shift+P** and type `format` to discover commands.
+
+Don't worry if you do not configure everything on day one. pfpad is happiest when learned in layers.
+
+## 2.3 What to install for a full setup
+
+Depending on your language, you may want these extras:
+
+### For C#
+- **.NET SDK**
+- **netcoredbg** for debugging  
+  Download: https://github.com/Samsung/netcoredbg
+
+### For C
+- **gcc** or **make**
+- **gdb** or **cppvsdbg** for debugging
+- Optional: **ctags** for better symbol navigation
+
+### For C++
+- **CMake** if your project uses it
+- **gdb** or **cppvsdbg** for debugging
+- Optional: **ctags** for better symbol navigation
+
+For Windows + GDB, a common setup is:
+
+1. Install **MSYS2**
+2. Open an MSYS2 shell
+3. Run:
+
+```bash
+pacman -S mingw-w64-ucrt-x86_64-gdb
+```
+
+---
+
+# 3. The Interface
+
+Think of pfpad as a few simple areas working together.
+
+## 3.1 Main areas of the window
+
+### 1. Tab bar
+Your open files live here.
+
+- New tab: **Ctrl+T**
+- Close tab: **Ctrl+W**
+
+### 2. Editor area
+This is where you write code.
+
+You can split it when you want to compare files:
+
+- Vertical split: **Ctrl+Shift+V**
+- Horizontal split: **Ctrl+Alt+H**
+- Close split: **Ctrl+Shift+W**
+
+### 3. Workspace panel
+This is your file explorer for the current folder.
+
+Open/toggle it from:
+- **View → Panels → Workspace**
+
+Useful detail: it shows **Git status colors** and automatically respects **.gitignore**.
+
+### 4. Git panel
+This is where you stage, commit, fetch, pull, and push.
+
+Open it from:
+- **View → Panels → Git Panel**
+
+### 5. Symbol and Outline panels
+Use these when you want to move around code quickly.
+
+- **View → Panels → Symbols**
+- **View → Panels → Outline**
+
+A good mental model:
+- **Outline** = structure of the current file
+- **Symbols** = bigger navigation help
+
+### 6. Integrated terminal
+Open it with:
+- **Ctrl+`**
+
+This is where you run commands like:
+
+```bash
+dotnet build
+make
+gcc -o app *.c
+cmake --build build
+```
+
+### 7. Status bar
+The status bar gives you quick-access information and controls, including:
+
+- current branch
+- build configuration dropdown (**Debug/Release**)
+- theme dropdown
+
+## 3.2 Helpful visual features
+
+### Gutter
+The gutter is the strip beside your code.
+
+It can show:
+- line numbers
+- breakpoints
+- bookmarks
+
+You can toggle these from:
+- **View → Display**
 
 ### Minimap
+The minimap is a compact overview of your file.
 
-A scrollable document overview appears on the right. Toggle it via **View > Minimap** (`Ctrl+Shift+\`). Click the minimap to jump to any position in the document.
+Toggle it from:
+- **View → Layout → Minimap**
 
-### Find and Replace
+By default it uses **50% opacity** and adjusts with the scrollbar.
 
-- **Edit > Find** (`Ctrl+F`) — find in current file
-- **Edit > Replace** (`Ctrl+H`) — find and replace
-- **Edit > Find in Files** (`Ctrl+Shift+F`) — search across workspace
-- Supports regex, case-sensitive, and whole-word options
+### Themes
+pfpad includes **22 built-in themes**.
 
-### Go To
-
-- **Go > Go to Line** (`Ctrl+G`) — jump to a specific line
-- **Go > Go to Symbol** (`Ctrl+Shift+O`) — jump to a function or class
-- **Go > Go to Definition** (`F12`) — navigate to symbol definition
-- **Go > Back / Forward** — navigate edit history
+Change theme with:
+- the **status bar dropdown**, or
+- **View → Appearance → Theme**
 
 ---
 
-## Workspace
+# 4. Opening Files and Projects
 
-The Workspace panel (left sidebar) provides a file tree for the currently open folder. Open it via **Panel > Workspace** (`Ctrl+Shift+W`).
+## 4.1 Open one file
+Press:
+- **Ctrl+O**
 
-### Features
+Use this when you just want to edit a single file quickly.
 
-- **Filter bar** — type to search files by name
-- **Refresh** — reload the file tree from disk
-- **New File / New Folder** — create files or folders in-place
-- **Rename** — press `F2` or right-click
-- **Delete** — press `Delete` or right-click
-- **Multi-select** — hold `Ctrl` or `Shift` to select multiple files
-- **Drag and drop** — move files between folders
+## 4.2 Open a whole folder/project
+Press:
+- **Ctrl+Shift+O**
 
-### Context Menu
+Or use:
+- **File → Open Folder**
 
-Right-click any file or folder for:
+This is the best choice for real development work because it enables the **Workspace** view and makes navigation easier.
 
-- Open, Open With, Rename, Delete
-- Copy path, Reveal in Explorer
-- Git: Stage, Unstage, Diff
+## 4.3 Clone a repository
+Press:
+- **Ctrl+Shift+C**
 
----
+Or use:
+- **File → Clone Repository**
 
-## Solution Explorer
+Typical beginner workflow:
 
-The Solution Explorer (Panel > Solution Explorer) provides a Visual Studio-style view of your project structure organised by projects and solution files.
+1. Clone the repository.
+2. Open the folder if it does not open automatically.
+3. Open **View → Panels → Workspace**.
+4. Open **View → Panels → Git Panel**.
+5. Start editing.
 
-### Features
+## 4.4 Example project opening flows
 
-- Shows `.sln`, `.csproj`, `.vbproj`, `.fsproj`, `.pyproject`, `package.json`, `go.mod`, `Cargo.toml` and `*.tf` as project roots
-- Expand project nodes to browse source, references, and assets
-- **Right-click** a project for: Build, Run Tests, Add File, Properties
-- **Right-click** a file for: Open, Rename, Delete, Copy Relative Path
-- Tracks active document — automatically highlights the current file in the tree
-- Supports rename in-place (`F2`)
+### C# project
+1. Open the folder containing your `.sln` or `.csproj`.
+2. Open a `.cs` file.
+3. Use **F12** on symbols.
+4. Use **Ctrl+`** and run:
 
-### Difference from Workspace
-
-| Feature | Workspace | Solution Explorer |
-|---------|-----------|------------------|
-| View type | Raw file tree | Project / solution tree |
-| Filters | Name search | Project hierarchy |
-| Best for | General file navigation | Structured project work |
-
----
-
-## Git Integration
-
-The Git panel provides a fully integrated source control experience.
-
-### Opening the Git Panel
-
-**Panel > Git** or click the branch indicator in the status bar.
-
-### Features
-
-- **Stage / Unstage** — individual files or all at once
-- **Commit** — enter message and commit staged changes
-- **Push / Pull / Fetch** — sync with remote
-- **Branch management** — create, switch, delete, merge branches
-- **Diff view** — side-by-side or inline diff for changed files
-- **History** — browse commit log with author, date, and message
-- **Blame** — see who changed each line
-- **Conflict resolution** — shows conflicts inline with accept/reject controls
-
-### Status Bar
-
-The bottom status bar shows:
-
-- Current branch name
-- Ahead/behind commit counts
-- Pending change count
-
----
-
-## AIOps Features
-
-AIOps capabilities connect your code with production telemetry, incidents, deployments, security findings, and CI/CD results.
-
-### Opening AIOps
-
-- **AIOps > AIOps Hub** (`Ctrl+Alt+A`) — main AIOps dashboard
-- All panels and actions are accessible from the **AIOps** menu
-
----
-
-### AIOps Hub — `Ctrl+Alt+A`
-
-The hub provides a unified situational awareness view:
-
-- **Active Incidents** — incidents linked to the current service
-- **Recent Deployments** — deployment history with health status
-- **Risk Score** — current deployment risk assessment
-- **Security Findings** — open vulnerabilities and policy violations
-
-Start here for a consolidated production health snapshot before making changes.
-
----
-
-### Security Panel — `Ctrl+Alt+E`
-
-**AIOps > Security Panel** scans for:
-
-- Hardcoded secrets and credentials
-- SQL injection and XSS risks
-- Insecure authentication patterns
-- Dependency vulnerabilities (CVE lookup)
-- Overly permissive IAM policies
-- Container and Dockerfile misconfigurations
-- Terraform / Bicep / ARM security issues
-
-Findings include severity, file location, and remediation suggestions — without leaving the editor.
-
----
-
-### Deployment Panel — `Ctrl+Alt+D`
-
-**AIOps > Deployment Panel** shows:
-
-- CI/CD pipeline status (Azure DevOps, GitHub Actions, GitLab CI)
-- Recent deployment history
-- Rollback options (requires approval)
-- Canary deployment health
-
-Correlate a production issue directly with the deployment that introduced it.
-
----
-
-### Telemetry Panel — `Ctrl+Alt+T`
-
-**AIOps > Telemetry Panel** provides live observability data from your connected backend (Azure Monitor, Application Insights, Prometheus, etc.):
-
-- Log search with natural language queries
-- Trace viewer with span waterfall
-- Metric time-series graphs
-- Anomaly detection alerts
-
-Use **Browse…** to discover service names from your connected workspace. Set a time range and click **Query** to pull live data.
-
----
-
-### Insights Panel — `Ctrl+Alt+I`
-
-**AIOps > Insights Panel** offers AI-generated:
-
-- Root cause analysis hypotheses (confidence-scored)
-- Deployment risk summaries
-- Observability gap recommendations
-- Code-to-production correlation
-
----
-
-### AI Query — `Ctrl+Alt+Q`
-
-**AIOps > AI Query** — ask natural language questions backed by real data:
-
-```
-Why is checkout-service failing in production?
-Which deployment introduced the latency spike?
-Generate OpenTelemetry instrumentation for this function.
+```bash
+dotnet build
 ```
 
-Responses are evidence-based and confidence-scored. The AI cites logs, metrics, traces, and Git history — it will never guess.
+### C project
+1. Open the folder containing your `.c` and `.h` files.
+2. Open `main.c`.
+3. Set a profile in **Tools → User Profiles**.
+4. Build from the terminal or your profile command.
+
+### C++ project
+1. Open the folder containing your `.cpp`, `.hpp`, `CMakeLists.txt`, or `src/` folder.
+2. Use **Alt+O** to switch between header and source files.
+3. Build with terminal commands or a workspace profile.
 
 ---
 
-### Incident Timeline — `Ctrl+Alt+L`
+# 5. Basic Editing
 
-**AIOps > Incident Timeline** shows a correlated chronological timeline:
+## 5.1 Everyday editing shortcuts
 
-- Commits → Builds → Deployments → Metric changes → Incidents
+These are the shortcuts to learn first:
 
-Click any incident to request an AI-generated root cause analysis (RCA) report.
-
----
-
-### PR Risk Analysis — `Ctrl+Alt+P`
-
-**AIOps > PR Risk Analysis** evaluates pull requests for:
-
-- Test coverage of changed code
-- Blast radius (affected services)
-- Historical incident patterns for changed modules
-- Security findings in the diff
-- Infrastructure change risk (Terraform/Bicep)
-
-Helps prioritise careful review of high-risk PRs before merge.
-
----
-
-### Service Dependencies — `Ctrl+Alt+W`
-
-**AIOps > Service Dependencies** visualises the dependency graph between services in your system. Use it to understand blast radius — if one service fails, which downstream services are impacted?
-
----
-
-### Runbooks — `Ctrl+Alt+B`
-
-**AIOps > Runbooks** — launch and track operational runbooks directly from the editor. Production-impacting actions (rollback, scaling, firewall changes) require explicit approval before execution.
-
----
-
-### Action Commands
-
-These are one-shot commands that run against the current file or diff:
-
-#### Scan Active File — `Ctrl+Alt+S`
-
-Immediately scans the currently open file for security vulnerabilities and policy violations. Results appear in the Security Panel. Run this before committing any file.
-
-#### Score Deployment Risk — `Ctrl+Alt+R`
-
-Analyses the current git diff/staged changes and produces a deployment risk score (0–100). Factors in incident history, SLO burn, security findings, and code change volume. Provides a go/no-go signal before pushing to production.
-
-#### Analyze Observability Gaps — `Ctrl+Alt+O`
-
-Scans the active workspace for services that lack logging, metrics, or tracing instrumentation. Produces a report in the Insights Panel with specific recommendations per service — identifying what is blind in production.
-
-#### Generate OTel Code — `Ctrl+Alt+G`
-
-Generates OpenTelemetry (OTel) instrumentation boilerplate for the current file — traces, metrics counters, and log statements in the correct language (C#, Python, Go, etc.). Paste-ready code to add observability with minimal effort.
-
----
-
-### AIOps Settings — `Ctrl+Alt+,`
-
-**AIOps > AIOps Settings** configures connectors to:
-
-- Azure Monitor / Application Insights
-- Azure DevOps
-- Kubernetes
-- Prometheus
-- PagerDuty / Opsgenie
-- GitHub Actions
-
-Supports both **Service Principal** (Client ID + Secret) and **Azure CLI** (`az login`) authentication for Azure connectors. Use **Import from AZ CLI** to auto-fill Subscription ID and Tenant ID, **Import Workspaces** to pick a Log Analytics workspace, and **Import App Insights** to select an Application Insights resource.
-
-#### DPAPI Encryption
-
-All API keys and tokens are encrypted using Windows DPAPI before storage. Encrypted values are tied to the current Windows user account on this machine and are stored as `EncryptedAuthKey` entries in the settings file.
-
-Visual indicators in the settings dialog:
-- `🔒 Encrypted` — value has been saved and is encrypted
-- `🔒 Will encrypt on save` — you have typed a new value; it will be encrypted when you save
-- `🔓 Not set` — no value configured
-
----
-
-## Panels
-
-Access panels from the **Panel** menu:
-
-| Panel | Shortcut | Description |
-|-------|----------|-------------|
-| Workspace | `Ctrl+Shift+W` | File tree for open folder |
-| Solution Explorer | — | Project/solution tree (Panel menu) |
-| Source Control | `Ctrl+Alt+G` | Git panel |
-| Source Control Window | `Ctrl+Shift+G` | Full Git window |
-| Problems | `Ctrl+Alt+P` | Errors, warnings, hints |
-| Terminal | `` Ctrl+` `` | Integrated terminal |
-| Symbols | `Ctrl+Alt+S` | Document symbol tree |
-| Markdown Preview | `Ctrl+Shift+M` | Live markdown rendering |
-| Notification Center | `Ctrl+Shift+N` | Alerts and notifications |
-
----
-
-## Built-in Browser
-
-Pfpad includes a WebView2-powered browser that opens as tabs **directly in the main editor tab strip**, side-by-side with your code files.
-
-### Opening a Browser Tab
-
-- **File > New Browser Tab** (`Ctrl+Shift+T`) — opens a new browser tab
-- Type a URL or search query in the address bar and press **Enter** or click **Go**
-- Click a tab's **×** to close it; the last file tab is always kept
-
-### Toolbar Controls
-
-| Control | Action |
+| Action | Shortcut |
 |---|---|
-| ← Back | Navigate back (Alt+Left) |
-| → Forward | Navigate forward (Alt+Right) |
-| ↺ Refresh | Reload page (F5) |
-| Address bar | Type URL or search term; **Enter** navigates |
-| Go | Navigate to the typed URL |
-| 🛠 DevTools | Open Chromium Developer Tools (F12) |
-| 🌙 / ☀️ Dark mode | Toggle page dark mode (inverts page; images/video stay natural) |
-| ⧉ | Open current page in system browser |
+| New tab | Ctrl+T |
+| Close tab | Ctrl+W |
+| Open file | Ctrl+O |
+| Save | Ctrl+S |
+| Save all | Ctrl+Alt+S |
+| Undo | Ctrl+Z |
+| Redo | Ctrl+Y |
+| Go to line | Ctrl+G |
+| Format document | Ctrl+Shift+I |
+| Command palette | Ctrl+Shift+P |
 
-### Address Bar Smart Glyph
+If you only memorize six shortcuts, make them: **Ctrl+O, Ctrl+S, Ctrl+F, Ctrl+H, Ctrl+G, Ctrl+Shift+P**.
 
-The left side of the address bar shows a context-aware glyph:
+## 5.2 Working with tabs
 
-| Glyph | When shown |
+pfpad is a **multi-tab editor**.
+
+Try this:
+
+1. Open `Program.cs`.
+2. Press **Ctrl+T** for a new tab.
+3. Open `appsettings.json` in another tab.
+4. Press **Ctrl+W** to close the tab you do not need.
+
+## 5.3 Find, replace, and search
+
+### Find in the current file
+Press:
+- **Ctrl+F**
+
+Find supports:
+- **regex**
+- **case-sensitive** search
+- **wrap**
+
+That means you can do simple searches or more advanced ones.
+
+Example:
+- Search for all lines containing `TODO`
+- Search for exact `Main` with case sensitivity
+- Use regex like `^using ` in a C# file
+
+### Replace in the current file
+Press:
+- **Ctrl+H**
+
+Good beginner use cases:
+- rename a temporary variable in one file
+- replace tabs/spaces in a small file
+- fix repeated logging text
+
+### Search across the project
+Press:
+- **Ctrl+Shift+F**
+
+Use this when you want to answer questions like:
+- "Where is `ParseConfig` used?"
+- "Which files include `stdio.h`?"
+- "Where do we create this class?"
+
+## 5.4 Go to line
+Press:
+- **Ctrl+G**
+
+Very useful when:
+- a compiler error says `line 87`
+- a stack trace points to a line number
+- a teammate tells you where to look
+
+## 5.5 Zoom in and out
+
+- Zoom in: **Ctrl+Plus**
+- Zoom out: **Ctrl+Minus**
+
+If text feels too small, fix it immediately. A comfortable editor is a productive editor.
+
+## 5.6 Bookmarks
+
+Bookmarks are excellent when you're moving around a file a lot.
+
+- Toggle bookmark: **Ctrl+B**
+- Next bookmark: **Ctrl+Shift+Period**
+- Previous bookmark: **Ctrl+Shift+Comma**
+
+Example:
+
+1. Put a bookmark on a function you are editing.
+2. Put another on the place where it is called.
+3. Jump back and forth while working.
+
+## 5.7 Splitting the editor
+
+When comparing files, use splits.
+
+- Vertical split: **Ctrl+Shift+V**
+- Horizontal split: **Ctrl+Alt+H**
+- Close split: **Ctrl+Shift+W**
+
+Example:
+
+- Left side: `foo.cpp`
+- Right side: `foo.hpp`
+
+Or:
+
+- Top: failing test
+- Bottom: implementation file
+
+---
+
+# 6. Vim Mode
+
+Vim mode is **optional**. You do not need it to use pfpad well.
+
+If you are curious, pfpad makes it approachable.
+
+## 6.1 Turn Vim mode on
+Use:
+- **View → Display → Vim Mode**
+
+If you try it and dislike it, you can turn it off again. No harm done.
+
+## 6.2 The big idea
+
+Vim mode separates editing into modes.
+
+### Normal mode
+For moving around and issuing commands.
+
+### Insert mode
+For typing text normally.
+
+### Visual mode
+For selecting text.
+
+## 6.3 Basic keys to learn first
+
+### Movement in normal mode
+- `h` = left
+- `j` = down
+- `k` = up
+- `l` = right
+- `w` = next word
+- `b` = previous word
+
+### Editing in normal mode
+- `dd` = delete line
+- `yy` = copy line
+- `p` = paste after
+- `P` = paste before
+- `u` = undo
+- `Ctrl+R` = redo
+
+### Visual mode
+- `v` = character selection
+- `V` = line selection
+- `Ctrl+V` = block selection
+
+## 6.4 Command mode
+
+Useful commands:
+- `:w` = save
+- `:q` = quit, or close split if a split is open
+- `:wq` = save and quit
+- `:vsp` = vertical split
+- `:sp` = horizontal split
+- `:close` = close split
+
+## 6.5 Searching in Vim mode
+
+- `/` = search forward
+- `?` = search backward
+- `n` = next match
+- `N` = previous match
+
+## 6.6 Snippets still work
+In insert mode, snippets expand with **Tab**.
+
+That means Vim users still get the fast templating benefits of pfpad.
+
+---
+
+# 7. Customizing pfpad
+
+pfpad is meant to feel comfortable, not rigid.
+
+Don't worry if your first instinct is to change the font, tabs, or theme. Most developers do.
+
+## 7.1 Change the theme
+
+Use either:
+- **View → Appearance → Theme**
+- or the **theme dropdown in the status bar**
+
+pfpad includes **22 built-in themes**.
+
+A good beginner approach:
+- pick one dark theme for long sessions
+- pick one light theme for daytime or screenshots
+
+## 7.2 Open Settings
+
+Open settings with:
+- **Ctrl+,**
+- or **File → Preferences → Settings...**
+
+Inside Settings, useful categories include:
+- **Editor → Font**
+- **Editor → Formatting**
+- **Workbench → Appearance**
+
+## 7.3 Change the editor font
+
+Open:
+- **Ctrl+,**
+- then go to **Editor → Font**
+
+If code looks cramped or too small, change the font first before changing anything more advanced.
+
+## 7.4 Change tab size
+
+You have two easy ways to do this.
+
+### Option 1: Status bar
+Use the **tab size dropdown** in the status bar.
+
+### Option 2: Settings
+Open:
+- **Ctrl+,**
+- then **Editor → Formatting**
+
+## 7.5 Change minimap and gutter display
+
+### Minimap
+- **View → Layout → Minimap**
+
+### Gutter elements
+- **View → Display**
+
+This is where you manage visible editor helpers like line numbers, breakpoints, and bookmarks.
+
+## 7.6 Workspace build/run profiles
+
+For project-specific commands, use:
+- **Tools → User Profiles**
+
+This is especially helpful when one workspace needs commands that another does not.
+
+Examples:
+
+### C# workspace profile
+- `BuildCommand = dotnet build`
+- `RunCommand = dotnet run`
+
+### C workspace profile
+- `BuildCommand = gcc -o app *.c`
+- `RunCommand = .\app.exe`
+
+or
+
+- `BuildCommand = make`
+- `RunCommand = .\app.exe`
+
+### C++ workspace profile
+- `BuildCommand = cmake --build build`
+- `RunCommand = .\build\app.exe`
+
+You can also use a preset-based build, for example:
+
+- `BuildCommand = cmake --preset debug`
+
+---
+
+# 8. Snippets — Type Less, Code More
+
+Snippets are one of the fastest ways to get comfortable in pfpad.
+
+They work like this:
+
+1. Type a trigger word
+2. Press **Tab**
+3. pfpad expands it into code
+
+## 8.1 General snippets
+
+These work as quick notes:
+- `todo`
+- `hack`
+- `note`
+
+## 8.2 C# snippets
+
+Available triggers:
+
+- `for`
+- `foreach`
+- `while`
+- `do`
+- `try`
+- `tryf`
+- `if`
+- `ife`
+- `else`
+- `switch`
+- `class`
+- `struct`
+- `interface`
+- `enum`
+- `prop`
+- `propg`
+- `propfull`
+- `ctor`
+- `main`
+- `console`
+- `cw`
+
+### Example
+Type:
+
+```csharp
+prop
+```
+
+Then press **Tab**.
+
+This is a great way to create properties without typing the full structure every time.
+
+## 8.3 C snippets
+
+Available triggers:
+
+- `main`
+- `for`
+- `while`
+- `do`
+- `switch`
+- `struct`
+- `typedef`
+- `printf`
+- `malloc_free`
+- `guard`
+- `fori`
+- `printf_err`
+
+### Example
+In a header file, type:
+
+```c
+guard
+```
+
+Then press **Tab** to create a header guard quickly.
+
+## 8.4 C++ snippets
+
+Available triggers:
+
+- `main`
+- `class`
+- `struct`
+- `template`
+- `vec`
+- `map`
+- `uptr`
+- `sptr`
+- `lambda`
+- `fore`
+- `ctor`
+- `guard`
+- `ns`
+- `cout`
+- `cerr`
+- `try`
+- `assert`
+- `nodiscard`
+
+### Example
+Type:
+
+```cpp
+uptr
+```
+
+Then press **Tab** to expand a `std::unique_ptr` pattern more quickly.
+
+## 8.5 Best way to learn snippets
+
+Pick just **three** for your language and use them for a week.
+
+Good starter sets:
+
+- **C#**: `class`, `prop`, `ctor`
+- **C**: `main`, `fori`, `guard`
+- **C++**: `class`, `template`, `uptr`
+
+---
+
+# 9. Git & Source Control
+
+pfpad has built-in Git support, and it is friendly for day-to-day work.
+
+## 9.1 Open the Git panel
+Use:
+- **View → Panels → Git Panel**
+
+You can also use the sidebar if it is already visible.
+
+## 9.2 What you can do there
+
+In the Git panel you can:
+- see changed files
+- stage files by clicking them
+- write a commit message
+- commit
+- fetch
+- pull
+- push
+
+The UI stays responsive during fetch/pull/push because those actions are asynchronous.
+
+## 9.3 Branch awareness
+
+Your current branch is shown in the **status bar**.
+
+That means you can quickly confirm whether you're on `main`, `feature/foo`, or the wrong branch before committing.
+
+## 9.4 Typical beginner Git flow in pfpad
+
+1. Open the project folder.
+2. Open **View → Panels → Git Panel**.
+3. Edit files.
+4. Stage files by clicking them.
+5. Type a commit message.
+6. Commit.
+7. Use **Push**.
+
+## 9.5 Workspace file colors
+
+In the **Workspace** panel, files can show Git status colors.
+
+This is useful because you can glance at the tree and immediately see what changed.
+
+Also helpful: the workspace respects **.gitignore** automatically.
+
+---
+
+# 10. For C# Developers
+
+If you write C#, pfpad gives you the smoothest language-specific experience of the three.
+
+## 10.1 Roslyn support
+
+For C#, pfpad uses **Roslyn** for navigation.
+
+This matters because it improves features like:
+- **Go to Definition**
+- code understanding
+- symbol-aware navigation
+
+Use:
+- **F12** or **Ctrl+Click** for **Go to Definition**
+
+## 10.2 A simple C# workflow
+
+1. Open the folder containing your `.csproj` or `.sln`.
+2. Open the **Workspace** panel.
+3. Open a `.cs` file.
+4. Use **F12** on a class or method.
+5. Press **Ctrl+`** and run:
+
+```bash
+dotnet build
+```
+
+6. Run with:
+
+```bash
+dotnet run
+```
+
+## 10.3 Set a C# profile
+
+Open:
+- **Tools → User Profiles**
+
+Set:
+- `BuildCommand = dotnet build`
+- `RunCommand = dotnet run`
+
+This gives you a predictable workspace setup.
+
+## 10.4 Formatting and snippets
+
+Useful shortcuts and snippets for C# work:
+
+- Format document: **Ctrl+Shift+I**
+- Snippets: `class`, `ctor`, `prop`, `foreach`, `try`, `main`, `console`, `cw`
+
+## 10.5 Debugging C# with netcoredbg
+
+### What you need
+pfpad requires **netcoredbg** for C# debugging.
+
+Download it from:
+- https://github.com/Samsung/netcoredbg
+
+### Debug keys
+- Start debug: **F5**
+- Stop: **Shift+F5**
+- Run without debug: **Ctrl+F5**
+- Step over: **F10**
+- Step into: **F11**
+- Step out: **Shift+F11**
+- Toggle breakpoint: **Ctrl+F9** or click in the gutter
+
+### Conditional breakpoints
+Right-click in the gutter and choose:
+- **New Breakpoint with Properties**
+
+This is useful when a line runs many times and you only want to stop under a certain condition.
+
+### During a debug session
+When debugging starts, pfpad shows:
+- **Variables panel**
+- **Call Stack panel**
+
+These help answer:
+- "What value does this variable have right now?"
+- "How did execution get here?"
+
+## 10.6 C# example session
+
+Imagine you have a console app.
+
+1. Open the folder.
+2. Open `Program.cs`.
+3. Add a breakpoint with **Ctrl+F9**.
+4. Press **F5**.
+5. When execution stops, inspect **Variables** and **Call Stack**.
+6. Use **F10** to walk through the next line.
+
+If you are new to debugging, this is a great first exercise.
+
+## 10.7 Context-aware menus
+
+When you have a C# file or project active, pfpad automatically shows all C#-specific menu items such as **Go to Definition**, **Rename Symbol**, **Find All References**, **Run Tests**, **Debug Tests**, the **Roslyn** menu, and the entire **Run** menu.
+
+When you switch to a non-C# file (JavaScript, Python, Markdown, plain text, etc.), those menu items are automatically hidden so the menu bar stays clean and uncluttered. Orphaned separator lines are also collapsed so you never see stray horizontal rules.
+
+This happens automatically — there is nothing to configure.
+
+---
+
+# 11. For C Developers
+
+pfpad works well for C when you give it a clear build command and, optionally, better symbol tooling.
+
+## 11.1 Set up your build profile
+
+Open:
+- **Tools → User Profiles**
+
+Then set a workspace build command.
+
+Common choices:
+
+### Single-folder C project
+- `BuildCommand = gcc -o app *.c`
+- `RunCommand = .\app.exe`
+
+### Make-based project
+- `BuildCommand = make`
+- `RunCommand = .\app.exe`
+
+If your executable has a different name, use that instead.
+
+## 11.2 Use snippets for faster C coding
+
+Good starter snippets:
+- `main`
+- `fori`
+- `printf`
+- `guard`
+- `malloc_free`
+
+Example:
+
+1. Open `main.c`
+2. Type `main`
+3. Press **Tab**
+4. Fill in the generated structure
+
+## 11.3 Navigate symbols more effectively with ctags
+
+For C and C++, pfpad uses a **ctags index** for stronger symbol navigation if `ctags` is installed.
+
+Install from:
+- https://github.com/universal-ctags/ctags
+
+Then put `ctags.exe` on your **PATH**.
+
+pfpad uses it automatically.
+
+After that, you can use:
+- **F12** or **Ctrl+Click** for **Go to Definition**
+- **View → Panels → Symbols**
+- **View → Panels → Outline**
+
+## 11.4 Header/source switching
+
+For C projects with `.c` and `.h` files, use:
+- **Alt+O**
+
+pfpad will try to toggle between matching files.
+
+It works in:
+- the same directory
+- `include/`
+- `src/`
+
+## 11.5 Debugging C on Windows
+
+pfpad supports C/C++ debugging with:
+- **cppvsdbg** from Visual Studio Build Tools, or
+- **gdb** from MinGW/MSYS2
+
+Configure it in:
+- **Settings → Debug Adapter**
+
+Choose:
+- adapter type
+- adapter path
+
+Debug keys stay the same:
+- **F5** start
+- **F10** step over
+- **F11** step into
+- **Shift+F11** step out
+
+## 11.6 GDB setup example
+
+A common Windows path is:
+
+1. Install MSYS2
+2. Install GDB:
+
+```bash
+pacman -S mingw-w64-ucrt-x86_64-gdb
+```
+
+3. In pfpad, open **Settings → Debug Adapter**
+4. Select **gdb**
+5. Point pfpad to the GDB executable
+6. Start debugging with **F5**
+
+## 11.7 C example workflow
+
+1. Open your C project folder.
+2. Open **Tools → User Profiles**.
+3. Set `BuildCommand = gcc -o app *.c`.
+4. Build from the terminal or profile.
+5. Install `ctags.exe` for better navigation.
+6. Use **Alt+O** to move between header/source files.
+7. Configure **Settings → Debug Adapter** when you're ready to debug.
+
+---
+
+# 12. For C++ Developers
+
+pfpad is a practical fit for C++ projects, especially when you combine profiles, snippets, header/source switching, and ctags.
+
+If you are coming from a clangd-based editor, one important expectation to set is this: **pfpad's built-in C/C++ navigation is centered on ctags, not clangd**. So the first upgrade for C++ navigation in pfpad is usually **installing ctags.exe**.
+
+## 12.1 Set up a C++ profile
+
+Open:
+- **Tools → User Profiles**
+
+Typical options:
+
+### CMake build folder workflow
+- `BuildCommand = cmake --build build`
+- `RunCommand = .\build\app.exe`
+
+### Preset workflow
+- `BuildCommand = cmake --preset debug`
+
+You can also build directly in the integrated terminal with **Ctrl+`**.
+
+## 12.2 Switch between header and source files
+
+Use:
+- **Alt+O**
+
+pfpad will switch between:
+- `.cpp` and `.hpp`
+- `.c` and `.h`
+
+It checks:
+- the same directory
+- `include/`
+- `src/`
+
+This is one of the nicest quality-of-life features for C and C++ work.
+
+## 12.3 C++ snippets worth learning
+
+Strong starter snippets:
+- `class`
+- `template`
+- `ctor`
+- `lambda`
+- `vec`
+- `map`
+- `uptr`
+- `sptr`
+- `ns`
+- `cout`
+- `cerr`
+- `nodiscard`
+
+Example:
+
+1. In a `.hpp` file, type `template`
+2. Press **Tab**
+3. Fill in the type parameters and declaration
+
+Or:
+
+1. Type `ns`
+2. Press **Tab**
+3. Generate a namespace skeleton quickly
+
+## 12.4 Symbol navigation for C++
+
+Use:
+- **F12** or **Ctrl+Click** for **Go to Definition**
+- **View → Panels → Symbols**
+- **View → Panels → Outline**
+
+For best results, install **ctags**:
+- https://github.com/universal-ctags/ctags
+
+Put `ctags.exe` on PATH and pfpad will pick it up automatically.
+
+## 12.5 About clangd
+
+Many C++ developers expect `clangd` because other editors use it heavily.
+
+In pfpad, the practical equivalent to enable first is:
+- **ctags for navigation**
+- **profiles for build/run commands**
+- **gdb or cppvsdbg for debugging**
+
+So if you were planning a "clangd setup day," your pfpad version of that is usually:
+
+1. Install `ctags.exe`
+2. Configure build commands in **Tools → User Profiles**
+3. Configure debug adapter in **Settings → Debug Adapter**
+
+## 12.6 Debugging C++
+
+You need one of these:
+- **cppvsdbg** from Visual Studio Build Tools
+- **gdb** from MinGW/MSYS2
+
+Configure in:
+- **Settings → Debug Adapter**
+
+Then use the normal debug keys:
+- **F5** start
+- **Shift+F5** stop
+- **F10** step over
+- **F11** step into
+- **Shift+F11** step out
+
+## 12.7 C++ example workflow
+
+1. Open your project folder.
+2. Set `BuildCommand = cmake --build build` in **Tools → User Profiles**.
+3. Open a `.cpp` file.
+4. Use **Alt+O** to jump to the header.
+5. Use a snippet like `class` or `template`.
+6. Build with **Ctrl+`**.
+7. Install `ctags.exe` if symbol navigation feels too limited.
+8. Configure **Settings → Debug Adapter** when you want to debug.
+
+---
+
+# 13. Keyboard Shortcuts Reference
+
+## 13.1 Core editing
+
+| Action | Shortcut |
 |---|---|
-| 🔍 Magnifying glass (facing left) | Address bar empty, or typing a plain search query |
-| 🌐 Globe | Typing a domain (e.g. `gmail.com`) or a URL with protocol |
-| 🔒 Lock | Loaded HTTPS page — click for site information |
-| ℹ Info | Loaded HTTP / local / other page — click for site information |
+| New tab | Ctrl+T |
+| Close tab | Ctrl+W |
+| Open file | Ctrl+O |
+| Open folder | Ctrl+Shift+O |
+| Clone repository | Ctrl+Shift+C |
+| Save | Ctrl+S |
+| Save all | Ctrl+Alt+S |
+| Undo | Ctrl+Z |
+| Redo | Ctrl+Y |
+| Find | Ctrl+F |
+| Replace | Ctrl+H |
+| Global search | Ctrl+Shift+F |
+| Go to line | Ctrl+G |
+| Format document | Ctrl+Shift+I |
+| Command palette | Ctrl+Shift+P |
+| Zoom in | Ctrl+Plus |
+| Zoom out | Ctrl+Minus |
+| Integrated terminal | Ctrl+` |
 
-### Add to Favorites (⭐)
+## 13.2 Splits and bookmarks
 
-A star glyph sits on the **right side of the address bar**:
+| Action | Shortcut |
+|---|---|
+| Split vertical | Ctrl+Shift+V |
+| Split horizontal | Ctrl+Alt+H |
+| Close split | Ctrl+Shift+W |
+| Toggle bookmark | Ctrl+B |
+| Next bookmark | Ctrl+Shift+Period |
+| Previous bookmark | Ctrl+Shift+Comma |
+| Header/source toggle | Alt+O |
 
-- **☆ Empty star** — current page is not saved; click or press **Ctrl+D** to add
-- **★ Gold filled star** — current page is already a favorite; click or **Ctrl+D** to edit or remove
-- A small popup appears with the page name pre-filled; press **Enter** (or Done) to confirm, or click **Remove** to delete
+## 13.3 Debugging
 
-### View Site Information
+| Action | Shortcut |
+|---|---|
+| Start debugging | F5 |
+| Run without debugging | Ctrl+F5 |
+| Stop debugging | Shift+F5 |
+| Step over | F10 |
+| Step into | F11 |
+| Step out | Shift+F11 |
+| Toggle breakpoint | Ctrl+F9 |
+| Go to definition | F12 |
 
-Click the **lock / info glyph** (left of address bar) on any loaded page to open a flyout with:
+## 13.4 Vim mode essentials
 
-- Protocol (HTTPS / HTTP / file)
-- Connection security and certificate details
-- **Cookies and site data** — live count fetched from the browser session
-- **Tracker blocking** — number of requests blocked by the content filter
-- **Permissions** for the site
+| Action | Keys |
+|---|---|
+| Enable Vim mode | View → Display → Vim Mode |
+| Move left/down/up/right | h / j / k / l |
+| Next / previous word | w / b |
+| Delete line | dd |
+| Copy line | yy |
+| Paste after / before | p / P |
+| Undo / redo | u / Ctrl+R |
+| Visual char / line / block | v / V / Ctrl+V |
+| Save | :w |
+| Quit / close split | :q |
+| Save and quit | :wq |
+| Vertical split | :vsp |
+| Horizontal split | :sp |
+| Close split | :close |
+| Search forward / back | / / ? |
+| Next / previous match | n / N |
 
-### Page Dark Mode
+---
 
-Click the **🌙 moon button** in the toolbar to force a dark color scheme on any bright page:
+# 14. Troubleshooting & FAQ
 
-- Injects a CSS `filter: invert + hue-rotate(180deg)` rule
-- Images, videos, and canvases are counter-inverted so they look natural
-- Button switches to **☀️ sun** to indicate dark mode is active
-- Automatically re-applied after page reloads and in-page navigation
-- Per-tab state — dark mode on one tab does not affect others
+## 14.1 "I opened a folder, but I don't see files"
+Open:
+- **View → Panels → Workspace**
 
-### Favorites Bar
+If needed, reopen the folder with:
+- **Ctrl+Shift+O**
 
-When enabled in **Settings > Features > Browser > Show Favorites Bar**, the bar below the toolbar displays your saved favorites:
+## 14.2 "Find only works in one file"
+Use:
+- **Ctrl+Shift+F** for project-wide search
 
-- Items that fit appear as inline buttons with **rounded hover highlights** (Edge-style pill, radius=5)
-- Overflow items appear in a **›** dropdown button at the right end of the bar; the button also has rounded hover highlights
-- The overflow menu is **pre-built in the background** after resize settles — opening it is instant regardless of how many items are hidden
+Use:
+- **Ctrl+F** for only the current file
 
-#### Manage Favorites
+## 14.3 "F12 is not finding definitions in my C or C++ project"
+Install **ctags** and put `ctags.exe` on PATH:
+- https://github.com/universal-ctags/ctags
 
-Click **Manage** in the favorites bar to open the Manage Favorites panel:
+pfpad uses it automatically for C/C++.
 
-- **Add Favorite** — saves the current page (or use Ctrl+D in any browser tab)
-- **Add Folder** — creates a folder to organise favorites
-- **Move Up / Move Down** — reorder with toolbar buttons or **Alt+↑** / **Alt+↓**
-- **Delete** — removes selected favorite or folder (and all its children)
-- The panel has a **draggable splitter** between the folder tree and item list
+## 14.4 "Debugging won't start in C#"
+Make sure **netcoredbg** is installed:
+- https://github.com/Samsung/netcoredbg
 
-### YouTube Ad Blocking
+Then try again with **F5**.
 
-When Content Filtering is enabled, the browser also blocks YouTube ads:
+## 14.5 "Debugging won't start in C or C++"
+Open:
+- **Settings → Debug Adapter**
 
-- Known YouTube ad URL patterns are blocked at the network layer
-- A JavaScript content script auto-skips pre-roll, mid-roll, and non-skippable ads
-- **Non-skippable ads** are rushed at 16× speed — the script does **not** seek `currentTime` to `duration - 0.1` because YouTube shares the `<video>` element between ads and the main video; doing so would seek into the main video and freeze the red progress bar at ~75-80%
-- Short standalone ad segments (≤60 s) are seeked to their end for instant dismissal
-- A `MutationObserver` watches the `ad-showing` class on the player element; on removal it reliably restores `playbackRate = 1`, `muted = false`, and `volume = 1` — a 600 ms stall-recovery check then nudges the main video with `play()` if it has not resumed
-- The class watcher is re-wired after each `yt-navigate-finish` SPA navigation event
-- The script is injected only on `youtube.com` pages — no overhead on other sites
+Then confirm:
+- adapter type is correct
+- adapter path is correct
+- you installed **cppvsdbg** or **gdb**
 
-### Content Filtering
+## 14.6 "My build command is different for each project"
+That is normal.
 
-When **Settings > Features > Browser > Content Filtering** is enabled, the browser blocks requests to known ad and tracker domains using:
+Use:
+- **Tools → User Profiles**
 
-- **EasyList** — ads and banners
-- **EasyPrivacy** — tracking scripts
-- **Peter Lowe's list** — ad servers
-- **Fanboy's Annoyance List** — social widgets, cookie notices, push prompts
-- **I Don't Care About Cookies** — cookie consent banners
-- **Hagezi Pro DNS Blocklist** — multi-source ad/tracking aggregator
-- **URLhaus Malware Hosts** — known malware distribution URLs
-- **YouTube Ad Blocker** — URL patterns + JS skip script
+Set `BuildCommand` and `RunCommand` per workspace.
 
-Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` and `WebResourceRequested` interception — no extension required. Each list can be individually enabled or disabled in **Settings > Security > Content Filters**.
+## 14.7 "I accidentally turned on Vim mode"
+No problem.
 
-**CDN allowlist** — `ytimg.com`, `googlevideo.com`, and `ggpht.com` are permanently exempt from list-based blocking. These domains serve YouTube player scripts (`s.ytimg.com`), video streams, and channel thumbnails; blocking them causes SPA navigation to hang and thumbnails to disappear.
+Turn it off at:
+- **View → Display → Vim Mode**
 
-**Parser correctness** — EasyList path-specific rules (`||domain^/path$options`) are correctly skipped; only simple whole-domain rules (`||domain^` and `||domain^$options`) contribute to the block set. This prevents rules like `||ytimg.com^*/subscribe-widget$script` from accidentally blocking the entire `ytimg.com` host.
+## 14.8 "I want a bigger/smaller editor"
+Use:
+- **Ctrl+Plus** to zoom in
+- **Ctrl+Minus** to zoom out
 
-### Browser Settings
+Or change the font in:
+- **Ctrl+,**
+- **Editor → Font**
+
+## 14.9 "What should I learn first?"
+A great beginner path is:
+
+1. **Ctrl+Shift+O** to open a folder
+2. **Ctrl+O** to open files
+3. **Ctrl+S** to save
+4. **Ctrl+F / Ctrl+H** to search and replace
+5. **Ctrl+`** to use the terminal
+6. **Ctrl+Shift+P** to discover commands
+7. **F12** to navigate definitions
+
+That is enough to become comfortable quickly.
+
+## 14.10 "Do I need every feature right now?"
+No.
+
+Start simple. Use the editor, open a project, build from the terminal, and save your work. Add snippets, debugging, Git, or Vim mode only when they become useful.
+
+pfpad is forgiving about growing with you.
+
+---
+
+## Final Advice
+
+If you're an experienced developer but new to pfpad, the best approach is:
+
+- learn **five shortcuts**
+- set up **one profile**
+- install **one debugger**
+- use **one or two snippets**
+
+That is enough to make pfpad feel like your editor instead of somebody else's.
+
+And if something feels unfamiliar at first, don't worry — that's normal. A good editor should reward curiosity, not punish it. pfpad gives you room to learn at your own pace.
+
+---
+
+# 13. Security Hardening
+
+pfpad includes a **built-in, graded runtime security hardening system** accessible from
+**Settings → Security → Security Profile**. You do not need to be a security expert — the
+system is designed to be progressive and forgiving.
+
+## The Four Profiles
+
+| Profile | What it means for you |
+|---------|-----------------------|
+| **Not Hardened** | Zero enforcement. Everything works, nothing is blocked. Use for trusted local dev only. |
+| **Low** *(default)* | Blocks dangerous URI schemes (javascript:, bscript:, ms-msdt:). Zero friction otherwise. |
+| **Mid** | Encrypts settings.json with your Windows account (DPAPI). Protects API keys and tokens at rest. |
+| **Max** | Adds HTTPS-only for all links and AIOps connectors. For regulated or high-security environments. |
+
+## Changing Your Profile
+
+1. Open **Settings** (Ctrl+,) → navigate to **Security**
+2. Select the desired profile with the radio buttons
+3. Click **OK**
+4. A **transition wizard** opens and shows exactly what will happen
+5. Click **Upgrade** (or **Downgrade**) to proceed, or **Cancel** to stay where you are
+
+## The Transition Wizard
+
+The wizard never changes anything without your confirmation. It shows:
+
+- Each migration step as a plain-English description
+- Live status icons as steps run: ⬜ pending → ⏳ running → ✅ done / ⚠️ warning / ❌ failed
+- Automatic rollback if a step fails — your original state is always restored
+- A backup of any file it modifies before touching it
+
+**You can always cancel.** If you cancel after a step has already run, the wizard rolls back
+the completed steps automatically.
+
+## Practical Examples
+
+**Upgrading to Mid (encrypting your settings):**
+
+The wizard backs up settings.json → settings.json.bak, then encrypts the live file with
+DPAPI. If encryption fails for any reason, the backup is restored. On success, the wizard
+auto-closes after 1.5 seconds — no action required.
+
+**"I can't read settings.json any more after upgrading to Mid":**
+
+This is expected. Use **Help > About → About tab → Open settings.json** — if the file is
+encrypted, pfpad offers to export a readable copy to your Desktop. Or simply downgrade to
+Low: the wizard decrypts the file back to plain JSON automatically.
+
+**"A link stopped working after upgrading to Max":**
+
+The status bar will tell you exactly why:
+*"🔒 Link blocked (http:// links are blocked at Max — use https://). Change profile in
+Settings → Security."*
+
+Either switch the endpoint to https://, or temporarily drop to Mid for that session.
+
+## Build-Time Status Indicators
+
+The Security panel also shows read-only indicators that reflect how the binary you are running
+was built:
+
+- **Code signing** — whether the EXE has an Authenticode signature
+- **CI security gates** — whether the pipeline has Wiz or CodeQL scanning active
+- **Installer signing** — whether the Inno Setup installer has a SignTool directive
+
+These are informational only and cannot be changed at runtime. ❌ indicators are normal for
+personal development machines.
+
+## Full Documentation
+
+For complete details, transition behaviour, FAQ, and build-time status explanation, see
+**Help > Manual → 🔒 Security Hardening** tab inside the app.
+
+---
+
+# 13. Built-in Browser
+
+pfpad includes a **WebView2-powered browser** that opens as tabs directly in the main editor tab strip — side-by-side with your code files.
+
+## 13.1 Opening a Browser Tab
+
+Press **Ctrl+Shift+T** or go to **File > New Browser Tab**. Each browser tab is independent and has its own navigation history.
+
+## 13.2 The Address Bar
+
+The address bar is an Edge-style pill shape. As you type:
+
+| Left glyph | When |
+|---|---|
+| 🔍 Magnifying glass | Empty bar, or plain search text |
+| 🌐 Globe | Typing a domain or URL |
+| 🔒 Lock | Loaded HTTPS page |
+| ℹ Info | Loaded HTTP / local page |
+
+Click the left glyph on a loaded page to open a **Site Information flyout** showing connection security, live cookies count, tracker blocking stats, and permissions.
+
+The **⭐ star** on the right saves the current page to your Favorites. An empty star means not saved; a gold filled star means it's already saved. Click the star or press **Ctrl+D** to add, edit, or remove.
+
+## 13.3 Navigation Controls
+
+| Control | Shortcut |
+|---|---|
+| ← Back | Alt+Left |
+| → Forward | Alt+Right |
+| ↺ Refresh | F5 |
+| 🌙 / ☀️ Dark mode | Toggle — inverts page colors; images and video stay natural |
+| 🛠 DevTools | F12 |
+| ⧉ Open external | Open current page in your system browser |
+
+## 13.4 Favorites Bar
+
+Enable the bar in **Settings > Features > Browser > Show Favorites Bar**.
+
+- Favorite buttons show **rounded hover highlights** (Edge-style pill shape)
+- When too many favorites to fit, a **›** overflow button appears at the right — click it for the rest
+- The overflow menu is pre-built in the background after each resize, so it opens instantly
+
+### Managing Favorites
+
+Click **Manage** in the favorites bar:
+
+- **Add Favorite** — saves the current page (or Ctrl+D in any tab)
+- **Add Folder** — group favorites into a folder
+- **Move Up / Down** — reorder with **Alt+↑** / **Alt+↓**
+- **Delete** — remove selected item or folder
+- Drag the splitter between the folder tree and item list to resize panels
+
+## 13.5 YouTube Ad Blocking
+
+When Content Filtering is on, the browser blocks YouTube ads automatically:
+
+- Network-layer block of known YouTube ad URL patterns
+- JS content script auto-skips pre-roll and mid-roll ads
+- **Buffering (yellow bar) ads** — mutes the video, sets speed to 16×, and listens for `durationchange` to fire the skip the moment the browser resolves duration. No more infinite buffering stall.
+
+## 13.6 Content Filtering
+
+Enable in **Settings > Security > Content Filters**. Seven blocklists are available — each individually toggleable:
+
+| List | Blocks |
+|---|---|
+| EasyList | Ads and banners |
+| EasyPrivacy | Tracking scripts |
+| Peter Lowe's list | Ad servers |
+| Fanboy Annoyance | Social widgets, cookie banners, push prompts |
+| I Don't Care About Cookies | Cookie consent popups |
+| Hagezi Pro | Multi-source ad/tracker aggregator |
+| URLhaus Malware Hosts | Malware distribution URLs |
+
+Lists are downloaded and cached on first use. Blocking requires no browser extension — it happens at the WebView2 network layer.
+
+## 13.7 Browser Settings
 
 All browser settings live under **Settings > Features > Browser**:
 
-| Setting | Description |
-|---|---|
-| Home page | URL loaded when opening a new browser tab |
-| Max history entries | Cap on navigation history saved per tab |
-| Ephemeral storage | Discard cookies, cache, and storage after each session |
-| Allow localhost links | Enable `localhost`, `127.0.0.1`, `[::1]` navigation |
-| Default zoom | Default zoom level (%) for all pages |
-| Show in title bar | Mirror page title in the main window title bar |
-| Content filtering | Enable/disable blocklist-based ad blocking |
-| Filter: EasyList | Toggle EasyList individually |
-| Filter: EasyPrivacy | Toggle EasyPrivacy individually |
-| Filter: Peter Lowe | Toggle Peter Lowe's list individually |
-| Filter: Fanboy Annoyance | Toggle Fanboy Annoyance list individually |
-| Filter: IDCAC | Toggle I Don't Care About Cookies individually |
-| Filter: Hagezi Pro | Toggle Hagezi Pro DNS blocklist individually |
-| Filter: URLhaus | Toggle URLhaus Malware Hosts individually |
-| Custom user agent | Override the browser UA string sent to sites |
-| Show favorites bar | Show/hide the favorites bar |
-| Favorites source | Path to the Edge `Bookmarks` JSON file |
-
-### Privacy Notes
-
-- By default the browser uses a **persistent profile** in `%AppData%\MyCrownJewelApp\WebView2`.
-- Enable **Ephemeral storage** in Settings for untrusted workspaces — no cookies or cache survive the session.
-- The custom user agent prevents sites from fingerprinting the browser as Microsoft Edge.
+- **Home page** — URL loaded when opening a new tab
+- **Max history entries** — cap on per-tab history
+- **Ephemeral storage** — no cookies or cache survive the session (good for untrusted sites)
+- **Allow localhost links** — enable `localhost` / `127.0.0.1` navigation
+- **Default zoom** — zoom level (%) for all pages
+- **Custom user agent** — override the UA string (prevents Edge fingerprinting)
+- **Show favorites bar** — toggle the favorites bar
+- **Show in title bar** — mirror page title in the window title bar
 
 ---
-
-## Themes and Display
-
-### Changing Theme
-
-**View > Theme** or the theme picker in the status bar. pfpad includes 23 built-in themes:
-
-- **Dark themes**: Dark, One Dark, Dracula, Nord, Tokyo Night, Catppuccin Mocha, Gruvbox Dark, Material Dark, Solarized Dark, Monokai
-- **Light themes**: Light, GitHub Light, Solarized Light, Catppuccin Latte
-- **High contrast**: High Contrast Dark, High Contrast Light
-
-All UI elements — menus, panels, dialogs, gutter, minimap, status bar — respond to the active theme in real time.
-
-### Display Settings
-
-**View > Display** contains:
-
-- Word Wrap
-- Current Line Highlight (Off / Line Number / Whole Line / Number + Whole Line)
-- Whitespace characters
-- Indentation guides
-- Column ruler
-
----
-
-## Settings
-
-Open with **Tools > Settings** (`Ctrl+,`).
-
-Settings are organized by category:
-
-- **Editor** — font, size, tab width, insert spaces, word wrap, line endings, encoding
-- **Appearance** — theme, minimap, status bar, gutter
-- **Cursor** — line highlight mode, hover highlight, blink rate
-- **Git** — user name, email, default branch
-- **Security** — runtime hardening profile (Not Hardened / Low / Mid / Max), workspace trust, URL validation, SAST scanning, logging
-- **AIOps** — connector endpoints and credentials
-- **Extensions** — external tools and plugins
-- **Keybindings** — view and customize keyboard shortcuts
-
-Settings are saved per-user and persisted across sessions.
-
----
-
-## Security Hardening
-
-pfpad includes a **built-in, graded runtime security hardening system** accessible from
-**Settings → Security → Security Profile**.
-
-### Profiles
-
-| Profile | Purpose |
-|---------|---------|
-| **Not Hardened** | No enforcement — local development / testing only |
-| **Low** *(default)* | URL scheme allowlist, TLS preference, safe process launch |
-| **Mid** | Low + DPAPI-encrypted settings.json, SDK credential flows, log masking |
-| **Max** | Mid + HTTPS-only AIOps endpoints, `http://` links blocked |
-
-### Transition Wizard
-
-Changing the profile opens a guided **transition wizard** that:
-
-- Lists every migration step with a plain-English description
-- Shows live status icons (⬜ pending → ⏳ running → ✅ done / ⚠️ warning / ❌ failed)
-- Creates backups before any file mutation (`settings.json.bak`, `settings.json.enc.bak`)
-- Rolls back all completed steps automatically if a step fails
-- Reverts the profile selector if you cancel
-
-### Key user-visible behaviours by profile
-
-| Behaviour | Not Hardened | Low | Mid | Max |
-|-----------|:-----------:|:---:|:---:|:---:|
-| `javascript:` / `vbscript:` links blocked | ✗ | ✅ | ✅ | ✅ |
-| `http://` links blocked | ✗ | ✗ | ✗ | ✅ |
-| `settings.json` DPAPI-encrypted | ✗ | ✗ | ✅ | ✅ |
-| Status-bar feedback on blocked links | ✗ | ✅ | ✅ | ✅ |
-| Blocked link feedback in status bar | *silent* | ✅ | ✅ | ✅ |
-
-### Settings encryption (Mid+)
-
-When you upgrade to Mid, `settings.json` is encrypted with **Windows DPAPI** (tied to your
-user account on this machine). Use **About → Open settings.json** to export a readable copy
-for inspection if needed. Downgrading back to Low decrypts the file automatically.
-
-For full details, see the **🔒 Security Hardening** tab in **Help > Manual**.
-
----
-
-## Keyboard Shortcuts
-
-### File Operations
-
-| Action | Shortcut |
-|--------|----------|
-| New tab | `Ctrl+T` |
-| Open file | `Ctrl+O` |
-| Open folder | `Ctrl+Alt+O` |
-| Open solution | `Ctrl+Shift+O` |
-| Save | `Ctrl+S` |
-| Save As | `Ctrl+Shift+S` |
-| Save All | `Ctrl+Alt+S` |
-| Close tab | `Ctrl+W` |
-| Close split | `Ctrl+Shift+W` |
-| Close all tabs | `Ctrl+Alt+W` |
-
-### Editing
-
-| Action | Shortcut |
-|--------|----------|
-| Undo | `Ctrl+Z` |
-| Cut | `Ctrl+X` |
-| Copy | `Ctrl+C` |
-| Paste | `Ctrl+V` |
-| Select All | `Ctrl+A` |
-| Delete | `Delete` |
-| Format document | `Alt+Shift+F` |
-| Toggle fold | `Ctrl+Shift+[` |
-| Toggle all folds | `Ctrl+Alt+[` |
-| Rename symbol | `F2` |
-
-### Navigation
-
-| Action | Shortcut |
-|--------|----------|
-| Go to line/column | `Ctrl+G` |
-| Go to file (quick open) | `Ctrl+P` |
-| Go to symbol in editor | `Ctrl+.` |
-| Go to symbol in workspace | `Ctrl+Shift+O` |
-| Go to definition | `F12` |
-| Go to declaration | `Ctrl+F12` |
-| Go to references | `Shift+F12` |
-| Navigate back | `Alt+Left` |
-| Navigate forward | `Alt+Right` |
-| Last edit location | `Ctrl+-` |
-| Go to bracket | `Ctrl+Shift+Backspace` |
-| Toggle header/source (C/C++) | `Alt+O` |
-
-### Search
-
-| Action | Shortcut |
-|--------|----------|
-| Find | `Ctrl+F` |
-| Replace | `Ctrl+H` |
-| Find in files | `Ctrl+Shift+F` |
-| Find next | `F3` |
-| Find previous | `Shift+F3` |
-
-### View and Panels
-
-| Action | Shortcut |
-|--------|----------|
-| Toggle Workspace panel | `Ctrl+Shift+W` |
-| Toggle Source Control panel | `Ctrl+Alt+G` |
-| Open Source Control window | `Ctrl+Shift+G` |
-| Toggle Symbols panel | `Ctrl+Alt+S` |
-| Toggle Problems panel | `Ctrl+Alt+P` |
-| Toggle Terminal | `` Ctrl+` `` |
-| Toggle Markdown Preview | `Ctrl+Shift+M` |
-| Toggle Notification Center | `Ctrl+Shift+N` |
-| Zoom in | `Ctrl++` |
-| Zoom out | `Ctrl+-` |
-| Restore default zoom | `Ctrl+0` |
-| Split vertical | `Ctrl+Shift+V` |
-| Split horizontal | `Ctrl+Alt+H` |
-| Close split | `Ctrl+Shift+W` |
-| Font picker | `Ctrl+Shift+F` |
-| Toggle Vim mode | `Ctrl+Alt+V` |
-
-### Run and Debug
-
-| Action | Shortcut |
-|--------|----------|
-| Start debugging | `F5` |
-| Run without debugging | `Ctrl+F5` |
-| Stop debugging | `Shift+F5` |
-| Restart debugging | `Ctrl+Shift+F5` |
-| Step over | `F10` |
-| Step into | `F11` |
-| Step out | `Shift+F11` |
-| Toggle breakpoint | `F9` |
-| New breakpoint | `Ctrl+B` |
-| Run tests | `Ctrl+Alt+F5` |
-| Rerun failed tests | `Ctrl+Alt+F6` |
-
-### AIOps
-
-| Action | Shortcut |
-|--------|----------|
-| AIOps Hub | `Ctrl+Alt+A` |
-| Security Panel | `Ctrl+Alt+E` |
-| Deployment Panel | `Ctrl+Alt+D` |
-| Telemetry Panel | `Ctrl+Alt+T` |
-| Insights Panel | `Ctrl+Alt+I` |
-| AI Query | `Ctrl+Alt+Q` |
-| Incident Timeline | `Ctrl+Alt+L` |
-| PR Risk Analysis | `Ctrl+Alt+P` |
-| Service Dependencies | `Ctrl+Alt+W` |
-| Runbooks | `Ctrl+Alt+B` |
-| Scan Active File | `Ctrl+Alt+S` |
-| Score Deployment Risk | `Ctrl+Alt+R` |
-| Analyze Observability Gaps | `Ctrl+Alt+O` |
-| Generate OTel Code | `Ctrl+Alt+G` |
-| AIOps Settings | `Ctrl+Alt+,` |
-
----
-
-## Language Support
-
-pfpad provides syntax highlighting, code folding, and file associations for:
-
-| Category | Languages |
-|----------|-----------|
-| **General purpose** | C#, C, C++, Java, Python, Go, Ruby, Rust, Swift |
-| **Web** | JavaScript, TypeScript, HTML, CSS, SCSS, Less |
-| **Data** | JSON, YAML, XML, TOML, CSV |
-| **Scripting** | PowerShell, Bash, Batch, Lua |
-| **IaC / DevOps** | Terraform (HCL), Bicep, ARM templates, Kubernetes YAML, Helm, Dockerfile |
-| **CI/CD** | GitHub Actions, Azure Pipelines, GitLab CI |
-| **Query** | SQL, GraphQL |
-| **Docs** | Markdown (with live preview), reStructuredText |
-
-### C# IntelliSense
-
-For C# files, pfpad uses Roslyn to provide:
-
-- Type-aware code completion
-- Inline diagnostics (errors and warnings)
-- Go to definition / find references
-- Semantic syntax highlighting
-- Code actions and quick fixes
-
----
-
-## Quick Open
-
-Press `Ctrl+P` to open Quick Open. Type to search and jump to any file in the workspace by name.
-
----
-
-## Vim Mode
-
-Enable Vim mode via **View > Vim Mode** or `Ctrl+Alt+V`.
-
-### Supported Features
-
-- **Normal mode**: navigation (`h`, `j`, `k`, `l`, `w`, `b`, `e`, `0`, `$`), delete (`d`), yank (`y`), paste (`p`), undo (`u`)
-- **Insert mode**: enter with `i`, `a`, `o`, `O`, exit with `Esc`
-- **Visual mode**: character (`v`), line (`V`), block (`Ctrl+V`)
-- **Command mode**: `:w`, `:q`, `:wq`, `:e`, `:set`, `:nohl`
-- **Macros**: record with `q{register}`, replay with `@{register}`
-- **Marks**: set with `m{letter}`, jump with `` `{letter} ``
-- **Search**: `/pattern`, `n`/`N` to navigate
-- **Relative line numbers**: `:set relativenumber` / `:set norelativenumber`
-
-### .vimrc Support
-
-pfpad reads `~/.vimrc` on startup. Supported settings:
-
-```
-set number
-set relativenumber
-set tabstop=4
-set expandtab
-set wrap
-set ignorecase
-set smartcase
-```
-
----
-
-## Installer and Data Locations
-
-### Per-User Install (Recommended)
-
-When installed for the current user only:
-
-- **Application**: `%LOCALAPPDATA%\Programs\Personal Flip Pad\`
-- **Settings**: `%APPDATA%\Personal Flip Pad\settings.json`
-- **Profiles**: `%APPDATA%\Personal Flip Pad\profiles\`
-- **AIOps config**: `%APPDATA%\Personal Flip Pad\aiops-settings.json`
-
-### Per-Machine Install
-
-- **Application**: `%ProgramFiles%\Personal Flip Pad\`
-- **Settings**: `%APPDATA%\Personal Flip Pad\settings.json` (per-user still)
-
-### Uninstall
-
-Use **Add or Remove Programs** in Windows Settings, or run the uninstaller from the Start menu shortcut group.
-
----
-
-## Troubleshooting
-
-### Editor is blank after opening a file
-
-- Check that the file is not empty
-- Try **View > Reset Layout**
-- Check **Problems** panel for load errors
-
-### AIOps panel shows "not configured"
-
-- Open **AIOps > AIOps Settings**
-- Enter the endpoint URL and API key for each connector
-- Click **Save** — keys are encrypted with DPAPI automatically
-
-### Git panel shows "not a repository"
-
-- Open a folder that contains a `.git` directory via **File > Open Folder**
-- Or initialize a repository with **Git > Initialize Repository**
-
-### Syntax highlighting not working
-
-- Check **View > Syntax Highlighting** is enabled
-- Save the file with the correct extension so the language is detected
-- Use the language selector in the status bar to manually override
-
-### IntelliSense not available for C#
-
-- Open the folder containing the `.csproj` file as the workspace root
-- Wait a few seconds for Roslyn to initialize (progress shown in status bar)
-- Check that .NET SDK is installed: `dotnet --version` in the terminal
-
----
-
-*For issues or contributions, visit the project repository.*
