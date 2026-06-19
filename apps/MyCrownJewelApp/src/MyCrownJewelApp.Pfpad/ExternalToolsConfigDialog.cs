@@ -68,35 +68,40 @@ internal sealed class ExternalToolsConfigDialog : Form
     {
         _variableMenu = CreateVariableMenu();
 
-        var split = new SplitContainer
+        // Use a fixed-width left panel + Splitter + fill right panel to avoid SplitContainer
+        // SplitterDistance validation failures (throws when Width=0 during construction).
+        var leftPanel = new Panel
+        {
+            Dock = DockStyle.Left,
+            Width = 220,
+            BackColor = _theme.Background,
+            Padding = new Padding(12)
+        };
+        var divider = new Splitter
+        {
+            Dock = DockStyle.Left,
+            Width = 4,
+            BackColor = _theme.Border,
+            MinExtra = 260,
+            MinSize = 160
+        };
+        var rightPanel = new Panel
         {
             Dock = DockStyle.Fill,
-            Panel1MinSize = 160,
-            Panel2MinSize = 380,
-            BackColor = _theme.Border,
-            FixedPanel = FixedPanel.None,
-            IsSplitterFixed = false
+            BackColor = _theme.Background,
+            Padding = new Padding(14, 12, 14, 12)
         };
 
-        split.Panel1.Padding = new Padding(12);
-        split.Panel2.Padding = new Padding(14, 12, 14, 12);
-        split.Panel1.BackColor = _theme.Background;
-        split.Panel2.BackColor = _theme.Background;
+        InitializeLeftPanel(leftPanel);
+        InitializeRightPanel(rightPanel);
 
-        InitializeLeftPanel(split.Panel1);
-        InitializeRightPanel(split.Panel2);
+        var bottomBar = CreateBottomActionBar();
 
-        Controls.Add(split);
-        Controls.Add(CreateBottomActionBar());
-
-        // SplitterDistance must be set after layout — the SplitContainer has no width yet in ctor.
-        Load += (_, _) =>
-        {
-            int desired = 220;
-            int max = split.Width - split.Panel2MinSize - split.SplitterWidth;
-            if (max > split.Panel1MinSize)
-                split.SplitterDistance = Math.Clamp(desired, split.Panel1MinSize, max);
-        };
+        // Order matters for docking: Bottom first, then Left, Splitter, Fill (last added = first docked).
+        Controls.Add(rightPanel);
+        Controls.Add(divider);
+        Controls.Add(leftPanel);
+        Controls.Add(bottomBar);
 
         AcceptButton = _okButton;
         CancelButton = _cancelButton;

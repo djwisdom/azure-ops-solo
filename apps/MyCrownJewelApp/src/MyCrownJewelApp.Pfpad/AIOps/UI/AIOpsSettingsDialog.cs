@@ -191,7 +191,6 @@ public sealed class AIOpsSettingsDialog : Form
             Dock = DockStyle.Fill,
             FixedPanel = FixedPanel.Panel1,
             IsSplitterFixed = true,
-            SplitterDistance = 220,
             Panel1MinSize = 160,
             BorderStyle = BorderStyle.None,
         };
@@ -246,6 +245,14 @@ public sealed class AIOpsSettingsDialog : Form
 
         SetTheme(_theme);
         ResumeLayout(true);
+
+        // SplitterDistance must be set after layout (Width=0 during construction causes validation failure).
+        // 220px gives "GitHub Actions" (14 chars) comfortable room at default font size.
+        Load += (_, _) =>
+        {
+            if (_splitContainer.Width > _splitContainer.Panel1MinSize + 25)
+                _splitContainer.SplitterDistance = Math.Min(220, _splitContainer.Width - 25);
+        };
     }
 
     public void SetTheme(Theme theme)
