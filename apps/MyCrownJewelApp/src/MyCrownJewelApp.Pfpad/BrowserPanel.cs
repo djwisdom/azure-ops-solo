@@ -1634,7 +1634,7 @@ internal sealed class BrowserPanel : UserControl
         internal event EventHandler? GlyphClicked;
         internal event EventHandler? StarClicked;
         private readonly GlyphLabel _glyph;
-        private readonly Label _star;
+        private readonly GlyphLabel _star;
         private bool _focused;
         private Theme _theme;
 
@@ -1663,7 +1663,7 @@ internal sealed class BrowserPanel : UserControl
             };
 
             // Star glyph — right of the text box
-            _star = new Label
+            _star = new GlyphLabel
             {
                 Text      = "\uE734",           // FavoriteStar (empty) Segoe MDL2 Assets
                 Font      = new Font("Segoe MDL2 Assets", 11f),
