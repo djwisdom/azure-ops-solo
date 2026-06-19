@@ -56,33 +56,34 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.44**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.45**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
-dotnet build --configuration Release2
-# Run: bin\Release2\net10.0-windows\MyCrownJewelApp.Pfpad.exe
+dotnet build --configuration Release
+# Run: bin\Release\net10.0-windows\MyCrownJewelApp.Pfpad.exe
 ```
 
 **Key Features:**
-- **Advanced Syntax Highlighting:** 30+ languages with incremental highlighting
+- **Advanced Syntax Highlighting:** 30+ languages, incremental Channel-based pipeline (16 ms/line, 50 ms/batch), Roslyn + regex fallback, O(1) line-position index
 - **Full Unicode Support:** UTF-8/16/32 with BOM detection and RTL text handling
 - **Performance Profiling:** Built-in zero-allocation sampling profiler (<3% overhead)
-- **Roslyn Integration:** Go to definition, hover tooltips, diagnostics for C#
-- **Integrated Debugging:** DAP protocol support with visual debugging
-- **Git Integration:** Full Git operations with visual diff and merge tools
-- **Large File Support:** Up to 100MB with graceful feature degradation
-- **Terminal Integration:** Multi-tab terminals with ANSI color support
-- **Built-in Browser:** WebView2 browser tabs with Edge-style pill address bar (smart glyph + ⭐ star), dark mode toggle, View Site Information flyout, YouTube ad blocking (non-skippable ads at 16× — no progress bar hang; MutationObserver-based volume/rate restore with 600ms stall recovery), 7 content filter lists with CDN allowlist (ytimg.com, googlevideo.com, ggpht.com) and path-specific rule parser fix, instant overflow favorites, rounded hover highlights on favorites bar, Manage Favorites with drag-to-reorder, correct pinned taskbar icon (`pfp` azure gradient tile, frosted-glass highlight)
+- **Roslyn Integration:** AdhocWorkspace (instant) → MSBuildWorkspace (lazy background load); go-to-definition, hover tooltips, rename, find-all-references, diagnostics
+- **Integrated Debugging:** DAP protocol (netcoredbg); conditional/logpoint/hit-count breakpoints; visual gutter indicators; hover evaluation
+- **Git Integration:** Full Git operations (stage/unstage/commit/push/pull/fetch/branch/stash/tag); visual diff; conflict resolver (4-pane Base/Ours/Theirs/Merged); commit history graph
+- **Large File Support:** Async load >20 MB; warning >50 MB; reject >500 MB; per-tab degradation flags disable highlighting/minimap/wordwrap
+- **Terminal Integration:** Multi-tab WinForms terminal with ANSI colour, ConPTY, shell detection
+- **Built-in Browser:** WebView2 browser tabs with Edge-style pill address bar (smart glyph + ⭐ star), dark-mode toggle, View Site Information flyout, YouTube ad blocking (non-skippable ads at 16× speed, MutationObserver-based volume/rate restore), 7 content filter lists with CDN allowlist, Manage Favorites with drag-to-reorder, `pfp` azure-gradient taskbar icon
 - **22 Built-in Themes:** Dark/Light modes with VS Code-inspired schemes
-- **Context-Aware Menus:** C#-only items (Go to Definition, Rename, Debug, Run Tests, Roslyn actions, etc.) automatically hidden when a non-C# file or project is active; orphaned separators automatically collapsed
-- **Vim Mode Expansion:** f/F/t/T/;/, char motions, r{char} replace, `{n}G` line jump, zt/zb scroll, ±/_/| navigation, Oem key mapping fix, macro playback fixed, visual indent `>`/`<` fixed
-- **Engine Hardening (.NET 10):** All engines upgraded to `FrozenSet/FrozenDictionary`, `System.Threading.Lock`, `[GeneratedRegex]` with `NonBacktracking`, `SearchValues<char/string>`, `Task.WhenAll` parallelism
-- **IncrementalHighlighter:** Dispose bug fixed (worker no longer leaks), O(1) line-position index, `@` infinite-loop fix, `#` comment support, verbatim/backtick string highlighting, hex/binary number literals
-- **Git Workflow (Pre-PR tools):** Pre-commit pipeline gate (secret scan + hook shim for .git/hooks, husky, pre-commit); staged-file review dialog with inline diff; Conventional Commit composer (type/scope/breaking/subject/body/footer, live preview, signed-off-by); CI status badge in Git panel header showing latest GitHub Actions run
-- **Multi-platform Git hosting:** Auto-detects GitHub / Azure DevOps / GitLab / Bitbucket / Gitea from remote URL; platform badge glyph in header; CI badge supports GitHub Actions + Azure DevOps Pipelines (auto-selected); Conventional Commit footer hint adapts per platform (`Closes #123` / `AB#1234` / `PROJ-123`); PR/MR template reader (.github/, .azuredevops/, .gitlab/); CODEOWNERS reviewer hints; `GetCreatePrUrl()` builds correct PR URL for all platforms
-- **Git workflow UX:** ⎇ Open PR/MR button in Git panel header (visible on non-default branches, opens platform-correct URL); `NewBranchDialog` with prefix/ticket/description fields and live branch-name preview; CODEOWNERS reviewer hints in pre-commit dialog banner
-- **Multi-platform CI connectors (v1.0.44):** `GitLabConnector` (pipelines + MRs via GitLab API v4, PRIVATE-TOKEN auth); `BitbucketConnector` (pipelines + PRs via Bitbucket Cloud REST API 2.0, Basic auth); `AzureDevOpsConnector` now implements `IPullRequestCapable` (ADO Git PR list via API 7.1); CI badge auto-selects connector for GitLab and Bitbucket repos; ADO branch-policy warning bar shown after push on Azure DevOps repos
+- **Security Hardening:** 5-level security profiles (Not Hardened → Low → Mid → High → Paranoid); DPAPI encryption for settings at Mid+; URL scheme allowlist; SAST scanner; secret detection with gutter highlights; safe process launch
+- **Context-Aware Menus:** 13 C#-only menu items auto-hidden for non-C# files/projects; entire Run menu hidden; orphaned separators auto-collapsed
+- **Vim Mode:** Full Normal/Insert/Visual/Command/Search state machine; f/F/t/T/;/, motions; r{char}; `{n}G`; zt/zb; marks; macros; visual indent; Oem key mapping
+- **Engine Hardening (.NET 10):** `FrozenSet/FrozenDictionary`, `System.Threading.Lock`, `[GeneratedRegex]` with `NonBacktracking`, `SearchValues<char/string>`, `Task.WhenAll` parallelism across all engines
+- **Git Workflow (Pre-PR):** Pre-commit gate (secret scan + hook shim); staged-file review dialog; Conventional Commit composer with live preview; CI status badge (all 4 platforms)
+- **Multi-platform Git:** Auto-detects GitHub / Azure DevOps / GitLab / Bitbucket / Gitea; platform badge; PR/MR template reader; CODEOWNERS hints; platform-correct PR-creation URL; footer placeholder adapts per platform
+- **Git UX:** ⎇ Open PR/MR button; `NewBranchDialog` (prefix/ticket/description/live preview); CODEOWNERS reviewer hints in pre-commit banner
+- **AIOps connectors (v1.0.44–45):** `GitLabConnector` (API v4, PRIVATE-TOKEN); `BitbucketConnector` (REST 2.0, Basic auth); `AzureDevOpsConnector` + `IPullRequestCapable` (API 7.1); `GitHubActionsConnector`; `AzureMonitorConnector`; `KubernetesConnector`; `PrometheusConnector`; `PagerDutyConnector` — all with DPAPI credential storage
+- **ADO branch-policy warning:** Dismissable info bar after push to Azure DevOps repos (auto-hides 12 s)
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

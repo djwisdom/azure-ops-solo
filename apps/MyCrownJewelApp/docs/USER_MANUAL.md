@@ -6,7 +6,7 @@
 
 ## Question
 
-I've just started using Personal Flip Pad (Pfpad), a professional WinForms code editor written in C# targeting .NET 8. What features does it have, including its advanced performance profiling, Unicode support, and large file handling capabilities?
+I've just started using Personal Flip Pad (Pfpad) **v1.0.45**, a professional WinForms code editor written in C# targeting .NET 10. What features does it have, including its advanced Git workflow, multi-platform CI connectors, AIOps dashboard, browser, security hardening, Vim mode, and performance engine?
 
 ---
 
@@ -20,12 +20,12 @@ The short answer is "rather a lot for a solo project" — including enterprise-g
 
 ### 1.1 Installation
 
-The installer (`PersonalFlipPad-Setup-1.0.44.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
+The installer (`PersonalFlipPad-Setup-1.0.45.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
 
 ```
-PersonalFlipPad-Setup-1.0.44.0.exe /CURRENTUSER   # No admin required
-PersonalFlipPad-Setup-1.0.44.0.exe /ALLUSERS       # Admin required
-PersonalFlipPad-Setup-1.0.44.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
+PersonalFlipPad-Setup-1.0.45.0.exe /CURRENTUSER   # No admin required
+PersonalFlipPad-Setup-1.0.45.0.exe /ALLUSERS       # Admin required
+PersonalFlipPad-Setup-1.0.45.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
 ```
 
 The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 200 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, LibGit2, and advanced performance profiling tools.
@@ -56,6 +56,20 @@ Each file opens in its own tab. If no files are specified, you get a single unti
 - **RTL text**: Proper display of Arabic and Hebrew scripts
 - **Large file optimization**: Automatic feature disabling for performance
 - **Encoding display**: Status bar shows actual detected encoding
+
+---
+
+### 1.3 Version History (recent)
+
+| Version | Highlights |
+|---------|-----------|
+| **v1.0.45** | Feature audit release: comprehensive About dialog, README and manual update; all connector and Git workflow features documented |
+| **v1.0.44** | `GitLabConnector` (API v4) + `BitbucketConnector` (REST 2.0); `AzureDevOpsConnector` gains `IPullRequestCapable`; CI badge covers all 4 platforms; ADO branch-policy warning bar |
+| **v1.0.43** | ⎇ Open PR/MR button; `NewBranchDialog` (prefix + ticket + live preview); CODEOWNERS reviewer hints in pre-commit banner |
+| **v1.0.42** | Multi-platform Git detection (GitHub/ADO/GitLab/Bitbucket/Gitea); platform badge; `PullRequestTemplateReader`; `GetCreatePrUrl()` for all platforms; per-platform commit footer |
+| **v1.0.41** | Pre-commit pipeline gate (secret scan + hook shim); `PreCommitReviewDialog`; Conventional Commit composer; CI status badge (GitHub Actions) |
+| **v1.0.40** | Engine hardening (.NET 10 primitives); context-aware menus; Vim mode expansion; IncrementalHighlighter fixes; BrowserPanel optimisations |
+| **v1.0.39** | Built-in WebView2 browser: pill address bar, YouTube ad-block, 7 filter lists, Manage Favourites, `pfp` icon |
 
 ---
 
@@ -781,6 +795,23 @@ Opens a panel in the sidebar with:
 - **Sync buttons**: Fetch, Pull, Push. Pull and Push show result dialogs on success or failure.
 
 All git operations are wrapped in try/catch blocks with user-friendly error messages. If a push fails because you're not authenticated, the editor tells you — it doesn't silently swallow the error or display an incomprehensible stack trace.
+
+### 7.3 AIOps Connectors
+
+The **AIOps** settings panel (`Tools → Settings → AIOps`) lets you connect Pfpad to your infrastructure monitoring systems. Each connector stores credentials with DPAPI encryption (tied to your Windows user account — credentials cannot be read from another machine or user account).
+
+| Connector | Supported operations | Auth |
+|-----------|---------------------|------|
+| **GitHub Actions** | CI pipeline runs, workflow jobs | PAT (`repo` scope) |
+| **Azure DevOps** | Pipelines, releases, work items, pull requests | PAT |
+| **GitLab** | Pipelines, merge requests, commits | PRIVATE-TOKEN (PAT) |
+| **Bitbucket Cloud** | Pipelines, pull requests | Username + App Password |
+| **Azure Monitor** | Metrics, logs, App Insights, service health | Client credential (MSAL) |
+| **Kubernetes** | Pod status, container logs, resource metrics | kubeconfig |
+| **Prometheus** | Instant + range queries, alert rules, targets | HTTP (no auth / Basic) |
+| **PagerDuty** | Incidents, services, SLOs | REST API key v2 |
+
+Once a connector is enabled and credentials saved, the **AIOps Dashboard** panel shows live CI run history, recent PRs/MRs, and infrastructure health. The CI status badge in the Git panel header updates automatically after push using the connector that matches the detected remote platform.
 
 ---
 
