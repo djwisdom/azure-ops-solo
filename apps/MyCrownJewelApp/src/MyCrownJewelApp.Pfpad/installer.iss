@@ -17,7 +17,7 @@ OutputBaseFilename=pfpad-Setup-1.0.46.0
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+; No elevation override — {localappdata} must always resolve to the installing user's profile
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 
@@ -159,7 +159,7 @@ Root: HKCU; Subkey: "Software\Classes\*\OpenWithProgids\MyCrownJewelApp.Pfpad"; 
 ; Store installation information
 Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "Version"; ValueData: "1.0.40.0"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\PersonalFlipPad"; ValueType: string; ValueName: "Version"; ValueData: "1.0.46.0"; Flags: uninsdeletekey
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
