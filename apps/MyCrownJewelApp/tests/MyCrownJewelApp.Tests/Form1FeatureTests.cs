@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Threading;
 using System.Windows.Forms;
 using Xunit;
 using MyCrownJewelApp.Pfpad;
@@ -25,48 +24,10 @@ public class Form1FeatureTests : IDisposable
         try { Directory.Delete(_tempDir, true); } catch { }
     }
 
-    private void RunInSta(Action<Form1> action)
-    {
-        Exception? ex = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                using var form = new Form1();
-                form.CreateControl();
-                action(form);
-            }
-            catch (Exception e) { ex = e; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join(10000);
-        if (ex != null) throw ex!;
-    }
-
-    private void RunInStaWithTeardown(Action<Form1> action)
-    {
-        Exception? ex = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                using var form = new Form1();
-                form.CreateControl();
-                action(form);
-            }
-            catch (Exception e) { ex = e; }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join(10000);
-        if (ex != null) throw ex!;
-    }
-
     [Fact]
     public void NewFile_CreatesUntitledDocument()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             int initialCount = form.documents.Count;
             form.NewFile();
@@ -80,7 +41,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void OpenFileInNewTab_CreatesDocument()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             string filePath = Path.Combine(_tempDir, "test.txt");
             File.WriteAllText(filePath, "hello world");
@@ -97,7 +58,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void OpenFileInNewTab_NonexistentFile_DoesNotCreateDocument()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             int initialCount = form.documents.Count;
             form.OpenFileInNewTab(Path.Combine(_tempDir, "nonexistent.txt"));
@@ -108,7 +69,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void SwitchToTab_SwitchesActiveDocument()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             int initialCount = form.documents.Count;
             form.NewFile();
@@ -124,7 +85,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void CloseCurrentTab_RemovesDocument()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.NewFile();
             int count = form.documents.Count;
@@ -140,7 +101,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void LoadFile_LoadsContentAndSetsPath()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             string filePath = Path.Combine(_tempDir, "loadtest.cs");
             File.WriteAllText(filePath, "class Test { }");
@@ -153,7 +114,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void UpdateStatusBar_ShowsCorrectCursorPosition()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "line one\nline two";
             form.textEditor.SelectionStart = 0;
@@ -165,7 +126,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void UpdateStatusBar_ShowsLineCount()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "line one\nline two\nline three";
             form.UpdateStatusBar();
@@ -176,7 +137,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void UpdateStatusBar_ShowsFileType()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.currentSyntax = SyntaxDefinition.CSharp;
             form.UpdateStatusBar();
@@ -187,7 +148,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void UpdateStatusBar_ShowsPlainTextWhenNoSyntax()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.currentSyntax = null;
             form.UpdateStatusBar();
@@ -198,7 +159,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void UpdateStatusBar_ShowsCharacterCount()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "12345";
             form.UpdateStatusBar();
@@ -209,7 +170,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void GoToLine_MovesCursor()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "line1\nline2\nline3";
             form.GoToLine(2);
@@ -221,7 +182,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ToggleBookmark_AddsAndRemoves()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "line1\nline2\nline3";
             form.textEditor.SelectionStart = 0;
@@ -237,7 +198,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ToggleFold_CollapsesAndExpands()
     {
-        RunInStaWithTeardown(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "class A\r\n{\r\n    void M()\r\n    {\r\n    }\r\n}";
             form.ToggleFold(1);
@@ -250,7 +211,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ZoomIn_ZoomFactorIncreases()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             float before = form.zoomFactor;
             form.ZoomIn_Click(null!, EventArgs.Empty);
@@ -261,7 +222,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ZoomOut_ZoomFactorDecreases()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.zoomFactor = 2.0f;
             form.ZoomOut_Click(null!, EventArgs.Empty);
@@ -272,7 +233,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ZoomIn_ClampsAtMax()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.zoomFactor = 5.0f;
             form.ZoomIn_Click(null!, EventArgs.Empty);
@@ -283,7 +244,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ZoomOut_ClampsAtMin()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.zoomFactor = 0.5f;
             form.ZoomOut_Click(null!, EventArgs.Empty);
@@ -294,7 +255,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void PerformFind_FindsText()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "hello world hello";
             form.PerformFind("world", false, false);
@@ -306,7 +267,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void PerformFind_Up_Works()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "hello hello";
             form.textEditor.SelectionStart = 10; // after first "hello"
@@ -318,7 +279,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void PerformFind_CaseSensitive_MatchesCorrectly()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "Hello hello";
             form.PerformFind("Hello", true, false);
@@ -331,7 +292,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void PerformReplace_ReplacesText()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "hello world";
             form.textEditor.SelectionStart = 0;
@@ -344,7 +305,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void PerformReplace_ReplaceAll_Works()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "a a a";
             form.PerformReplace("a", "b", false, false, true);
@@ -355,7 +316,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void SetDirty_MarksDocumentAsDirty()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             Assert.False(form.IsModified());
             form.SetDirty();
@@ -368,7 +329,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ClearDirtyAfterSave_ClearsDirty()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "test content";
             form.ClearDirtyAfterSave();
@@ -379,7 +340,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void DocumentDisplayName_UntitledShowsNumber()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             var doc = new EditorDocument { FilePath = null, UntitledNumber = 5 };
             Assert.Equal("Untitled5", doc.DisplayName);
@@ -389,7 +350,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void DocumentDisplayName_FilePathShowsFilename()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             var doc = new EditorDocument { FilePath = @"C:\test\myfile.txt" };
             Assert.Equal("myfile.txt", doc.DisplayName);
@@ -399,7 +360,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void DocumentDisplayName_DirtyShowsAsterisk()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             var doc = new EditorDocument { FilePath = @"C:\test\f.txt", IsDirty = true };
             Assert.Equal("f.txt", doc.DisplayName); // DisplayName itself doesn't include *
@@ -409,7 +370,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void TextEditor_SelectionChanged_UpdatesStatusBar()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "line one\nline two\nline three";
             form.textEditor.SelectionStart = 10; // somewhere on line 2
@@ -421,7 +382,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ToggleGutter_TogglesVisibility()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             bool initial = form.gutterVisible;
             form.ToggleGutter();
@@ -432,7 +393,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ToggleWordWrap_TogglesWrapping()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             bool initial = form.wordWrapEnabled;
             form.ToggleWordWrap();
@@ -444,7 +405,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void SetTabSize_ChangesTabSize()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.SetTabSize(8);
             Assert.Equal(8, form.tabSize);
@@ -456,7 +417,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void ToggleSyntaxHighlighting_TogglesEnabled()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             bool initial = form.syntaxHighlightingEnabled;
             form.ToggleSyntaxHighlighting();
@@ -467,7 +428,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void LoadFile_DetectsSyntaxFromExtension()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             string csPath = Path.Combine(_tempDir, "program.cs");
             File.WriteAllText(csPath, "class C { }");
@@ -480,7 +441,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void GoToLine_ClampsToBounds()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.textEditor.Text = "line1\nline2";
             form.GoToLine(999);
@@ -492,7 +453,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void TextEditor_TextChanged_SetsDirty()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             Assert.False(form.IsModified());
             form.textEditor.Text = "modified content";
@@ -503,7 +464,7 @@ public class Form1FeatureTests : IDisposable
     [Fact]
     public void SetGuideColumn_UpdatesAndEnablesGuide()
     {
-        RunInSta(form =>
+        StaHelper.Run(form =>
         {
             form.SetGuideColumn(100);
             Assert.True(form.textEditor.ShowGuide);

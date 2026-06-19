@@ -51,10 +51,10 @@ public class SessionManagerRecentFilesTests : IDisposable
     [Fact]
     public void AddRecentFile_CapsAtMaxRecentFiles()
     {
-        for (int i = 0; i < SessionManager.MaxRecentFiles + 5; i++)
+        for (int i = 0; i < _sm.MaxRecentFiles + 5; i++)
             _sm.AddRecentFile($@"C:\code\file{i}.cs");
 
-        Assert.Equal(SessionManager.MaxRecentFiles, _sm.RecentFiles.Count);
+        Assert.Equal(_sm.MaxRecentFiles, _sm.RecentFiles.Count);
     }
 
     [Fact]
@@ -76,13 +76,13 @@ public class SessionManagerRecentFilesTests : IDisposable
     [Fact]
     public void MaxRecentFiles_IsPositive()
     {
-        Assert.True(SessionManager.MaxRecentFiles > 0);
+        Assert.True(_sm.MaxRecentFiles > 0);
     }
 
     [Fact]
     public void MaxRecentFiles_DefaultIsTen()
     {
-        Assert.Equal(10, SessionManager.MaxRecentFiles);
+        Assert.Equal(10, _sm.MaxRecentFiles);
     }
 
     [Fact]

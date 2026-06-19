@@ -57,10 +57,10 @@ public class SessionManagerRecentTests : IDisposable
     [Fact]
     public void AddRecent_CapsAtMaxRecentWorkspaces()
     {
-        for (int i = 0; i < SessionManager.MaxRecentWorkspaces + 5; i++)
+        for (int i = 0; i < _sm.MaxRecentWorkspaces + 5; i++)
             _sm.AddRecent($@"C:\workspace\ws{i}");
 
-        Assert.Equal(SessionManager.MaxRecentWorkspaces, _sm.RecentWorkspaces.Count);
+        Assert.Equal(_sm.MaxRecentWorkspaces, _sm.RecentWorkspaces.Count);
     }
 
     [Fact]
@@ -98,13 +98,13 @@ public class SessionManagerRecentTests : IDisposable
     [Fact]
     public void MaxRecentWorkspaces_IsPositive()
     {
-        Assert.True(SessionManager.MaxRecentWorkspaces > 0);
+        Assert.True(_sm.MaxRecentWorkspaces > 0);
     }
 
     [Fact]
     public void MaxRecentWorkspaces_DefaultIsTen()
     {
-        Assert.Equal(10, SessionManager.MaxRecentWorkspaces);
+        Assert.Equal(10, _sm.MaxRecentWorkspaces);
     }
 
     [Fact]

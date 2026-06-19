@@ -20,9 +20,18 @@ public class ThemeManagerTests
     [Fact]
     public void SetTheme_UpdatesCurrentTheme()
     {
-        ThemeManager.Instance.SetTheme("Light");
-        Assert.Equal("Light", ThemeManager.Instance.CurrentTheme.Name);
-        ThemeManager.Instance.SetTheme("Dark");
+        var manager = ThemeManager.Instance;
+        string originalTheme = manager.CurrentTheme.Name;
+
+        try
+        {
+            manager.SetTheme("Light");
+            Assert.Equal("Light", manager.CurrentTheme.Name);
+        }
+        finally
+        {
+            manager.SetTheme(originalTheme);
+        }
     }
 
     [Fact]
@@ -36,20 +45,21 @@ public class ThemeManagerTests
     [Fact]
     public void SetTheme_FiresThemeChangedEvent()
     {
+        var manager = ThemeManager.Instance;
+        string originalTheme = manager.CurrentTheme.Name;
         bool fired = false;
         void Handler(Theme _) => fired = true;
 
-        ThemeManager.Instance.SetTheme("Dark");
-        ThemeManager.Instance.ThemeChanged += Handler;
+        manager.ThemeChanged += Handler;
         try
         {
-            ThemeManager.Instance.SetTheme("Light");
+            manager.SetTheme(originalTheme == "Light" ? "Dark" : "Light");
             Assert.True(fired);
         }
         finally
         {
-            ThemeManager.Instance.ThemeChanged -= Handler;
-            ThemeManager.Instance.SetTheme("Dark");
+            manager.ThemeChanged -= Handler;
+            manager.SetTheme(originalTheme);
         }
     }
 

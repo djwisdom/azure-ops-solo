@@ -194,14 +194,16 @@ public sealed partial class MissingSemicolonRule : LintRule
             if (last == ')')
             {
                 bool nextIsBlock = false;
+                bool nextIsFluentContinuation = false;
                 for (int j = i + 1; j < lines.Length; j++)
                 {
                     string next = lines[j].Trim();
                     if (string.IsNullOrWhiteSpace(next)) continue;
                     nextIsBlock = next.StartsWith('{') || next == "=>";
+                    nextIsFluentContinuation = next.StartsWith('.');
                     break;
                 }
-                if (nextIsBlock) continue;
+                if (nextIsBlock || nextIsFluentContinuation) continue;
             }
 
             // Must look like an expression statement

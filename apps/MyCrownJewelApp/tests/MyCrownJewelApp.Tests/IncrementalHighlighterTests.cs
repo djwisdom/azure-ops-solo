@@ -4,8 +4,10 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading;
+using FluentAssertions;
 using Xunit;
 using MyCrownJewelApp.Pfpad;
 
@@ -35,8 +37,10 @@ public class IncrementalHighlighterTests : IDisposable
             {
                 rtb = new RichTextBox { Text = File.ReadAllText(_tempFile) };
                 highlighter = new IncrementalHighlighter(rtb, SyntaxDefinition.CSharp);
+                using var ready = new ManualResetEventSlim(false);
+                highlighter.PatchReady += _ => ready.Set();
                 highlighter.RequestRange(0, 99);
-                Thread.Sleep(500);
+                ready.Wait(TimeSpan.FromSeconds(5));
             }
             catch (Exception e) { ex = e; }
         });
@@ -69,6 +73,28 @@ public class IncrementalHighlighterTests : IDisposable
         if (ex != null) throw ex!;
     }
 
+    private static void WaitForPatch(IncrementalHighlighter highlighter, Action request, Func<bool>? alreadySatisfied = null)
+    {
+        if (alreadySatisfied?.Invoke() == true)
+        {
+            return;
+        }
+
+        using ManualResetEventSlim ready = new(false);
+        highlighter.PatchReady += OnPatchReady;
+        try
+        {
+            request();
+            Assert.True(ready.Wait(TimeSpan.FromSeconds(5)), "Timed out waiting for PatchReady.");
+        }
+        finally
+        {
+            highlighter.PatchReady -= OnPatchReady;
+        }
+
+        void OnPatchReady(List<HighlightPatch> _) => ready.Set();
+    }
+
     [Fact]
     public void Tokenizer_ProducesCSharpTokens()
     {
@@ -89,15 +115,12 @@ public class IncrementalHighlighterTests : IDisposable
         });
     }
 
-    [Fact(Skip = "Flaky timing - relies on async worker scheduling")]
+    [Fact]
     public void Highlighter_MarksDirty_AndTokenizes()
     {
         RunOnUI(() =>
         {
-            _highlighter.MarkDirty(5);
-            var sw = Stopwatch.StartNew();
-            while (_highlighter.GetTokens(5) == null && sw.ElapsedMilliseconds < 3000)
-                Thread.Sleep(10);
+            WaitForPatch(_highlighter, () => _highlighter.MarkDirty(5), () => _highlighter.GetTokens(5) is not null);
             var tokens = _highlighter.GetTokens(5);
             Assert.NotNull(tokens);
         });
@@ -109,7 +132,8 @@ public class IncrementalHighlighterTests : IDisposable
         var rtb = new RichTextBox();
         var h = new IncrementalHighlighter(rtb, SyntaxDefinition.CSharp);
         h.Dispose();
-        Assert.True(true);
+        var ex = Record.Exception(() => h.RequestRange(0, 0));
+        Assert.Null(ex);
         rtb.Dispose();
     }
 
@@ -384,6 +408,19 @@ public class VimEngineTests
         Assert.NotEqual(start, rtb.SelectionStart);
         rtb.Dispose();
     }
+
+    [Fact]
+    public void BuildVersionString_ReturnsExpectedVersionDetails()
+    {
+        var method = typeof(VimEngine).GetMethod("BuildVersionString", BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull();
+        string version = method!.Invoke(null, null).Should().BeOfType<string>().Subject;
+
+        version.Should().NotBeNullOrWhiteSpace();
+        version.Should().MatchRegex("(Personal Flip Pad|Pfpad)");
+        version.Should().MatchRegex(@"\d+\.\d+\.\d+\.\d+");
+    }
 }
 
 [Collection("Sequential")]
@@ -394,13 +431,17 @@ public class ThemePaletteTests
     {
         var mgr = ThemeManager.Instance;
         string before = mgr.CurrentTheme.Name;
-        var names = ThemeManager.ThemeNames;
-        int nextIdx = (Array.IndexOf(names, before) + 1) % names.Length;
-        mgr.SetTheme(names[nextIdx]);
-        Assert.NotEqual(before, mgr.CurrentTheme.Name);
-        // Restore
-        mgr.SetTheme(before);
-        Assert.Equal(before, mgr.CurrentTheme.Name);
+        try
+        {
+            var names = ThemeManager.ThemeNames;
+            int nextIdx = (Array.IndexOf(names, before) + 1) % names.Length;
+            mgr.SetTheme(names[nextIdx]);
+            Assert.NotEqual(before, mgr.CurrentTheme.Name);
+        }
+        finally
+        {
+            mgr.SetTheme(before);
+        }
     }
 
     [Fact]
@@ -434,19 +475,17 @@ public class SyntaxDefinitionTests
         Assert.Contains("int", cs.Keywords);
     }
 
-    [Fact]
-    public void GetDefinitionForFile_ReturnsCorrect()
-    {
-        Assert.Equal("C#", SyntaxDefinition.GetDefinitionForFile("test.cs")?.Name);
-        Assert.Equal("C", SyntaxDefinition.GetDefinitionForFile("test.c")?.Name);
-        Assert.Equal("C++", SyntaxDefinition.GetDefinitionForFile("test.cpp")?.Name);
-        Assert.Equal("JavaScript", SyntaxDefinition.GetDefinitionForFile("test.js")?.Name);
-        Assert.Equal("YAML", SyntaxDefinition.GetDefinitionForFile("test.yml")?.Name);
-        Assert.Equal("HTML", SyntaxDefinition.GetDefinitionForFile("test.html")?.Name);
-        Assert.Equal("CSS", SyntaxDefinition.GetDefinitionForFile("test.css")?.Name);
-        Assert.Equal("Bash", SyntaxDefinition.GetDefinitionForFile("test.sh")?.Name);
-        Assert.Null(SyntaxDefinition.GetDefinitionForFile("test.unknown"));
-    }
+    [Theory]
+    [InlineData("test.cs", "C#")]
+    [InlineData("test.c", "C")]
+    [InlineData("test.cpp", "C++")]
+    [InlineData("test.js", "JavaScript")]
+    [InlineData("test.yml", "YAML")]
+    [InlineData("test.html", "HTML")]
+    [InlineData("test.css", "CSS")]
+    [InlineData("test.sh", "Bash")]
+    public void GetDefinitionForFile_ReturnsCorrect(string fileName, string expectedName)
+        => SyntaxDefinition.GetDefinitionForFile(fileName)?.Name.Should().Be(expectedName);
 
     [Fact]
     public void UnknownExtension_ReturnsNull()

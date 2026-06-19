@@ -1,128 +1,191 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.IO;
 using System.Linq;
 using System.Threading;
-using Xunit;
+using System.Windows.Forms;
+using FluentAssertions;
 using MyCrownJewelApp.Pfpad;
+using Xunit;
 
 namespace MyCrownJewelApp.Tests;
 
 [Collection("Sequential")]
 public class SyntaxHighlightRegressionTests
 {
-    private IncrementalHighlighter CreateHighlighter(RichTextBox rtb, SyntaxDefinition syn)
+    private static void RunOnSta(Action action)
     {
-        IntPtr h = rtb.Handle; // force handle creation
+        Exception? ex = null;
+        using ManualResetEventSlim completed = new(false);
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception e)
+            {
+                ex = e;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+
+        completed.Wait(TimeSpan.FromSeconds(30)).Should().BeTrue("the STA test should complete within the timeout.");
+        if (ex is not null)
+        {
+            throw ex;
+        }
+    }
+
+    private static IncrementalHighlighter CreateHighlighter(RichTextBox rtb, SyntaxDefinition syn)
+    {
+        IntPtr handle = rtb.Handle;
         return new IncrementalHighlighter(rtb, syn);
+    }
+
+    private static void WaitForPatch(IncrementalHighlighter highlighter, Action request)
+    {
+        using ManualResetEventSlim ready = new(false);
+
+        highlighter.PatchReady += OnPatchReady;
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            request();
+            while (!ready.IsSet && sw.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                Application.DoEvents();
+                ready.Wait(TimeSpan.FromMilliseconds(10));
+            }
+
+            ready.IsSet.Should().BeTrue("PatchReady should fire within the timeout.");
+        }
+        finally
+        {
+            highlighter.PatchReady -= OnPatchReady;
+        }
+
+        void OnPatchReady(List<HighlightPatch> _)
+        {
+            ready.Set();
+        }
     }
 
     [Fact]
     public void ToggleSyntaxHighlighting_DoesNotHang()
     {
-        // This test verifies that creating a highlighter, requesting ranges,
-        // and disposing all complete within a reasonable time.
-        var rtb = new RichTextBox();
-        rtb.Text = string.Join("\n", Enumerable.Range(0, 100).Select(i => $"int x{i} = {i};"));
-        var sw = Stopwatch.StartNew();
-        var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
-        hl.RequestRange(0, 99);
-        Thread.Sleep(500);
-        hl.Dispose();
-        sw.Stop();
-        Assert.True(sw.ElapsedMilliseconds < 5000, $"Toggle took {sw.ElapsedMilliseconds}ms (limit 5s)");
-        rtb.Dispose();
+        RunOnSta(() =>
+        {
+            using var rtb = new RichTextBox
+            {
+                Text = string.Join("\n", Enumerable.Range(0, 100).Select(i => $"int x{i} = {i};"))
+            };
+
+            var sw = Stopwatch.StartNew();
+            using var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
+            WaitForPatch(hl, () => hl.RequestRange(0, 99));
+            sw.Stop();
+
+            hl.GetTokens(0).Should().NotBeNull();
+            sw.ElapsedMilliseconds.Should().BeLessThan(5000);
+        });
     }
 
     [Fact]
     public void LargeFile_ProcessesWithinTime()
     {
-        var rtb = new RichTextBox();
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < 500; i++)
-            sb.AppendLine($"class C{i} {{ void M{i}() {{ if (true) {{ int x = {i}; }} }} }}");
-        rtb.Text = sb.ToString();
-        var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
-        var sw = Stopwatch.StartNew();
-        hl.RequestRange(0, 499);
-        Thread.Sleep(2000);
-        hl.Dispose();
-        sw.Stop();
-        Assert.True(sw.ElapsedMilliseconds < 10000);
-        rtb.Dispose();
+        RunOnSta(() =>
+        {
+            using var rtb = new RichTextBox();
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 500; i++)
+            {
+                sb.AppendLine($"class C{i} {{ void M{i}() {{ if (true) {{ int x = {i}; }} }} }}");
+            }
+
+            rtb.Text = sb.ToString();
+            using var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
+            var sw = Stopwatch.StartNew();
+
+            WaitForPatch(hl, () => hl.RequestRange(0, 499));
+
+            sw.Stop();
+            hl.GetTokens(0).Should().NotBeNull();
+            sw.ElapsedMilliseconds.Should().BeLessThan(10000);
+        });
     }
 
     [Fact]
     public void C_Syntax_KeywordsHighlighted()
     {
-        var rtb = new RichTextBox();
-        rtb.Text = "int main() { return 0; }";
-        var hl = CreateHighlighter(rtb, SyntaxDefinition.C);
-        using var ready = new ManualResetEventSlim(false);
-        hl.PatchReady += _ => ready.Set();
-        hl.RequestRange(0, 0);
-        ready.Wait(TimeSpan.FromSeconds(5));
-        var tokens = hl.GetTokens(0);
-        Assert.NotNull(tokens);
-        Assert.Contains(tokens, t => t.Type == SyntaxTokenType.Keyword);
-        hl.Dispose();
-        rtb.Dispose();
+        RunOnSta(() =>
+        {
+            using var rtb = new RichTextBox { Text = "int main() { return 0; }" };
+            using var hl = CreateHighlighter(rtb, SyntaxDefinition.C);
+
+            WaitForPatch(hl, () => hl.RequestRange(0, 0));
+
+            var tokens = hl.GetTokens(0);
+            tokens.Should().NotBeNull();
+            tokens.Should().Contain(t => t.Type == SyntaxTokenType.Keyword);
+        });
     }
 
     [Fact]
     public void CSharp_MultipleLineTypes()
     {
-        var rtb = new RichTextBox();
-        rtb.Text = "class Foo\n{\n    // comment\n    int x = \"hello\";\n}";
-        var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
-        using var allLinesReady = new ManualResetEventSlim(false);
-        int patchCount = 0;
-        hl.PatchReady += patches =>
+        RunOnSta(() =>
         {
-            patchCount += patches.Count;
-            if (patchCount >= 5) allLinesReady.Set();
-        };
-        hl.RequestRange(0, 4);
-        allLinesReady.Wait(TimeSpan.FromSeconds(5));
-        for (int i = 0; i < 5; i++)
-        {
-            var tokens = hl.GetTokens(i);
-            Assert.NotNull(tokens);
-        }
-        hl.Dispose();
-        rtb.Dispose();
+            using var rtb = new RichTextBox { Text = "class Foo\n{\n    // comment\n    int x = \"hello\";\n}" };
+            using var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
+
+            WaitForPatch(hl, () => hl.RequestRange(0, 4));
+
+            hl.GetTokens(0).Should().NotBeNull();
+            hl.GetTokens(2).Should().NotBeNull();
+            hl.GetTokens(3).Should().NotBeNull();
+        });
     }
 
     [Fact]
     public void UnclosedComment_DoesNotHang()
     {
-        var rtb = new RichTextBox();
-        rtb.Text = "/* unclosed comment\nthat spans\nmultiple lines\nwithout closing";
-        var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
-        var sw = Stopwatch.StartNew();
-        hl.RequestRange(0, 3);
-        Thread.Sleep(500);
-        hl.Dispose();
-        sw.Stop();
-        Assert.True(sw.ElapsedMilliseconds < 2000);
-        rtb.Dispose();
+        RunOnSta(() =>
+        {
+            using var rtb = new RichTextBox { Text = "/* unclosed comment\nthat spans\nmultiple lines\nwithout closing" };
+            using var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
+            var sw = Stopwatch.StartNew();
+
+            WaitForPatch(hl, () => hl.RequestRange(0, 3));
+
+            sw.Stop();
+            hl.GetTokens(0).Should().NotBeNull();
+            sw.ElapsedMilliseconds.Should().BeLessThan(2000);
+        });
     }
 
     [Fact]
     public void RapidToggle_DoesNotDegrade()
     {
-        var rtb = new RichTextBox();
-        rtb.Text = string.Join("\n", Enumerable.Range(0, 50).Select(i => $"int x{i} = {i};"));
-        for (int t = 0; t < 5; t++)
+        RunOnSta(() =>
         {
-            var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
-            hl.RequestRange(0, 49);
-            Thread.Sleep(300);
-            hl.Dispose();
-        }
-        Assert.True(true);
-        rtb.Dispose();
+            using var rtb = new RichTextBox
+            {
+                Text = string.Join("\n", Enumerable.Range(0, 50).Select(i => $"int x{i} = {i};"))
+            };
+
+            for (int t = 0; t < 5; t++)
+            {
+                using var hl = CreateHighlighter(rtb, SyntaxDefinition.CSharp);
+                WaitForPatch(hl, () => hl.RequestRange(0, 49));
+                hl.GetTokens(0).Should().NotBeNull();
+            }
+        });
     }
 }

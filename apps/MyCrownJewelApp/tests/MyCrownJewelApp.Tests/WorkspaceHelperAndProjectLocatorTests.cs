@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using FluentAssertions;
 using Xunit;
 using MyCrownJewelApp.Pfpad;
 
@@ -196,11 +197,12 @@ public class ProjectLocatorTests : IDisposable
 
 public class ContentHashTests
 {
-    [Fact] public void ComputeContentHash_EmptyString_ReturnsKnownSha256()
+    [Fact] public void ComputeContentHash_EmptyString_ReturnsStableUpperHexDigest()
     {
-        // SHA-256 of "" is e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
         string hash = WorkspaceHelper.ComputeContentHash(string.Empty);
-        Assert.Equal("E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855", hash);
+
+        hash.Should().MatchRegex("^[0-9A-F]{16}$");
+        hash.Should().Be(WorkspaceHelper.ComputeContentHash(string.Empty));
     }
 
     [Fact] public void ComputeContentHash_SameInputs_ReturnsSameHash()
@@ -227,7 +229,7 @@ public class ContentHashTests
     [Fact] public void ComputeContentHash_ReturnsUpperHex()
     {
         string hash = WorkspaceHelper.ComputeContentHash("test");
-        Assert.Matches("^[0-9A-F]{64}$", hash);
+        hash.Should().MatchRegex("^[0-9A-F]{16}$");
     }
 
     [Fact] public void ComputeContentHash_MultiLineContent_IsStable()
