@@ -30,6 +30,7 @@ internal sealed class BrowserPanel : UserControl
     private readonly Button _openExternalBtn;
     private bool _darkModeActive;
     private readonly ProgressBar _progressBar;
+    private readonly Panel _progressStrip;   // 2px Dock=Top panel — keeps bar out of WebView2 airspace
 
     // ── Favorites bar ─────────────────────────────────────────────────────────
     private readonly Panel _favBar;
@@ -179,10 +180,18 @@ internal sealed class BrowserPanel : UserControl
         {
             Style = ProgressBarStyle.Marquee,
             MarqueeAnimationSpeed = 30,
-            Height = 2,
-            Dock = DockStyle.None,   // manually positioned in Layout
-            Visible = false
+            Dock = DockStyle.Fill,
+            Visible = true
         };
+        // Thin host panel — Dock=Top in the main control stack so it lands
+        // right below _favBar and completely outside WebView2's airspace.
+        _progressStrip = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 2,
+            Visible = false          // hidden until navigation starts
+        };
+        _progressStrip.Controls.Add(_progressBar);
 
         // ── Toolbar layout via TableLayoutPanel ───────────────────────────────
         var toolTable = new TableLayoutPanel
@@ -218,7 +227,7 @@ internal sealed class BrowserPanel : UserControl
         toolTable.Controls.Add(_darkModeBtn, 6, 0);
 
         _toolbar.Controls.Add(toolTable);
-        // _progressBar is intentionally NOT added to _toolbar — it lives below _favBar
+        // _progressBar lives inside _progressStrip which is docked below _favBar
 
         // ── Status bar ────────────────────────────────────────────────────────
         _statusLabel = new Label
@@ -372,23 +381,17 @@ internal sealed class BrowserPanel : UserControl
         _favBar.SizeChanged += (_, _) => { if (_favItems.Count > 0) RefreshFavLayout(); };
         _favBar.VisibleChanged += (_, _) => { if (_favBar.Visible && _favItems.Count > 0) RefreshFavLayout(); };
 
-        // Dock stacking (last added = topmost for Dock=Top):
-        //   _toolbar     → Top (topmost)
-        //   _favBar      → Top (below toolbar)
-        //   _statusBar   → Bottom
-        //   _contentArea → Fill (remaining space)
-        // _progressBar uses Dock=None and is positioned explicitly in Layout.
+        // Dock stacking — last Controls.Add = topmost for Dock=Top:
+        //   _toolbar      → Top (topmost, row 1)
+        //   _favBar       → Top (row 2)
+        //   _progressStrip→ Top (row 3, 2px loading stripe — BELOW favBar, OUTSIDE WebView2 airspace)
+        //   _statusBar    → Bottom
+        //   _contentArea  → Fill
         Controls.Add(_contentArea);
         Controls.Add(_statusBar);
+        Controls.Add(_progressStrip);   // 2px stripe; show/hide on navigation events
         Controls.Add(_favBar);
         Controls.Add(_toolbar);
-        Controls.Add(_progressBar);  // non-docked; positioned in Layout event; highest z-order
-
-        // Position the progress bar directly below the lowest visible top-docked panel.
-        // Dock=None with explicit Layout placement is used so dock-order ambiguity doesn't
-        // interfere: the bar always sits right below _favBar (if shown) or _toolbar.
-        Layout += (_, _) => PositionProgressBar();
-        _favBar.VisibleChanged += (_, _) => PositionProgressBar();
 
         // ── Button events ─────────────────────────────────────────────────────
         _backBtn.Click += (_, _) => _webView?.CoreWebView2?.GoBack();
@@ -597,7 +600,7 @@ internal sealed class BrowserPanel : UserControl
             _toolTip.SetToolTip(_refreshStopBtn, "Stop");
             _addressBar.Text = args.Uri;
             SetStatus("Loading " + args.Uri);
-            BeginInvoke(() => _progressBar.Visible = true);
+            BeginInvoke(() => _progressStrip.Visible = true);
 
             // Track history (cap at _maxHistory)
             if (!string.IsNullOrEmpty(args.Uri) && !args.Uri.StartsWith("about:"))
@@ -617,7 +620,7 @@ internal sealed class BrowserPanel : UserControl
             _toolTip.SetToolTip(_refreshStopBtn, "Refresh (F5)");
             BeginInvoke(() =>
             {
-                _progressBar.Visible = false;
+                _progressStrip.Visible = false;
                 UpdateNavButtons();
                 SetStatus(args.IsSuccess ? "" : "Navigation failed");
                 // Apply default zoom after each navigation
@@ -769,19 +772,6 @@ internal sealed class BrowserPanel : UserControl
         _forwardBtn.Enabled = canForward;
         _backBtn.Invalidate();
         _forwardBtn.Invalidate();
-    }
-
-    /// <summary>
-    /// Places the progress bar directly below the lowest visible top bar
-    /// (_favBar when shown, otherwise _toolbar). Dock=None lets us bypass
-    /// WinForms dock-order ambiguity entirely.
-    /// </summary>
-    private void PositionProgressBar()
-    {
-        int top = (_favBar.Visible && _favBar.Height > 0)
-            ? _favBar.Bottom
-            : _toolbar.Bottom;
-        _progressBar.SetBounds(0, top, Width, 2);
     }
 
     private void ApplyUserAgent()
@@ -1324,6 +1314,7 @@ internal sealed class BrowserPanel : UserControl
         _contentArea.BackColor = theme.PanelBackground;
         _statusLabel.ForeColor = theme.Muted;
         _blockedLabel.BackColor = theme.MenuBackground;
+        _progressStrip.BackColor = theme.MenuBackground;
         _progressBar.BackColor = theme.MenuBackground;
         _favBar.BackColor = theme.MenuBackground;
         _favActionsPanel.BackColor = theme.MenuBackground;
