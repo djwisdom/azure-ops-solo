@@ -28,6 +28,10 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "MyCrownJewelApp", "TextEditor", ".conpty-blocked"));
 
+    // Count of consecutive ConPTY crashes this session. Only persist the block flag after 2 failures
+    // so a single transient crash on a personal machine doesn't permanently disable ConPTY.
+    private static int s_conPtyFailCount;
+
     [StructLayout(LayoutKind.Sequential)]
     private struct COORD
     {
@@ -249,12 +253,18 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         var menuCopyAll = new ToolStripMenuItem("Copy All");
         var menuSelectAll = new ToolStripMenuItem("Select All\tCtrl+A");
         var menuClear = new ToolStripMenuItem("Clear Terminal");
+        var menuResetConPty = new ToolStripMenuItem("🔄 Reset to ConPTY Mode");
         menuCopySelection.Click += (_, _) => { if (_outputBox.SelectionLength > 0) Clipboard.SetText(_outputBox.SelectedText); };
         menuCopyAll.Click += (_, _) => { if (_outputBox.TextLength > 0) Clipboard.SetText(_outputBox.Text); };
         menuSelectAll.Click += (_, _) => _outputBox.SelectAll();
         menuClear.Click += (_, _) => ClearOutput();
-        outputMenu.Items.AddRange(new ToolStripItem[] { menuCopySelection, menuCopyAll, new ToolStripSeparator(), menuSelectAll, new ToolStripSeparator(), menuClear });
-        outputMenu.Opening += (_, _) => menuCopySelection.Enabled = _outputBox.SelectionLength > 0;
+        menuResetConPty.Click += (_, _) => RestartWithConPty();
+        outputMenu.Items.AddRange(new ToolStripItem[] { menuCopySelection, menuCopyAll, new ToolStripSeparator(), menuSelectAll, new ToolStripSeparator(), menuClear, new ToolStripSeparator(), menuResetConPty });
+        outputMenu.Opening += (_, _) =>
+        {
+            menuCopySelection.Enabled = _outputBox.SelectionLength > 0;
+            menuResetConPty.Visible = !_conPtyMode;
+        };
         _outputBox.ContextMenuStrip = outputMenu;
 
         // Ctrl+Shift+C when input box is focused copies selected output text
@@ -360,6 +370,10 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
                 AppendAnsiText($"\x1B[93m[Terminal] ConPTY unavailable, falling back to pipes: {ex.Message}\x1B[0m\n");
                 KillConPty();
             }
+        }
+        else if (s_conPtyBlocked && _conPtyAvailable)
+        {
+            AppendAnsiText("\x1B[90m[Terminal] Running in compatibility mode (ConPTY was previously blocked). Right-click → Reset to ConPTY Mode to retry.\x1B[0m\n");
         }
 
         StartLegacyShell();
@@ -549,15 +563,21 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             if (earlyBlocked)
             {
-                // Write flag file and set blocked flag from background thread — no UI handle needed.
-                // This ensures the state is persisted even when handle isn't created yet (early-init case).
                 s_conPtyBlocked = true;
-                try
+                s_conPtyFailCount++;
+
+                // Only persist to disk after 2 consecutive failures — prevents a single transient
+                // crash (e.g. on a personal machine with no security software) from permanently
+                // disabling ConPTY for all future sessions.
+                if (s_conPtyFailCount >= 2)
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_conPtyBlockedFlagPath)!);
-                    File.WriteAllText(_conPtyBlockedFlagPath, "ConPTY blocked by security agent");
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(_conPtyBlockedFlagPath)!);
+                        File.WriteAllText(_conPtyBlockedFlagPath, "ConPTY blocked by security agent");
+                    }
+                    catch { }
                 }
-                catch { }
 
                 // UI work: show message and start legacy shell.
                 // If the handle exists, do it now; otherwise defer to HandleCreated.
@@ -1214,7 +1234,26 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     {
         Kill();
         ClearOutput();
-        StartShell();
+        _shellStarted = false;
+        Start();
+    }
+
+    /// <summary>Clears the persisted ConPTY block flag so ConPTY is retried on next shell start.</summary>
+    public static void ResetConPtyBlock()
+    {
+        s_conPtyBlocked = false;
+        s_conPtyFailCount = 0;
+        try { File.Delete(_conPtyBlockedFlagPath); } catch { }
+    }
+
+    /// <summary>Clears the ConPTY block flag and immediately restarts the shell using ConPTY.</summary>
+    public void RestartWithConPty()
+    {
+        ResetConPtyBlock();
+        Kill();
+        ClearOutput();
+        _shellStarted = false;
+        Start();
     }
 
     public void Kill()
