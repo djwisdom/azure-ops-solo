@@ -109,6 +109,7 @@ internal sealed class BrowserPanel : UserControl
     private int _maxHistory = 200;
     private bool _allowLocalhost = true;
     private double _defaultZoom = 1.0;
+    private double _currentZoom = 1.0;   // tracks the user's last manually set zoom; persists across navigations
     private bool _showInTitlebar = false;
     private bool _contentFilterEnabled = true;
     private string _userAgentPreset = "default";
@@ -147,7 +148,10 @@ internal sealed class BrowserPanel : UserControl
         {
             _zoomPollTimer.Stop();
             if (_webView != null && _webViewReady)
+            {
+                _currentZoom = _webView.ZoomFactor;   // persist Ctrl+Wheel zoom across navigations
                 ShowZoomIndicator(_webView.ZoomFactor);
+            }
         };
 
         // ── Toolbar ──────────────────────────────────────────────────────────
@@ -476,6 +480,7 @@ internal sealed class BrowserPanel : UserControl
     public void SetDefaultZoom(double zoom)
     {
         _defaultZoom = Math.Clamp(zoom, 0.25, 5.0);
+        _currentZoom = _defaultZoom;
         if (_webViewReady && _webView != null)
             _webView.ZoomFactor = _defaultZoom;
     }
@@ -667,8 +672,9 @@ internal sealed class BrowserPanel : UserControl
                 _progressStrip.Visible = false;
                 UpdateNavButtons();
                 SetStatus(args.IsSuccess ? "" : "Navigation failed");
-                // Apply default zoom after each navigation
-                if (_webView != null) _webView.ZoomFactor = _defaultZoom;
+                // Restore user's current zoom — not the settings default, so manually-set
+                // zoom (e.g. 60% for manga) persists across page navigations.
+                if (_webView != null) _webView.ZoomFactor = _currentZoom;
                 // Update site-info glyph and star
                 _addressBarPanel.UpdateGlyph(cw.Source ?? "");
                 UpdateStarGlyph(cw.Source ?? "");
@@ -1479,6 +1485,7 @@ internal sealed class BrowserPanel : UserControl
     {
         if (_webView == null || !_webViewReady) return;
         _webView.ZoomFactor = Math.Clamp(factor, 0.25, 5.0);
+        _currentZoom = _webView.ZoomFactor;
         ShowZoomIndicator(_webView.ZoomFactor);
     }
 
