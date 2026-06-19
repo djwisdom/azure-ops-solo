@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace MyCrownJewelApp.Pfpad.AIOps;
 
-public sealed class AzureDevOpsConnector : IAIOpsConnector
+public sealed class AzureDevOpsConnector : IAIOpsConnector, IPullRequestCapable
 {
     private readonly AzureDevOpsSettings _settings;
     private readonly HttpClient _httpClient;
@@ -154,6 +154,35 @@ public sealed class AzureDevOpsConnector : IAIOpsConnector
     public Task<IReadOnlyList<Slo>> GetSlosAsync(string? serviceName = null, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<Slo>>([]);
 
+    // ── IPullRequestCapable ───────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<GitPullRequest>> GetRecentPullRequestsAsync(
+        string? repository = null, int count = 20, CancellationToken ct = default)
+    {
+        if (!await EnsureConnectedAsync(ct).ConfigureAwait(false)) return [];
+
+        // Use the provided repository param, fall back to settings.Repository, then settings.Project.
+        string repoName = !string.IsNullOrWhiteSpace(repository) ? repository
+            : !string.IsNullOrWhiteSpace(_settings.Repository) ? _settings.Repository
+            : _settings.Project;
+        string encodedRepo = Uri.EscapeDataString(repoName);
+
+        try
+        {
+            // ADO Git API: list PRs across statuses
+            string path = $"git/repositories/{encodedRepo}/pullrequests" +
+                          $"?searchCriteria.status=all&$top={Math.Clamp(count, 1, 100)}&api-version=7.1";
+            using var request = CreateRequest(HttpMethod.Get, path);
+            using var response = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return [];
+
+            using var doc = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+            return ParseAdoPullRequests(doc.RootElement).Take(count).ToList();
+        }
+        catch { return []; }
+    }
+
     public void Dispose() => _httpClient.Dispose();
 
     private async Task<bool> EnsureConnectedAsync(CancellationToken ct)
@@ -256,4 +285,52 @@ public sealed class AzureDevOpsConnector : IAIOpsConnector
             var s when s is not null && s.Contains("4") => Severity.Low,
             _ => Severity.Medium
         };
+
+    private static List<GitPullRequest> ParseAdoPullRequests(JsonElement root)
+    {
+        var list = new List<GitPullRequest>();
+        if (!root.TryGetProperty("value", out var values) || values.ValueKind != JsonValueKind.Array)
+            return list;
+
+        foreach (var item in values.EnumerateArray())
+        {
+            string id    = item.TryGetProperty("pullRequestId", out var v) ? v.ToString() : Guid.NewGuid().ToString("N");
+            string title = item.TryGetProperty("title", out var t) ? t.GetString() ?? "PR" : "PR";
+            string desc  = item.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+            string state = item.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+
+            string authorName = "unknown";
+            if (item.TryGetProperty("createdBy", out var cb) && cb.TryGetProperty("displayName", out var dn))
+                authorName = dn.GetString() ?? "unknown";
+
+            string src = item.TryGetProperty("sourceRefName", out var sn)
+                ? sn.GetString()?.Replace("refs/heads/", "", StringComparison.OrdinalIgnoreCase) ?? ""
+                : "";
+            string tgt = item.TryGetProperty("targetRefName", out var tn)
+                ? tn.GetString()?.Replace("refs/heads/", "", StringComparison.OrdinalIgnoreCase) ?? ""
+                : "";
+
+            string? webUrl = item.TryGetProperty("url", out var u) ? u.GetString() : null;
+            // ADO REST url is API url; convert to web url heuristically
+            if (webUrl is not null && webUrl.Contains("/_apis/"))
+                webUrl = webUrl.Replace("/_apis/git/repositories/", "/_git/", StringComparison.OrdinalIgnoreCase)
+                               .Split("/pullRequests/")[0];
+
+            string createdStr = item.TryGetProperty("creationDate", out var c) ? c.GetString() ?? "" : "";
+            string closedStr  = item.TryGetProperty("closedDate", out var cl) ? cl.GetString() ?? "" : "";
+            DateTimeOffset created = DateTimeOffset.TryParse(createdStr, out var p) ? p : DateTimeOffset.UtcNow;
+            DateTimeOffset? closed = DateTimeOffset.TryParse(closedStr, out var q) ? q : (DateTimeOffset?)null;
+
+            var prStatus = state.ToLowerInvariant() switch
+            {
+                "completed" => PullRequestStatus.Merged,
+                "abandoned" => PullRequestStatus.Closed,
+                _           => PullRequestStatus.Open
+            };
+
+            list.Add(new GitPullRequest(id, title, authorName, src, tgt, prStatus, created, closed, webUrl, desc, [], []));
+        }
+
+        return list.OrderByDescending(pr => pr.CreatedAt).ToList();
+    }
 }

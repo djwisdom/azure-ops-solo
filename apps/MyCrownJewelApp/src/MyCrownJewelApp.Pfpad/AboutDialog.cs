@@ -531,6 +531,14 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• NewBranchDialog: structured new-branch form with prefix combobox (feature/fix/hotfix/chore/…), platform-aware ticket-ID field (Issue # / Work Item AB# / Jira ticket), description, live branch-name preview");
         featuresText.AppendLine("• PreCommitReviewDialog: CODEOWNERS reviewer hints ('👤 Will notify: @alice @bob') shown in banner for staged files; platform glyph shown in success row");
         featuresText.AppendLine();
+        featuresText.AppendLine("Multi-platform CI connectors (v1.0.44):");
+        featuresText.AppendLine("• GitLabConnector: CI pipeline runs, merge requests, commit history via GitLab API v4; PRIVATE-TOKEN auth");
+        featuresText.AppendLine("• BitbucketConnector: CI pipeline runs, pull requests via Bitbucket Cloud REST API 2.0; Basic auth (username + app password)");
+        featuresText.AppendLine("• AzureDevOpsConnector: now implements IPullRequestCapable — retrieves ADO Git pull requests via ADO REST API 7.1");
+        featuresText.AppendLine("• AzureDevOpsSettings: new Repository field for explicit Git repo name within ADO project");
+        featuresText.AppendLine("• CI status badge auto-selects connector for GitLab and Bitbucket repos (was GitHub/ADO only)");
+        featuresText.AppendLine("• ADO branch policy warning: dismissable info bar after push on Azure DevOps repos reminding of required reviewers / build validation policies");
+        featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 
         foreach (var package in knownPackages)

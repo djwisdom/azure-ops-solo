@@ -99,6 +99,10 @@ public sealed class AIOpsEngine : IDisposable
             _connectors.Add(new PagerDutyConnector(_settings.PagerDuty));
         if (_settings.GitHubActions.Enabled)
             _connectors.Add(new GitHubActionsConnector(_settings.GitHubActions));
+        if (_settings.GitLab.Enabled)
+            _connectors.Add(new GitLabConnector(_settings.GitLab));
+        if (_settings.Bitbucket.Enabled)
+            _connectors.Add(new BitbucketConnector(_settings.Bitbucket));
 
         // Auto-connect non-mock connectors in the background so they are ready when panels open.
         var realConnectors = _connectors.Where(c => c is not MockDataConnector).ToList();

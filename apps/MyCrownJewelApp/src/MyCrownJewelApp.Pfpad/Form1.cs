@@ -4019,6 +4019,38 @@ internal void ToggleGutter()
                     if (runs.Count == 0) return ("", null);
                     return (runs[0].Status.ToString(), null);
                 });
+                return;
+            }
+
+            // GitLab
+            if (platform == GitPlatform.GitLab
+                && conf.GitLab is { Enabled: true } gitLabSettings)
+            {
+                gitLabSettings.LoadSecretsFromEncrypted();
+                var connector = new AIOps.GitLabConnector(gitLabSettings);
+                _gitPanel.SetCiStatusProvider(async (branch, ct) =>
+                {
+                    var runs = await connector.GetPipelineRunsAsync(branch, count: 1, ct: ct)
+                                              .ConfigureAwait(false);
+                    if (runs.Count == 0) return ("", null);
+                    return (runs[0].Status.ToString(), null);
+                });
+                return;
+            }
+
+            // Bitbucket
+            if (platform == GitPlatform.Bitbucket
+                && conf.Bitbucket is { Enabled: true } bbSettings)
+            {
+                bbSettings.LoadSecretsFromEncrypted();
+                var connector = new AIOps.BitbucketConnector(bbSettings);
+                _gitPanel.SetCiStatusProvider(async (branch, ct) =>
+                {
+                    var runs = await connector.GetPipelineRunsAsync(branch, count: 1, ct: ct)
+                                              .ConfigureAwait(false);
+                    if (runs.Count == 0) return ("", null);
+                    return (runs[0].Status.ToString(), null);
+                });
             }
         }
 

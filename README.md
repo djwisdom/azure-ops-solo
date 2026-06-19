@@ -56,7 +56,7 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.43**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.44**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
@@ -82,6 +82,7 @@ dotnet build --configuration Release2
 - **Git Workflow (Pre-PR tools):** Pre-commit pipeline gate (secret scan + hook shim for .git/hooks, husky, pre-commit); staged-file review dialog with inline diff; Conventional Commit composer (type/scope/breaking/subject/body/footer, live preview, signed-off-by); CI status badge in Git panel header showing latest GitHub Actions run
 - **Multi-platform Git hosting:** Auto-detects GitHub / Azure DevOps / GitLab / Bitbucket / Gitea from remote URL; platform badge glyph in header; CI badge supports GitHub Actions + Azure DevOps Pipelines (auto-selected); Conventional Commit footer hint adapts per platform (`Closes #123` / `AB#1234` / `PROJ-123`); PR/MR template reader (.github/, .azuredevops/, .gitlab/); CODEOWNERS reviewer hints; `GetCreatePrUrl()` builds correct PR URL for all platforms
 - **Git workflow UX:** ⎇ Open PR/MR button in Git panel header (visible on non-default branches, opens platform-correct URL); `NewBranchDialog` with prefix/ticket/description fields and live branch-name preview; CODEOWNERS reviewer hints in pre-commit dialog banner
+- **Multi-platform CI connectors (v1.0.44):** `GitLabConnector` (pipelines + MRs via GitLab API v4, PRIVATE-TOKEN auth); `BitbucketConnector` (pipelines + PRs via Bitbucket Cloud REST API 2.0, Basic auth); `AzureDevOpsConnector` now implements `IPullRequestCapable` (ADO Git PR list via API 7.1); CI badge auto-selects connector for GitLab and Bitbucket repos; ADO branch-policy warning bar shown after push on Azure DevOps repos
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

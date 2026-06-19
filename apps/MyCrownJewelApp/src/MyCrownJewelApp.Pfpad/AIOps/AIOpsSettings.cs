@@ -15,6 +15,8 @@ public class AIOpsSettings
     public PrometheusSettings Prometheus { get; set; } = new();
     public PagerDutySettings PagerDuty { get; set; } = new();
     public GitHubActionsSettings GitHubActions { get; set; } = new();
+    public GitLabSettings GitLab { get; set; } = new();
+    public BitbucketSettings Bitbucket { get; set; } = new();
 
     // ── DPAPI encryption helpers ───────────────────────────────────────────────
 
@@ -34,6 +36,8 @@ public class AIOpsSettings
         Prometheus.LoadSecretsFromEncrypted();
         PagerDuty.LoadSecretsFromEncrypted();
         GitHubActions.LoadSecretsFromEncrypted();
+        GitLab.LoadSecretsFromEncrypted();
+        Bitbucket.LoadSecretsFromEncrypted();
     }
 
     /// <summary>
@@ -56,6 +60,8 @@ public class AIOpsSettings
         Prometheus = Prometheus.CreateEncryptedCopy(),
         PagerDuty = PagerDuty.CreateEncryptedCopy(),
         GitHubActions = GitHubActions.CreateEncryptedCopy(),
+        GitLab = GitLab.CreateEncryptedCopy(),
+        Bitbucket = Bitbucket.CreateEncryptedCopy(),
     };
 }
 
@@ -111,6 +117,11 @@ public class AzureDevOpsSettings
     public bool Enabled { get; set; } = false;
     public string Organization { get; set; } = "";
     public string Project { get; set; } = "";
+    /// <summary>
+    /// Git repository name within the project. Used by <c>GetRecentPullRequestsAsync</c>.
+    /// Defaults to <see cref="Project"/> when left blank.
+    /// </summary>
+    public string Repository { get; set; } = "";
     /// <summary>Plaintext at runtime; always written as empty to disk. Use <see cref="EncryptedPersonalAccessToken"/>.</summary>
     public string PersonalAccessToken { get; set; } = "";
 
@@ -125,7 +136,7 @@ public class AzureDevOpsSettings
 
     internal AzureDevOpsSettings CreateEncryptedCopy() => new()
     {
-        Enabled = Enabled, Organization = Organization, Project = Project,
+        Enabled = Enabled, Organization = Organization, Project = Project, Repository = Repository,
         PersonalAccessToken = "",
         EncryptedPersonalAccessToken = DpapiSettingsProtector.Protect(PersonalAccessToken),
     };
@@ -240,5 +251,65 @@ public class GitHubActionsSettings
         TimeoutSeconds = TimeoutSeconds,
         PersonalAccessToken = "",
         EncryptedPersonalAccessToken = DpapiSettingsProtector.Protect(PersonalAccessToken),
+    };
+}
+
+public class GitLabSettings
+{
+    public bool Enabled { get; set; } = false;
+    /// <summary>GitLab instance base URL (default: https://gitlab.com).</summary>
+    public string InstanceUrl { get; set; } = "https://gitlab.com";
+    /// <summary>Namespace path, e.g. "mygroup/myrepo".</summary>
+    public string NamespacePath { get; set; } = "";
+    /// <summary>Plaintext at runtime; always written as empty to disk. Use <see cref="EncryptedPersonalAccessToken"/>.</summary>
+    public string PersonalAccessToken { get; set; } = "";
+    public int TimeoutSeconds { get; set; } = 10;
+
+    // ── DPAPI-encrypted fields ────────────────────────────────────────────────
+    public string EncryptedPersonalAccessToken { get; set; } = "";
+
+    internal void LoadSecretsFromEncrypted()
+    {
+        if (!string.IsNullOrEmpty(EncryptedPersonalAccessToken))
+            PersonalAccessToken = DpapiSettingsProtector.Unprotect(EncryptedPersonalAccessToken);
+    }
+
+    internal GitLabSettings CreateEncryptedCopy() => new()
+    {
+        Enabled = Enabled, InstanceUrl = InstanceUrl, NamespacePath = NamespacePath,
+        TimeoutSeconds = TimeoutSeconds,
+        PersonalAccessToken = "",
+        EncryptedPersonalAccessToken = DpapiSettingsProtector.Protect(PersonalAccessToken),
+    };
+}
+
+public class BitbucketSettings
+{
+    public bool Enabled { get; set; } = false;
+    /// <summary>Bitbucket workspace slug (your username or team name).</summary>
+    public string Workspace { get; set; } = "";
+    /// <summary>Repository slug (the part after workspace in the URL).</summary>
+    public string Repository { get; set; } = "";
+    /// <summary>Bitbucket username (for Basic auth).</summary>
+    public string Username { get; set; } = "";
+    /// <summary>Bitbucket app password. Plaintext at runtime; always written as empty to disk. Use <see cref="EncryptedAppPassword"/>.</summary>
+    public string AppPassword { get; set; } = "";
+    public int TimeoutSeconds { get; set; } = 10;
+
+    // ── DPAPI-encrypted fields ────────────────────────────────────────────────
+    public string EncryptedAppPassword { get; set; } = "";
+
+    internal void LoadSecretsFromEncrypted()
+    {
+        if (!string.IsNullOrEmpty(EncryptedAppPassword))
+            AppPassword = DpapiSettingsProtector.Unprotect(EncryptedAppPassword);
+    }
+
+    internal BitbucketSettings CreateEncryptedCopy() => new()
+    {
+        Enabled = Enabled, Workspace = Workspace, Repository = Repository,
+        Username = Username, TimeoutSeconds = TimeoutSeconds,
+        AppPassword = "",
+        EncryptedAppPassword = DpapiSettingsProtector.Protect(AppPassword),
     };
 }

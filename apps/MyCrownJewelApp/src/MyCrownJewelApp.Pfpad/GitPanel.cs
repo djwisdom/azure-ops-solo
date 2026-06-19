@@ -24,6 +24,9 @@ internal sealed class GitOperationsPanel : Panel
     [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public GitPlatform Platform { get; set; } = GitPlatform.Unknown;
 
+    /// <summary>Raised on the UI thread after a push completes successfully.</summary>
+    public event Action? PushSucceeded;
+
     public GitOperationsPanel(GitService git)
     {
         _git = git;
@@ -103,6 +106,7 @@ internal sealed class GitOperationsPanel : Panel
             {
                 var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
                 if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else PushSucceeded?.Invoke();
             }
             catch (OperationCanceledException) { }
             finally { _pushBtn.Enabled = true; }
@@ -800,6 +804,8 @@ internal sealed class GitOperationsPanel : Panel
     private readonly Label _platformLabel;
     private readonly Button _createPrButton;
     private GitPlatform _detectedPlatform = GitPlatform.Unknown;
+    private Label? _adoPolicyWarningLabel;
+    private System.Windows.Forms.Timer? _adoPolicyWarningTimer;
     private Func<string, CancellationToken, Task<(string Status, string? Conclusion)>>? _ciStatusProvider;
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
@@ -938,6 +944,7 @@ internal sealed class GitOperationsPanel : Panel
         // Git Operations Panel
         _operationsPanel = new GitOperationsPanel(_git);
         _operationsPanel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        _operationsPanel.PushSucceeded += ShowAdoBranchPolicyWarning;
 
         // Conflict Resolver Panel
         _conflictResolverPanel = new GitConflictResolverPanel(_git);
@@ -1213,6 +1220,7 @@ internal sealed class GitOperationsPanel : Panel
             {
                 var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
                 if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else ShowAdoBranchPolicyWarning();
             }
             catch (OperationCanceledException) { }
             finally { SetSyncEnabled(true); }
@@ -1421,6 +1429,7 @@ internal sealed class GitOperationsPanel : Panel
             {
                 var (ok, msg) = await _git.PushAsync().ConfigureAwait(true);
                 if (!ok) ThemedMessageBox.Show(msg, "Push Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else ShowAdoBranchPolicyWarning();
             }
             catch (OperationCanceledException) { }
             RefreshStatus();
@@ -2052,7 +2061,10 @@ internal sealed class GitOperationsPanel : Panel
                 if (!ok)
                     ThemedMessageBox.Show($"Commit successful, but push failed: {msg}", "Commit & Push", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 else
+                {
+                    ShowAdoBranchPolicyWarning();
                     _ = UpdateCiStatusAsync(); // fire-and-forget CI status refresh after push
+                }
             }
             catch (OperationCanceledException) { }
             RefreshStatus();
@@ -2131,6 +2143,50 @@ internal sealed class GitOperationsPanel : Panel
 
         // Label: GitLab uses "MR", everyone else "PR"
         _createPrButton.Text = _detectedPlatform == GitPlatform.GitLab ? "⎇ Open MR" : "⎇ Open PR";
+    }
+
+    /// <summary>
+    /// Shows a dismissable info bar warning about ADO branch policies after a push.
+    /// The bar auto-hides after 12 seconds.
+    /// </summary>
+    private void ShowAdoBranchPolicyWarning()
+    {
+        if (_detectedPlatform != GitPlatform.AzureDevOps) return;
+
+        if (_adoPolicyWarningLabel is null)
+        {
+            _adoPolicyWarningLabel = new Label
+            {
+                Text = "ℹ️  Azure DevOps: branch policies may require linked work items, build validation, or required reviewers before merge.",
+                AutoSize = false,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(6, 0, 6, 0),
+                Height = 30,
+                Dock = DockStyle.Top,
+                Cursor = Cursors.Hand,
+                Visible = false,
+            };
+            _adoPolicyWarningLabel.Click += (_, _) => _adoPolicyWarningLabel.Visible = false;
+            Controls.Add(_adoPolicyWarningLabel);
+            _adoPolicyWarningLabel.BringToFront();
+
+            _adoPolicyWarningTimer = new System.Windows.Forms.Timer { Interval = 12_000 };
+            _adoPolicyWarningTimer.Tick += (_, _) =>
+            {
+                _adoPolicyWarningTimer.Stop();
+                if (_adoPolicyWarningLabel is not null)
+                    _adoPolicyWarningLabel.Visible = false;
+            };
+        }
+
+        // Apply current theme colours
+        var theme = ThemeManager.Instance.CurrentTheme;
+        _adoPolicyWarningLabel.BackColor = Color.FromArgb(30, 100, 180);
+        _adoPolicyWarningLabel.ForeColor = Color.White;
+
+        _adoPolicyWarningLabel.Visible = true;
+        _adoPolicyWarningTimer!.Stop();
+        _adoPolicyWarningTimer.Start();
     }
 
     private async Task UpdateCiStatusAsync()

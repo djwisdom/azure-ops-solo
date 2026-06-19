@@ -20,12 +20,12 @@ The short answer is "rather a lot for a solo project" — including enterprise-g
 
 ### 1.1 Installation
 
-The installer (`PersonalFlipPad-Setup-1.0.43.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
+The installer (`PersonalFlipPad-Setup-1.0.44.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
 
 ```
-PersonalFlipPad-Setup-1.0.43.0.exe /CURRENTUSER   # No admin required
-PersonalFlipPad-Setup-1.0.43.0.exe /ALLUSERS       # Admin required
-PersonalFlipPad-Setup-1.0.43.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
+PersonalFlipPad-Setup-1.0.44.0.exe /CURRENTUSER   # No admin required
+PersonalFlipPad-Setup-1.0.44.0.exe /ALLUSERS       # Admin required
+PersonalFlipPad-Setup-1.0.44.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
 ```
 
 The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 200 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, LibGit2, and advanced performance profiling tools.
@@ -771,7 +771,8 @@ Opens a panel in the sidebar with:
   - ⑂ GitHub · ⬡ Azure DevOps · ◈ GitLab · ⚑ Bitbucket · ⎇ Unknown/other
 - **⎇ Open PR / Open MR button**: Appears in the Git panel header when you are on a non-default branch. Clicking it opens a new pull request (or merge request on GitLab) in your default browser using the platform-correct URL. The button is hidden on `main`/`master`/the configured default branch.
 - **New Branch dialog**: The "New Branch" button now opens a structured dialog with: a prefix selector (feature / fix / hotfix / chore / release / refactor / docs / experiment), an optional ticket/issue ID field (label and placeholder adapt per platform — "Issue #" for GitHub/GitLab, "Work Item AB#" for Azure DevOps, "Jira ticket" for Bitbucket), a description field, and a live branch-name preview. The generated name follows platform conventions (e.g. `feature/AB1234-my-feature` for ADO, `feature/123-my-feature` for GitHub).
-- **CI Status Badge**: After each push (and on every panel refresh), the Git panel header shows the latest pipeline run status. Supports **GitHub Actions** and **Azure DevOps Pipelines** — the correct connector is selected automatically based on the detected platform. (GitLab CI and Bitbucket Pipelines planned for a future release.)
+- **CI Status Badge**: After each push (and on every panel refresh), the Git panel header shows the latest pipeline run status. Supports **GitHub Actions**, **Azure DevOps Pipelines**, **GitLab CI**, and **Bitbucket Pipelines** — the correct connector is selected automatically based on the detected platform.
+- **ADO branch policy warning**: After a successful push to an **Azure DevOps** remote, a dismissable info bar appears in the Git panel: *"ℹ️ Azure DevOps: branch policies may require linked work items, build validation, or required reviewers before merge."* Click the bar or wait 12 seconds to dismiss it.
 - **Commit Template (Conventional Commits)**: The ✏️ template button opens the **Conventional Commit Composer** — a structured dialog with type selector (feat/fix/chore/docs/refactor/perf/test/ci/style/build/revert + descriptions), optional scope, BREAKING CHANGE toggle, 72-character subject counter, multiline body and footer fields, Signed-off-by auto-fill from git config, and a live color-highlighted preview pane. The footer placeholder automatically adapts to the detected platform: `Closes #123` (GitHub/GitLab), `AB#1234` (Azure DevOps), `PROJ-123` (Bitbucket/Jira). The generated message is written back into the commit text box.
 - **Pre-commit pipeline gate**: Before every commit, Pfpad runs a secret scan (SecretsDetector) and any installed git hooks (`.git/hooks/pre-commit`, husky v9, pre-commit tool). If secrets or hook failures are detected, a warning banner is shown in the **Pre-commit Review Dialog** and you can abort or override.
 - **Pre-commit Review Dialog**: Shows all staged files with colored status dots, an inline diff viewer with syntax-highlighted `+`/`-`/`@@` lines, stage/unstage toggles, and a **CODEOWNERS reviewer hint** (`👤 Will notify: @alice @bob`) if a matching CODEOWNERS file is found for any staged file.
