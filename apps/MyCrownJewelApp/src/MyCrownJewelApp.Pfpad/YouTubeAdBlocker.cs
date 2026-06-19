@@ -62,9 +62,17 @@ internal static class YouTubeAdBlocker
     // Strategy:
     //   1. Inject CSS that hides all static ad overlay elements.
     //   2. Poll every 300 ms: if .ad-showing is active on the player, either
-    //      click the skip button or force currentTime to the ad's duration.
-    //   3. MutationObserver fires skipAd() immediately when new nodes arrive,
+    //      click the skip button or rush through at 16x playback speed.
+    //      NOTE: we never seek via currentTime on non-skippable ads — YouTube
+    //      reuses the same <video> element for ads and the main video, so
+    //      seeking to video.duration - 0.1 lands inside the main content and
+    //      causes the buffer/progress bar to hang at ~75-80%.
+    //   3. A MutationObserver on the player's 'class' attribute detects when
+    //      'ad-showing' is removed and restores playbackRate / volume.
+    //   4. A second MutationObserver fires skipAd() when new DOM nodes arrive,
     //      catching inline/overlay ads faster than the poll.
+    //   5. After ad dismissal a 600 ms stall-recovery check kicks the main
+    //      video if it is paused or still buffering.
 
     public static string ContentScript { get; } = """
 (function () {
@@ -95,27 +103,71 @@ internal static class YouTubeAdBlocker
         '.ytp-ad-progress-list',
         '.ytp-ad-progress',
         '.ytp-ad-duration-remaining',
-        '.ytp-ce-covering-overlay',          /* card overlays during ads */
+        '.ytp-ce-covering-overlay',
         'ytd-ad-slot-renderer',
         'ytd-in-feed-ad-layout-renderer',
         'ytd-display-ad-renderer'
     ].join(',\n') + ' { display:none!important; visibility:hidden!important; }';
     (document.head || document.documentElement).appendChild(style);
 
-    // ── 2. Skip / end ad function ─────────────────────────────────────────
+    // ── 2. State ──────────────────────────────────────────────────────────
+    var _adWasActive = false;
+    var _stallTimer  = null;
+
+    // ── 3. Post-ad recovery ───────────────────────────────────────────────
+    // Called once when 'ad-showing' is removed from the player class list.
+    // Restores all properties we modified and kicks buffering if stalled.
+    function onAdDismissed(video) {
+        clearTimeout(_stallTimer);
+        video.playbackRate = 1;
+        video.muted        = false;
+        video.volume       = 1;
+
+        // Give the player 600 ms to start the main video on its own;
+        // if it is still paused or under-buffered, nudge it.
+        _stallTimer = setTimeout(function () {
+            var player = document.querySelector('.html5-video-player');
+            if (!player || player.classList.contains('ad-showing')) return;
+            if (video.paused || video.readyState < 3) {
+                try { video.currentTime = video.currentTime; } catch (_) {} // re-request buffer
+                video.play().catch(function () {});
+            }
+        }, 600);
+    }
+
+    // ── 4. Player-class observer — detects ad start/end ───────────────────
+    // Watching the 'class' attribute is more reliable than the 'play' event
+    // because 'play' can fire before 'ad-showing' has been removed.
+    function watchPlayerClass(player) {
+        if (!player || player.__pfpad_classWatched) return;
+        player.__pfpad_classWatched = true;
+
+        new MutationObserver(function () {
+            var isAd = player.classList.contains('ad-showing');
+            if (_adWasActive && !isAd) {
+                var video = document.querySelector('.html5-main-video');
+                if (video) onAdDismissed(video);
+            }
+            _adWasActive = isAd;
+        }).observe(player, { attributes: true, attributeFilter: ['class'] });
+    }
+
+    // ── 5. Skip / end ad function ─────────────────────────────────────────
     function skipAd() {
         var player = document.querySelector('.html5-video-player');
         var video  = document.querySelector('.html5-main-video');
         if (!player || !video) return;
 
+        // Attach class watcher lazily (player may not exist at script injection time).
+        watchPlayerClass(player);
+
         if (!player.classList.contains('ad-showing')) return;
 
-        // Silence the ad immediately so it isn't heard while we work to dismiss it.
+        // Silence the ad immediately.
         video.muted  = true;
         video.volume = 0;
 
-        // Prefer the skip button — avoids any potential side-effects.
-        // Dispatch synthetic mouse events in addition to .click() for stubborn buttons.
+        // Prefer the skip button.
         var skipBtn = document.querySelector(
             '.ytp-ad-skip-button, .ytp-skip-ad-button, .ytp-ad-skip-button-modern');
         if (skipBtn) {
@@ -125,54 +177,28 @@ internal static class YouTubeAdBlocker
             return;
         }
 
-        // No skip button (non-skippable or still loading).
-        // Rush through the ad at max speed so it ends as fast as possible.
+        // Non-skippable ad: rush through at 16x.
+        // We deliberately do NOT seek to video.duration - 0.1 here because YouTube
+        // shares the <video> element between ads and the main video — seeking near
+        // the end of what appears to be the ad's duration actually jumps into the
+        // main video content and leaves the progress bar frozen at ~75-80%.
+        // Playing at 16x ends a 15-second ad in under a second, which is acceptable.
         try { video.playbackRate = 16; } catch (_) {}
-
-        // Ensure the video is actually playing (buffering/paused state recovery).
         if (video.paused) { video.play().catch(function () {}); }
 
-        // Jump to the very end to trigger ad completion.
-        if (isFinite(video.duration) && video.duration > 0) {
+        // If duration is finite and very short (≤ 60 s) we can safely assume this
+        // is a standalone ad segment and seek to its end.  Longer durations indicate
+        // the main video duration has leaked into the element — skip the seek.
+        if (isFinite(video.duration) && video.duration > 0 && video.duration <= 60) {
             video.currentTime = video.duration - 0.1;
-            return;
-        }
-
-        // Duration not yet available — ad is still buffering.
-        // Register one-shot listeners so we skip the instant it becomes ready.
-        if (!video.__pfpad_skipPending) {
-            video.__pfpad_skipPending = true;
-            var onReady = function () {
-                video.__pfpad_skipPending = false;
-                video.removeEventListener('durationchange', onReady);
-                video.removeEventListener('canplay',        onReady);
-                video.removeEventListener('playing',        onReady);
-                skipAd();
-            };
-            video.addEventListener('durationchange', onReady);
-            video.addEventListener('canplay',        onReady);
-            video.addEventListener('playing',        onReady);
         }
     }
 
-    // Restore playback rate and unmute after the ad ends.
-    document.addEventListener('video', function (e) {}, true); // keep listener alive
-    document.addEventListener('play', function () {
-        var player = document.querySelector('.html5-video-player');
-        var video  = document.querySelector('.html5-main-video');
-        if (!player || !video) return;
-        if (!player.classList.contains('ad-showing')) {
-            // Regular video resumed — restore normal playback
-            try { video.playbackRate = 1; } catch (_) {}
-            video.muted  = false;
-        }
-    }, true);
+    // ── 6. Poll ───────────────────────────────────────────────────────────
+    setInterval(skipAd, 300);
 
-    // ── 3. Poll ───────────────────────────────────────────────────────────
-    var _pollId = setInterval(skipAd, 300);
-
-    // ── 4. MutationObserver — catch ads injected after DOMContentLoaded ──
-    var _observer = new MutationObserver(function (mutations) {
+    // ── 7. MutationObserver — catch ads injected after DOMContentLoaded ──
+    var _domObserver = new MutationObserver(function (mutations) {
         for (var i = 0; i < mutations.length; i++) {
             if (mutations[i].addedNodes.length > 0) {
                 skipAd();
@@ -181,22 +207,32 @@ internal static class YouTubeAdBlocker
         }
     });
 
-    function startObserver() {
-        if (document.body) {
-            _observer.observe(document.body, { childList: true, subtree: true });
-        }
+    function startObservers() {
+        if (!document.body) return;
+        _domObserver.observe(document.body, { childList: true, subtree: true });
+        var player = document.querySelector('.html5-video-player');
+        if (player) watchPlayerClass(player);
     }
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', startObserver);
+        document.addEventListener('DOMContentLoaded', startObservers);
     } else {
-        startObserver();
+        startObservers();
     }
 
-    // ── 5. Clean up on SPA navigation (YouTube is a single-page app) ─────
-    // YouTube fires yt-navigate-start / yt-navigate-finish on every video change.
+    // ── 8. SPA navigation ────────────────────────────────────────────────
     window.addEventListener('yt-navigate-finish', function () {
-        skipAd(); // immediate check after navigation
+        clearTimeout(_stallTimer);
+        _adWasActive = false;
+        // Re-attach class watcher — the player element may have been recreated.
+        setTimeout(function () {
+            var player = document.querySelector('.html5-video-player');
+            if (player) {
+                player.__pfpad_classWatched = false;
+                watchPlayerClass(player);
+            }
+            skipAd();
+        }, 500);
     });
 })();
 """;
