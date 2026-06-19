@@ -180,7 +180,7 @@ internal sealed class BrowserPanel : UserControl
             Style = ProgressBarStyle.Marquee,
             MarqueeAnimationSpeed = 30,
             Height = 2,
-            Dock = DockStyle.Top,
+            Dock = DockStyle.None,   // manually positioned in Layout
             Visible = false
         };
 
@@ -375,14 +375,20 @@ internal sealed class BrowserPanel : UserControl
         // Dock stacking (last added = topmost for Dock=Top):
         //   _toolbar     → Top (topmost)
         //   _favBar      → Top (below toolbar)
-        //   _progressBar → Top (below favBar, above content)
         //   _statusBar   → Bottom
         //   _contentArea → Fill (remaining space)
+        // _progressBar uses Dock=None and is positioned explicitly in Layout.
         Controls.Add(_contentArea);
         Controls.Add(_statusBar);
-        Controls.Add(_progressBar);   // thin 2px loading stripe, sits just above content
         Controls.Add(_favBar);
         Controls.Add(_toolbar);
+        Controls.Add(_progressBar);  // non-docked; positioned in Layout event; highest z-order
+
+        // Position the progress bar directly below the lowest visible top-docked panel.
+        // Dock=None with explicit Layout placement is used so dock-order ambiguity doesn't
+        // interfere: the bar always sits right below _favBar (if shown) or _toolbar.
+        Layout += (_, _) => PositionProgressBar();
+        _favBar.VisibleChanged += (_, _) => PositionProgressBar();
 
         // ── Button events ─────────────────────────────────────────────────────
         _backBtn.Click += (_, _) => _webView?.CoreWebView2?.GoBack();
@@ -763,6 +769,19 @@ internal sealed class BrowserPanel : UserControl
         _forwardBtn.Enabled = canForward;
         _backBtn.Invalidate();
         _forwardBtn.Invalidate();
+    }
+
+    /// <summary>
+    /// Places the progress bar directly below the lowest visible top bar
+    /// (_favBar when shown, otherwise _toolbar). Dock=None lets us bypass
+    /// WinForms dock-order ambiguity entirely.
+    /// </summary>
+    private void PositionProgressBar()
+    {
+        int top = (_favBar.Visible && _favBar.Height > 0)
+            ? _favBar.Bottom
+            : _toolbar.Bottom;
+        _progressBar.SetBounds(0, top, Width, 2);
     }
 
     private void ApplyUserAgent()
