@@ -2212,7 +2212,7 @@ internal sealed class SettingsDialog : Form
 
         y = AddSecCheckRow(parent, y,
             "Write crash log on fatal error",
-            $"Save crash details to %LocalAppData%\\MyCrownJewelApp\\Pfpad\\crash.log. Takes effect on next launch.",
+            $"Save crash details to %LocalAppData%\\Personal Flip Pad\\crash.log. Takes effect on next launch.",
             "application.security.writeCrashLog");
 
         y = AddSecCheckRow(parent, y,

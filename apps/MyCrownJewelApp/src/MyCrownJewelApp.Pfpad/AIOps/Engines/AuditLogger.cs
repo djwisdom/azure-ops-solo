@@ -10,7 +10,7 @@ public sealed class AuditLogger
     public AuditLogger(string? logDirectory = null)
     {
         string baseDirectory = logDirectory
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "pfpad", "aiops-audit");
+            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Personal Flip Pad", "aiops-audit");
         Directory.CreateDirectory(baseDirectory);
         _logFilePath = Path.Combine(baseDirectory, $"aiops-audit-{DateTime.UtcNow:yyyyMMdd}.log");
     }

@@ -32,7 +32,7 @@ This guide covers the C# development workflow for the Pfpad editor in `apps/MyCr
 - Commit with pre-commit hooks.
 
 ## Troubleshooting
-- Build fails: Check .NET SDK version (10.0.300-preview).
+- Build fails: Check .NET SDK version (10.0.300).
 - Tests fail: Run `dotnet test --verbosity detailed`.
 - Common errors: Null reference → enable nullable.
 

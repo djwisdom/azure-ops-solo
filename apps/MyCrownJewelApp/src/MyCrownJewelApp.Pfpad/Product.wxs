@@ -2,7 +2,7 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Personal Flip Pad"
            Manufacturer="Personal Flip Pad"
-           Version="1.0.30.0"
+           Version="1.0.46.0"
            UpgradeCode="YOUR-UPGRADE-CODE-HERE"
            Language="1033">
 
@@ -13,7 +13,7 @@
     <Property Id="MSIINSTALLPERUSER" Secure="yes" Value="1" />
 
     <!-- Installation directory -->
-    <StandardDirectory Id="ProgramFilesFolder">
+    <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="INSTALLFOLDER" Name="Personal Flip Pad" />
     </StandardDirectory>
 
@@ -281,7 +281,7 @@
 
       <RegistryKey Root="HKCU" Key="Software\Microsoft\PersonalFlipPad" Action="create">
         <RegistryValue Type="string" Name="InstallPath" Value="[INSTALLFOLDER]" />
-        <RegistryValue Type="string" Name="Version" Value="1.0.30.0" />
+        <RegistryValue Type="string" Name="Version" Value="1.0.46.0" />
       </RegistryKey>
     </Component>
   </Fragment>

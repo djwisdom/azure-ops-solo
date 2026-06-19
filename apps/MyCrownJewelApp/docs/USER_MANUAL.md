@@ -6,7 +6,7 @@
 
 ## Question
 
-I've just started using Personal Flip Pad (Pfpad) **v1.0.45**, a professional WinForms code editor written in C# targeting .NET 10. What features does it have, including its advanced Git workflow, multi-platform CI connectors, AIOps dashboard, browser, security hardening, Vim mode, and performance engine?
+I've just started using Personal Flip Pad (Pfpad) **v1.0.46**, a professional WinForms code editor written in C# targeting .NET 10. What features does it have, including its advanced Git workflow, multi-platform CI connectors, AIOps dashboard, browser, security hardening, Vim mode, and performance engine?
 
 ---
 
@@ -20,12 +20,12 @@ The short answer is "rather a lot for a solo project" — including enterprise-g
 
 ### 1.1 Installation
 
-The installer (`PersonalFlipPad-Setup-1.0.45.0.exe`) supports both per-user and per-machine installation courtesy of Inno Setup:
+The installer (`pfpad-Setup-1.0.46.0.exe`) is a per-user Inno Setup package that installs to `%LOCALAPPDATA%\Personal Flip Pad\` with no admin rights required:
 
 ```
-PersonalFlipPad-Setup-1.0.45.0.exe /CURRENTUSER   # No admin required
-PersonalFlipPad-Setup-1.0.45.0.exe /ALLUSERS       # Admin required
-PersonalFlipPad-Setup-1.0.45.0.exe /VERYSILENT /CURRENTUSER  # Quiet mode
+pfpad-Setup-1.0.46.0.exe
+pfpad-Setup-1.0.46.0.exe /VERYSILENT
+pfpad-Setup-1.0.46.0.exe /VERYSILENT /SUPPRESSMSGBOXES
 ```
 
 The editor is published as a self-contained single-file executable — no .NET runtime required on the target machine. It's approximately 200 MB (including all dependencies), reflecting its comprehensive feature set including Roslyn, TreeSitter parsers, LibGit2, and advanced performance profiling tools.
@@ -48,7 +48,7 @@ Launch `MyCrownJewelApp.Pfpad.exe`. You can pass file paths as command-line argu
 Pfpad.exe file1.cs file2.cs README.md
 ```
 
-Each file opens in its own tab. If no files are specified, you get a single untitled document. Crash logs go to `%LOCALAPPDATA%\MyCrownJewelApp\Pfpad\crash.log` — hopefully you won't need them, but they're there if you do.
+Each file opens in its own tab. If no files are specified, you get a single untitled document. Crash logs go to `%LOCALAPPDATA%\Personal Flip Pad\crash.log` — hopefully you won't need them, but they're there if you do.
 
 **File Handling Capabilities:**
 - **Size limits**: Up to 500MB files (warnings at 50MB and 20MB)
@@ -63,6 +63,7 @@ Each file opens in its own tab. If no files are specified, you get a single unti
 
 | Version | Highlights |
 |---------|-----------|
+| **v1.0.46** | Consistency release: installer/output naming aligned to `pfpad-Setup-*`, install/log paths standardized under `%LOCALAPPDATA%\Personal Flip Pad\`, and stale docs/comments cleaned up |
 | **v1.0.45** | Feature audit release: comprehensive About dialog, README and manual update; all connector and Git workflow features documented |
 | **v1.0.44** | `GitLabConnector` (API v4) + `BitbucketConnector` (REST 2.0); `AzureDevOpsConnector` gains `IPullRequestCapable`; CI badge covers all 4 platforms; ADO branch-policy warning bar |
 | **v1.0.43** | ⎇ Open PR/MR button; `NewBranchDialog` (prefix + ticket + live preview); CODEOWNERS reviewer hints in pre-commit banner |
@@ -706,7 +707,7 @@ The editor includes a first-class **.NET debugger** built on the Debug Adapter P
 - Communicates with `netcoredbg` over stdin/stdout using JSON-RPC 2.0
 - Full DAP protocol: initialize, launch, setBreakpoints, configurationDone, continue, next, stepIn, stepOut, stackTrace, scopes, variables, evaluate, threads, disconnect
 - Auto-discovers the project directory by walking up from the current file
-- Finds the compiled assembly in `bin/Debug/net8.0/`, `net9.0/`, or `net10.0/`
+- Finds the compiled assembly in `bin/Debug/net10.0/` (with legacy fallback detection for older `net8.0/` and `net9.0/` outputs)
 
 ---
 

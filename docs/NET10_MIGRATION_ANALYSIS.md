@@ -1,5 +1,5 @@
 # .NET 10 + WinForms Migration Analysis & Re-implementation Plan
-## Personal Flip Pad (Pfpad) — MyCrownJewelApp v1.0.35.0
+## Personal Flip Pad (Pfpad) — MyCrownJewelApp v1.0.46.0
 
 **Analysis date:** 2026-06-06 (original) · **Updated:** 2026-06-16  
 **Analyst:** GitHub Copilot CLI (deep-dive scan)  
@@ -99,7 +99,7 @@ Pfpad is a capable solo-developer WinForms code editor with 100 C# source files 
 ### 2.1 Project File Analysis (`MyCrownJewelApp.Pfpad.csproj`)
 
 ```xml
-<!-- CURRENT -->
+<!-- PRE-MIGRATION SNAPSHOT -->
 <TargetFramework>net8.0-windows</TargetFramework>
 <WindowsPackageType>MSIX</WindowsPackageType>                   <!-- ❌ CONFLICT with Inno Setup -->
 <NoWarn>$(NoWarn);NETSDK1057</NoWarn>                           <!-- ❌ suppresses legit preview warning -->
@@ -206,7 +206,7 @@ Roslyn 4.8.0 misses improvements in:
 <WindowsPackageType>MSIX</WindowsPackageType>
 ```
 
-This property tells the .NET SDK to package the app as MSIX — but the actual installer is Inno Setup (`installer.iss`, `PersonalFlipPad-Setup-1.0.18.0.exe`). This property:
+This property tells the .NET SDK to package the app as MSIX — but the actual installer is Inno Setup (`installer.iss`, `pfpad-Setup-1.0.46.0.exe`). This property:
 - Adds MSIX-specific build targets that may produce unexpected output
 - Can interfere with the `dotnet publish` output structure
 - Should be **removed**
@@ -296,7 +296,7 @@ Known pre-existing patterns that may generate new warnings on .NET 10:
 
 **File:** `apps/MyCrownJewelApp/build.ps1`
 
-Update any hardcoded `net8.0-windows` path references to `net10.0-windows`.
+Update any hardcoded legacy `net8.0-windows` path references to `net10.0-windows`.
 
 #### Step 5: Update Pipeline YAML
 
@@ -567,7 +567,7 @@ Every new feature added to Form1 makes the God Class worse. The P1 DI + Document
 **What was implemented:**
 - `Program.cs` rebuilt with `IServiceCollection` / `IServiceProvider`
 - Three app-wide singletons registered: `NotificationFeedService`, `UserProfileManager`, `SessionManager`
-- `StartupFileLoggerProvider.cs` — minimal `ILoggerProvider` writing to `%LocalAppData%\MyCrownJewelApp\Pfpad\startup.log`, replacing scattered `File.AppendAllText` calls
+- `StartupFileLoggerProvider.cs` — minimal `ILoggerProvider` writing to `%LocalAppData%\Personal Flip Pad\startup.log`, replacing scattered `File.AppendAllText` calls
 - `ILoggerFactory` + `ILogger` wired via `AddLogging(b => b.AddDebug().AddProvider(StartupFileLoggerProvider))`
 - `Form1(bool skipInitialDocument, IServiceProvider? services)` — new primary constructor. Initializes the 3 singletons from DI when `services != null`, falls back to `new T()` for designer and tear-away windows
 - `Form1(bool)` → `Form1(bool, services: null)` (chained)

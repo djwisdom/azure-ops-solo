@@ -1776,6 +1776,7 @@ echo ""Done.""
 
         if (_frameworkCombo.Items.Count == 0)
         {
+            _frameworkCombo.Items.Add("net10.0");
             _frameworkCombo.Items.Add("net9.0");
             _frameworkCombo.Items.Add("net8.0");
         }

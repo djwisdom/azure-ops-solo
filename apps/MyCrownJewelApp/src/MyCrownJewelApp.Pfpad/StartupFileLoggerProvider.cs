@@ -6,7 +6,7 @@ namespace MyCrownJewelApp.Pfpad;
 
 /// <summary>
 /// Minimal ILoggerProvider that writes log entries to a rolling startup.log file
-/// under %LocalAppData%\MyCrownJewelApp\Pfpad\. Replaces the old File.AppendAllText
+/// under %LocalAppData%\Personal Flip Pad\. Replaces the old File.AppendAllText
 /// startup logging in Program.cs.
 /// </summary>
 internal sealed class StartupFileLoggerProvider : ILoggerProvider
@@ -17,7 +17,7 @@ internal sealed class StartupFileLoggerProvider : ILoggerProvider
     {
         string dir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MyCrownJewelApp", "Pfpad");
+            "Personal Flip Pad");
         Directory.CreateDirectory(dir);
         _logPath = Path.Combine(dir, "startup.log");
         PurgeOldLogs(dir, retentionDays);

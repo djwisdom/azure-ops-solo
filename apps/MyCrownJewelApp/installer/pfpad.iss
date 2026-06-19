@@ -1,10 +1,10 @@
 ; pfpad Installer Script
 ; Inno Setup 6 — per-current-user installation (no admin rights required)
-; Version: 1.0.45.0
+; Version: 1.0.46.0
 
-#define AppName      "pfpad"
-#define AppVersion   "1.0.45.0"
-#define AppPublisher "MyCrownJewelApp"
+#define AppName      "Personal Flip Pad"
+#define AppVersion   "1.0.46.0"
+#define AppPublisher "Personal Flip Pad"
 #define AppExeName   "MyCrownJewelApp.Pfpad.exe"
 #define AppId        "{{B4F2C1A3-8E7D-4F56-9C2A-D1E3F7B9A042}"
 #define PublishDir   "..\publish\win-x64"
@@ -23,7 +23,7 @@ AppUpdatesURL=https://github.com/djwisdom/azure-ops-solo/releases
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=
 
-; Install into %LocalAppData%\pfpad
+; Install into %LocalAppData%\Personal Flip Pad
 DefaultDirName={localappdata}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -92,7 +92,7 @@ Root: HKCU; Subkey: "Software\{#AppPublisher}\{#AppName}"; ValueType: string; Va
 Root: HKCU; Subkey: "Software\{#AppPublisher}\{#AppName}"; ValueType: string; ValueName: "Version";     ValueData: "{#AppVersion}"
 
 [Code]
-// Detect existing installation and offer to uninstall first
+// Detect existing installation and silently uninstall first in silent mode
 function InitializeSetup(): Boolean;
 var
   UninstallString: String;
@@ -103,11 +103,19 @@ begin
     'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1',
     'UninstallString', UninstallString) then
   begin
-    if MsgBox(
-      '{#AppName} is already installed. Uninstall the previous version before continuing?',
-      mbConfirmation, MB_YESNO) = IDYES then
+    if WizardSilent() then
     begin
-      Exec(RemoveQuotes(UninstallString), '/SILENT', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
+      // Silent mode: uninstall automatically without prompting
+      Exec(RemoveQuotes(UninstallString), '/SILENT /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end
+    else
+    begin
+      if MsgBox(
+        '{#AppName} is already installed. Uninstall the previous version before continuing?',
+        mbConfirmation, MB_YESNO) = IDYES then
+      begin
+        Exec(RemoveQuotes(UninstallString), '/SILENT', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
+      end;
     end;
   end;
 end;

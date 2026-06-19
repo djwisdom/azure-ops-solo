@@ -1,8 +1,8 @@
 [Setup]
 AppId=24f5ed45-72b9-4500-b561-8f0ce49ea480
 AppName=Personal Flip Pad
-AppVersion=1.0.40.0
-AppVerName=Personal Flip Pad 1.0.40.0
+AppVersion=1.0.46.0
+AppVerName=Personal Flip Pad 1.0.46.0
 AppPublisher=Personal Flip Pad
 AppPublisherURL=https://github.com/djwisdom/azure-ops-solo
 AppSupportURL=https://github.com/djwisdom/azure-ops-solo/issues
@@ -15,7 +15,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
 OutputDir=.
-OutputBaseFilename=PersonalFlipPad-Setup-1.0.40.0
+OutputBaseFilename=pfpad-Setup-1.0.46.0
 ; SetupIconFile=app.ico
 Compression=lzma
 SolidCompression=yes

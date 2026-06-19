@@ -69,7 +69,7 @@ static class Program
             {
                 string crashPath = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "MyCrownJewelApp", "Pfpad", "crash.log");
+                    "Personal Flip Pad", "crash.log");
                 try { File.WriteAllText(crashPath, $"[{DateTime.UtcNow:u}] FATAL: {ex}"); } catch { }
                 MessageBox.Show(
                     $"Application error: {ex.Message}\n\nSee log at: {crashPath}",

@@ -4,7 +4,7 @@
 - **Last session:** 2026-06-09 (Phase 12)
 - **Last commit:** `07be6f2` — Phase 12: Fix auto-save timer bug + deduplicate ComputeContentHash
 - **Branch:** master (12 refactoring commits on top of original ~205), up to date
-- **Active work:** 12-phase .NET 9 migration + God Class refactoring. 226 tests passing.
+- **Active work:** .NET 10 maintenance, installer consistency, and ongoing editor refactoring. 226 tests passing.
 
 ## Refactoring Progress (Phases 0–12)
 | Phase | Commit | Description | Tests |
@@ -36,8 +36,8 @@
 ## Toolchain
 | Tool | Version |
 |---|---|
-| .NET SDK | 9.0.314 |
-| Target framework (apps) | net9.0-windows (MyCrownJewelApp v1.0.34.0) |
+| .NET SDK | 10.0.300 |
+| Target framework (apps) | net10.0-windows (MyCrownJewelApp v1.0.46.0) |
 | PowerShell | 7.5.5 |
 | Azure CLI | 2.85.0 |
 | Terraform | 1.15.1 |
@@ -51,7 +51,7 @@
   - `src/MyCrownJewelApp.Terminal/` — Terminal/Avalonia UI pane
   - `src/MyCrownJewelApp.Web/` — ASP.NET Core web project
   - `tests/` — 6 test files: Terminal, DirtyFlag, Form1Features, IncrementalHighlighter, Indentation, SyntaxHighlightRegression
-  - `deploy/` — Inno Setup installer (PersonalFlipPad-Setup-1.0.18.0.exe) + build.ps1
+  - `deploy/` — legacy installer artifacts + build.ps1
 - **`infra/`** — Terraform (azurerm ~>3.0, backend config commented out)
 - **`bicep/`** — Bicep templates (resourceGroup, keyVault, appService)
 - **`pipelines/`** — Azure DevOps YAML (deploy-app, patch-vms, patch-aks)
@@ -75,7 +75,7 @@
 - `src/MyCrownJewelApp.Pfpad/SymbolIndexService.cs` — Go-to-definition indexer
 
 ## Test Health
-- **Test framework:** xUnit (net9.0-windows)
+- **Test framework:** xUnit (net10.0-windows)
 - **Test files:** 15 (original 6 + 9 new service-level test files)
 - **Last run:** 2026-06-09 — **226 passed, 1 skipped, 0 failed** (~20s)
 - **Skipped:** `Highlighter_MarksDirty_AndTokenizes` (pre-existing, requires STA thread setup)
@@ -87,8 +87,8 @@
 
 ## Environment Quirks & Windows-Specific Notes
 - `head` and `tail` are NOT available as native commands in PowerShell — use `Select-Object -First`/`-Last`
-- Build artifact: `deploy/PersonalFlipPad-Setup-1.0.18.0.exe` (untracked binary in git)
-- WPF/WinForms projects require `net8.0-windows` TFM
+- Build artifact: `apps/MyCrownJewelApp/installer/output/pfpad-Setup-1.0.46.0.exe` (untracked binary in git)
+- Pfpad currently targets `net10.0-windows`
 - `dist/` contains a prebuilt release of the editor with localized satellite assemblies
 - Terraform backend config is commented out — state is currently local-only
 
@@ -150,7 +150,7 @@
 - **Customized Template:** Adapted for repo priorities (C# primary for Pfpad, Terraform/Bicep for infra). Filled placeholders with VS Code + extensions, pre-commit with dotnet format/tflint/bicep lint, etc. Updated `docs/developer-environment-template.md`.
 - **Stakeholder Buy-In:** Solo developer; self-reviewed and approved. Decisions logged here for traceability.
 - **Resource Inventory:**
-  - Existing: .NET SDK 10.0.300-preview, Terraform 1.15.1, Bicep 0.42.1, Azure CLI 2.85.0, PowerShell 7.5.5, Azure DevOps pipelines (deploy-app.yml, patch-vms.yml, patch-aks.yml), xUnit tests (81 passed).
+  - Existing: .NET SDK 10.0.300, Terraform 1.15.1, Bicep 0.42.1, Azure CLI 2.85.0, PowerShell 7.5.5, Azure DevOps pipelines (deploy-app.yml, patch-vms.yml, patch-aks.yml), xUnit tests (81 passed).
   - Gaps: No pre-commit hooks, no dev containers (.devcontainer/), no infra testing, no linting automation, no auto-docs, no profilers beyond basic debugging.
 - **Success Metrics:**
   - Build time <5 min (current ~2-3 min for C#).
@@ -160,5 +160,5 @@
 
 ## What Not to Forget
 - Stash `stash@{0}` exists with Tab-fix work not yet committed
-- `PersonalFlipPad-Setup-1.0.18.0.exe` is untracked and should not be committed
+- `pfpad-Setup-1.0.46.0.exe` is untracked and should not be committed
 - `infra/modules/` only has a README — modules (networking, etc.) are stubbed out in main.tf comments

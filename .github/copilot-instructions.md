@@ -1,9 +1,9 @@
 # GitHub Copilot Instructions — Personal Flip Pad (Pfpad)
 
 **Project:** Personal Flip Pad — a professional WinForms C# code editor with IDE features  
-**Repo:** `azure-ops-solo` · **App version:** 1.0.33.0  
-**Current TFM:** `net9.0-windows` (SDK 9.0.314 pinned via `global.json`)  
-**Next TFM:** `net10.0-windows` — upgrade when .NET 10 SDK is installed  
+**Repo:** `azure-ops-solo` · **App version:** 1.0.46.0  
+**Current TFM:** `net10.0-windows` (SDK 10.0.300 pinned via `global.json`)  
+**Installer output:** `pfpad-Setup-1.0.46.0.exe`  
 **Author:** Solo developer + AI assistance
 
 ---
@@ -31,7 +31,7 @@ dotnet test tests/MyCrownJewelApp.Tests.csproj --collect:"XPlat Code Coverage"
 dotnet build --configuration Release
 
 # Run the editor
-bin\Release\net9.0-windows\MyCrownJewelApp.Pfpad.exe
+bin\Release\net10.0-windows\MyCrownJewelApp.Pfpad.exe
 # or with workspace folder:
 MyCrownJewelApp.Pfpad.exe <folder_path>
 
@@ -44,7 +44,7 @@ bash scripts/terraform-check.sh
 bash scripts/bicep-check.sh
 ```
 
-> **Current test health:** 125 passed, 1 skipped (STA thread issue), 0 failed. Run takes ~38s on net9.0-windows.
+> **Current test health:** 125 passed, 1 skipped (STA thread issue), 0 failed. Run takes ~38s on net10.0-windows.
 
 ---
 
@@ -66,7 +66,7 @@ azure-ops-solo/
 
 ### Editor Architecture (`apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/`)
 
-The editor is a **single-project WinForms monolith**. There is no separate Core, Terminal, or Web assembly — all code lives in `MyCrownJewelApp.Pfpad.csproj` targeting `net8.0-windows`.
+The editor is a **single-project WinForms monolith**. There is no separate Core, Terminal, or Web assembly — all code lives in `MyCrownJewelApp.Pfpad.csproj` targeting `net10.0-windows`.
 
 **Key architectural layers:**
 
@@ -140,7 +140,7 @@ Form1.cs (~6900 lines)   ← God-class shell: all UI layout, state, and coordina
 
 ### Testing
 
-- Framework: **xUnit** (`net8.0-windows`), in `tests/MyCrownJewelApp.Tests/`.
+- Framework: **xUnit** (`net10.0-windows`), in `tests/MyCrownJewelApp.Tests/`.
 - Test class names match `*Tests.cs`. Test file mirrors source class: `IncrementalHighlighterTests.cs` tests `IncrementalHighlighter.cs`.
 - `[assembly: InternalsVisibleTo("MyCrownJewelApp.Tests")]` is declared in `Form1.cs` — tests access `internal` members directly.
 - STA thread–dependent tests (e.g., anything creating WinForms controls) must be marked `[STAThread]` or are currently skipped.
@@ -173,7 +173,7 @@ Form1.cs (~6900 lines)   ← God-class shell: all UI layout, state, and coordina
 - Three app-wide singletons are registered: `NotificationFeedService`, `UserProfileManager`, `SessionManager`.
 - Form-scoped services (`GitService`, `LintEngine`, `SymbolIndexService`, `DebugSession`, `BreakpointManager`) are **not** in DI — they are `new()`-ed as field initializers and carry per-window mutable state.
 - `Form1(bool skipInitialDocument, IServiceProvider? services)` is the primary constructor. Pass `services: null` when creating tear-away windows (no shared state needed).
-- `StartupFileLoggerProvider` writes `ILogger` output to `%LocalAppData%\MyCrownJewelApp\Pfpad\startup.log`.
+- `StartupFileLoggerProvider` writes `ILogger` output to `%LocalAppData%\Personal Flip Pad\startup.log`.
 
 
 
@@ -181,7 +181,7 @@ Form1.cs (~6900 lines)   ← God-class shell: all UI layout, state, and coordina
 - Terraform backend is **local-only** (backend config is commented out in `infra/` — do not uncomment without setting up the remote backend first).
 - Azure resource names use standard abbreviations: `rg-`, `vnet-`, `kv-`, `app-`, etc.
 - Bicep templates are in `bicep/`; Terraform is in `infra/`. They are separate stacks, not linked.
-- `PersonalFlipPad-Setup-1.0.18.0.exe` in `deploy/` is untracked and must **not** be committed.
+- `pfpad-Setup-1.0.46.0.exe` in `apps/MyCrownJewelApp/installer/output/` is untracked and must **not** be committed.
 
 ### Build Metadata
 
@@ -198,5 +198,5 @@ Form1.cs (~6900 lines)   ← God-class shell: all UI layout, state, and coordina
 
 ## .NET 10 Migration Status
 
-The machine has .NET SDK `10.0.300-preview` installed but the app still targets `net8.0-windows`.  
-See `docs/NET10_MIGRATION_ANALYSIS.md` for the full migration plan and re-implementation recommendations.
+The machine has .NET SDK `10.0.300` installed and the app now targets `net10.0-windows`.  
+See `docs/NET10_MIGRATION_ANALYSIS.md` for the migration record and follow-up recommendations.

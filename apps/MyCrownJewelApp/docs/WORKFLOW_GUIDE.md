@@ -496,7 +496,7 @@ Once a repo is cloned externally and opened in Pfpad:
 | `recent.txt` | Same directory | Last 10 files (persisted, clearable) |
 | Breakpoints JSON | `%APPDATA%\MyCrownJewelApp\TextEditor\` | Breakpoint positions, conditions, hit counts |
 | `feed_config.json` | `%APPDATA%\MyCrownJewelApp\Notifications\` | RSS feed URLs, intervals, enabled state |
-| `crash.log` | `%LOCALAPPDATA%\MyCrownJewelApp\Pfpad\` | Startup/fatal crash stack traces |
+| `crash.log` | `%LOCALAPPDATA%\Personal Flip Pad\` | Startup/fatal crash stack traces |
 
 Settings are saved **automatically on toggle** — no manual "save settings" step required.
 
@@ -649,4 +649,4 @@ These are the most impactful workflow gaps, extracted from `SOLUTION_IDE_ASSESSM
 
 ---
 
-*This document describes the workflow as of v1.0.16. The gaps are well-understood and documented in `SOLUTION_IDE_ASSESSMENT.md` and `FEATURE_TRACKER.md`. Many of these items are planned for future releases.*
+*This document describes the workflow as of v1.0.46. Remaining gaps are documented in `SOLUTION_IDE_ASSESSMENT.md` and `FEATURE_TRACKER.md` and are being iterated over incrementally.*

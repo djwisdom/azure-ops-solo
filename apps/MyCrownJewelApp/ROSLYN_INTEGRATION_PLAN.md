@@ -93,7 +93,7 @@
 ## Reference Assembly Bundling
 
 The `ReferenceAssemblyProvider` locates .NET reference assemblies from:
-1. `%DOTNET_ROOT%/packs/Microsoft.NETCore.App.Ref/<version>/ref/net8.0/` (SDK install)
+1. `%DOTNET_ROOT%/packs/Microsoft.NETCore.App.Ref/<version>/ref/net10.0/` (SDK install)
 2. `%ProgramFiles%/dotnet/packs/...` (fallback)
 3. Embedded resource fallback in `dist/ref-assemblies/`
 

@@ -1,6 +1,6 @@
 # Personal Flip Pad — Feature Tracker
 
-**Current version:** 1.0.18.0
+**Current version:** 1.0.46.0
 **Last updated:** 2026-05-08
 
 ## Legend
@@ -274,7 +274,7 @@
 | Variables + watch panel | `Debugger/DebugVariablesPanel.cs` | ✅ | 1.0.10.0 | Locals/autos tree, watch expressions, expand objects |
 | Debug menu (Run > Debug) | `Form1.Designer.cs` | ✅ | 1.0.10.0 | Start/Stop/Continue/Step Over/Into/Out + Toggle Breakpoint |
 | Keyboard shortcuts | `Form1.cs` | ✅ | 1.0.10.0 | F5 (start/continue), Shift+F5 (stop), F9 (bp toggle), F10 (over), F11 (into), Shift+F11 (out) |
-| Auto-detect project/build output | `Form1.cs` | ✅ | 1.0.10.0 | Walks parent dirs for .csproj, finds bin/Debug/net8.0/*.dll |
+| Auto-detect project/build output | `Form1.cs` | ✅ | 1.0.10.0 | Walks parent dirs for .csproj, finds `bin/Debug/net10.0/*.dll` with legacy fallback support |
 | One-click build before debug | `Form1.cs` | ✅ | 1.0.10.0 | Prompts to build if no output found, runs `dotnet build` |
 
 | Audit Finding | Source File(s) | Status | Version | Notes |

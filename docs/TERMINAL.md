@@ -1,6 +1,6 @@
 # Built-in Terminal — Personal Flip Pad (Pfpad)
 
-**App version:** 1.0.33.0 · **Target:** net10.0-windows  
+**App version:** 1.0.46.0 · **Target:** net10.0-windows  
 **Last updated:** 2026-06-16
 
 ---

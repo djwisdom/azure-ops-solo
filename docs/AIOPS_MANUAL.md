@@ -1,6 +1,6 @@
 # AIOps Manual — Personal Flip Pad (Pfpad)
 
-> **Version:** 1.0.44.0+  
+> **Version:** 1.0.46.0+  
 > **Target framework:** net10.0-windows  
 > **Last updated:** 2026-06-20
 
@@ -430,7 +430,7 @@ Builds a full `OperationalContext` record by joining the resolved service name w
 
 Writes an append-only JSON Lines audit trail to:
 ```
-%LocalAppData%\MyCrownJewelApp\Pfpad\aiops-audit.jsonl
+%LOCALAPPDATA%\Personal Flip Pad\aiops-audit\aiops-audit-YYYYMMDD.log
 ```
 
 Entries include: timestamp, event type (`SecurityFinding`, `Recommendation`, `PolicyViolation`, `RcaGenerated`), severity, and confidence score. Credential/PII fields are redacted before logging.

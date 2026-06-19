@@ -1,6 +1,6 @@
 # Developer Workflow Analysis — Personal Flip Pad (Pfpad)
 
-**Target:** v1.0.20 — WinForms C# code editor, .NET 8.0-windows  
+**Target:** v1.0.46 — WinForms C# code editor, .NET 10.0-windows  
 **Role:** Solo developer using Pfpad as primary editing environment  
 **Date:** 2026-05-08 (Updated 2026-05-09)
 
@@ -18,7 +18,7 @@ This document analyzes 5 fundamental developer entry points:
 | B | Open a project or solution | 🟡 Partial (no solution explorer, Roslyn auto-discovers, needs status indicator) |
 | C | Open a local folder | ✅ Primary path (works well) |
 | D | Create a new project | 🟡 Terminal-only, no UI wizard |
-| E | Continue without code | ❌ No session restore, no welcome page |
+| E | Continue without code | 🟡 Session restore exists; no welcome page |
 
 ---
 
@@ -472,7 +472,7 @@ Phase 1 — New Project Dialog (1.5 days)
 │   │   ├── Project name textbox (default: "MyApp")
 │   │   ├── Location picker (FolderBrowserDialog, default: last workspace parent)
 │   │   ├── "Create solution file (.sln)" checkbox
-│   │   ├── Framework dropdown (net8.0, net9.0 — from dotnet --list-sdks)
+│   │   ├── Framework dropdown (available SDKs from `dotnet --list-sdks`, typically `net10.0`, `net9.0`, `net8.0`)
 │   │   └── Create + Cancel buttons
 │   │
 │   ├── On Create:
