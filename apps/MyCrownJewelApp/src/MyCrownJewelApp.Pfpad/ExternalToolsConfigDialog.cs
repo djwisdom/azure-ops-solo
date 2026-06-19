@@ -71,7 +71,6 @@ internal sealed class ExternalToolsConfigDialog : Form
         var split = new SplitContainer
         {
             Dock = DockStyle.Fill,
-            SplitterDistance = 220,
             Panel1MinSize = 160,
             Panel2MinSize = 380,
             BackColor = _theme.Border,
@@ -89,6 +88,15 @@ internal sealed class ExternalToolsConfigDialog : Form
 
         Controls.Add(split);
         Controls.Add(CreateBottomActionBar());
+
+        // SplitterDistance must be set after layout — the SplitContainer has no width yet in ctor.
+        Load += (_, _) =>
+        {
+            int desired = 220;
+            int max = split.Width - split.Panel2MinSize - split.SplitterWidth;
+            if (max > split.Panel1MinSize)
+                split.SplitterDistance = Math.Clamp(desired, split.Panel1MinSize, max);
+        };
 
         AcceptButton = _okButton;
         CancelButton = _cancelButton;
