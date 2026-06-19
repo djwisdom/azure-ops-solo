@@ -1626,7 +1626,7 @@ namespace MyCrownJewelApp.Pfpad
             // Handle :version
             if (cmd == "version")
             {
-                CommandFeedback?.Invoke("Pfpad Vim Mode 1.0");
+                CommandFeedback?.Invoke(BuildVersionString());
                 return;
             }
 
@@ -1635,12 +1635,6 @@ namespace MyCrownJewelApp.Pfpad
             if (cmd == "set")
             {
                 CommandFeedback?.Invoke($"nu={(ShowLineNumbers ? "on" : "off")} rnu={(RelativeNumbers ? "on" : "off")} gutter={(GutterVisible ? "on" : "off")}");
-                return;
-            }
-
-            if (cmd == "version")
-            {
-                CommandFeedback?.Invoke("Pfpad Vim Mode 1.0");
                 return;
             }
 
@@ -2730,5 +2724,35 @@ namespace MyCrownJewelApp.Pfpad
 
         // Overload for test compatibility and simple macro playback
         public bool ProcessKey(Keys key) => ProcessKey(key, false, false, false);
+
+        private static string BuildVersionString()
+        {
+            try
+            {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+
+                var fileVerAttr = asm.GetCustomAttributes(typeof(System.Reflection.AssemblyFileVersionAttribute), false);
+                string version = fileVerAttr.Length > 0
+                    ? ((System.Reflection.AssemblyFileVersionAttribute)fileVerAttr[0]).Version
+                    : asm.GetName().Version?.ToString() ?? "0.0.0.0";
+
+                string commit = "unknown";
+                string buildDate = "unknown";
+                foreach (System.Reflection.AssemblyMetadataAttribute attr in
+                    asm.GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false))
+                {
+                    if (attr.Key == "CommitHash" && !string.IsNullOrEmpty(attr.Value))
+                        commit = attr.Value.Length >= 8 ? attr.Value[..8] : attr.Value;
+                    else if (attr.Key == "BuildDate" && !string.IsNullOrEmpty(attr.Value))
+                        buildDate = attr.Value;
+                }
+
+                return $"Personal Flip Pad  v{version}  |  commit {commit}  |  built {buildDate}  |  .NET {Environment.Version.Major} (net{Environment.Version.Major}.0-windows)";
+            }
+            catch
+            {
+                return "Personal Flip Pad — version info unavailable";
+            }
+        }
     }
 }
