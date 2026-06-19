@@ -26,6 +26,8 @@ public sealed class FavoritesService
 
     public event Action? Changed;
 
+    private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
+
     private FavoritesService()
     {
         Load();
@@ -57,10 +59,7 @@ public sealed class FavoritesService
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        File.WriteAllText(_storagePath, JsonSerializer.Serialize(Items, new JsonSerializerOptions
-        {
-            WriteIndented = true
-        }));
+        File.WriteAllText(_storagePath, JsonSerializer.Serialize(Items, _jsonOptions));
     }
 
     public FavItem AddUrl(string name, string url, string? parentId = null)

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -34,25 +35,23 @@ internal static class YouTubeAdBlocker
         "imasdk.googleapis.com/js/sdkloader",  // IMA SDK — serves video ads
     ];
 
+    // SearchValues<string> for SIMD-accelerated multi-pattern substring search (.NET 9+).
+    private static readonly SearchValues<string> _adUrlSearchValues =
+        SearchValues.Create(_adUrlSubstrings, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Returns true if the request URL is a known YouTube / Google ad serving or
-    /// tracking endpoint that should be suppressed.  O(n) — n is small (~15).
+    /// tracking endpoint that should be suppressed.
     /// </summary>
     public static bool IsAdRequest(string url)
     {
         if (string.IsNullOrEmpty(url)) return false;
-        // Fast pre-check — avoid lower-casing if the URL clearly isn't relevant
+        // Fast pre-check — avoid SearchValues scan if the URL clearly isn't relevant
         if (!url.Contains("youtube") && !url.Contains("doubleclick") &&
             !url.Contains("googlead") && !url.Contains("imasdk"))
             return false;
 
-        string lower = url.ToLowerInvariant();
-        foreach (string pattern in _adUrlSubstrings)
-        {
-            if (lower.Contains(pattern))
-                return true;
-        }
-        return false;
+        return url.AsSpan().ContainsAny(_adUrlSearchValues);
     }
 
     // ── Content script ───────────────────────────────────────────────────────

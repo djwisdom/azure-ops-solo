@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -86,6 +88,14 @@ internal sealed class BrowserPanel : UserControl
         }
     }
 
+    // ── Cached static resources ───────────────────────────────────────────────
+    /// <summary>Segoe MDL2 Assets font for nav button glyphs — shared across all button paint events.</summary>
+    private static readonly Font _navIconFont = new("Segoe MDL2 Assets", 15f, FontStyle.Regular, GraphicsUnit.Point);
+
+    /// <summary>Standard browser zoom levels used by AdjustZoom — avoids allocation on every zoom step.</summary>
+    private static readonly double[] _zoomStepsUp   = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0];
+    private static readonly double[] _zoomStepsDown = [5.0, 4.0, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.1, 1.0, 0.9, 0.8, 0.75, 0.67, 0.5, 0.33, 0.25];
+
     // ── State ─────────────────────────────────────────────────────────────────
     private bool _initialized;
     private bool _webViewReady;
@@ -111,13 +121,14 @@ internal sealed class BrowserPanel : UserControl
     /// <summary>Fired when the page title changes.</summary>
     public event Action<string>? PageTitleChanged;
 
-    private static readonly Dictionary<string, string> UserAgentPresets = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["default"] = "",   // empty → WebView2 uses Edge default UA
-        ["chrome"]  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-        ["firefox"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0",
-        ["safari"]  = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
-    };
+    private static readonly FrozenDictionary<string, string> UserAgentPresets =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["default"] = "",   // empty → WebView2 uses Edge default UA
+            ["chrome"]  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+            ["firefox"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0",
+            ["safari"]  = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     public BrowserPanel()
     {
@@ -1459,10 +1470,8 @@ internal sealed class BrowserPanel : UserControl
     {
         if (_webView == null || !_webViewReady) return;
         double steps = delta > 0
-            ? new[] { 0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0 }
-                .FirstOrDefault(s => s > _webView.ZoomFactor + 0.01, 5.0)
-            : new[] { 5.0, 4.0, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.1, 1.0, 0.9, 0.8, 0.75, 0.67, 0.5, 0.33, 0.25 }
-                .FirstOrDefault(s => s < _webView.ZoomFactor - 0.01, 0.25);
+            ? _zoomStepsUp.FirstOrDefault(s => s > _webView.ZoomFactor + 0.01, 5.0)
+            : _zoomStepsDown.FirstOrDefault(s => s < _webView.ZoomFactor - 0.01, 0.25);
         SetZoom(steps);
     }
 
@@ -1546,7 +1555,6 @@ internal sealed class BrowserPanel : UserControl
 
             // Glyph — reads Tag so refresh/stop can be swapped without recreating the button
             string currentGlyph = btn.Tag as string ?? glyph;
-            using var iconFont   = new Font("Segoe MDL2 Assets", 15f, FontStyle.Regular, GraphicsUnit.Point);
             var glyphColor       = en ? _currentTheme.Text : _currentTheme.Muted;
             using var glyphBrush = new SolidBrush(glyphColor);
 
@@ -1558,7 +1566,7 @@ internal sealed class BrowserPanel : UserControl
             };
             // Nudge 1px up so MDL2 glyphs appear vertically centred
             var textRect = new RectangleF(r.X, r.Y - 1, r.Width, r.Height);
-            g.DrawString(currentGlyph, iconFont, glyphBrush, textRect, sf);
+            g.DrawString(currentGlyph, _navIconFont, glyphBrush, textRect, sf);
         };
 
         return btn;
@@ -1599,6 +1607,7 @@ internal sealed class BrowserPanel : UserControl
             if (_wheelFilter != null) { Application.RemoveMessageFilter(_wheelFilter); _wheelFilter = null; }
             _zoomHideTimer.Dispose();
             _zoomPollTimer.Dispose();
+            _toolTip.Dispose();
             _favFont?.Dispose();
             _favFont = null;
             _overflowRebuildTimer?.Stop();

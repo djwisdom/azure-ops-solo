@@ -1,4 +1,6 @@
 using System;
+using System.Buffers;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -111,8 +113,11 @@ internal sealed class ContentFilterService : IDisposable
     private readonly HttpClient _http;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
-    /// <summary>Immutable domain set; replaced atomically on each recompile.</summary>
-    private volatile HashSet<string>? _blocked;
+    /// <summary>
+    /// Immutable domain set; replaced atomically on each recompile.
+    /// FrozenSet gives O(1) perfect-hash lookups — ~2× faster than HashSet for read-heavy workloads.
+    /// </summary>
+    private volatile FrozenSet<string>? _blocked;
 
     private bool _enabled = true;
     /// <summary>IDs of lists currently enabled; replaced atomically by Configure().</summary>
@@ -267,48 +272,53 @@ internal sealed class ContentFilterService : IDisposable
     private async Task DownloadStaleListsAsync(bool force, CancellationToken ct)
     {
         Directory.CreateDirectory(_cacheDir);
+        // Download all stale lists in parallel — independent HTTP requests benefit from concurrency.
+        var tasks = Enumerable.Range(0, KnownLists.Length)
+            .Select(i => DownloadOneListAsync(i, force, ct))
+            .ToList();
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
 
-        for (int i = 0; i < KnownLists.Length; i++)
+    private async Task DownloadOneListAsync(int listIndex, bool force, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var list = KnownLists[listIndex];
+        string path     = Path.Combine(_cacheDir, list.FileName);
+        string metaPath = path + ".meta";
+
+        bool stale = force || !File.Exists(path);
+        if (!stale && File.Exists(metaPath))
         {
-            ct.ThrowIfCancellationRequested();
+            if (DateTime.TryParse(File.ReadAllText(metaPath), out var cached))
+                stale = DateTime.UtcNow - cached > TimeSpan.FromDays(RefreshDays);
+        }
 
-            var list = KnownLists[i];
-            string path     = Path.Combine(_cacheDir, list.FileName);
-            string metaPath = path + ".meta";
+        if (!stale) return;
 
-            bool stale = force || !File.Exists(path);
-            if (!stale && File.Exists(metaPath))
-            {
-                if (DateTime.TryParse(File.ReadAllText(metaPath), out var cached))
-                    stale = DateTime.UtcNow - cached > TimeSpan.FromDays(RefreshDays);
-            }
+        StatusChanged?.Invoke($"Downloading {list.Name}…");
+        try
+        {
+            using var resp = await _http
+                .GetAsync(list.Url, HttpCompletionOption.ResponseHeadersRead, ct)
+                .ConfigureAwait(false);
+            resp.EnsureSuccessStatusCode();
 
-            if (!stale) continue;
+            string tmpPath = path + ".tmp";
+            await using (var fs = new FileStream(tmpPath, FileMode.Create, FileAccess.Write,
+                             FileShare.None, 65536, useAsync: true))
+                await resp.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
 
-            StatusChanged?.Invoke($"Downloading {list.Name}…");
-            try
-            {
-                using var resp = await _http
-                    .GetAsync(list.Url, HttpCompletionOption.ResponseHeadersRead, ct)
-                    .ConfigureAwait(false);
-                resp.EnsureSuccessStatusCode();
+            File.Move(tmpPath, path, overwrite: true);
+            await File.WriteAllTextAsync(metaPath, DateTime.UtcNow.ToString("O"), ct)
+                .ConfigureAwait(false);
 
-                string tmpPath = path + ".tmp";
-                await using (var fs = new FileStream(tmpPath, FileMode.Create, FileAccess.Write,
-                                 FileShare.None, 65536, useAsync: true))
-                    await resp.Content.CopyToAsync(fs, ct).ConfigureAwait(false);
-
-                File.Move(tmpPath, path, overwrite: true);
-                await File.WriteAllTextAsync(metaPath, DateTime.UtcNow.ToString("O"), ct)
-                    .ConfigureAwait(false);
-
-                StatusChanged?.Invoke($"{list.Name} updated.");
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Trace.TraceWarning($"[ContentFilter] Download failed for {list.Name}: {ex.Message}");
-                // Fall through: stale or missing cache means this list won't contribute
-            }
+            StatusChanged?.Invoke($"{list.Name} updated.");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning($"[ContentFilter] Download failed for {list.Name}: {ex.Message}");
+            // Fall through: stale or missing cache means this list won't contribute
         }
     }
 
@@ -316,36 +326,56 @@ internal sealed class ContentFilterService : IDisposable
 
     private async Task RecompileAsync(CancellationToken ct)
     {
-        var domains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
+        // Collect enabled, cached lists
+        var workItems = new List<(string Path, BlocklistFormat Format, string Name)>();
         for (int i = 0; i < KnownLists.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
             if (!_enabledListIds.Contains(KnownLists[i].Id)) continue;
-
             string path = Path.Combine(_cacheDir, KnownLists[i].FileName);
             if (!File.Exists(path)) continue;
-
-            var format = KnownLists[i].Format;
-            string listName = KnownLists[i].Name;
-            StatusChanged?.Invoke($"Parsing {listName}…");
-
-            try
-            {
-                int before = domains.Count;
-                await Task.Run(() => ParseIntoSet(path, format, domains), ct).ConfigureAwait(false);
-                Trace.TraceInformation($"[ContentFilter] {listName}: +{domains.Count - before} domains");
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Trace.TraceWarning($"[ContentFilter] Parse error for {listName}: {ex.Message}");
-            }
+            workItems.Add((path, KnownLists[i].Format, KnownLists[i].Name));
         }
 
-        // Atomic swap — readers see either the old complete set or the new complete set
-        _blocked = domains;
-        StatusChanged?.Invoke($"Content filter ready — {domains.Count:N0} domains blocked.");
-        ListsReady?.Invoke(domains.Count);
+        if (workItems.Count == 0)
+        {
+            _blocked = FrozenSet<string>.Empty;
+            StatusChanged?.Invoke("Content filter ready — 0 domains blocked.");
+            ListsReady?.Invoke(0);
+            return;
+        }
+
+        // Parse all lists in parallel — each gets its own HashSet, then we union them.
+        // Parsing is CPU-bound (regex/string ops), so Task.WhenAll gives real parallelism.
+        var parseTasks = workItems.Select(w => Task.Run(() =>
+        {
+            StatusChanged?.Invoke($"Parsing {w.Name}…");
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ParseIntoSet(w.Path, w.Format, set);
+            Trace.TraceInformation($"[ContentFilter] {w.Name}: {set.Count} domains");
+            return set;
+        }, ct)).ToList();
+
+        HashSet<string>[] results;
+        try
+        {
+            results = await Task.WhenAll(parseTasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            Trace.TraceWarning($"[ContentFilter] Parse error: {ex.Message}");
+            results = [];
+        }
+
+        var domains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var set in results) domains.UnionWith(set);
+
+        // Convert to FrozenSet for ~2× faster O(1) lookups on the hot IsBlocked path.
+        // Atomic reference swap — readers see either the old complete set or the new one.
+        _blocked = domains.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+        StatusChanged?.Invoke($"Content filter ready — {_blocked.Count:N0} domains blocked.");
+        ListsReady?.Invoke(_blocked.Count);
     }
 
     // ── Parsers ────────────────────────────────────────────────────────────────
@@ -450,13 +480,10 @@ internal sealed class ContentFilterService : IDisposable
     /// <summary>
     /// Checks whether <paramref name="host"/> or any parent domain is in the block set.
     /// E.g. "sub.ads.example.com" matches if "ads.example.com" is blocked.
+    /// Uri.Host never contains a port, so no stripping is required here.
     /// </summary>
-    private static bool IsDomainBlocked(string host, HashSet<string> blocked)
+    private static bool IsDomainBlocked(string host, FrozenSet<string> blocked)
     {
-        // Strip port if present (shouldn't happen after Uri.Host but be safe)
-        int colon = host.IndexOf(':');
-        if (colon >= 0) host = host[..colon];
-
         if (blocked.Contains(host)) return true;
 
         // Walk up: sub1.sub2.domain.tld → sub2.domain.tld → domain.tld
@@ -473,18 +500,17 @@ internal sealed class ContentFilterService : IDisposable
 
     // ── Validation ─────────────────────────────────────────────────────────────
 
+    // SIMD-accelerated character class for valid domain chars — avoids per-char branch.
+    private static readonly SearchValues<char> _validDomainChars =
+        SearchValues.Create("abcdefghijklmnopqrstuvwxyz0123456789-.");
+
     private static bool IsValidDomain(string domain)
     {
         if (string.IsNullOrEmpty(domain) || domain.Length > 253) return false;
         if (!domain.Contains('.')) return false; // must have TLD
-        if (domain.StartsWith('-') || domain.EndsWith('-')) return false;
-
-        foreach (char c in domain)
-        {
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '.')
-                return false;
-        }
-        return true;
+        if (domain[0] == '-' || domain[^1] == '-') return false;
+        // ContainsAnyExcept returns true if any char is NOT in the valid set (SIMD path)
+        return !domain.AsSpan().ContainsAnyExcept(_validDomainChars);
     }
 
     // ── IDisposable ────────────────────────────────────────────────────────────
