@@ -486,6 +486,16 @@ internal sealed class TerminalHostPanel : UserControl
         tab.Controls.Add(closeButton);
         _tabTextButtons[tab] = textButton;
         _tabCloseButtons[tab] = closeButton;
+
+        // Draw 2px accent bar at the bottom when this tab is active.
+        // Must be on the tab Panel itself — painting on _tabStrip is hidden by _tabsPanel (Dock=Fill).
+        tab.Paint += (_, e) =>
+        {
+            if (tab != _activeTab) return;
+            using var pen = new Pen(_theme.Accent, 2);
+            e.Graphics.DrawLine(pen, 0, tab.Height - 1, tab.Width, tab.Height - 1);
+        };
+
         ApplyTabVisuals(tab, active: false);
         return tab;
     }
@@ -553,6 +563,7 @@ internal sealed class TerminalHostPanel : UserControl
         _tabTextButtons[tab].Font = new Font("Segoe UI", 9f, style);
         _tabCloseButtons[tab].BackColor = backColor;
         _tabCloseButtons[tab].ForeColor = foreColor;
+        tab.Invalidate(); // trigger Paint to redraw/clear the accent bar
     }
 
     private void UpdateActionButtons()
@@ -604,15 +615,7 @@ internal sealed class TerminalHostPanel : UserControl
 
     private void TabStrip_Paint(object? sender, PaintEventArgs e)
     {
-        if (_activeTab == null)
-            return;
-
-        if (_activeTab.Parent == null)
-            return;
-
-        Point location = _tabStrip.PointToClient(_activeTab.Parent.PointToScreen(_activeTab.Location));
-        using var pen = new Pen(_theme.Accent, 2);
-        int y = _tabStrip.Height - 2;
-        e.Graphics.DrawLine(pen, location.X, y, location.X + _activeTab.Width, y);
+        // Accent underline is drawn per-tab in each tab Panel's Paint event.
+        // Drawing here was hidden by _tabsPanel (Dock=Fill) covering the strip.
     }
 }
