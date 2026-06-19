@@ -110,19 +110,63 @@ internal static class YouTubeAdBlocker
 
         if (!player.classList.contains('ad-showing')) return;
 
-        // Prefer the skip button — avoids any potential side-effects
+        // Silence the ad immediately so it isn't heard while we work to dismiss it.
+        video.muted  = true;
+        video.volume = 0;
+
+        // Prefer the skip button — avoids any potential side-effects.
+        // Dispatch synthetic mouse events in addition to .click() for stubborn buttons.
         var skipBtn = document.querySelector(
             '.ytp-ad-skip-button, .ytp-skip-ad-button, .ytp-ad-skip-button-modern');
         if (skipBtn) {
             skipBtn.click();
+            skipBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            skipBtn.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true }));
             return;
         }
 
-        // No skip button (non-skippable ad) — jump to the end to trigger completion
+        // No skip button (non-skippable or still loading).
+        // Rush through the ad at max speed so it ends as fast as possible.
+        try { video.playbackRate = 16; } catch (_) {}
+
+        // Ensure the video is actually playing (buffering/paused state recovery).
+        if (video.paused) { video.play().catch(function () {}); }
+
+        // Jump to the very end to trigger ad completion.
         if (isFinite(video.duration) && video.duration > 0) {
-            video.currentTime = video.duration;
+            video.currentTime = video.duration - 0.1;
+            return;
+        }
+
+        // Duration not yet available — ad is still buffering.
+        // Register one-shot listeners so we skip the instant it becomes ready.
+        if (!video.__pfpad_skipPending) {
+            video.__pfpad_skipPending = true;
+            var onReady = function () {
+                video.__pfpad_skipPending = false;
+                video.removeEventListener('durationchange', onReady);
+                video.removeEventListener('canplay',        onReady);
+                video.removeEventListener('playing',        onReady);
+                skipAd();
+            };
+            video.addEventListener('durationchange', onReady);
+            video.addEventListener('canplay',        onReady);
+            video.addEventListener('playing',        onReady);
         }
     }
+
+    // Restore playback rate and unmute after the ad ends.
+    document.addEventListener('video', function (e) {}, true); // keep listener alive
+    document.addEventListener('play', function () {
+        var player = document.querySelector('.html5-video-player');
+        var video  = document.querySelector('.html5-main-video');
+        if (!player || !video) return;
+        if (!player.classList.contains('ad-showing')) {
+            // Regular video resumed — restore normal playback
+            try { video.playbackRate = 1; } catch (_) {}
+            video.muted  = false;
+        }
+    }, true);
 
     // ── 3. Poll ───────────────────────────────────────────────────────────
     var _pollId = setInterval(skipAd, 300);
