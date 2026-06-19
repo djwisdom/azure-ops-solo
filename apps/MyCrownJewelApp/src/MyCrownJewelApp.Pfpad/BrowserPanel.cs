@@ -934,6 +934,9 @@ internal sealed class BrowserPanel : UserControl
     private Button MakeFavButton(string text, string? tooltip, bool isFolder)
     {
         _favFont ??= new Font("Segoe UI", 8.5f);
+        bool hovered = false;
+        bool pressed = false;
+
         var btn = new Button
         {
             Text = text,
@@ -945,12 +948,48 @@ internal sealed class BrowserPanel : UserControl
             Cursor = Cursors.Hand,
             Margin = new Padding(1, 2, 1, 2),
             TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = _currentTheme.MenuBackground,
-            ForeColor = _currentTheme.Text
+            UseVisualStyleBackColor = false
         };
         btn.FlatAppearance.BorderSize = 0;
-        btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(40, _currentTheme.Text);
+        btn.FlatAppearance.MouseOverBackColor = Color.Transparent;
+        btn.FlatAppearance.MouseDownBackColor = Color.Transparent;
         if (tooltip != null) _toolTip.SetToolTip(btn, tooltip);
+
+        btn.MouseEnter += (_, _) => { hovered = true;  btn.Invalidate(); };
+        btn.MouseLeave += (_, _) => { hovered = false; pressed = false; btn.Invalidate(); };
+        btn.MouseDown  += (_, _) => { pressed = true;  btn.Invalidate(); };
+        btn.MouseUp    += (_, _) => { pressed = false; btn.Invalidate(); };
+
+        btn.Paint += (_, e) =>
+        {
+            var g = e.Graphics;
+            var r = btn.ClientRectangle;
+
+            g.SmoothingMode      = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+            // Fill flat background to match the fav bar
+            using (var bg = new SolidBrush(_currentTheme.MenuBackground))
+                g.FillRectangle(bg, r);
+
+            // Rounded-rect hover / press highlight — same pill style as nav buttons
+            if (hovered)
+            {
+                int alpha = pressed ? 48 : 20;
+                var pad = new Rectangle(r.X + 1, r.Y + 2, r.Width - 2, r.Height - 4);
+                using var hvrBrush = new SolidBrush(Color.FromArgb(alpha, _currentTheme.Text));
+                using var path     = NavBtnHoverPath(pad, 5);
+                g.FillPath(hvrBrush, path);
+            }
+
+            // Text
+            var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                      | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis
+                      | TextFormatFlags.NoPadding;
+            TextRenderer.DrawText(e.Graphics, btn.Text, btn.Font, r,
+                btn.Enabled ? _currentTheme.Text : _currentTheme.Muted, flags);
+        };
+
         return btn;
     }
 
