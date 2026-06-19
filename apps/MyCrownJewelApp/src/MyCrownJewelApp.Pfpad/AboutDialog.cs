@@ -445,7 +445,7 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Vim mode, snippets, command palette, folding, bookmarks, and multi-tab session restore");
         featuresText.AppendLine("• Large-file degradation safeguards to keep the editor responsive");
         featuresText.AppendLine();
-        featuresText.AppendLine("Built-in browser (v1.0.37):");
+        featuresText.AppendLine("Built-in browser (v1.0.38):");
         featuresText.AppendLine("• WebView2-powered browser tabs in the main editor tab strip — side-by-side with file tabs");
         featuresText.AppendLine("• Multiple independent browser tabs (Ctrl+Shift+T); each with full navigation history");
         featuresText.AppendLine("• Edge-style pill address bar (radius 18) with smart left glyph: 🔍 magnifying glass (empty/search), 🌐 globe (domain/URL), 🔒 lock (HTTPS), ℹ info (HTTP)");
@@ -453,15 +453,21 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• 🌙/☀ Page dark mode toggle button — inverts page colors (images/video counter-inverted); persists across navigation");
         featuresText.AppendLine("• View Site Information flyout — certificate, live cookies count, tracker blocking, permissions drill-downs");
         featuresText.AppendLine("• YouTube ad blocking: URL-pattern filter + JS content script auto-skips pre-roll and mid-roll ads");
+        featuresText.AppendLine("  — Buffering ads handled: muted + 16× speed + durationchange listener forces skip when duration resolves");
         featuresText.AppendLine("• Large distinct nav buttons (Back, Forward, Refresh) matching Edge sizing");
         featuresText.AppendLine("• Go button + Developer Tools (F12) with Segoe MDL2 Assets glyphs");
         featuresText.AppendLine("• Favorites bar with draggable splitter in Manage view; Move Up/Down (Alt+↑/↓); re-order persists");
-        featuresText.AppendLine("• Overflow '»' dropdown pre-built after resize settles (250ms debounce) — instant display like Edge");
+        featuresText.AppendLine("• Favorites bar height increased (34px) for comfortable touch + mouse use");
+        featuresText.AppendLine("• Edge-style rounded hover highlights on all favorites bar buttons (radius=5, semi-transparent)");
+        featuresText.AppendLine("• Overflow '›' button: rounded hover highlight + single right-pointing chevron (no more '»')");
+        featuresText.AppendLine("• Overflow dropdown pre-built after resize settles (250ms debounce) — instant display like Edge");
         featuresText.AppendLine("• Manage Favorites: Add Favorite (Ctrl+D), Add Folder, delete, rename — Edge favorites-style panel");
-        featuresText.AppendLine("• Enterprise ad/tracker blocking via EasyList, EasyPrivacy, Peter Lowe blocklists");
+        featuresText.AppendLine("• Enterprise ad/tracker blocking via 7 blocklists:");
+        featuresText.AppendLine("  EasyList, EasyPrivacy, Peter Lowe, Fanboy Annoyance, I Don't Care About Cookies, Hagezi Pro, URLhaus Malware Hosts");
         featuresText.AppendLine("• Configurable user agent to prevent Edge fingerprinting");
         featuresText.AppendLine("• Ephemeral profile mode for untrusted workspaces (no cookies/cache persisted)");
         featuresText.AppendLine("• Per-session settings: homepage, max history, localhost links, default zoom, title bar display");
+        featuresText.AppendLine("• 'fp' monogram app icon (blue tile, Segoe UI Bold) embedded in exe — pinned taskbar shortcut shows correct icon");
         featuresText.AppendLine();
         featuresText.AppendLine("Security hardening:");
         featuresText.AppendLine("• Graded security profiles: Not Hardened → Low → Mid → Max");
@@ -583,7 +589,7 @@ public sealed partial class AboutDialog : Form
 
         AddPageRow(layout, CreateWrappingLabel("Personal Flip Pad is built as a WinForms editor shell with .NET, custom controls, and theme-aware UI infrastructure.", _contentWidth, _theme.Muted), _sectionGap);
         AddPageRow(layout, CreateLabel("Third-party acknowledgements", "Segoe UI", Scale(10), FontStyle.Bold, _theme.Text), _rowGap);
-        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• Microsoft WebView2 for the integrated browser\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows DPAPI (System.Security.Cryptography) for at-rest settings encryption\r\n• EasyList, EasyPrivacy, Peter Lowe blocklists for browser content filtering\r\n• App icon generated at runtime via GDI+ (AppIconFactory)", _contentWidth, _theme.Muted), _rowGap);
+        AddPageRow(layout, CreateWrappingLabel("• Microsoft .NET / WinForms for the application platform\r\n• Roslyn (Microsoft.CodeAnalysis) for language services\r\n• Microsoft WebView2 for the integrated browser\r\n• LibGit2Sharp for Git operations\r\n• TreeSitter.DotNet for optional parsing support\r\n• System.IO.Hashing for hashing utilities\r\n• Windows DPAPI (System.Security.Cryptography) for at-rest settings encryption\r\n• EasyList, EasyPrivacy, Peter Lowe, Fanboy Annoyance, I Don't Care About Cookies, Hagezi Pro DNS Blocklist, URLhaus Malware Hosts — browser content filtering\r\n• App icon generated at runtime via GDI+ (AppIconFactory); embedded as AppIcon.ico for pinned taskbar shortcuts", _contentWidth, _theme.Muted), _rowGap);
         AddPageRow(layout, CreateWrappingLabel("Thanks to the broader OSS ecosystem that makes desktop developer tooling possible.", _contentWidth, _theme.Disabled));
 
         page.Controls.Add(layout);

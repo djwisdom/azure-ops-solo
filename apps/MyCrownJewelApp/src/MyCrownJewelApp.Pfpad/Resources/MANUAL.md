@@ -1,6 +1,6 @@
 # Personal Flip Pad — User Manual
 
-**Version 1.0.36.0**
+**Version 1.0.38.0**
 
 Personal Flip Pad (pfpad) is a flat-themed, AIOps-aware developer editor and IDE for Windows. It combines code editing, DevSecOps scanning, observability intelligence, Git integration, and AI-assisted operational insights into a single workflow. pfpad also includes a built-in graded security hardening system that lets you progressively harden your environment as your needs grow.
 
@@ -438,8 +438,8 @@ Click the **🌙 moon button** in the toolbar to force a dark color scheme on an
 
 When enabled in **Settings > Features > Browser > Show Favorites Bar**, the bar below the toolbar displays your saved favorites:
 
-- Items that fit appear as inline buttons
-- Overflow items appear in a **»** dropdown menu (including folder submenus)
+- Items that fit appear as inline buttons with **rounded hover highlights** (Edge-style pill, radius=5)
+- Overflow items appear in a **›** dropdown button at the right end of the bar; the button also has rounded hover highlights
 - The overflow menu is **pre-built in the background** after resize settles — opening it is instant regardless of how many items are hidden
 
 #### Manage Favorites
@@ -458,6 +458,7 @@ When Content Filtering is enabled, the browser also blocks YouTube ads:
 
 - Known YouTube ad URL patterns are blocked at the network layer
 - A JavaScript content script auto-skips any remaining pre-roll or mid-roll ads
+- **Buffering ads** (non-skippable, yellow progress bar that stalls): the script immediately mutes the video, sets playback speed to 16×, and registers a `durationchange` listener — skip fires as soon as the browser resolves the ad's duration
 - The script is injected only on `youtube.com` pages — no overhead on other sites
 
 ### Content Filtering
@@ -467,9 +468,13 @@ When **Settings > Features > Browser > Content Filtering** is enabled, the brows
 - **EasyList** — ads and banners
 - **EasyPrivacy** — tracking scripts
 - **Peter Lowe's list** — ad servers
+- **Fanboy's Annoyance List** — social widgets, cookie notices, push prompts
+- **I Don't Care About Cookies** — cookie consent banners
+- **Hagezi Pro DNS Blocklist** — multi-source ad/tracking aggregator
+- **URLhaus Malware Hosts** — known malware distribution URLs
 - **YouTube Ad Blocker** — URL patterns + JS skip script
 
-Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` and `WebResourceRequested` interception — no extension required.
+Lists are fetched and cached on first use. Blocking happens via `NavigationStarting` and `WebResourceRequested` interception — no extension required. Each list can be individually enabled or disabled in **Settings > Security > Content Filters**.
 
 ### Browser Settings
 
@@ -484,6 +489,13 @@ All browser settings live under **Settings > Features > Browser**:
 | Default zoom | Default zoom level (%) for all pages |
 | Show in title bar | Mirror page title in the main window title bar |
 | Content filtering | Enable/disable blocklist-based ad blocking |
+| Filter: EasyList | Toggle EasyList individually |
+| Filter: EasyPrivacy | Toggle EasyPrivacy individually |
+| Filter: Peter Lowe | Toggle Peter Lowe's list individually |
+| Filter: Fanboy Annoyance | Toggle Fanboy Annoyance list individually |
+| Filter: IDCAC | Toggle I Don't Care About Cookies individually |
+| Filter: Hagezi Pro | Toggle Hagezi Pro DNS blocklist individually |
+| Filter: URLhaus | Toggle URLhaus Malware Hosts individually |
 | Custom user agent | Override the browser UA string sent to sites |
 | Show favorites bar | Show/hide the favorites bar |
 | Favorites source | Path to the Edge `Bookmarks` JSON file |

@@ -20,9 +20,10 @@ If you're new to pfpad, don't worry. You do **not** need to memorize everything 
 10. [For C# Developers](#10-for-c-developers)
 11. [For C Developers](#11-for-c-developers)
 12. [For C++ Developers](#12-for-c-developers)
-13. [Security Hardening](#13-security-hardening)
-14. [Keyboard Shortcuts Reference](#14-keyboard-shortcuts-reference)
-15. [Troubleshooting & FAQ](#15-troubleshooting--faq)
+13. [Built-in Browser](#13-built-in-browser)
+14. [Security Hardening](#14-security-hardening)
+15. [Keyboard Shortcuts Reference](#15-keyboard-shortcuts-reference)
+16. [Troubleshooting & FAQ](#16-troubleshooting--faq)
 
 ---
 
@@ -1300,5 +1301,96 @@ personal development machines.
 
 For complete details, transition behaviour, FAQ, and build-time status explanation, see
 **Help > Manual → 🔒 Security Hardening** tab inside the app.
+
+---
+
+# 13. Built-in Browser
+
+pfpad includes a **WebView2-powered browser** that opens as tabs directly in the main editor tab strip — side-by-side with your code files.
+
+## 13.1 Opening a Browser Tab
+
+Press **Ctrl+Shift+T** or go to **File > New Browser Tab**. Each browser tab is independent and has its own navigation history.
+
+## 13.2 The Address Bar
+
+The address bar is an Edge-style pill shape. As you type:
+
+| Left glyph | When |
+|---|---|
+| 🔍 Magnifying glass | Empty bar, or plain search text |
+| 🌐 Globe | Typing a domain or URL |
+| 🔒 Lock | Loaded HTTPS page |
+| ℹ Info | Loaded HTTP / local page |
+
+Click the left glyph on a loaded page to open a **Site Information flyout** showing connection security, live cookies count, tracker blocking stats, and permissions.
+
+The **⭐ star** on the right saves the current page to your Favorites. An empty star means not saved; a gold filled star means it's already saved. Click the star or press **Ctrl+D** to add, edit, or remove.
+
+## 13.3 Navigation Controls
+
+| Control | Shortcut |
+|---|---|
+| ← Back | Alt+Left |
+| → Forward | Alt+Right |
+| ↺ Refresh | F5 |
+| 🌙 / ☀️ Dark mode | Toggle — inverts page colors; images and video stay natural |
+| 🛠 DevTools | F12 |
+| ⧉ Open external | Open current page in your system browser |
+
+## 13.4 Favorites Bar
+
+Enable the bar in **Settings > Features > Browser > Show Favorites Bar**.
+
+- Favorite buttons show **rounded hover highlights** (Edge-style pill shape)
+- When too many favorites to fit, a **›** overflow button appears at the right — click it for the rest
+- The overflow menu is pre-built in the background after each resize, so it opens instantly
+
+### Managing Favorites
+
+Click **Manage** in the favorites bar:
+
+- **Add Favorite** — saves the current page (or Ctrl+D in any tab)
+- **Add Folder** — group favorites into a folder
+- **Move Up / Down** — reorder with **Alt+↑** / **Alt+↓**
+- **Delete** — remove selected item or folder
+- Drag the splitter between the folder tree and item list to resize panels
+
+## 13.5 YouTube Ad Blocking
+
+When Content Filtering is on, the browser blocks YouTube ads automatically:
+
+- Network-layer block of known YouTube ad URL patterns
+- JS content script auto-skips pre-roll and mid-roll ads
+- **Buffering (yellow bar) ads** — mutes the video, sets speed to 16×, and listens for `durationchange` to fire the skip the moment the browser resolves duration. No more infinite buffering stall.
+
+## 13.6 Content Filtering
+
+Enable in **Settings > Security > Content Filters**. Seven blocklists are available — each individually toggleable:
+
+| List | Blocks |
+|---|---|
+| EasyList | Ads and banners |
+| EasyPrivacy | Tracking scripts |
+| Peter Lowe's list | Ad servers |
+| Fanboy Annoyance | Social widgets, cookie banners, push prompts |
+| I Don't Care About Cookies | Cookie consent popups |
+| Hagezi Pro | Multi-source ad/tracker aggregator |
+| URLhaus Malware Hosts | Malware distribution URLs |
+
+Lists are downloaded and cached on first use. Blocking requires no browser extension — it happens at the WebView2 network layer.
+
+## 13.7 Browser Settings
+
+All browser settings live under **Settings > Features > Browser**:
+
+- **Home page** — URL loaded when opening a new tab
+- **Max history entries** — cap on per-tab history
+- **Ephemeral storage** — no cookies or cache survive the session (good for untrusted sites)
+- **Allow localhost links** — enable `localhost` / `127.0.0.1` navigation
+- **Default zoom** — zoom level (%) for all pages
+- **Custom user agent** — override the UA string (prevents Edge fingerprinting)
+- **Show favorites bar** — toggle the favorites bar
+- **Show in title bar** — mirror page title in the window title bar
 
 ---

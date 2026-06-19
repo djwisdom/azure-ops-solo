@@ -10,10 +10,10 @@
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
     <ApplicationIcon>AppIcon.ico</ApplicationIcon>
-    <ApplicationVersion>1.0.37.0</ApplicationVersion>
-    <Version>1.0.37.0</Version>
-    <AssemblyVersion>1.0.37.0</AssemblyVersion>
-    <FileVersion>1.0.37.0</FileVersion>
+    <ApplicationVersion>1.0.38.0</ApplicationVersion>
+    <Version>1.0.38.0</Version>
+    <AssemblyVersion>1.0.38.0</AssemblyVersion>
+    <FileVersion>1.0.38.0</FileVersion>
     <Company>Personal Flip Pad</Company>
     <Description>AIOps-aware developer editor with code editing, DevSecOps scanning, observability intelligence, Git integration, Roslyn IntelliSense, minimap, Vim mode, flat theme system, graded security hardening (Not Hardened / Low / Mid / Max) with DPAPI-encrypted settings and guided transition wizard, and AI-assisted operational insights.</Description>
     <Copyright>Copyright (c) Dennis O. Esternon 2026</Copyright>
