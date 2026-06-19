@@ -540,7 +540,7 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• ADO branch policy warning: dismissable info bar after push on Azure DevOps repos reminding of required reviewers / build validation policies");
         featuresText.AppendLine();
         featuresText.AppendLine("═══════════════════════════════════════════════");
-        featuresText.AppendLine($"  Personal Flip Pad  v1.0.45  — Feature Audit");
+        featuresText.AppendLine($"  Personal Flip Pad  v1.0.46  — Feature Audit");
         featuresText.AppendLine("═══════════════════════════════════════════════");
         featuresText.AppendLine();
         featuresText.AppendLine("Editor core:");
@@ -589,6 +589,11 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• BitbucketConnector: pipelines, pull requests via Bitbucket Cloud REST API 2.0 (Basic auth)");
         featuresText.AppendLine("• MockDataConnector: deterministic synthetic data for offline development/demo");
         featuresText.AppendLine("• All connectors: DPAPI-encrypted credential storage; auto-connect on startup; graceful Error state on failure");
+        featuresText.AppendLine();
+        featuresText.AppendLine("v1.0.46 — Editor & tooling (current):");
+        featuresText.AppendLine("• Minimap: mouse-wheel scrolls the minimap viewport independently from the editor — pan the code map without moving the cursor; click to jump. Handled via both OnMouseWheel and WndProc(WM_MOUSEWHEEL) so the minimap receives scroll events reliably regardless of focus (TabStop=false).");
+        featuresText.AppendLine("• Vim mode :version — outputs Pfpad build info: version number, git commit hash (short), build date, and .NET runtime. Reads AssemblyFileVersionAttribute + AssemblyMetadataAttribute(CommitHash/BuildDate) injected by GenerateBuildMetadata.ps1. Duplicate :version handler also removed.");
+        featuresText.AppendLine("• AIOps documentation — comprehensive AIOPS_MANUAL.md in docs/ covering all 10 UI panels, 13 engine components, 9 connectors, inline annotations, DPAPI secret management, AI safety model, and architecture diagram. Completes the AIOps v2 redesign checklist.");
         featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 

@@ -56,7 +56,7 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.45**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.46**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
@@ -82,8 +82,10 @@ dotnet build --configuration Release
 - **Git Workflow (Pre-PR):** Pre-commit gate (secret scan + hook shim); staged-file review dialog; Conventional Commit composer with live preview; CI status badge (all 4 platforms)
 - **Multi-platform Git:** Auto-detects GitHub / Azure DevOps / GitLab / Bitbucket / Gitea; platform badge; PR/MR template reader; CODEOWNERS hints; platform-correct PR-creation URL; footer placeholder adapts per platform
 - **Git UX:** ⎇ Open PR/MR button; `NewBranchDialog` (prefix/ticket/description/live preview); CODEOWNERS reviewer hints in pre-commit banner
-- **AIOps connectors (v1.0.44–45):** `GitLabConnector` (API v4, PRIVATE-TOKEN); `BitbucketConnector` (REST 2.0, Basic auth); `AzureDevOpsConnector` + `IPullRequestCapable` (API 7.1); `GitHubActionsConnector`; `AzureMonitorConnector`; `KubernetesConnector`; `PrometheusConnector`; `PagerDutyConnector` — all with DPAPI credential storage
+- **AIOps connectors (v1.0.44–46):** `GitLabConnector` (API v4, PRIVATE-TOKEN); `BitbucketConnector` (REST 2.0, Basic auth); `AzureDevOpsConnector` + `IPullRequestCapable` (API 7.1); `GitHubActionsConnector`; `AzureMonitorConnector`; `KubernetesConnector`; `PrometheusConnector`; `PagerDutyConnector` — all with DPAPI credential storage; full `AIOPS_MANUAL.md` reference in `docs/`
 - **ADO branch-policy warning:** Dismissable info bar after push to Azure DevOps repos (auto-hides 12 s)
+- **Minimap scroll (v1.0.46):** Mouse wheel over the minimap scrolls the minimap viewport independently — pan the code map without moving the editor cursor; click to jump
+- **Vim `:version` (v1.0.46):** Reports Pfpad version, git commit hash (short), build date, and .NET runtime instead of a stub string
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

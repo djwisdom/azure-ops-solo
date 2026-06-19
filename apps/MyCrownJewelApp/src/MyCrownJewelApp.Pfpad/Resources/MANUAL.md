@@ -203,6 +203,8 @@ Toggle it from:
 
 By default it uses **50% opacity** and adjusts with the scrollbar.
 
+**Scrolling the minimap independently:** Roll the mouse wheel while hovering over the minimap to pan the minimap viewport up or down without moving the editor cursor. This lets you browse the code map for a section you want to jump to, then click to navigate there.
+
 ### Themes
 pfpad includes **22 built-in themes**.
 
@@ -452,7 +454,17 @@ Useful commands:
 - `n` = next match
 - `N` = previous match
 
-## 6.6 Snippets still work
+## 6.6 Vim `:version`
+
+Type `:version` in command mode to see build info for the current pfpad installation:
+
+```
+Personal Flip Pad  v1.0.46.0  |  commit 91ac875e  |  built 2026-06-20 ...  |  .NET 10 (net10.0-windows)
+```
+
+This shows the version number, short git commit hash, build date injected at compile time, and the .NET runtime version.
+
+## 6.7 Snippets still work
 In insert mode, snippets expand with **Tab**.
 
 That means Vim users still get the fast templating benefits of pfpad.
