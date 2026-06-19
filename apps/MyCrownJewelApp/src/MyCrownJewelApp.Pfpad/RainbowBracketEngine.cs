@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 
 namespace MyCrownJewelApp.Pfpad;
@@ -52,15 +53,15 @@ internal enum ParseState
 
 public sealed class RainbowBracketEngine
 {
-    private static readonly HashSet<char> _openBraces = ['{', '[', '('];
-    private static readonly Dictionary<char, char> _closeToOpen = new()
+    private static readonly FrozenSet<char> _openBraces = new HashSet<char> { '{', '[', '(' }.ToFrozenSet();
+    private static readonly FrozenDictionary<char, char> _closeToOpen = new Dictionary<char, char>
     {
         ['}'] = '{',
         [']'] = '[',
         [')'] = '('
-    };
+    }.ToFrozenDictionary();
 
-    public static RainbowBracketResult Parse(string text, int version)
+    public static RainbowBracketResult Parse(string text, int version, CancellationToken ct = default)
     {
         var brackets = new List<BracketInfo>();
         var pairs = new List<(int OpenIndex, int CloseIndex)>();
@@ -70,6 +71,7 @@ public sealed class RainbowBracketEngine
 
         for (int i = 0; i < text.Length; i++)
         {
+            if ((i & 0x3FF) == 0) ct.ThrowIfCancellationRequested(); // check every 1024 chars
             char c = text[i];
 
             switch (state)
@@ -153,7 +155,7 @@ public sealed class RainbowBracketEngine
             }
         }
 
-        return new RainbowBracketResult(version, brackets.AsReadOnly(), pairs.OrderBy(p => brackets[p.Item1].Position).ToList().AsReadOnly());
+        return new RainbowBracketResult(version, brackets.AsReadOnly(), pairs.OrderBy(p => p.Item1).ToList().AsReadOnly());
     }
 
     public static readonly Color[] DefaultPalette =

@@ -303,31 +303,97 @@ public sealed class SnippetEngine
 
         if (snippet is null) return false;
 
-        // Replace prefix with snippet body
+        // Strip $N tab-stop markers from the body, recording each marker's position in
+        // the clean text.  Markers are processed in text order so that removing earlier
+        // markers automatically shifts later ones.
+        (string cleanBody, List<(int TabStop, int Position)> stops) = StripTabStops(snippet.Body);
+
         _editor.Select(start, pos - start);
-        _editor.SelectedText = snippet.Body;
+        _editor.SelectedText = cleanBody;
 
-        // Find and position at first tab-stop ($0)
-        int bodyIndex = snippet.Body.IndexOf("$0", StringComparison.Ordinal);
-        if (bodyIndex >= 0)
-        {
-            _editor.SelectionStart = start + bodyIndex;
-            _editor.SelectionLength = 0;
-        }
-
-        // Track tab-stops for subsequent Tab presses
+        // Navigate to the first user-fillable stop ($1), falling back to $0 if absent.
         _tabStops.Clear();
-        int stopIndex = 0;
-        while (true)
-        {
-            int idx = snippet.Body.IndexOf($"${stopIndex}", StringComparison.Ordinal);
-            if (idx < 0) break;
-            _tabStops.Add((start + idx, stopIndex == 0));
-            stopIndex++;
-        }
         _currentTabStop = 0;
 
+        // Build tab-stop list sorted by stop number (1, 2, …, then 0 at the very end).
+        var ordered = stops
+            .Where(s => s.TabStop != 0)
+            .OrderBy(s => s.TabStop)
+            .Concat(stops.Where(s => s.TabStop == 0))
+            .ToList();
+
+        foreach (var (num, bodyPos) in ordered)
+            _tabStops.Add((start + bodyPos, num == 0));
+
+        // Place cursor at $1 (first user stop) or $0 (exit point) if no numbered stops.
+        if (_tabStops.Count > 0)
+        {
+            _editor.SelectionStart = _tabStops[0].Position;
+            _editor.SelectionLength = 0;
+            _editor.ScrollToCaret();
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// Returns a list of snippets whose prefix starts with <paramref name="partialPrefix"/>,
+    /// searching the active language first then "any" language snippets.
+    /// </summary>
+    public IReadOnlyList<Snippet> GetSuggestions(string partialPrefix)
+    {
+        if (string.IsNullOrEmpty(partialPrefix))
+            return [];
+
+        var results = new List<Snippet>();
+
+        foreach (var (key, snippet) in _snippets)
+        {
+            if (snippet.Language != "any" && snippet.Language != _currentLang)
+                continue;
+            if (snippet.Prefix.StartsWith(partialPrefix, StringComparison.OrdinalIgnoreCase))
+                results.Add(snippet);
+        }
+
+        results.Sort(static (a, b) => string.Compare(a.Prefix, b.Prefix, StringComparison.OrdinalIgnoreCase));
+        return results;
+    }
+
+    /// <summary>
+    /// Removes all <c>$N</c> tab-stop markers from the snippet body and returns the
+    /// clean text together with each marker's 0-based position in that clean text.
+    /// </summary>
+    private static (string CleanBody, List<(int TabStop, int Position)> Stops) StripTabStops(string body)
+    {
+        var stops = new List<(int, int)>();
+        var sb = new System.Text.StringBuilder(body.Length);
+        int i = 0;
+        int removed = 0; // chars removed so far (adjusts recorded positions)
+
+        while (i < body.Length)
+        {
+            if (body[i] == '$' && i + 1 < body.Length && char.IsDigit(body[i + 1]))
+            {
+                // Consume all consecutive digits after '$'
+                int j = i + 1;
+                while (j < body.Length && char.IsDigit(body[j]))
+                    j++;
+
+                if (int.TryParse(body.AsSpan(i + 1, j - (i + 1)), out int stopNum))
+                {
+                    int posInClean = sb.Length; // position in the clean string
+                    stops.Add((stopNum, posInClean));
+                    removed += j - i;          // skip the marker chars
+                    i = j;
+                    continue;
+                }
+            }
+
+            sb.Append(body[i]);
+            i++;
+        }
+
+        return (sb.ToString(), stops);
     }
 
     private readonly List<(int Position, bool IsFinal)> _tabStops = new();
@@ -337,22 +403,15 @@ public sealed class SnippetEngine
     {
         if (_tabStops.Count == 0) return false;
 
-        // Advance to next non-final tab stop
-        for (int i = _currentTabStop + 1; i < _tabStops.Count; i++)
-        {
-            if (!_tabStops[i].IsFinal)
-            {
-                _currentTabStop = i;
-                _editor.SelectionStart = _tabStops[i].Position;
-                _editor.SelectionLength = 0;
-                _editor.ScrollToCaret();
-                return true;
-            }
-        }
+        // Advance to the next tab stop after the current one.
+        int next = _currentTabStop + 1;
+        if (next >= _tabStops.Count) return false;
 
-        // No more tab-stops — place cursor at end of inserted text
-        _editor.SelectionStart = _editor.SelectionStart;
-        return false;
+        _currentTabStop = next;
+        _editor.SelectionStart = _tabStops[next].Position;
+        _editor.SelectionLength = 0;
+        _editor.ScrollToCaret();
+        return true;
     }
 
     public void ClearTabStops()

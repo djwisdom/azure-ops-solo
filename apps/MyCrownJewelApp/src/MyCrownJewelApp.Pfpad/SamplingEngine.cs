@@ -21,32 +21,38 @@ public sealed class SamplingEngine : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _processingTask;
 
-    private volatile bool _isRunning;
+    // System.Threading.Lock (net9+) replaces volatile bool + race-prone double-check.
+    private readonly Lock _startStopLock = new();
+    private bool _isRunning;
+
     private TimeSpan _samplingInterval = TimeSpan.FromMilliseconds(50); // 20Hz
     private int _mainThreadId;
     private TimeSpan _lastCpuTime;
     private long _sessionStartTicks;
 
-    // For UI thread blocking detection
     private long _lastUiActivityTicks;
     private static readonly long UI_BLOCKING_THRESHOLD_TICKS = Stopwatch.Frequency / 10; // 100ms
+
+    // Bounded channel prevents unbounded memory growth under load.
+    private const int ChannelCapacity = 2048;
 
     public SamplingEngine(BinaryLogger logger, int ringBufferSize = 1024)
     {
         _logger = logger;
         _ringBuffer = new RingBuffer<PerformanceSample>(ringBufferSize);
-        _sampleChannel = Channel.CreateUnbounded<PerformanceSample>(new UnboundedChannelOptions
+        _sampleChannel = Channel.CreateBounded<PerformanceSample>(new BoundedChannelOptions(ChannelCapacity)
         {
             SingleReader = true,
             SingleWriter = false,
-            AllowSynchronousContinuations = false
+            AllowSynchronousContinuations = false,
+            FullMode = BoundedChannelFullMode.DropOldest  // drop oldest sample rather than blocking
         });
 
         _samplingThread = new Thread(SamplingLoop)
         {
             Name = "PerformanceSampler",
             IsBackground = true,
-            Priority = ThreadPriority.BelowNormal // Reduce interference
+            Priority = ThreadPriority.BelowNormal
         };
 
         _processingTask = Task.Run(ProcessingLoopAsync, _cts.Token);
@@ -54,53 +60,54 @@ public sealed class SamplingEngine : IDisposable
 
     public void StartSampling(int mainThreadId)
     {
-        if (_isRunning) return;
+        lock (_startStopLock)
+        {
+            if (_isRunning) return;
 
-        _mainThreadId = mainThreadId;
-        _sessionStartTicks = Stopwatch.GetTimestamp();
-        _lastCpuTime = Process.GetCurrentProcess().TotalProcessorTime;
-        _lastUiActivityTicks = Stopwatch.GetTimestamp();
+            _mainThreadId = mainThreadId;
+            _sessionStartTicks = Stopwatch.GetTimestamp();
+            _lastCpuTime = Process.GetCurrentProcess().TotalProcessorTime;
+            _lastUiActivityTicks = Stopwatch.GetTimestamp();
 
-        _isRunning = true;
-        _samplingThread.Start();
+            _isRunning = true;
+            _samplingThread.Start();
+        }
     }
 
     public void StopSampling()
     {
-        if (!_isRunning) return;
+        lock (_startStopLock)
+        {
+            if (!_isRunning) return;
+            _isRunning = false;
+        }
 
-        _isRunning = false;
         _cts.Cancel();
 
-        // Don't block UI thread - let the thread finish asynchronously
         Task.Run(() =>
         {
-            try
-            {
-                _samplingThread.Join(1000); // Wait up to 1 second
-            }
+            try { _samplingThread.Join(1000); }
             catch { }
         });
 
-        // Flush remaining samples immediately
         FlushRingBuffer();
     }
 
-    /// <summary>
-    /// Signal UI activity to help detect blocking.
-    /// Call this from UI message pump.
-    /// </summary>
+    /// <summary>Signal UI activity to help detect blocking. Call from UI message pump.</summary>
     public void SignalUiActivity()
     {
-        _lastUiActivityTicks = Stopwatch.GetTimestamp();
+        Interlocked.Exchange(ref _lastUiActivityTicks, Stopwatch.GetTimestamp());
     }
 
     private void SamplingLoop()
     {
-        var stopwatch = Stopwatch.StartNew();
-
-        while (_isRunning && !_cts.Token.IsCancellationRequested)
+        while (true)
         {
+            lock (_startStopLock)
+            {
+                if (!_isRunning) return;
+            }
+            if (_cts.Token.IsCancellationRequested) return;
             long sampleStart = Stopwatch.GetTimestamp();
 
             try

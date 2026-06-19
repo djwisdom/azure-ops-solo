@@ -1,4 +1,4 @@
-using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -88,27 +88,24 @@ public sealed class LineTooLongRule : LintRule
     }
 }
 
-public sealed class MagicNumberRule : LintRule
+public sealed partial class MagicNumberRule : LintRule
 {
-    private static readonly HashSet<string> _allowed = new(StringComparer.Ordinal)
+    private static readonly FrozenSet<string> _allowed = new HashSet<string>(StringComparer.Ordinal)
     {
         "0", "1", "-1", "0.0", "0.0f", "0.0m", "0.0d",
         "1.0", "1.0f", "1.0m", "1.0d",
         "100", "1000", "10000", "100000", "1000000"
-    };
+    }.ToFrozenSet(StringComparer.Ordinal);
 
-    private static readonly Regex _magicPattern = new(
-        @"(?<![.\w])(\d+)(?![.\w])|(?<![.\w])(\d+\.\d+)[fFmMdD]?(?![.\w])",
-        RegexOptions.Compiled);
+    [GeneratedRegex(@"(?<![.\w])(\d+)(?![.\w])|(?<![.\w])(\d+\.\d+)[fFmMdD]?(?![.\w])", RegexOptions.Compiled)]
+    private static partial Regex MagicPattern();
 
     public override string Id => "PFP003";
     public override string Description => "Magic number literal";
     public override DiagnosticSeverity DefaultSeverity => DiagnosticSeverity.Suggestion;
 
-    // Lines that commonly contain allowed numeric literals
-    private static readonly Regex _skipPattern = new(
-        @"^\s*(#|//|using|namespace|public|private|internal|protected|static|void|int|string|var|const|readonly)",
-        RegexOptions.Compiled);
+    [GeneratedRegex(@"^\s*(#|//|using|namespace|public|private|internal|protected|static|void|int|string|var|const|readonly)", RegexOptions.Compiled)]
+    private static partial Regex SkipPattern();
 
     public override void Analyze(string text, string filePath, List<Diagnostic> diagnostics)
     {
@@ -117,9 +114,9 @@ public sealed class MagicNumberRule : LintRule
         {
             string l = lines[i].TrimEnd('\r');
             if (string.IsNullOrWhiteSpace(l)) continue;
-            if (_skipPattern.IsMatch(l.TrimStart())) continue;
+            if (SkipPattern().IsMatch(l.TrimStart())) continue;
 
-            var matches = _magicPattern.Matches(l);
+            var matches = MagicPattern().Matches(l);
             foreach (Match m in matches)
             {
                 string val = m.Value;
@@ -140,15 +137,13 @@ public sealed class MagicNumberRule : LintRule
     }
 }
 
-public sealed class MissingSemicolonRule : LintRule
+public sealed partial class MissingSemicolonRule : LintRule
 {
-    private static readonly Regex _statementEnd = new(
-        @"^\s*(return|break|continue|throw|yield\s+return|yield\s+break)",
-        RegexOptions.Compiled);
+    [GeneratedRegex(@"^\s*(return|break|continue|throw|yield\s+return|yield\s+break)", RegexOptions.Compiled)]
+    private static partial Regex StatementEnd();
 
-    private static readonly Regex _assignmentOrCall = new(
-        @"[a-zA-Z0-9_)\]]+\s*(=|\.|\+\+|--|\[|\()",
-        RegexOptions.Compiled);
+    [GeneratedRegex(@"[a-zA-Z0-9_)\]]+\s*(=|\.|\+\+|--|\[|\()", RegexOptions.Compiled)]
+    private static partial Regex AssignmentOrCall();
 
     public override string Id => "PFP004";
     public override string Description => "Missing semicolon";
@@ -176,8 +171,8 @@ public sealed class MissingSemicolonRule : LintRule
             bool looksLikeStatement = char.IsLetter(trimmed[0])
                 || trimmed[0] == '_'
                 || trimmed[0] == '@'
-                || _statementEnd.IsMatch(trimmed)
-                || _assignmentOrCall.IsMatch(l);
+                || StatementEnd().IsMatch(trimmed)
+                || AssignmentOrCall().IsMatch(l);
 
             if (looksLikeStatement)
             {
@@ -196,15 +191,16 @@ public sealed class MissingSemicolonRule : LintRule
     }
 }
 
-public sealed class NamingConventionRule : LintRule
+public sealed partial class NamingConventionRule : LintRule
 {
-    private static readonly Regex _pascalWord = new(@"\b[A-Z][a-zA-Z0-9]*\b", RegexOptions.Compiled);
-    private static readonly Regex _camelWord = new(@"\b[a-z][a-zA-Z0-9]*\b", RegexOptions.Compiled);
+    [GeneratedRegex(@"\b(class|struct|interface|enum|record)\s+", RegexOptions.Compiled)]
+    private static partial Regex DeclarationStart();
 
-    // Keywords that declare named types/members
-    private static readonly Regex _declarationStart = new(
-        @"\b(class|struct|interface|enum|record)\s+",
-        RegexOptions.Compiled);
+    [GeneratedRegex(@"\b([A-Za-z_][A-Za-z0-9_]*)\b", RegexOptions.Compiled)]
+    private static partial Regex TypeNameCapture();
+
+    [GeneratedRegex(@"\b(var|int|string|bool|double|float|long|char|byte|short|uint|ulong|ushort|sbyte|decimal)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(=|;)", RegexOptions.Compiled)]
+    private static partial Regex LocalVarDecl();
 
     public override string Id => "PFP005";
     public override string Description => "Naming convention violation";
@@ -218,11 +214,11 @@ public sealed class NamingConventionRule : LintRule
             string l = lines[i].TrimEnd('\r');
 
             // Check type declarations must be PascalCase
-            var declMatch = _declarationStart.Match(l);
+            var declMatch = DeclarationStart().Match(l);
             if (declMatch.Success)
             {
                 string rest = l[declMatch.Index..];
-                var nameMatch = Regex.Match(rest, @"\b([A-Za-z_][A-Za-z0-9_]*)\b");
+                var nameMatch = TypeNameCapture().Match(rest);
                 if (nameMatch.Success)
                 {
                     string name = nameMatch.Groups[1].Value;
@@ -243,7 +239,7 @@ public sealed class NamingConventionRule : LintRule
             }
 
             // Check local variable declarations (var x = ...) should be camelCase
-            var localMatch = Regex.Match(l, @"\b(var|int|string|bool|double|float|long|char|byte|short|uint|ulong|ushort|sbyte|decimal)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(=|;)");
+            var localMatch = LocalVarDecl().Match(l);
             if (localMatch.Success)
             {
                 string name = localMatch.Groups[2].Value;
@@ -261,6 +257,61 @@ public sealed class NamingConventionRule : LintRule
                     });
                 }
             }
+        }
+    }
+}
+
+/// <summary>
+/// Detects hardcoded credentials — passwords, API keys, tokens, secrets, and
+/// connection strings assigned inline in source code. Rule ID: PFP006.
+/// </summary>
+public sealed partial class HardcodedSecretsRule : LintRule
+{
+    public override string Id => "PFP006";
+    public override string Description => "Hardcoded secret or credential";
+    public override DiagnosticSeverity DefaultSeverity => DiagnosticSeverity.Error;
+
+    [GeneratedRegex(
+        @"(?i)\b(password|passwd|pwd|secret|api[_\-]?key|apikey|token|access[_\-]?key|auth[_\-]?key|private[_\-]?key|client[_\-]?secret|connection[_\-]?string|connectionstring)\s*[=:]\s*[""'][^""']{4,}[""']",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    private static partial Regex SecretPattern();
+
+    private static readonly FrozenSet<string> _safePlaceholders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "your_password", "your_secret", "your_api_key", "changeme", "change_me",
+        "placeholder", "todo", "fixme", "xxx", "***", "password123", "secret123",
+        "${", "$(", "env:", "@env", "process.env", "Environment.GetEnvironmentVariable",
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    public override void Analyze(string text, string filePath, List<Diagnostic> diagnostics)
+    {
+        var lines = text.Split('\n');
+        for (int i = 0; i < lines.Length; i++)
+        {
+            string l = lines[i].TrimEnd('\r');
+            if (string.IsNullOrWhiteSpace(l)) continue;
+
+            string trimmed = l.TrimStart();
+            if (trimmed.StartsWith("//") || trimmed.StartsWith("/*") || trimmed.StartsWith('*') || trimmed.StartsWith('#'))
+                continue;
+
+            var m = SecretPattern().Match(l);
+            if (!m.Success) continue;
+
+            string value = m.Value;
+            if (_safePlaceholders.Any(p => value.Contains(p, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            diagnostics.Add(new Diagnostic
+            {
+                File = filePath,
+                Line = i + 1,
+                Column = m.Index + 1,
+                Length = m.Length,
+                Message = "Potential hardcoded secret detected — move to environment variable or secret store",
+                Severity = DefaultSeverity,
+                RuleId = Id
+            });
         }
     }
 }

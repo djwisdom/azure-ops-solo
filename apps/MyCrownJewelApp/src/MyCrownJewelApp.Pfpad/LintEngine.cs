@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -10,13 +9,20 @@ namespace MyCrownJewelApp.Pfpad;
 
 public sealed class LintEngine : IDisposable
 {
-    private List<LintRule> _rules;
+    // Immutable snapshot replaced atomically; background threads read via local variable.
+    private volatile List<LintRule> _rules;
     private CancellationTokenSource? _cts;
     private bool _enabled = true;
     private bool _sastEnabled = true;
-    private System.Windows.Forms.Timer? _debounceTimer;
+    private readonly System.Windows.Forms.Timer _debounceTimer;
     private IRoslynWorkspace? _roslynWorkspace;
-    private string? _currentFilePath;
+
+    // Pending work written on UI thread, read on timer tick (also UI thread → Task.Run).
+    private string _pendingText = "";
+    private volatile string _pendingFilePath = "";
+
+    // Captured at construction time (must be created on the UI thread).
+    private readonly SynchronizationContext? _uiContext;
 
     public event Action<IReadOnlyList<Diagnostic>>? DiagnosticsUpdated;
 
@@ -28,8 +34,9 @@ public sealed class LintEngine : IDisposable
             _enabled = value;
             if (!value)
             {
+                _debounceTimer.Stop();
                 _cts?.Cancel();
-                DiagnosticsUpdated?.Invoke(Array.Empty<Diagnostic>());
+                DiagnosticsUpdated?.Invoke([]);
             }
         }
     }
@@ -40,24 +47,22 @@ public sealed class LintEngine : IDisposable
 
     public LintEngine()
     {
-        _rules = BuildRules(120, flagMagicNumbers: true, flagNamingConventions: true);
+        _uiContext = SynchronizationContext.Current;
+        _rules = BuildRules(120, flagMagicNumbers: true, flagNamingConventions: true, flagSecrets: true);
 
         _debounceTimer = new System.Windows.Forms.Timer { Interval = 400 };
-        _debounceTimer.Tick += (s, e) =>
-        {
-            _debounceTimer.Stop();
-            // Run is triggered externally via ScheduleLint
-        };
+        _debounceTimer.Tick += OnDebounceElapsed;
     }
 
     /// <summary>Reconfigures the lint engine at runtime; rebuilds the rule list immediately.</summary>
     public void Configure(bool enabled, int maxLineLength, bool flagMagicNumbers, bool flagNamingConventions)
     {
-        _rules = BuildRules(Math.Clamp(maxLineLength, 60, 300), flagMagicNumbers, flagNamingConventions);
+        // Atomically replace the rule list so the background thread always sees a consistent snapshot.
+        _rules = BuildRules(Math.Clamp(maxLineLength, 60, 300), flagMagicNumbers, flagNamingConventions, HighlightHardcodedSecrets);
         Enabled = enabled;
     }
 
-    private static List<LintRule> BuildRules(int maxLineLength, bool flagMagicNumbers, bool flagNamingConventions)
+    private List<LintRule> BuildRules(int maxLineLength, bool flagMagicNumbers, bool flagNamingConventions, bool flagSecrets)
     {
         var rules = new List<LintRule>
         {
@@ -67,76 +72,90 @@ public sealed class LintEngine : IDisposable
         };
         if (flagMagicNumbers)      rules.Add(new MagicNumberRule());
         if (flagNamingConventions) rules.Add(new NamingConventionRule());
+        if (flagSecrets)           rules.Add(new HardcodedSecretsRule());
         return rules;
     }
 
+    /// <summary>
+    /// Schedules a lint run for the given text. Calls are debounced — only the last call
+    /// within a 400 ms window triggers actual analysis. Safe to call on every keystroke.
+    /// </summary>
     public void ScheduleLint(string text, string filePath)
     {
         if (!_enabled) return;
-        _currentFilePath = filePath;
-        _debounceTimer?.Stop();
-        _debounceTimer?.Start();
 
-        // Cancel previous pending lint
+        // Store pending work; the timer tick will pick it up.
+        _pendingText = text;
+        _pendingFilePath = filePath;
+
+        // Restart the debounce timer (coalesces rapid calls into one).
+        _debounceTimer.Stop();
+        _debounceTimer.Start();
+    }
+
+    private void OnDebounceElapsed(object? sender, EventArgs e)
+    {
+        _debounceTimer.Stop();
+        if (!_enabled) return;
+
+        // Capture state on the UI thread before handing off to the thread pool.
+        var text       = _pendingText;
+        var filePath   = _pendingFilePath;
+        var rules      = _rules;           // volatile read → snapshot; background task owns this reference
+        var workspace  = _roslynWorkspace;
+        var uiContext  = _uiContext;
+
         _cts?.Cancel();
-
-        var cts = new CancellationTokenSource();
-        _cts = cts;
+        var cts   = new CancellationTokenSource();
+        _cts      = cts;
         var token = cts.Token;
 
-        bool useRoslyn = _sastEnabled && _roslynWorkspace is not null &&
+        bool useRoslyn = _sastEnabled && workspace is not null &&
             filePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
 
-        Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             try
             {
-                if (token.IsCancellationRequested) return;
+                token.ThrowIfCancellationRequested();
 
                 List<Diagnostic> diags;
 
                 if (useRoslyn)
                 {
-                    diags = GetRoslynDiagnostics();
+                    diags = await GetRoslynDiagnosticsAsync(workspace!, filePath, token).ConfigureAwait(false);
                 }
                 else
                 {
-                    diags = new List<Diagnostic>();
-                    foreach (var rule in _rules)
+                    diags = [];
+                    foreach (var rule in rules)
                     {
-                        if (token.IsCancellationRequested) return;
+                        token.ThrowIfCancellationRequested();
                         try { rule.Analyze(text, filePath, diags); }
                         catch { }
                     }
                 }
 
-                if (token.IsCancellationRequested) return;
+                token.ThrowIfCancellationRequested();
 
-                // Sort by line then column
-                diags.Sort((a, b) =>
+                diags.Sort(static (a, b) =>
                 {
                     int c = a.Line.CompareTo(b.Line);
                     return c != 0 ? c : a.Column.CompareTo(b.Column);
                 });
 
-                var snapshot = diags.AsReadOnly();
-                try
-                {
-                    SynchronizationContext.Current?.Post(_ =>
-                    {
-                        DiagnosticsUpdated?.Invoke(snapshot);
-                    }, null);
-                }
-                catch { }
+                IReadOnlyList<Diagnostic> snapshot = diags.AsReadOnly();
+
+                if (uiContext is not null)
+                    uiContext.Post(_ => DiagnosticsUpdated?.Invoke(snapshot), null);
+                else
+                    DiagnosticsUpdated?.Invoke(snapshot);
             }
             catch (OperationCanceledException) { }
             finally
             {
-                if (_cts == cts)
-                {
+                if (Interlocked.CompareExchange(ref _cts, null, cts) == cts)
                     cts.Dispose();
-                    _cts = null;
-                }
             }
         }, token);
     }
@@ -146,42 +165,44 @@ public sealed class LintEngine : IDisposable
         _roslynWorkspace = workspace;
     }
 
-    private List<Diagnostic> GetRoslynDiagnostics()
+    private static async Task<List<Diagnostic>> GetRoslynDiagnosticsAsync(
+        IRoslynWorkspace workspace, string filePath, CancellationToken ct)
     {
-        if (_roslynWorkspace is null) return new List<Diagnostic>();
         try
         {
-            var roslynDiags = _roslynWorkspace.GetRoslynDiagnosticsAsync()
-                .ConfigureAwait(false).GetAwaiter().GetResult();
+            var roslynDiags = await workspace.GetRoslynDiagnosticsAsync().ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
             return roslynDiags
-                .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error
-                    || d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
+                .Where(d => d.Severity is Microsoft.CodeAnalysis.DiagnosticSeverity.Error
+                                      or Microsoft.CodeAnalysis.DiagnosticSeverity.Warning)
                 .Select(d => new Diagnostic
                 {
-                    File = _currentFilePath ?? "",
-                    Line = d.Location.GetLineSpan().StartLinePosition.Line + 1,
-                    Column = d.Location.GetLineSpan().StartLinePosition.Character + 1,
-                    Length = d.Location.SourceSpan.Length,
-                    Message = d.GetMessage(),
+                    File     = filePath,
+                    Line     = d.Location.GetLineSpan().StartLinePosition.Line + 1,
+                    Column   = d.Location.GetLineSpan().StartLinePosition.Character + 1,
+                    Length   = d.Location.SourceSpan.Length,
+                    Message  = d.GetMessage(),
                     Severity = d.Severity switch
                     {
-                        Microsoft.CodeAnalysis.DiagnosticSeverity.Error => DiagnosticSeverity.Error,
+                        Microsoft.CodeAnalysis.DiagnosticSeverity.Error   => DiagnosticSeverity.Error,
                         Microsoft.CodeAnalysis.DiagnosticSeverity.Warning => DiagnosticSeverity.Warning,
-                        Microsoft.CodeAnalysis.DiagnosticSeverity.Info => DiagnosticSeverity.Suggestion,
-                        _ => DiagnosticSeverity.Hint
+                        Microsoft.CodeAnalysis.DiagnosticSeverity.Info    => DiagnosticSeverity.Suggestion,
+                        _                                                  => DiagnosticSeverity.Hint
                     },
                     RuleId = d.Id
                 })
                 .ToList();
         }
-        catch { return new List<Diagnostic>(); }
+        catch (OperationCanceledException) { throw; }
+        catch { return []; }
     }
 
     public void Dispose()
     {
+        _debounceTimer.Stop();
+        _debounceTimer.Tick -= OnDebounceElapsed;
+        _debounceTimer.Dispose();
         _cts?.Cancel();
         _cts?.Dispose();
-        _debounceTimer?.Stop();
-        _debounceTimer?.Dispose();
     }
 }
