@@ -1807,7 +1807,7 @@ internal sealed class BrowserPanel : UserControl
             TextBox = new TextBox
             {
                 BorderStyle = BorderStyle.None,
-                Font        = new Font("Segoe UI", 9f),
+                Font        = new Font("Segoe UI", 11f),
                 BackColor   = initialTheme.EditorBackground,
                 ForeColor   = initialTheme.Text,
             };
