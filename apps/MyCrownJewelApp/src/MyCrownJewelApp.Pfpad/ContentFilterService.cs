@@ -100,7 +100,7 @@ internal sealed class ContentFilterService : IDisposable
 
     private bool _enabled = true;
     /// <summary>IDs of lists currently enabled; replaced atomically by Configure().</summary>
-    private volatile HashSet<string> _enabledListIds = new(KnownLists.Select(l => l.Id), StringComparer.OrdinalIgnoreCase);
+    private volatile HashSet<string> _enabledListIds = null!;  // set in ctor after KnownLists is ready
     private long _sessionBlocked;
 
     private CancellationTokenSource _cts = new();
@@ -127,6 +127,9 @@ internal sealed class ContentFilterService : IDisposable
 
     private ContentFilterService()
     {
+        // KnownLists is a static readonly field — safe to read here (after type init)
+        _enabledListIds = new HashSet<string>(KnownLists.Select(l => l.Id), StringComparer.OrdinalIgnoreCase);
+
         _cacheDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "MyCrownJewelApp", "Pfpad", "blocklists");
