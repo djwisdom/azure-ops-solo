@@ -470,7 +470,7 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Configurable user agent to prevent Edge fingerprinting");
         featuresText.AppendLine("• Ephemeral profile mode for untrusted workspaces (no cookies/cache persisted)");
         featuresText.AppendLine("• Per-session settings: homepage, max history, localhost links, default zoom, title bar display");
-        featuresText.AppendLine("• 'fp' monogram app icon (blue tile, Segoe UI Bold) embedded in exe — pinned taskbar shortcut shows correct icon");
+        featuresText.AppendLine("• 'pfp' monogram app icon (azure gradient tile, Segoe UI Bold, frosted-glass highlight) embedded in exe — pinned taskbar shortcut shows correct icon");
         featuresText.AppendLine();
         featuresText.AppendLine("Security hardening:");
         featuresText.AppendLine("• Graded security profiles: Not Hardened → Low → Mid → Max");
