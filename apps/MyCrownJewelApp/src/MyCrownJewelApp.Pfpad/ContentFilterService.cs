@@ -93,6 +93,19 @@ internal sealed class ContentFilterService : IDisposable
     private const int MaxParseLines  = 750_000; // safety cap per file
     private const int HttpTimeoutSec = 30;
 
+    // ── CDN allowlist ──────────────────────────────────────────────────────────
+    // These domains and their subdomains are never blocked by list-based rules.
+    // They serve YouTube video streams, player scripts, and thumbnails — blocking
+    // them causes SPA navigation to hang (~75%) and thumbnails to disappear.
+    // Note: specific ad-URL patterns in YouTubeAdBlocker.IsAdRequest() still apply
+    // because that check runs independently of the list-based IsBlocked() path.
+    private static readonly string[] _cdnAllowlist =
+    [
+        "ytimg.com",       // s.ytimg.com (player JS) + i.ytimg.com (thumbnails)
+        "googlevideo.com", // YouTube video streaming CDN
+        "ggpht.com",       // YouTube channel art / avatar CDN
+    ];
+
     // ── State ──────────────────────────────────────────────────────────────────
     private readonly string _cacheDir;
     private readonly HttpClient _http;
@@ -188,6 +201,14 @@ internal sealed class ContentFilterService : IDisposable
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
 
         string host = uri.Host.ToLowerInvariant();
+
+        // Never block YouTube's functional CDN domains regardless of list contents.
+        foreach (string cdn in _cdnAllowlist)
+        {
+            if (host == cdn || host.EndsWith("." + cdn, StringComparison.Ordinal))
+                return false;
+        }
+
         return IsDomainBlocked(host, blocked);
     }
 
@@ -383,9 +404,12 @@ internal sealed class ContentFilterService : IDisposable
 
     /// <summary>
     /// Parses one line of an EasyList-format file.
-    /// Only handles simple domain rules (<c>||domain^</c>) — element-hiding
-    /// rules (<c>##</c>), regex, and modifier-heavy rules are intentionally skipped
-    /// because they require a full browser extension engine.
+    /// Only handles simple domain rules (<c>||domain^</c> and <c>||domain^$options</c>) —
+    /// element-hiding rules (<c>##</c>), regex, modifier-heavy rules, and path-specific
+    /// rules (<c>||domain^/path</c>, <c>||domain^*path</c>) are intentionally skipped.
+    /// Path-specific rules must be skipped because extracting only the domain would
+    /// over-block the entire host (e.g. <c>||ytimg.com^*/subscribe-widget$script</c>
+    /// should not block all of ytimg.com which also serves player JS and thumbnails).
     /// </summary>
     private static string? ParseEasyListLine(string line)
     {
@@ -407,6 +431,16 @@ internal sealed class ContentFilterService : IDisposable
         // Reject rules with path, wildcard, or port — those need URL-pattern matching
         if (domain.Contains('/') || domain.Contains('*') || domain.Contains('?')
             || domain.Contains(':') || domain.Contains('@')) return null;
+
+        // Reject path-specific rules: anything between ^ and the $ options separator
+        // is a path component.  Only "||domain^" and "||domain^$options" are safe
+        // to treat as whole-domain blocks.
+        // Example rejected: ||ytimg.com^*/www-subscribe-widget-$script
+        //                              ^^^^^^^^^^^^^^^^^^^^^^^^ path after ^
+        string afterCaret = line[(caret + 1)..];
+        int dollar = afterCaret.IndexOf('$');
+        string pathPart = dollar >= 0 ? afterCaret[..dollar] : afterCaret;
+        if (!string.IsNullOrEmpty(pathPart)) return null;
 
         return string.IsNullOrEmpty(domain) ? null : domain;
     }
