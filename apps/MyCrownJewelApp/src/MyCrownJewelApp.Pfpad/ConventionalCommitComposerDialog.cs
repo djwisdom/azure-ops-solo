@@ -50,7 +50,11 @@ internal sealed class ConventionalCommitComposerDialog : Form
         "revert   — revert a prior commit"
     ];
 
-    public ConventionalCommitComposerDialog(string initialMessage, string authorName, string authorEmail)
+    public ConventionalCommitComposerDialog(
+        string initialMessage,
+        string authorName,
+        string authorEmail,
+        GitPlatform platform = GitPlatform.Unknown)
     {
         _theme = ThemeManager.Instance.CurrentTheme;
 
@@ -113,7 +117,10 @@ internal sealed class ConventionalCommitComposerDialog : Form
         _bodyBox.TextChanged += (s, e) => Refresh_();
 
         // ── Footer ────────────────────────────────────────────────────────────
-        _footerBox = MakeMultiline("BREAKING CHANGE: description\nFixes #42", 44, initFooter);
+        var footerPlaceholder = string.IsNullOrWhiteSpace(initFooter)
+            ? GitRemotePlatform.IssueReferencePlaceholder(platform)
+            : initFooter;
+        _footerBox = MakeMultiline(footerPlaceholder, 44, initFooter);
         _footerBox.TextChanged += (s, e) => Refresh_();
 
         // ── Signed-off-by ─────────────────────────────────────────────────────

@@ -517,6 +517,15 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• CI status badge in Git panel header: shows latest pipeline run status (GitHub Actions) after each push, and on every refresh");
         featuresText.AppendLine("• Template button now opens Conventional Commit composer instead of bare emoji dropdown");
         featuresText.AppendLine();
+        featuresText.AppendLine("Multi-platform Git hosting (v1.0.42):");
+        featuresText.AppendLine("• GitRemotePlatform: auto-detects GitHub / Azure DevOps / GitLab / Bitbucket / Gitea from remote URL");
+        featuresText.AppendLine("• Platform badge glyph in Git panel header (⑂ GitHub  ⬡ Azure DevOps  ◈ GitLab  ⚑ Bitbucket)");
+        featuresText.AppendLine("• CI status badge now supports both GitHub Actions and Azure DevOps Pipelines — auto-selected by detected platform");
+        featuresText.AppendLine("• Conventional Commit composer footer placeholder adapts per platform: Closes #123 / AB#1234 / PROJ-123");
+        featuresText.AppendLine("• PullRequestTemplateReader: reads .github/, .azuredevops/, .gitlab/merge_request_templates/ PR templates");
+        featuresText.AppendLine("• CODEOWNERS reader: parses CODEOWNERS file for staged files, shows reviewer hints in pre-commit dialog");
+        featuresText.AppendLine("• GetCreatePrUrl(): generates platform-correct PR/MR creation URL for current branch (GitHub compare, ADO pullrequestcreate, GitLab merge_requests/new, Bitbucket pull-requests/new)");
+        featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 
         foreach (var package in knownPackages)

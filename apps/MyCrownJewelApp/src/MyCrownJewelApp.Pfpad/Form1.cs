@@ -1930,20 +1930,10 @@ using Microsoft.Extensions.DependencyInjection;
                   // Git panel
                   _gitPanel = new GitPanel(_gitService);
                   ApplyGitSettings();
-                  // Wire CI status from GitHub Actions connector if configured
-                  var _aiopsConf = _settingsService.LoadWithDecrypt()?.AIOpsConfig;
-                  if (_aiopsConf?.GitHubActions is { Enabled: true } ghSettings)
-                  {
-                      ghSettings.LoadSecretsFromEncrypted();
-                      var ciConnector = new AIOps.GitHubActionsConnector(ghSettings);
-                      _gitPanel.SetCiStatusProvider(async (branch, ct) =>
-                      {
-                          var runs = await ciConnector.GetPipelineRunsAsync(branch, count: 1, ct: ct)
-                                                      .ConfigureAwait(false);
-                          if (runs.Count == 0) return ("", null);
-                          return (runs[0].Status.ToString(), null);
-                      });
-                  }
+                  // Wire CI status provider — supports GitHub Actions and Azure DevOps
+                  WireGitCiStatusProvider();
+                  // Re-wire when platform changes (repo switch)
+                  _gitPanel.PlatformDetected += _ => WireGitCiStatusProvider();
                   _gitPanel.FileOpenRequested += (path) =>
                   {
                       if (!string.IsNullOrEmpty(path) && File.Exists(path))
@@ -3985,6 +3975,51 @@ internal void ToggleGutter()
                 RunHooksOnCommit: _gitRunHooksOnCommit,
                 ShowPreCommitReview: _gitShowPreCommitReview
             ));
+        }
+
+        /// <summary>
+        /// Wires the Git panel's CI status provider to whichever AIOps connector
+        /// matches the currently detected remote platform (GitHub or Azure DevOps).
+        /// Safe to call multiple times — replaces the previous provider.
+        /// </summary>
+        private void WireGitCiStatusProvider()
+        {
+            if (_gitPanel == null) return;
+            var conf = _settingsService.LoadWithDecrypt()?.AIOpsConfig;
+            if (conf == null) return;
+
+            var platform = _gitPanel.GetDetectedPlatform();
+
+            // GitHub Actions
+            if ((platform == GitPlatform.GitHub || platform == GitPlatform.Unknown)
+                && conf.GitHubActions is { Enabled: true } ghSettings)
+            {
+                ghSettings.LoadSecretsFromEncrypted();
+                var connector = new AIOps.GitHubActionsConnector(ghSettings);
+                _gitPanel.SetCiStatusProvider(async (branch, ct) =>
+                {
+                    var runs = await connector.GetPipelineRunsAsync(branch, count: 1, ct: ct)
+                                              .ConfigureAwait(false);
+                    if (runs.Count == 0) return ("", null);
+                    return (runs[0].Status.ToString(), null);
+                });
+                return;
+            }
+
+            // Azure DevOps
+            if (platform == GitPlatform.AzureDevOps
+                && conf.AzureDevOps is { Enabled: true } adoSettings)
+            {
+                adoSettings.LoadSecretsFromEncrypted();
+                var connector = new AIOps.AzureDevOpsConnector(adoSettings);
+                _gitPanel.SetCiStatusProvider(async (branch, ct) =>
+                {
+                    var runs = await connector.GetPipelineRunsAsync(branch, count: 1, ct: ct)
+                                              .ConfigureAwait(false);
+                    if (runs.Count == 0) return ("", null);
+                    return (runs[0].Status.ToString(), null);
+                });
+            }
         }
 
         private void ApplySecuritySettings()

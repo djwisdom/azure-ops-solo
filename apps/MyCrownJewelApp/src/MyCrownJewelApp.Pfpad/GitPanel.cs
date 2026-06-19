@@ -813,10 +813,14 @@ internal sealed class GitOperationsPanel : Panel
 
     private readonly PreCommitPipeline _preCommitPipeline;
     private readonly Label _ciStatusLabel;
+    private readonly Label _platformLabel;
+    private GitPlatform _detectedPlatform = GitPlatform.Unknown;
     private Func<string, CancellationToken, Task<(string Status, string? Conclusion)>>? _ciStatusProvider;
     public event Action<string>? FileOpenRequested;
     public event Action? CloseRequested;
     public event Action? StatusChanged;
+    /// <summary>Raised when the detected Git platform changes (on repo open/refresh).</summary>
+    public event Action<GitPlatform>? PlatformDetected;
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
 
@@ -852,6 +856,9 @@ internal sealed class GitOperationsPanel : Panel
         MinimumSize = new Size(200, 200);
 
         var theme = ThemeManager.Instance.CurrentTheme;
+
+        // Shared tooltip (platform badge + CI label)
+        var _headerTooltip = new ToolTip { AutoPopDelay = 5000, InitialDelay = 400 };
 
         // Modern VS Code-style header
         _modernHeader = new Panel
@@ -915,7 +922,18 @@ internal sealed class GitOperationsPanel : Panel
             Tag = "ci"
         };
 
-        _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _syncButton, _moreActionsButton, _ciStatusLabel });
+        _platformLabel = new Label
+        {
+            Text = "",
+            Font = new Font("Segoe UI", 8),
+            AutoSize = true,
+            Location = new Point(0, 8),
+            Cursor = Cursors.Default,
+            Tag = "platform"
+        };
+        _headerTooltip.SetToolTip(_platformLabel, "Git hosting platform (detected from remote URL)");
+
+        _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _platformLabel, _syncButton, _moreActionsButton, _ciStatusLabel });
 
         // Git Operations Panel
         _operationsPanel = new GitOperationsPanel(_git);
@@ -1429,7 +1447,7 @@ internal sealed class GitOperationsPanel : Panel
             _gitSettings.AuthorName, _gitSettings.AuthorEmail);
 
         using var dlg = new ConventionalCommitComposerDialog(
-            _commitMessage.Text, authorName, authorEmail);
+            _commitMessage.Text, authorName, authorEmail, _detectedPlatform);
 
         if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(dlg.ComposedMessage))
         {
@@ -1527,6 +1545,17 @@ internal sealed class GitOperationsPanel : Panel
             // Update modern header
             _repoNameLabel.Text = Path.GetFileName(_git.RepoPath ?? "(no repo)");
             _branchLabel.Text = _git.CurrentBranch ?? "(detached)";
+
+            // Detect hosting platform and update badge
+            var platform = GitRemotePlatform.DetectFromService(_git);
+            if (platform != _detectedPlatform)
+            {
+                _detectedPlatform = platform;
+                PlatformDetected?.Invoke(platform);
+            }
+            _platformLabel.Text = platform != GitPlatform.Unknown
+                ? GitRemotePlatform.HeaderGlyph(platform)
+                : "";
 
             // Update sync button with behind/ahead counts
             try
@@ -1654,10 +1683,12 @@ internal sealed class GitOperationsPanel : Panel
         int headerWidth = _modernHeader.ClientSize.Width - 16; // Account for padding
         _repoNameLabel.Location = new Point(0, 6);
         _branchLabel.Location = new Point(_repoNameLabel.Right + 8, 6);
+        // Platform badge sits right of branch name
+        _platformLabel.Location = new Point(_branchLabel.Right + 6, 8);
         _syncButton.Location = new Point(headerWidth - _moreActionsButton.Width - _syncButton.Width - 8, 4);
         _moreActionsButton.Location = new Point(headerWidth - _moreActionsButton.Width, 4);
-        // CI label floats between branch and sync
-        _ciStatusLabel.Location = new Point(_branchLabel.Right + 10, 8);
+        // CI label floats between platform badge and sync button
+        _ciStatusLabel.Location = new Point(_platformLabel.Right + 6, 8);
 
         // Layout operations panel
         if (_operationsPanel != null)
@@ -1839,6 +1870,8 @@ internal sealed class GitOperationsPanel : Panel
         _noRepoLabel.ForeColor = theme.Muted;
         _noRepoLabel.BackColor = theme.MenuBackground;
         _ciStatusLabel.BackColor = Color.Transparent;
+        _platformLabel.BackColor = Color.Transparent;
+        _platformLabel.ForeColor = theme.Muted;
 
         foreach (var c in new[] { _stageAllBtn, _unstageAllBtn, _fetchBtn, _pullBtn })
             c.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
@@ -2019,6 +2052,21 @@ internal sealed class GitOperationsPanel : Panel
     {
         _ciStatusProvider = provider;
         _ = UpdateCiStatusAsync();
+    }
+
+    /// <summary>Returns the Git hosting platform last detected from the remote URL.</summary>
+    public GitPlatform GetDetectedPlatform() => _detectedPlatform;
+
+    /// <summary>
+    /// Returns the PR/MR creation URL for the current branch on the detected platform,
+    /// or <c>null</c> when the platform or branch cannot be determined.
+    /// </summary>
+    public string? GetCreatePrUrl(string? baseBranch = null)
+    {
+        var branch = _git.CurrentBranch;
+        var remoteUrl = GitRemotePlatform.GetOriginUrl(_git);
+        var defaultBase = baseBranch ?? _gitSettings.DefaultBranch;
+        return GitRemotePlatform.BuildCreatePrUrl(_detectedPlatform, remoteUrl, branch, defaultBase);
     }
 
     private async Task UpdateCiStatusAsync()
