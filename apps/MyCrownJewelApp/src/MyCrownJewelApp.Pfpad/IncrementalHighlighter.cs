@@ -37,6 +37,7 @@ public sealed partial class IncrementalHighlighter : IDisposable
     private readonly FrozenSet<string> _keywords;
     private readonly FrozenSet<string> _types;
     private readonly FrozenSet<string> _preprocs;
+    private readonly char _lineCommentChar;
     private bool _disposed;
     private int _totalTimeouts;
     private int _consecutiveTimeouts;
@@ -70,6 +71,7 @@ public sealed partial class IncrementalHighlighter : IDisposable
         _keywords = syntax.Keywords.ToFrozenSet(StringComparer.Ordinal);
         _types = syntax.Types.ToFrozenSet(StringComparer.Ordinal);
         _preprocs = syntax.Preprocessor.ToFrozenSet(StringComparer.Ordinal);
+        _lineCommentChar = syntax.CommentPattern.Length > 0 && syntax.CommentPattern[0] == '#' ? '#' : '\0';
 
         _channel = Channel.CreateBounded<(int, string)>(new BoundedChannelOptions(2000)
         {
@@ -79,6 +81,9 @@ public sealed partial class IncrementalHighlighter : IDisposable
         });
 
         _worker = Task.Run(WorkerLoop);
+        _ = _worker.ContinueWith(
+            static t => Debug.WriteLine($"[IncrementalHighlighter] Worker fault: {t.Exception?.GetBaseException().Message}"),
+            TaskContinuationOptions.OnlyOnFaulted);
     }
 
     public void RequestRange(int startLine, int endLine)
@@ -113,10 +118,9 @@ public sealed partial class IncrementalHighlighter : IDisposable
     public void InvalidateFrom(int startLine)
     {
         if (startLine < 0) return;
-        var keys = _cache.Keys.ToArray();
-        foreach (var key in keys)
-            if (key >= startLine)
-                _cache.TryRemove(key, out _);
+        foreach (var kvp in _cache)
+            if (kvp.Key >= startLine)
+                _cache.TryRemove(kvp.Key, out _);
     }
 
     private void EnqueueLine(int line)
@@ -248,14 +252,13 @@ public sealed partial class IncrementalHighlighter : IDisposable
     internal (List<TokenInfo> Tokens, TokenizerState StateAfter) TokenizeLine(
         ReadOnlySpan<char> line, TokenizerState state)
     {
-        var tokens = new List<TokenInfo>();
+        var tokens = new List<TokenInfo>(8);
         if (line.Length == 0)
             return (tokens, state with { InComment = false });
 
         int pos = 0;
         int iterations = 0;
-        var sw = new Stopwatch();
-        sw.Start();
+        var sw = Stopwatch.StartNew();
 
         if (state.InComment)
         {
@@ -294,10 +297,7 @@ public sealed partial class IncrementalHighlighter : IDisposable
             }
             if (sw.ElapsedMilliseconds > MaxParseTimeMs)
             {
-                if (state.InComment)
-                    AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
-                else
-                    AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
                 return (tokens, state with { InComment = true });
             }
 
@@ -309,6 +309,13 @@ public sealed partial class IncrementalHighlighter : IDisposable
                 if (skip < 0) break;
                 pos += skip;
                 continue;
+            }
+
+            // Language-specific single-line comment (e.g. # for Python/YAML/PowerShell/Terraform)
+            if (_lineCommentChar != '\0' && c == _lineCommentChar)
+            {
+                AddToken(tokens, pos, line.Length - pos, SyntaxTokenType.Comment);
+                break;
             }
 
             if (c == '/' && pos + 1 < line.Length)
@@ -335,7 +342,26 @@ public sealed partial class IncrementalHighlighter : IDisposable
                 }
             }
 
-            if (c is '"' or '\'')
+            // Verbatim string: @"..."  (C# — may start but not end on this line; treat as regular)
+            if (c == '@' && pos + 1 < line.Length && line[pos + 1] == '"')
+            {
+                int start = pos;
+                pos += 2;
+                while (pos < line.Length)
+                {
+                    if (line[pos] == '"')
+                    {
+                        if (pos + 1 < line.Length && line[pos + 1] == '"') { pos += 2; continue; } // escaped ""
+                        pos++; break;
+                    }
+                    pos++;
+                }
+                AddToken(tokens, start, pos - start, SyntaxTokenType.String);
+                continue;
+            }
+
+            // Regular and backtick strings
+            if (c is '"' or '\'' or '`')
             {
                 int start = pos;
                 char q = c;
@@ -350,21 +376,42 @@ public sealed partial class IncrementalHighlighter : IDisposable
                 continue;
             }
 
+            // Numbers: hex (0x...), binary (0b...), decimal with optional suffixes
             if (char.IsDigit(c) || (c == '-' && pos + 1 < line.Length && char.IsDigit(line[pos + 1])))
             {
                 int start = pos;
                 if (c == '-') pos++;
-                while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.'))
-                    pos++;
+                if (pos + 1 < line.Length && line[pos] == '0' && (line[pos + 1] == 'x' || line[pos + 1] == 'X'))
+                {
+                    pos += 2;
+                    while (pos < line.Length && (Uri.IsHexDigit(line[pos]) || line[pos] == '_')) pos++;
+                }
+                else if (pos + 1 < line.Length && line[pos] == '0' && (line[pos + 1] == 'b' || line[pos + 1] == 'B'))
+                {
+                    pos += 2;
+                    while (pos < line.Length && (line[pos] == '0' || line[pos] == '1' || line[pos] == '_')) pos++;
+                }
+                else
+                {
+                    while (pos < line.Length && (char.IsDigit(line[pos]) || line[pos] == '.' || line[pos] == '_')) pos++;
+                    if (pos < line.Length && (line[pos] == 'e' || line[pos] == 'E'))
+                    {
+                        pos++;
+                        if (pos < line.Length && (line[pos] == '+' || line[pos] == '-')) pos++;
+                        while (pos < line.Length && char.IsDigit(line[pos])) pos++;
+                    }
+                }
+                // Consume numeric type suffixes: f, d, m, L, u, ul, lu, uL etc.
+                while (pos < line.Length && line[pos] is 'f' or 'F' or 'd' or 'D' or 'm' or 'M' or 'l' or 'L' or 'u' or 'U') pos++;
                 AddToken(tokens, start, pos - start, SyntaxTokenType.Number);
                 continue;
             }
 
             if (char.IsLetter(c) || c == '_' || c == '@')
             {
-                int start = pos;
-                while (pos < line.Length && (char.IsLetterOrDigit(line[pos]) || line[pos] == '_'))
-                    pos++;
+                int start = pos++;  // advance past start char (avoids @ infinite-loop)
+                int wordEnd = line.Slice(pos).IndexOfAny(_nonWordChars);
+                pos += wordEnd < 0 ? line.Length - pos : wordEnd;
                 string word = line.Slice(start, pos - start).ToString();
                 if (_keywords.Contains(word))
                     AddToken(tokens, start, pos - start, SyntaxTokenType.Keyword);
@@ -387,17 +434,16 @@ public sealed partial class IncrementalHighlighter : IDisposable
 
     private int GetLineStartPosition(int lineIndex)
     {
-        int position = 0;
-        for (int i = 0; i < lineIndex && i < _editor.Lines.Length; i++)
-        {
-            position += _editor.Lines[i].Length + 1; // +1 for newline
-        }
-        return position;
+        if (!_editor.IsHandleCreated || lineIndex < 0) return 0;
+        return _editor.GetFirstCharIndexFromLine(lineIndex);
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _cts.Cancel();
+        _channel.Writer.TryComplete();
+        _cts.Dispose();
     }
 }
