@@ -21,6 +21,8 @@ internal sealed class GitOperationsPanel : Panel
     private readonly Button _stashBtn;
     private readonly Button _tagBtn;
     private bool _confirmDiscardStash = true;
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public GitPlatform Platform { get; set; } = GitPlatform.Unknown;
 
     public GitOperationsPanel(GitService git)
     {
@@ -195,30 +197,12 @@ internal sealed class GitOperationsPanel : Panel
 
     private void NewBranch_Click(object? sender, EventArgs e)
     {
-        using var dialog = new Form
+        using var dlg = new NewBranchDialog(Platform);
+        if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(dlg.BranchName))
         {
-            Text = "Create New Branch",
-            Size = new Size(300, 150),
-            StartPosition = FormStartPosition.CenterParent,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false
-        };
-
-        var label = new Label { Text = "Branch name:", Location = new Point(12, 20), AutoSize = true };
-        var textBox = new TextBox { Location = new Point(12, 40), Size = new Size(260, 23) };
-        var okBtn = new Button { Text = "Create", Location = new Point(120, 70), Size = new Size(75, 23), DialogResult = DialogResult.OK };
-        var cancelBtn = new Button { Text = "Cancel", Location = new Point(201, 70), Size = new Size(75, 23), DialogResult = DialogResult.Cancel };
-
-        dialog.Controls.AddRange(new Control[] { label, textBox, okBtn, cancelBtn });
-        dialog.AcceptButton = okBtn;
-        dialog.CancelButton = cancelBtn;
-
-        if (dialog.ShowDialog() == DialogResult.OK && !string.IsNullOrWhiteSpace(textBox.Text))
-        {
-            if (_git.CreateBranch(textBox.Text.Trim()))
+            if (_git.CreateBranch(dlg.BranchName))
             {
-                _git.SwitchBranch(textBox.Text.Trim());
+                _git.SwitchBranch(dlg.BranchName);
                 UpdateStatus();
             }
         }
@@ -814,6 +798,7 @@ internal sealed class GitOperationsPanel : Panel
     private readonly PreCommitPipeline _preCommitPipeline;
     private readonly Label _ciStatusLabel;
     private readonly Label _platformLabel;
+    private readonly Button _createPrButton;
     private GitPlatform _detectedPlatform = GitPlatform.Unknown;
     private Func<string, CancellationToken, Task<(string Status, string? Conclusion)>>? _ciStatusProvider;
     public event Action<string>? FileOpenRequested;
@@ -933,7 +918,22 @@ internal sealed class GitOperationsPanel : Panel
         };
         _headerTooltip.SetToolTip(_platformLabel, "Git hosting platform (detected from remote URL)");
 
-        _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _platformLabel, _syncButton, _moreActionsButton, _ciStatusLabel });
+        _createPrButton = new Button
+        {
+            Text = "⎇ Open PR",
+            Font = new Font("Segoe UI", 8),
+            FlatStyle = FlatStyle.Flat,
+            Size = new Size(70, 22),
+            Location = new Point(0, 5),
+            Cursor = Cursors.Hand,
+            TabStop = false,
+            Enabled = false,
+            Visible = false
+        };
+        _createPrButton.Click += CreatePr_Click;
+        _headerTooltip.SetToolTip(_createPrButton, "Open a new pull request / merge request for this branch");
+
+        _modernHeader.Controls.AddRange(new Control[] { _repoNameLabel, _branchLabel, _platformLabel, _createPrButton, _syncButton, _moreActionsButton, _ciStatusLabel });
 
         // Git Operations Panel
         _operationsPanel = new GitOperationsPanel(_git);
@@ -1556,6 +1556,8 @@ internal sealed class GitOperationsPanel : Panel
             _platformLabel.Text = platform != GitPlatform.Unknown
                 ? GitRemotePlatform.HeaderGlyph(platform)
                 : "";
+            _operationsPanel.Platform = _detectedPlatform;
+            UpdateCreatePrButton();
 
             // Update sync button with behind/ahead counts
             try
@@ -1685,10 +1687,18 @@ internal sealed class GitOperationsPanel : Panel
         _branchLabel.Location = new Point(_repoNameLabel.Right + 8, 6);
         // Platform badge sits right of branch name
         _platformLabel.Location = new Point(_branchLabel.Right + 6, 8);
+        // Create PR button sits right of platform badge (visible only when applicable)
+        int prLeft = !string.IsNullOrEmpty(_platformLabel.Text)
+            ? _platformLabel.Right + 4
+            : _branchLabel.Right + 6;
+        _createPrButton.Location = new Point(prLeft, 5);
         _syncButton.Location = new Point(headerWidth - _moreActionsButton.Width - _syncButton.Width - 8, 4);
         _moreActionsButton.Location = new Point(headerWidth - _moreActionsButton.Width, 4);
-        // CI label floats between platform badge and sync button
-        _ciStatusLabel.Location = new Point(_platformLabel.Right + 6, 8);
+        // CI label floats after create-PR button (or platform badge if PR hidden)
+        int ciLeft = _createPrButton.Visible
+            ? _createPrButton.Right + 6
+            : (!string.IsNullOrEmpty(_platformLabel.Text) ? _platformLabel.Right + 6 : _branchLabel.Right + 10);
+        _ciStatusLabel.Location = new Point(ciLeft, 8);
 
         // Layout operations panel
         if (_operationsPanel != null)
@@ -1872,6 +1882,10 @@ internal sealed class GitOperationsPanel : Panel
         _ciStatusLabel.BackColor = Color.Transparent;
         _platformLabel.BackColor = Color.Transparent;
         _platformLabel.ForeColor = theme.Muted;
+        _createPrButton.BackColor = theme.MenuBackground;
+        _createPrButton.ForeColor = theme.Accent;
+        _createPrButton.FlatAppearance.BorderColor = theme.Accent;
+        _createPrButton.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
 
         foreach (var c in new[] { _stageAllBtn, _unstageAllBtn, _fetchBtn, _pullBtn })
             c.FlatAppearance.MouseOverBackColor = theme.ButtonHoverBackground;
@@ -2069,6 +2083,56 @@ internal sealed class GitOperationsPanel : Panel
         return GitRemotePlatform.BuildCreatePrUrl(_detectedPlatform, remoteUrl, branch, defaultBase);
     }
 
+    private void CreatePr_Click(object? sender, EventArgs e)
+    {
+        var url = GetCreatePrUrl();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            MessageBox.Show(
+                "Cannot build a PR URL — make sure a remote is configured and you are on a feature branch.",
+                "Create PR", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not open browser: {ex.Message}", "Create PR",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Updates the Create PR button visibility and label based on the current platform
+    /// and branch. Called on every RefreshStatus.
+    /// </summary>
+    private void UpdateCreatePrButton()
+    {
+        if (!_git.IsActive || _detectedPlatform == GitPlatform.Unknown)
+        {
+            _createPrButton.Visible = false;
+            return;
+        }
+
+        var branch = _git.CurrentBranch;
+        var defaultBranch = _gitSettings.DefaultBranch;
+        bool onDefaultBranch = string.Equals(branch, defaultBranch, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(branch, "main", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(branch, "master", StringComparison.OrdinalIgnoreCase);
+
+        // Show button on non-default branches only (nothing to PR from main→main)
+        _createPrButton.Visible = !onDefaultBranch;
+        _createPrButton.Enabled = !onDefaultBranch;
+
+        // Label: GitLab uses "MR", everyone else "PR"
+        _createPrButton.Text = _detectedPlatform == GitPlatform.GitLab ? "⎇ Open MR" : "⎇ Open PR";
+    }
+
     private async Task UpdateCiStatusAsync()
     {
         if (_ciStatusProvider is null || !_git.IsActive) return;
@@ -2133,7 +2197,9 @@ internal sealed class GitOperationsPanel : Panel
 
         if (forceShow || hasWarnings)
         {
-            using var dlg = new PreCommitReviewDialog(_git, secrets, hooksFound, hooksPassed, hooksOutput);
+            using var dlg = new PreCommitReviewDialog(
+                _git, secrets, hooksFound, hooksPassed, hooksOutput,
+                _detectedPlatform, _git.RepoPath);
             return dlg.ShowDialog(this) == DialogResult.OK;
         }
 

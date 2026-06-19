@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using MyCrownJewelApp.Pfpad.AIOps;
 
@@ -35,7 +36,9 @@ internal sealed class PreCommitReviewDialog : Form
         IReadOnlyList<SecurityFinding> secretFindings,
         bool hooksFound,
         bool hooksPassed,
-        string hooksOutput)
+        string hooksOutput,
+        GitPlatform platform = GitPlatform.Unknown,
+        string? repoRoot = null)
     {
         _git = git;
         _theme = ThemeManager.Instance.CurrentTheme;
@@ -61,7 +64,16 @@ internal sealed class PreCommitReviewDialog : Form
 
         // ── Warning / check-result banner ─────────────────────────────────────
         bool hasWarnings = secretFindings.Count > 0 || (hooksFound && !hooksPassed);
-        var warnPanel = BuildWarnPanel(secretFindings, hooksFound, hooksPassed, hooksOutput, hasWarnings);
+
+        // CODEOWNERS: find reviewers for staged files
+        string[] codeowners = Array.Empty<string>();
+        if (!string.IsNullOrWhiteSpace(repoRoot))
+        {
+            var stagedPaths = _staged.Select(s => s.Path).ToArray();
+            codeowners = PullRequestTemplateReader.GetOwnersForFiles(repoRoot, platform, stagedPaths);
+        }
+
+        var warnPanel = BuildWarnPanel(secretFindings, hooksFound, hooksPassed, hooksOutput, hasWarnings, codeowners, platform);
 
         // ── File list (left pane) ─────────────────────────────────────────────
         _fileList = new ListBox
@@ -291,7 +303,8 @@ internal sealed class PreCommitReviewDialog : Form
 
     private Panel BuildWarnPanel(
         IReadOnlyList<SecurityFinding> findings,
-        bool hooksFound, bool hooksPassed, string hooksOutput, bool hasWarnings)
+        bool hooksFound, bool hooksPassed, string hooksOutput, bool hasWarnings,
+        string[] codeowners, GitPlatform platform)
     {
         var header = new Label
         {
@@ -305,10 +318,13 @@ internal sealed class PreCommitReviewDialog : Form
             ForeColor = hasWarnings ? Color.FromArgb(220, 120, 0) : Color.FromArgb(60, 200, 80)
         };
 
+        bool hasCo = codeowners.Length > 0;
+        int panelHeight = hasWarnings ? 80 : (hasCo ? 44 : 26);
+
         var panel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = hasWarnings ? 80 : 26,
+            Height = panelHeight,
             Padding = new Padding(4, 0, 4, 2),
             BorderStyle = hasWarnings ? BorderStyle.FixedSingle : BorderStyle.None
         };
@@ -330,6 +346,38 @@ internal sealed class PreCommitReviewDialog : Form
             if (hooksFound && !hooksPassed)
                 warnBox.AppendText($"⛔ Pre-commit hook failed:\r\n{hooksOutput}\r\n");
             panel.Controls.Add(warnBox);
+        }
+
+        if (hasCo)
+        {
+            var coLabel = new Label
+            {
+                Text = $"👤 Will notify: {string.Join("  ", codeowners)}",
+                Font = new Font("Segoe UI", 8),
+                Dock = DockStyle.Bottom,
+                Height = 20,
+                Padding = new Padding(6, 0, 0, 0),
+                ForeColor = Color.FromArgb(100, 160, 240),
+                BackColor = Color.Transparent
+            };
+            panel.Controls.Add(coLabel);
+        }
+
+        if (!hasWarnings && !hasCo)
+        {
+            // Add platform hint on the right side of the success row
+            var platformNote = new Label
+            {
+                Text = platform != GitPlatform.Unknown
+                    ? $"  {GitRemotePlatform.HeaderGlyph(platform)} {GitRemotePlatform.DisplayName(platform)}"
+                    : "",
+                Font = new Font("Segoe UI", 8),
+                Dock = DockStyle.Right,
+                AutoSize = true,
+                Padding = new Padding(0, 2, 8, 0),
+                ForeColor = _theme.Muted
+            };
+            panel.Controls.Add(platformNote);
         }
 
         panel.Controls.Add(header);

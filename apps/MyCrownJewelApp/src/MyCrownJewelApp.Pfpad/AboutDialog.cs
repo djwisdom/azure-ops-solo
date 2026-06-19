@@ -526,6 +526,11 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• CODEOWNERS reader: parses CODEOWNERS file for staged files, shows reviewer hints in pre-commit dialog");
         featuresText.AppendLine("• GetCreatePrUrl(): generates platform-correct PR/MR creation URL for current branch (GitHub compare, ADO pullrequestcreate, GitLab merge_requests/new, Bitbucket pull-requests/new)");
         featuresText.AppendLine();
+        featuresText.AppendLine("Git workflow UX (v1.0.43):");
+        featuresText.AppendLine("• ⎇ Open PR / Open MR button in Git panel header — visible on non-default branches, opens platform-correct PR/MR URL in browser");
+        featuresText.AppendLine("• NewBranchDialog: structured new-branch form with prefix combobox (feature/fix/hotfix/chore/…), platform-aware ticket-ID field (Issue # / Work Item AB# / Jira ticket), description, live branch-name preview");
+        featuresText.AppendLine("• PreCommitReviewDialog: CODEOWNERS reviewer hints ('👤 Will notify: @alice @bob') shown in banner for staged files; platform glyph shown in success row");
+        featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 
         foreach (var package in knownPackages)
