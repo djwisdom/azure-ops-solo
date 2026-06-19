@@ -9,6 +9,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>MyCrownJewelApp.Pfpad</AssemblyName>
     <RootNamespace>MyCrownJewelApp.Pfpad</RootNamespace>
+    <ApplicationIcon>AppIcon.ico</ApplicationIcon>
     <ApplicationVersion>1.0.37.0</ApplicationVersion>
     <Version>1.0.37.0</Version>
     <AssemblyVersion>1.0.37.0</AssemblyVersion>
