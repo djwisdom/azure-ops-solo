@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,7 +32,7 @@ internal sealed class ContentFilterService : IDisposable
         BlocklistFormat Format,
         string Description);
 
-    /// <summary>The three industry-standard lists bundled by default.</summary>
+    /// <summary>All downloadable blocklists. Order is preserved for display; IDs are the stable keys.</summary>
     public static readonly BlocklistEntry[] KnownLists =
     [
         new("easylist",
@@ -54,6 +55,34 @@ internal sealed class ContentFilterService : IDisposable
             "peterlow.txt",
             BlocklistFormat.Hosts,
             "Long-standing curated ad-server list in hosts format (~3 000 domains)"),
+
+        new("fanboy-annoyance",
+            "Fanboy's Annoyance List",
+            "https://easylist.to/easylist/fanboy-annoyance.txt",
+            "fanboy-annoyance.txt",
+            BlocklistFormat.EasyList,
+            "Removes cookie consent banners, newsletter pop-ups, push-notification prompts, and social-share toolbars"),
+
+        new("idontcareaboutcookies",
+            "I Don't Care About Cookies",
+            "https://raw.githubusercontent.com/OhMyGuus/I-Dont-Care-About-Cookies/master/src/filter.txt",
+            "idontcareaboutcookies.txt",
+            BlocklistFormat.EasyList,
+            "60 000+ site-specific rules that dismiss GDPR / cookie-consent dialogs automatically"),
+
+        new("hagezi-pro",
+            "Hagezi Pro",
+            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.txt",
+            "hagezi-pro.txt",
+            BlocklistFormat.Hosts,
+            "Comprehensive unified list: ads, trackers, telemetry, fake-news, and malware domains (~170 000 entries)"),
+
+        new("urlhaus",
+            "URLhaus Malware Hosts",
+            "https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-hosts-online.txt",
+            "urlhaus.txt",
+            BlocklistFormat.Hosts,
+            "Live feed from abuse.ch: domains actively distributing malware and ransomware"),
     ];
 
     // ── Configuration ──────────────────────────────────────────────────────────
@@ -70,7 +99,8 @@ internal sealed class ContentFilterService : IDisposable
     private volatile HashSet<string>? _blocked;
 
     private bool _enabled = true;
-    private readonly bool[] _listEnabled = [true, true, true];
+    /// <summary>IDs of lists currently enabled; replaced atomically by Configure().</summary>
+    private volatile HashSet<string> _enabledListIds = new(KnownLists.Select(l => l.Id), StringComparer.OrdinalIgnoreCase);
     private long _sessionBlocked;
 
     private CancellationTokenSource _cts = new();
@@ -120,18 +150,21 @@ internal sealed class ContentFilterService : IDisposable
 
     /// <summary>
     /// Configure which lists are active. Thread-safe; triggers an async recompile if anything changed.
+    /// <paramref name="listToggles"/> maps list IDs (from <see cref="KnownLists"/>) to enabled state.
+    /// Lists whose IDs are absent default to enabled.
     /// </summary>
-    public void Configure(bool filterEnabled, bool easyList, bool easyPrivacy, bool peterLowe)
+    public void Configure(bool filterEnabled, IReadOnlyDictionary<string, bool> listToggles)
     {
-        bool changed = _enabled != filterEnabled
-            || _listEnabled[0] != easyList
-            || _listEnabled[1] != easyPrivacy
-            || _listEnabled[2] != peterLowe;
+        var newEnabled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var list in KnownLists)
+        {
+            bool on = !listToggles.TryGetValue(list.Id, out bool val) || val;
+            if (on) newEnabled.Add(list.Id);
+        }
 
-        _enabled       = filterEnabled;
-        _listEnabled[0] = easyList;
-        _listEnabled[1] = easyPrivacy;
-        _listEnabled[2] = peterLowe;
+        bool changed = _enabled != filterEnabled || !newEnabled.SetEquals(_enabledListIds);
+        _enabled = filterEnabled;
+        _enabledListIds = newEnabled;
 
         if (changed && IsReady)
             _ = Task.Run(() => RecompileAsync(_cts.Token));
@@ -261,7 +294,7 @@ internal sealed class ContentFilterService : IDisposable
         for (int i = 0; i < KnownLists.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
-            if (!_listEnabled[i]) continue;
+            if (!_enabledListIds.Contains(KnownLists[i].Id)) continue;
 
             string path = Path.Combine(_cacheDir, KnownLists[i].FileName);
             if (!File.Exists(path)) continue;

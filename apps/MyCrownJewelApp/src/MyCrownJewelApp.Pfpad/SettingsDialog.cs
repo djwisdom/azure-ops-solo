@@ -813,6 +813,10 @@ internal sealed class SettingsDialog : Form
             BrowserFilterEasyList       = GetSettingValue<bool>("features.browser.filterEasyList",       _mainForm.CurrentBrowserFilterEasyList),
             BrowserFilterEasyPrivacy    = GetSettingValue<bool>("features.browser.filterEasyPrivacy",    _mainForm.CurrentBrowserFilterEasyPrivacy),
             BrowserFilterPeterLowe      = GetSettingValue<bool>("features.browser.filterPeterLowe",      _mainForm.CurrentBrowserFilterPeterLowe),
+            BrowserFilterFanboyAnnoyance = GetSettingValue<bool>("features.browser.filterFanboyAnnoyance", _mainForm.CurrentBrowserFilterFanboyAnnoyance),
+            BrowserFilterIdontcareaboutcookies = GetSettingValue<bool>("features.browser.filterIdontcareaboutcookies", _mainForm.CurrentBrowserFilterIdontcareaboutcookies),
+            BrowserFilterHageziPro      = GetSettingValue<bool>("features.browser.filterHageziPro",      _mainForm.CurrentBrowserFilterHageziPro),
+            BrowserFilterUrlhaus        = GetSettingValue<bool>("features.browser.filterUrlhaus",        _mainForm.CurrentBrowserFilterUrlhaus),
             BrowserUserAgentPreset      = GetSettingValue<string>("features.browser.userAgentPreset",     _mainForm.CurrentBrowserUserAgentPreset),
             BrowserCustomUserAgent      = GetSettingValue<string>("features.browser.customUserAgent",     _mainForm.CurrentBrowserCustomUserAgent),
             BrowserShowFavoritesBar     = GetSettingValue<bool>("features.browser.showFavoritesBar",      _mainForm.CurrentBrowserShowFavoritesBar),
@@ -1004,6 +1008,10 @@ internal sealed class SettingsDialog : Form
             ["features.browser.filterEasyList"]       = _mainForm.CurrentBrowserFilterEasyList,
             ["features.browser.filterEasyPrivacy"]    = _mainForm.CurrentBrowserFilterEasyPrivacy,
             ["features.browser.filterPeterLowe"]      = _mainForm.CurrentBrowserFilterPeterLowe,
+            ["features.browser.filterFanboyAnnoyance"] = _mainForm.CurrentBrowserFilterFanboyAnnoyance,
+            ["features.browser.filterIdontcareaboutcookies"] = _mainForm.CurrentBrowserFilterIdontcareaboutcookies,
+            ["features.browser.filterHageziPro"]      = _mainForm.CurrentBrowserFilterHageziPro,
+            ["features.browser.filterUrlhaus"]        = _mainForm.CurrentBrowserFilterUrlhaus,
             ["features.browser.userAgentPreset"]      = _mainForm.CurrentBrowserUserAgentPreset,
             ["features.browser.customUserAgent"]      = _mainForm.CurrentBrowserCustomUserAgent,
             ["features.browser.showFavoritesBar"]     = _mainForm.CurrentBrowserShowFavoritesBar,
@@ -1309,6 +1317,10 @@ internal sealed class SettingsDialog : Form
             "features.browser.filterEasyList"       => "EasyList: removes most advertisements from web pages (~70 000 domain rules).",
             "features.browser.filterEasyPrivacy"    => "EasyPrivacy: removes analytics, tracking pixels, and cross-site data collectors.",
             "features.browser.filterPeterLowe"      => "Peter Lowe's Ad List: long-standing curated ad-server list in hosts format.",
+            "features.browser.filterFanboyAnnoyance" => "Fanboy's Annoyance List: removes cookie banners, newsletter pop-ups, push-notification prompts, and social-share bars.",
+            "features.browser.filterIdontcareaboutcookies" => "I Don't Care About Cookies: automatically dismisses GDPR/cookie-consent dialogs on 60 000+ sites.",
+            "features.browser.filterHageziPro"      => "Hagezi Pro: comprehensive unified list covering ads, trackers, telemetry, fake-news, and malware (~170 000 domains).",
+            "features.browser.filterUrlhaus"        => "URLhaus Malware Hosts: live feed from abuse.ch of domains actively distributing malware and ransomware.",
             "features.browser.userAgentPreset"      => "Preset browser identity: default (Edge/WebView2), chrome, firefox, safari, or custom.",
             "features.browser.customUserAgent"      => "Full user-agent string used when preset is set to 'custom'.",
             "features.browser.showFavoritesBar"     => "Show a bookmarks bar below the browser toolbar. Use Manage Favorites to import from Edge or Chrome.",
@@ -1385,6 +1397,26 @@ internal sealed class SettingsDialog : Form
             "Peter Lowe's Ad List",
             "Long-standing curated ad-server list (hosts format, ~3 000 domains).",
             "features.browser.filterPeterLowe");
+
+        y = AddSecCheckRow(parent, y,
+            "Fanboy's Annoyance List",
+            "Removes cookie-consent banners, newsletter pop-ups, push-notification prompts, and social-share bars.",
+            "features.browser.filterFanboyAnnoyance");
+
+        y = AddSecCheckRow(parent, y,
+            "I Don't Care About Cookies",
+            "Dismisses GDPR / cookie-consent dialogs on 60 000+ sites automatically.",
+            "features.browser.filterIdontcareaboutcookies");
+
+        y = AddSecCheckRow(parent, y,
+            "Hagezi Pro (unified)",
+            "Comprehensive list combining ads, trackers, telemetry, fake-news, and malware domains (~170 000 entries).",
+            "features.browser.filterHageziPro");
+
+        y = AddSecCheckRow(parent, y,
+            "URLhaus Malware Hosts",
+            "Live feed of domains actively distributing malware and ransomware (from abuse.ch).",
+            "features.browser.filterUrlhaus");
 
         // Informational: list status
         var svc = ContentFilterService.Instance;

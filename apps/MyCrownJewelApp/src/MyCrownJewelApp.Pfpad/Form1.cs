@@ -496,6 +496,10 @@ using Microsoft.Extensions.DependencyInjection;
         private bool _browserFilterEasyList = true;
         private bool _browserFilterEasyPrivacy = true;
         private bool _browserFilterPeterLowe = true;
+        private bool _browserFilterFanboyAnnoyance = true;
+        private bool _browserFilterIdontcareaboutcookies = true;
+        private bool _browserFilterHageziPro = true;
+        private bool _browserFilterUrlhaus = true;
         private string _browserUserAgentPreset = "default";
         private string _browserCustomUserAgent = "";
         private bool _browserShowFavoritesBar = false;
@@ -990,6 +994,10 @@ using Microsoft.Extensions.DependencyInjection;
         public bool CurrentBrowserFilterEasyList => _browserFilterEasyList;
         public bool CurrentBrowserFilterEasyPrivacy => _browserFilterEasyPrivacy;
         public bool CurrentBrowserFilterPeterLowe => _browserFilterPeterLowe;
+        public bool CurrentBrowserFilterFanboyAnnoyance => _browserFilterFanboyAnnoyance;
+        public bool CurrentBrowserFilterIdontcareaboutcookies => _browserFilterIdontcareaboutcookies;
+        public bool CurrentBrowserFilterHageziPro => _browserFilterHageziPro;
+        public bool CurrentBrowserFilterUrlhaus => _browserFilterUrlhaus;
         public string CurrentBrowserUserAgentPreset  => _browserUserAgentPreset;
         public string CurrentBrowserCustomUserAgent  => _browserCustomUserAgent;
         public bool CurrentBrowserShowFavoritesBar   => _browserShowFavoritesBar;
@@ -2852,6 +2860,10 @@ using Microsoft.Extensions.DependencyInjection;
                 _browserFilterEasyList = settings.BrowserFilterEasyList;
                 _browserFilterEasyPrivacy = settings.BrowserFilterEasyPrivacy;
                 _browserFilterPeterLowe = settings.BrowserFilterPeterLowe;
+                _browserFilterFanboyAnnoyance = settings.BrowserFilterFanboyAnnoyance;
+                _browserFilterIdontcareaboutcookies = settings.BrowserFilterIdontcareaboutcookies;
+                _browserFilterHageziPro = settings.BrowserFilterHageziPro;
+                _browserFilterUrlhaus = settings.BrowserFilterUrlhaus;
                 _browserUserAgentPreset = settings.BrowserUserAgentPreset;
                 _browserCustomUserAgent = settings.BrowserCustomUserAgent ?? "";
                 _browserShowFavoritesBar = settings.BrowserShowFavoritesBar;
@@ -3100,6 +3112,10 @@ using Microsoft.Extensions.DependencyInjection;
                 BrowserFilterEasyList         = _browserFilterEasyList,
                 BrowserFilterEasyPrivacy      = _browserFilterEasyPrivacy,
                 BrowserFilterPeterLowe        = _browserFilterPeterLowe,
+                BrowserFilterFanboyAnnoyance  = _browserFilterFanboyAnnoyance,
+                BrowserFilterIdontcareaboutcookies = _browserFilterIdontcareaboutcookies,
+                BrowserFilterHageziPro        = _browserFilterHageziPro,
+                BrowserFilterUrlhaus          = _browserFilterUrlhaus,
                 BrowserUserAgentPreset        = _browserUserAgentPreset,
                 BrowserCustomUserAgent        = _browserCustomUserAgent,
                 BrowserShowFavoritesBar       = _browserShowFavoritesBar,
@@ -3335,6 +3351,10 @@ using Microsoft.Extensions.DependencyInjection;
             _browserFilterEasyList       = settings.BrowserFilterEasyList;
             _browserFilterEasyPrivacy    = settings.BrowserFilterEasyPrivacy;
             _browserFilterPeterLowe      = settings.BrowserFilterPeterLowe;
+            _browserFilterFanboyAnnoyance = settings.BrowserFilterFanboyAnnoyance;
+            _browserFilterIdontcareaboutcookies = settings.BrowserFilterIdontcareaboutcookies;
+            _browserFilterHageziPro      = settings.BrowserFilterHageziPro;
+            _browserFilterUrlhaus        = settings.BrowserFilterUrlhaus;
             _browserUserAgentPreset = settings.BrowserUserAgentPreset;
             _browserCustomUserAgent = settings.BrowserCustomUserAgent ?? "";
             _browserShowFavoritesBar = settings.BrowserShowFavoritesBar;
@@ -3353,9 +3373,16 @@ using Microsoft.Extensions.DependencyInjection;
             }
             ContentFilterService.Instance.Configure(
                 _browserContentFilterEnabled,
-                _browserFilterEasyList,
-                _browserFilterEasyPrivacy,
-                _browserFilterPeterLowe);
+                new Dictionary<string, bool>
+                {
+                    ["easylist"]               = _browserFilterEasyList,
+                    ["easyprivacy"]            = _browserFilterEasyPrivacy,
+                    ["peterlow"]               = _browserFilterPeterLowe,
+                    ["fanboy-annoyance"]       = _browserFilterFanboyAnnoyance,
+                    ["idontcareaboutcookies"]  = _browserFilterIdontcareaboutcookies,
+                    ["hagezi-pro"]             = _browserFilterHageziPro,
+                    ["urlhaus"]                = _browserFilterUrlhaus,
+                });
             ApplyTerminalSettingsToAll();
 
             // Apply git settings

@@ -159,6 +159,14 @@ public record AppSettings
     public bool BrowserFilterEasyPrivacy { get; init; } = true;
     /// <summary>Use Peter Lowe's ad-server list.</summary>
     public bool BrowserFilterPeterLowe { get; init; } = true;
+    /// <summary>Use Fanboy's Annoyance List (cookie banners, newsletter pop-ups, social-share bars).</summary>
+    public bool BrowserFilterFanboyAnnoyance { get; init; } = true;
+    /// <summary>Use "I Don't Care About Cookies" (GDPR/cookie-consent dialog removal).</summary>
+    public bool BrowserFilterIdontcareaboutcookies { get; init; } = true;
+    /// <summary>Use Hagezi Pro unified hosts list (ads, trackers, telemetry, malware).</summary>
+    public bool BrowserFilterHageziPro { get; init; } = true;
+    /// <summary>Use URLhaus malware-distribution hosts list.</summary>
+    public bool BrowserFilterUrlhaus { get; init; } = true;
     /// <summary>Preset user-agent: "default" (Edge), "chrome", "firefox", "safari", or "custom".</summary>
     public string BrowserUserAgentPreset { get; init; } = "default";
     /// <summary>Custom user-agent string used when <see cref="BrowserUserAgentPreset"/> is "custom".</summary>
