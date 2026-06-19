@@ -106,6 +106,13 @@ namespace MyCrownJewelApp.Pfpad
             if (key == Keys.OemPeriod) return shift ? '>' : '.';
             if (key == Keys.Oemcomma) return shift ? '<' : ',';
             if (key == Keys.OemMinus) return shift ? '_' : '-';
+            if (key == Keys.OemQuestion) return shift ? '?' : '/';
+            if (key == Keys.OemQuotes) return shift ? '"' : '\'';
+            if (key == Keys.Oemplus) return shift ? '+' : '=';
+            if (key == Keys.OemOpenBrackets) return shift ? '{' : '[';
+            if (key == Keys.OemCloseBrackets) return shift ? '}' : ']';
+            if (key == Keys.OemPipe) return shift ? '|' : '\\';
+            if (key == Keys.Oemtilde) return shift ? '~' : '`';
             return null;
         }
 
@@ -153,6 +160,28 @@ namespace MyCrownJewelApp.Pfpad
         {
             VimEngine e = (VimEngine)engine;
             if (alt) return false;
+
+            // Escape (or Ctrl+[) in Normal mode: clear pending buffer
+            if (key == Keys.Escape || (ctrl && key == Keys.OemOpenBrackets))
+            {
+                ResetBuffer();
+                return true;
+            }
+
+            // Ctrl+key bindings — handled before char processing to avoid polluting the command buffer
+            if (ctrl)
+            {
+                switch (key)
+                {
+                    case Keys.R: e.SendCtrlR(); ResetBuffer(); return true;       // redo
+                    case Keys.Z: e.SendCtrlZ(); ResetBuffer(); return true;       // undo
+                    case Keys.F: e.PageDown(); ResetBuffer(); return true;        // page down
+                    case Keys.B: e.PageUp(); ResetBuffer(); return true;          // page up
+                    case Keys.D: e.HalfPageDown(); ResetBuffer(); return true;    // half page down
+                    case Keys.U: e.HalfPageUp(); ResetBuffer(); return true;      // half page up
+                }
+                return false; // pass unknown Ctrl+key through (Ctrl+S, Ctrl+C, etc.)
+            }
 
             char? ch = KeyToChar(key, shift);
 
@@ -287,6 +316,13 @@ namespace MyCrownJewelApp.Pfpad
                     ResetBuffer();
                     return true;
                 }
+
+                if (ch == '`')
+                {
+                    WaitingForJumpMark = true;
+                    ResetBuffer();
+                    return true;
+                }
             }
 
             // Repeat count
@@ -334,6 +370,13 @@ namespace MyCrownJewelApp.Pfpad
                     ResetBuffer();
                     return false;
                 }
+            }
+
+            // Register prefix consumed but no operator yet — keep waiting
+            if (stripped.Length == 0)
+            {
+                if (IsRecording && ch.HasValue) RecordingBuffer.Append(ch);
+                return true;
             }
 
             // Handle commands (delegate to engine for complex logic)
@@ -600,10 +643,13 @@ namespace MyCrownJewelApp.Pfpad
         [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
         private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         private const int EM_REDO = 0x042D;
+        private const int EM_GETFIRSTVISIBLELINE = 0x00CE;
+        private const int EM_LINESCROLL = 0x00B6;
 
         // State pattern: current state
         private IVimState _currentState;
         private bool _pendingWindowCommand = false;
+        private bool _inMacroPlayback = false;
         public Dictionary<char, string> Registers = new();
         public char CurrentRegister = '"';
         public bool IsAppendRegister = false;
@@ -679,6 +725,9 @@ namespace MyCrownJewelApp.Pfpad
         private string? _lastTextObject = null;
         private int _lastInsertPosition = -1;
         public int RepeatCount { get; set; } = 1;
+        public char LastFindChar { get; set; } = '\0';
+        public bool LastFindForward { get; set; } = true;
+        public bool LastFindTill { get; set; } = false;
 
         // TextBox access
         public RichTextBox TextBox => _tb;
@@ -928,9 +977,11 @@ namespace MyCrownJewelApp.Pfpad
                 case Keys.C:
                     CutSelection(); EnterMode(VimMode.Insert); return true;
                 case Keys.OemPeriod:
-                    IndentSelection(1); EnterMode(VimMode.Normal); return true;
+                    if (shift) { IndentSelection(1); EnterMode(VimMode.Normal); return true; }
+                    return false;
                 case Keys.Oemcomma:
-                    IndentSelection(-1); EnterMode(VimMode.Normal); return true;
+                    if (shift) { IndentSelection(-1); EnterMode(VimMode.Normal); return true; }
+                    return false;
                 case Keys.V:
                     if (CurrentMode == VimMode.VisualLine)
                         EnterMode(VimMode.Visual);
@@ -1129,6 +1180,20 @@ namespace MyCrownJewelApp.Pfpad
 
                 case " ": MoveRight(); return true;
 
+                // Paragraph motions
+                case "{": MoveParaBackward(); return true;
+                case "}": MoveParaForward(); return true;
+
+                // Line motions
+                case "-": MoveToPrevLineFirstNonBlank(); return true;
+                case "+": MoveToNextLineFirstNonBlank(); return true;
+                case "_": MoveToFirstNonBlank(); return true;
+                case "|": GoToColumn(RepeatCount); return true;
+
+                // Repeat last f/F/t/T
+                case ";": RepeatFindChar(false); return true;
+                case ",": RepeatFindChar(true); return true;
+
                 // Insert
                 case "i": EnterMode(VimMode.Insert); return true;
                 case "a": MoveRight(); EnterMode(VimMode.Insert); return true;
@@ -1202,6 +1267,8 @@ namespace MyCrownJewelApp.Pfpad
                 case "n": FindNext(); return true;
                 case "N": FindPrevious(); return true;
                 case "zz": CenterCurrentLine(); return true;
+                case "zt": ScrollCurrentLineToTop(); return true;
+                case "zb": ScrollCurrentLineToBottom(); return true;
                 case "*": SearchWordUnderCursor(true); return true;
                 case "#": SearchWordUnderCursor(false); return true;
 
@@ -1224,6 +1291,10 @@ namespace MyCrownJewelApp.Pfpad
                 case "g":
                 case "<":
                 case ">":
+                case "f": case "F": case "t": case "T":  // find-char motions
+                case "r":                                  // replace char
+                case "[": case "]":                        // bracket jumps
+                case "=":                                  // auto-indent operator
                     return false; // wait for more chars
             }
 
@@ -1231,6 +1302,32 @@ namespace MyCrownJewelApp.Pfpad
             if (buf.Length == 2)
             {
                 char op = buf[0];
+                char arg = buf[1];
+
+                // f/F/t/T find-char; r replace-char; [x ]x bracket jumps; == auto-indent
+                switch (op)
+                {
+                    case 'f': FindCharOnLine(arg, true, false); return true;
+                    case 'F': FindCharOnLine(arg, false, false); return true;
+                    case 't': FindCharOnLine(arg, true, true); return true;
+                    case 'T': FindCharOnLine(arg, false, true); return true;
+                    case 'r': ReplaceChar(arg, RepeatCount); RecordAction("replace-char", arg.ToString()); return true;
+                    case '[':
+                        if (arg == '[') { MoveParaBackward(); return true; }
+                        if (arg == '{') { JumpToUnmatchedBracket('{', '}', false); return true; }
+                        if (arg == '(') { JumpToUnmatchedBracket('(', ')', false); return true; }
+                        return true; // consume unknown [x
+                    case ']':
+                        if (arg == ']') { MoveParaForward(); return true; }
+                        if (arg == '}') { JumpToUnmatchedBracket('{', '}', true); return true; }
+                        if (arg == ')') { JumpToUnmatchedBracket('(', ')', true); return true; }
+                        return true; // consume unknown ]x
+                    case '=':
+                        if (arg == '=') { AutoIndentLine(); RecordAction("auto-indent"); return true; }
+                        return true;
+                }
+
+                // d/y/c + motion key
                 char motion = buf[1];
                 if ((op == 'd' || op == 'y' || op == 'c') && MotionKeys.Contains(KeyFromChar(motion)))
                 {
@@ -1290,7 +1387,11 @@ namespace MyCrownJewelApp.Pfpad
                 char c = buf[0];
                 return "hjkl wbe0$^G% iIaAoOxX DdYyPp CcSsVv uU J. /? nN ~<>".Contains(c)
                     || char.IsDigit(c) || c == 'd' || c == 'y' || c == 'c' || c == 'g'
-                    || c == '<' || c == '>' || c == '"' || c == 'z' || c == 'Z';
+                    || c == '<' || c == '>' || c == '"' || c == 'z' || c == 'Z'
+                    || c == 'f' || c == 'F' || c == 't' || c == 'T'  // find-char
+                    || c == 'r'                                         // replace-char
+                    || c == '[' || c == ']'                            // bracket jumps
+                    || c == '=';                                        // auto-indent operator
             }
             if (buf.Length == 2)
             {
@@ -1757,7 +1858,20 @@ namespace MyCrownJewelApp.Pfpad
             _tb.SelectionStart = p;
         }
         private void MoveToFirstLine() => _tb.SelectionStart = 0;
-        private void MoveToLastLine() => _tb.SelectionStart = Math.Max(0, _tb.TextLength - 1);
+        private void MoveToLastLine()
+        {
+            int lastLine = TextBox.GetLineFromCharIndex(Math.Max(0, _tb.TextLength - 1));
+            if (RepeatCount > 1)
+            {
+                int targetLine = Math.Min(RepeatCount - 1, lastLine);
+                _tb.SelectionStart = GetLineStart(targetLine);
+                MoveToFirstNonBlank();
+            }
+            else
+            {
+                _tb.SelectionStart = GetLineStart(lastLine);
+            }
+        }
 
         private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
@@ -2175,39 +2289,204 @@ namespace MyCrownJewelApp.Pfpad
                 case "outdent": IndentLine(-1); break;
                 case "toggle-case": ToggleCase(); break;
                 case "join": JoinLines(); break;
+                case "replace-char":
+                    if (data?.Length > 0) ReplaceChar(data[0], 1);
+                    break;
+                case "auto-indent": AutoIndentLine(); break;
             }
         }
         #endregion
 
         #region Scrolling
-        private void PageDown()
+        public void PageDown()
         {
             int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height);
             for (int i = 0; i < lines; i++) MoveDown();
         }
-        private void PageUp()
+        public void PageUp()
         {
             int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height);
             for (int i = 0; i < lines; i++) MoveUp();
         }
-        private void HalfPageDown()
+        public void HalfPageDown()
         {
             int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height / 2);
             for (int i = 0; i < lines; i++) MoveDown();
         }
-        private void HalfPageUp()
+        public void HalfPageUp()
         {
             int lines = Math.Max(1, _tb.ClientSize.Height / _tb.Font.Height / 2);
             for (int i = 0; i < lines; i++) MoveUp();
         }
 
-        private void CenterCurrentLine()
+        public void CenterCurrentLine()
         {
             int line = GetCurrentLine();
             int visible = Math.Max(1, _tb.ClientSize.Height / Math.Max(1, _tb.Font.Height));
             int target = Math.Max(0, line - visible / 2);
             _tb.SelectionStart = GetLineStart(target);
             _tb.ScrollToCaret();
+        }
+
+        public void ScrollCurrentLineToTop()
+        {
+            int currentLine = GetCurrentLine();
+            int firstVisible = (int)SendMessage(_tb.Handle, EM_GETFIRSTVISIBLELINE, IntPtr.Zero, IntPtr.Zero);
+            int delta = currentLine - firstVisible;
+            if (delta != 0) SendMessage(_tb.Handle, EM_LINESCROLL, IntPtr.Zero, new IntPtr(delta));
+        }
+
+        public void ScrollCurrentLineToBottom()
+        {
+            int currentLine = GetCurrentLine();
+            int visibleLines = Math.Max(1, _tb.ClientSize.Height / Math.Max(1, _tb.Font.Height));
+            int firstVisible = (int)SendMessage(_tb.Handle, EM_GETFIRSTVISIBLELINE, IntPtr.Zero, IntPtr.Zero);
+            int delta = currentLine - (firstVisible + visibleLines - 1);
+            if (delta != 0) SendMessage(_tb.Handle, EM_LINESCROLL, IntPtr.Zero, new IntPtr(delta));
+        }
+        #endregion
+
+        #region FindChar / Replace / Paragraph / Column Motions
+        private void DoFindChar(char c, bool forward, bool till, int repeat)
+        {
+            string t = _tb.Text;
+            int p = _tb.SelectionStart;
+            int line = GetCurrentLine();
+            int lineStart = GetLineStart(line);
+            int lineEnd = GetLineEnd(line);
+
+            int found = -1;
+            if (forward)
+            {
+                int count = 0;
+                for (int i = p + 1; i < lineEnd; i++)
+                    if (t[i] == c && ++count == repeat) { found = i; break; }
+                if (found >= 0)
+                    _tb.SelectionStart = till ? Math.Max(p, found - 1) : found;
+            }
+            else
+            {
+                int count = 0;
+                for (int i = p - 1; i >= lineStart; i--)
+                    if (t[i] == c && ++count == repeat) { found = i; break; }
+                if (found >= 0)
+                    _tb.SelectionStart = till ? Math.Min(t.Length - 1, found + 1) : found;
+            }
+        }
+
+        public void FindCharOnLine(char c, bool forward, bool till)
+        {
+            LastFindChar = c;
+            LastFindForward = forward;
+            LastFindTill = till;
+            DoFindChar(c, forward, till, Math.Max(1, RepeatCount));
+        }
+
+        public void RepeatFindChar(bool reverse)
+        {
+            if (LastFindChar == '\0') return;
+            bool actualForward = reverse ? !LastFindForward : LastFindForward;
+            DoFindChar(LastFindChar, actualForward, LastFindTill, Math.Max(1, RepeatCount));
+        }
+
+        public void ReplaceChar(char c, int repeat)
+        {
+            int p = _tb.SelectionStart;
+            int count = Math.Min(Math.Max(1, repeat), _tb.TextLength - p);
+            if (count <= 0) return;
+            _tb.SelectionStart = p;
+            _tb.SelectionLength = count;
+            _tb.SelectedText = new string(c, count);
+            _tb.SelectionStart = p + count - 1;
+            _tb.SelectionLength = 0;
+            CreateUndoPoint();
+        }
+
+        public void MoveParaForward()
+        {
+            int repeat = Math.Max(1, RepeatCount);
+            int line = GetCurrentLine();
+            int totalLines = _tb.GetLineFromCharIndex(Math.Max(0, _tb.TextLength - 1));
+            for (int r = 0; r < repeat; r++)
+            {
+                // skip current non-empty lines
+                while (line < totalLines && !string.IsNullOrWhiteSpace(_tb.Lines[line])) line++;
+                // skip empty lines
+                while (line < totalLines && string.IsNullOrWhiteSpace(_tb.Lines[line])) line++;
+            }
+            _tb.SelectionStart = GetLineStart(Math.Min(line, totalLines));
+        }
+
+        public void MoveParaBackward()
+        {
+            int repeat = Math.Max(1, RepeatCount);
+            int line = GetCurrentLine();
+            for (int r = 0; r < repeat; r++)
+            {
+                if (line > 0) line--;
+                // skip empty lines backward
+                while (line > 0 && string.IsNullOrWhiteSpace(_tb.Lines[line])) line--;
+                // skip non-empty lines backward
+                while (line > 0 && !string.IsNullOrWhiteSpace(_tb.Lines[line - 1])) line--;
+            }
+            _tb.SelectionStart = GetLineStart(Math.Max(0, line));
+        }
+
+        public void GoToColumn(int col)
+        {
+            int line = GetCurrentLine();
+            int lineStart = GetLineStart(line);
+            int lineLen = Math.Max(0, GetLineEnd(line) - lineStart);
+            _tb.SelectionStart = lineStart + Math.Min(Math.Max(0, col - 1), lineLen);
+        }
+
+        private void MoveToNextLineFirstNonBlank() { MoveDown(); MoveToFirstNonBlank(); }
+        private void MoveToPrevLineFirstNonBlank() { MoveUp(); MoveToFirstNonBlank(); }
+
+        public void AutoIndentLine()
+        {
+            int line = GetCurrentLine();
+            int refLine = line - 1;
+            while (refLine >= 0 && string.IsNullOrWhiteSpace(_tb.Lines[refLine])) refLine--;
+            if (refLine < 0) return;
+
+            string refText = _tb.Lines[refLine];
+            int indentEnd = 0;
+            while (indentEnd < refText.Length && (refText[indentEnd] == ' ' || refText[indentEnd] == '\t')) indentEnd++;
+            string indent = refText[..indentEnd];
+
+            string curText = _tb.Lines[line];
+            int curIndentEnd = 0;
+            while (curIndentEnd < curText.Length && (curText[curIndentEnd] == ' ' || curText[curIndentEnd] == '\t')) curIndentEnd++;
+
+            int lineStart = GetLineStart(line);
+            _tb.SelectionStart = lineStart;
+            _tb.SelectionLength = curIndentEnd;
+            _tb.SelectedText = indent;
+            CreateUndoPoint();
+        }
+
+        private void JumpToUnmatchedBracket(char openChar, char closeChar, bool toClose)
+        {
+            int p = _tb.SelectionStart;
+            string t = _tb.Text;
+            int depth = 0;
+            if (toClose)
+            {
+                for (int i = p; i < t.Length; i++)
+                {
+                    if (t[i] == openChar) depth++;
+                    else if (t[i] == closeChar) { if (depth == 0) { _tb.SelectionStart = i; return; } depth--; }
+                }
+            }
+            else
+            {
+                for (int i = p; i >= 0; i--)
+                {
+                    if (t[i] == closeChar) depth++;
+                    else if (t[i] == openChar) { if (depth == 0) { _tb.SelectionStart = i; return; } depth--; }
+                }
+            }
         }
         #endregion
 
@@ -2331,13 +2610,24 @@ namespace MyCrownJewelApp.Pfpad
 
         public void PlaybackMacro(string macro)
         {
-            foreach (char c in macro)
+            if (_inMacroPlayback) return;
+            _inMacroPlayback = true;
+            try
             {
-                Keys k = CharToKey(c);
-                if (k != Keys.None)
+                foreach (char c in macro)
                 {
-                    // ProcessKey(k.key, k.ctrl, k.shift, k.alt);
+                    Keys k = CharToKey(c);
+                    if (k == Keys.None) continue;
+                    bool ctrl2 = (k & Keys.Control) != 0;
+                    bool shift2 = (k & Keys.Shift) != 0;
+                    bool alt2 = (k & Keys.Alt) != 0;
+                    Keys baseKey = k & Keys.KeyCode;
+                    ProcessKey(baseKey, ctrl2, shift2, alt2);
                 }
+            }
+            finally
+            {
+                _inMacroPlayback = false;
             }
         }
 
