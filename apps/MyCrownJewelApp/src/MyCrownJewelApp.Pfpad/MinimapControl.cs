@@ -43,6 +43,8 @@ namespace MyCrownJewelApp.Pfpad
         private Bitmap? _fullMap;
         private bool _mapDirty = true;
         private int _mapGeneration;
+
+        private MinimapWheelFilter? _wheelFilter;
         private int _lastPollVersion;
 
         private const float PixelsPerLine = 2f;
@@ -450,6 +452,44 @@ namespace MyCrownJewelApp.Pfpad
             }
         }
 
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            // Do NOT call base.OnMouseWheel — that propagates the scroll to the parent editor.
+            if (_attachedEditor == null) return;
+
+            int linesPerNotch = Math.Max(1, SystemInformation.MouseWheelScrollLines);
+            int delta = -(e.Delta / 120) * linesPerNotch;
+
+            int minimapContentLines = (int)(Height / PixelsPerLine);
+            int maxFirst = Math.Max(0, _totalLines - minimapContentLines);
+            _mapFirstLine = Math.Max(0, Math.Min(maxFirst, _mapFirstLine + delta));
+
+            MarkDirty();
+            Invalidate();
+        }
+
+        private const int WM_MOUSEWHEEL = 0x020A;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_MOUSEWHEEL && _attachedEditor != null)
+            {
+                int wheelData = (int)(long)m.WParam;
+                int wheelDelta = (short)(wheelData >> 16);
+                int linesPerNotch = Math.Max(1, SystemInformation.MouseWheelScrollLines);
+                int delta = -(wheelDelta / 120) * linesPerNotch;
+
+                int minimapContentLines = (int)(Height / PixelsPerLine);
+                int maxFirst = Math.Max(0, _totalLines - minimapContentLines);
+                _mapFirstLine = Math.Max(0, Math.Min(maxFirst, _mapFirstLine + delta));
+
+                MarkDirty();
+                Invalidate();
+                return; // consumed — do NOT propagate to editor
+            }
+            base.WndProc(ref m);
+        }
+
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
@@ -485,16 +525,71 @@ namespace MyCrownJewelApp.Pfpad
             Invalidate();
         }
 
+        protected override void OnParentChanged(EventArgs e)
+        {
+            base.OnParentChanged(e);
+            if (_wheelFilter != null)
+            {
+                Application.RemoveMessageFilter(_wheelFilter);
+                _wheelFilter = null;
+            }
+            if (Parent != null)
+            {
+                _wheelFilter = new MinimapWheelFilter(this);
+                Application.AddMessageFilter(_wheelFilter);
+            }
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                if (_wheelFilter != null)
+                {
+                    Application.RemoveMessageFilter(_wheelFilter);
+                    _wheelFilter = null;
+                }
                 _pollTimer?.Stop();
                 _pollTimer?.Dispose();
                 _fullMap?.Dispose();
                 DetachEditor();
             }
             base.Dispose(disposing);
+        }
+
+        /// <summary>
+        /// Application-level message filter that intercepts WM_MOUSEWHEEL and routes
+        /// it to this minimap when the cursor is hovering over it, regardless of focus.
+        /// </summary>
+        private sealed class MinimapWheelFilter : IMessageFilter
+        {
+            private const int WM_MOUSEWHEEL = 0x020A;
+            private readonly MinimapControl _minimap;
+
+            public MinimapWheelFilter(MinimapControl minimap) => _minimap = minimap;
+
+            public bool PreFilterMessage(ref Message m)
+            {
+                if (m.Msg != WM_MOUSEWHEEL) return false;
+                if (_minimap._attachedEditor == null || _minimap.IsDisposed || !_minimap.IsHandleCreated) return false;
+
+                var cursor = Control.MousePosition;
+                var bounds = _minimap.RectangleToScreen(_minimap.ClientRectangle);
+                if (!bounds.Contains(cursor)) return false;
+
+                int wheelData = (int)(long)m.WParam;
+                int wheelDelta = (short)(wheelData >> 16);
+                int linesPerNotch = Math.Max(1, SystemInformation.MouseWheelScrollLines);
+                int delta = -(wheelDelta / 120) * linesPerNotch;
+
+                int minimapContentLines = (int)(_minimap.Height / PixelsPerLine);
+                int maxFirst = Math.Max(0, _minimap._totalLines - minimapContentLines);
+                _minimap._mapFirstLine = Math.Max(0, Math.Min(maxFirst, _minimap._mapFirstLine + delta));
+
+                _minimap.MarkDirty();
+                _minimap.Invalidate();
+                return true; // consumed
+            }
         }
     }
 

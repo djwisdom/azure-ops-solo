@@ -335,7 +335,7 @@ namespace MyCrownJewelApp.Pfpad
             int bottomY = screen.Bottom - toastHeight - 16 - yOffset;
             bottomY = Math.Max(screen.Top + 16, bottomY);
 
-            var toast = new NotificationToastForm(item, bottomY);
+            var toast = new NotificationToastForm(item, bottomY, url => OpenNewBrowserTab(url));
             toast.FormClosed += (s, e) =>
             {
                 _activeToasts.Remove(toast);

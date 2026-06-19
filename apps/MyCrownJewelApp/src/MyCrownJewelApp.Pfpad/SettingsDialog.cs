@@ -90,6 +90,7 @@ internal sealed class SettingsDialog : Form
         LoadCurrentValues();
         BuildSettingsTree();
         NavigateTo(initialCategory ?? "editor");
+        Load += (_, _) => NativeThemed.ApplyThemeToChildScrollbars(this, !_theme.IsLight);
     }
 
     /// <summary>
@@ -4483,6 +4484,12 @@ internal sealed class ThemeAwareScrollablePanel : Panel
         InitializeScrollbars();
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        NativeThemed.ApplyDarkScrollbarTheme(Handle, !_theme.IsLight);
+    }
+
     private void InitializeScrollbars()
     {
         // Create custom themed scrollbars
@@ -4515,6 +4522,9 @@ internal sealed class ThemeAwareScrollablePanel : Panel
     {
         _theme = theme;
         BackColor = _theme.Background;
+
+        if (IsHandleCreated)
+            NativeThemed.ApplyDarkScrollbarTheme(Handle, !_theme.IsLight);
 
         if (_vScrollBar is ThemeAwareVScrollBar vScroll)
         {

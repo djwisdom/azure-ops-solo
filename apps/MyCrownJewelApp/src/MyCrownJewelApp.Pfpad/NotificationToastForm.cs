@@ -11,6 +11,7 @@ namespace MyCrownJewelApp.Pfpad;
         private readonly System.Windows.Forms.Timer _autoCloseTimer;
         private readonly System.Windows.Forms.Timer _fadeTimer;
         private readonly Theme _theme;
+        private readonly Action<string>? _openInBuiltinBrowser;
         private bool _closing;
         private float _opacity = 0f;
         private const int DisplaySeconds = 12;
@@ -21,10 +22,11 @@ namespace MyCrownJewelApp.Pfpad;
         private const int WS_EX_TOOLWINDOW = 0x00000080;
         private const int WS_EX_NOACTIVATE = 0x08000000;
 
-        public NotificationToastForm(FeedItem item, int yPosition = -1)
+        public NotificationToastForm(FeedItem item, int yPosition = -1, Action<string>? openInBuiltinBrowser = null)
         {
             _item = item;
             _yPosition = yPosition;
+            _openInBuiltinBrowser = openInBuiltinBrowser;
             _theme = ThemeManager.Instance.CurrentTheme;
 
         ShowInTaskbar = false;
@@ -228,8 +230,13 @@ namespace MyCrownJewelApp.Pfpad;
             try
             {
                 if (SecurityEnforcementService.IsUrlSchemeAllowed(_item.Link.AbsoluteUri))
-                    System.Diagnostics.Process.Start(
-                        new System.Diagnostics.ProcessStartInfo(_item.Link.AbsoluteUri) { UseShellExecute = true });
+                {
+                    if (_openInBuiltinBrowser != null)
+                        _openInBuiltinBrowser(_item.Link.AbsoluteUri);
+                    else
+                        System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo(_item.Link.AbsoluteUri) { UseShellExecute = true });
+                }
             }
             catch { }
         }

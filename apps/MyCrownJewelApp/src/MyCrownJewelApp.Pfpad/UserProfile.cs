@@ -350,6 +350,11 @@ public record UserProfile
     public bool? OverrideSyntaxHighlighting { get; init; }
 
     /// <summary>
+    /// Marks this profile as the preferred profile to use on startup.
+    /// </summary>
+    public bool DefaultOnStartup { get; init; }
+
+    /// <summary>
     /// Computed display color from ColorHex, falls back to theme blue.
     /// </summary>
     [JsonIgnore]

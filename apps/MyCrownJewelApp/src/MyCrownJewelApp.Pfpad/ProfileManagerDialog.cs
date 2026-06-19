@@ -3,180 +3,220 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
 
-/// <summary>
-/// Enhanced profile manager dialog with VS Code-style UX.
-/// Supports colored circle avatars, color selection, search, profile metadata,
-/// and comprehensive overrides.
-/// </summary>
 internal sealed class ProfileManagerDialog : Form
 {
     private readonly UserProfileManager _manager;
     private readonly Form1 _mainForm;
     private readonly Theme _theme;
 
-    // Left panel: profile list
+    private readonly List<string> _projectTypes = new() { "", "dotnet", "node", "python", "java", "go", "rust", "cpp", "web" };
+
+    private List<UserProfile> _profiles = new();
+    private UserProfile? _loadedProfile;
+    private WorkspaceInfo? _primaryWorkspace;
+    private List<WorkspaceInfo> _recentWorkspaces = new();
+    private Color _selectedColor;
+    private bool _isDirty;
+    private bool _suppressDirtyTracking;
+    private bool _suppressSelectionChange;
+
     private Panel _leftPanel = null!;
     private TextBox _searchBox = null!;
     private ListBox _profileList = null!;
-    private Button _newButton = null!;
+    private Label _profilePlaceholderLabel = null!;
     private ContextMenuStrip _newMenu = null!;
-    private ToolStripMenuItem _newBlankItem = null!;
-    private ToolStripMenuItem _newFromWindowItem = null!;
-    private ToolStripMenuItem _newFromWorkspaceItem = null!;
+    private Button _newButton = null!;
     private Button _duplicateButton = null!;
-    private Button _renameButton = null!;
     private Button _deleteButton = null!;
 
-    // Right panel: details
-    private Panel _rightPanel = null!;
+    private Panel _headerDot = null!;
+    private Label _titleLabel = null!;
+    private Label _dirtyBadgeLabel = null!;
+    private TabControl _tabControl = null!;
+
     private TextBox _nameBox = null!;
     private TextBox _descriptionBox = null!;
-    private PictureBox _colorPreviewBox = null!;
+    private Label _colorHexLabel = null!;
     private Button _colorButton = null!;
-    private Label _colorLabel = null!;
-    private TextBox _workspaceBox = null!;
-    private Button _browseButton = null!;
-    private Button _loadWorkspaceFileButton = null!;
-    private ComboBox _projectTypeCombo = null!;
-    private ListBox _recentWorkspacesList = null!;
-    private Button _addWorkspaceButton = null!;
-    private Button _removeWorkspaceButton = null!;
-    private TextBox _buildBox = null!;
-    private TextBox _runBox = null!;
-    private TextBox _testBox = null!;
-    private CheckBox _overrideTabSizeCheck = null!;
-    private NumericUpDown _overrideTabSizeVal = null!;
-    private CheckBox _overrideInsertSpacesCheck = null!;
-    private CheckBox _overrideInsertSpacesVal = null!;
-    private CheckBox _overrideFontSizeCheck = null!;
-    private NumericUpDown _overrideFontSizeVal = null!;
-    private CheckBox _overrideFontNameCheck = null!;
-    private ComboBox _overrideFontNameVal = null!;
-    private CheckBox _overrideThemeCheck = null!;
-    private ComboBox _overrideThemeVal = null!;
-    private CheckBox _overrideWordWrapCheck = null!;
-    private CheckBox _overrideWordWrapVal = null!;
     private CheckBox _defaultOnStartupCheck = null!;
     private Label _lastUsedLabel = null!;
     private Label _usageLabel = null!;
+    private Label _createdLabel = null!;
 
+    private TextBox _workspaceBox = null!;
+    private Button _browseButton = null!;
+    private Button _loadWorkspaceButton = null!;
+    private ComboBox _projectTypeCombo = null!;
+    private ListBox _recentWorkspacesList = null!;
+    private Label _recentPlaceholderLabel = null!;
+    private Button _removeWorkspaceButton = null!;
+
+    private TextBox _buildBox = null!;
+    private Button _resetBuildButton = null!;
+    private TextBox _runBox = null!;
+    private Button _resetRunButton = null!;
+    private TextBox _testBox = null!;
+    private Button _resetTestButton = null!;
+
+    private CheckBox _overrideTabSizeCheck = null!;
+    private NumericUpDown _overrideTabSizeValue = null!;
+    private CheckBox _overrideInsertSpacesCheck = null!;
+    private CheckBox _overrideInsertSpacesValue = null!;
+    private CheckBox _overrideFontSizeCheck = null!;
+    private NumericUpDown _overrideFontSizeValue = null!;
+    private CheckBox _overrideFontNameCheck = null!;
+    private TextBox _overrideFontNameBox = null!;
+    private Button _overrideFontNameButton = null!;
+    private CheckBox _overrideThemeCheck = null!;
+    private ComboBox _overrideThemeCombo = null!;
+    private CheckBox _overrideWordWrapCheck = null!;
+    private CheckBox _overrideWordWrapValue = null!;
+    private CheckBox _overrideVimModeCheck = null!;
+    private CheckBox _overrideVimModeValue = null!;
+    private CheckBox _overrideAutoSaveCheck = null!;
+    private CheckBox _overrideAutoSaveValue = null!;
+
+    private CheckBox _overrideGutterCheck = null!;
+    private CheckBox _overrideGutterValue = null!;
+    private CheckBox _overrideStatusBarCheck = null!;
+    private CheckBox _overrideStatusBarValue = null!;
+    private CheckBox _overrideGuideCheck = null!;
+    private CheckBox _overrideGuideValue = null!;
+    private CheckBox _overrideGuideColumnCheck = null!;
+    private NumericUpDown _overrideGuideColumnValue = null!;
+    private CheckBox _overrideMinimapCheck = null!;
+    private CheckBox _overrideMinimapValue = null!;
+    private CheckBox _overrideRainbowBracketsCheck = null!;
+    private CheckBox _overrideRainbowBracketsValue = null!;
+    private CheckBox _overrideBreadcrumbsCheck = null!;
+    private CheckBox _overrideBreadcrumbsValue = null!;
+    private CheckBox _overrideHoverHighlightCheck = null!;
+    private CheckBox _overrideHoverHighlightValue = null!;
+    private CheckBox _overrideSyntaxHighlightingCheck = null!;
+    private CheckBox _overrideSyntaxHighlightingValue = null!;
+    private CheckBox _overrideAnalyzersCheck = null!;
+    private CheckBox _overrideAnalyzersValue = null!;
+    private CheckBox _overrideStickyScrollCheck = null!;
+    private CheckBox _overrideStickyScrollValue = null!;
+    private CheckBox _overrideTerminalShellCheck = null!;
+    private TextBox _overrideTerminalShellBox = null!;
+    private CheckBox _overrideTerminalHeightCheck = null!;
+    private NumericUpDown _overrideTerminalHeightValue = null!;
+
+    private Button _activateButton = null!;
     private Button _saveButton = null!;
     private Button _exportButton = null!;
     private Button _importButton = null!;
     private Button _closeButton = null!;
 
-    private GroupBox? _appearanceGroup;
-    private CollapsibleSection? _workspaceSection = null;
-    private CollapsibleSection? _commandsSection = null;
-    private CollapsibleSection? _overridesSection = null;
-
-    private Button _showAllButton = null!;
-    private Panel? _actionPanel;
-
-    private UserProfile? _currentProfile;
-
     public ProfileManagerDialog(UserProfileManager manager, Form1 mainForm)
     {
-        try
+        _manager = manager ?? throw new ArgumentNullException(nameof(manager));
+        _mainForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
+        _theme = ThemeManager.Instance.CurrentTheme;
+        _selectedColor = _theme.Accent;
+
+        Text = "Manage Profiles";
+        StartPosition = FormStartPosition.CenterParent;
+        ShowInTaskbar = false;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MinimumSize = new Size(700, 500);
+        Size = new Size(860, 620);
+        MaximizeBox = true;
+        MinimizeBox = false;
+        KeyPreview = true;
+        BackColor = _theme.Background;
+        ForeColor = _theme.Text;
+        Font = new Font("Segoe UI", 9f);
+
+        BuildLayout();
+        RegisterEvents();
+        RefreshProfileList(_manager.ActiveProfileName ?? "Default");
+        UpdateHeader();
+        UpdateActionStates();
+        UpdateRecentWorkspacePlaceholder();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        if (!_theme.IsLight)
         {
-            System.Diagnostics.Debug.WriteLine("[ProfileManager] Starting initialization...");
-
-            _manager = manager ?? throw new ArgumentNullException(nameof(manager));
-            _mainForm = mainForm ?? throw new ArgumentNullException(nameof(mainForm));
-            _theme = ThemeManager.Instance?.CurrentTheme ?? throw new InvalidOperationException("ThemeManager or CurrentTheme is not available.");
-
-            System.Diagnostics.Debug.WriteLine("[ProfileManager] Basic setup complete, initializing form properties...");
-
-            Text = "Manage Profiles";
-            ClientSize = new Size(720, 560);
-            StartPosition = FormStartPosition.CenterParent;
-            ShowInTaskbar = false;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            BackColor = _theme.Background;
-            ForeColor = _theme.Text;
-            Font = new Font("Segoe UI", 9);
-            AutoScroll = false;
-
-            System.Diagnostics.Debug.WriteLine("[ProfileManager] Form properties set, calling InitializeComponents...");
-            try
-            {
-                InitializeComponents();
-                System.Diagnostics.Debug.WriteLine("[ProfileManager] InitializeComponents succeeded");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProfileManager] InitializeComponents failed: {ex.Message}\n{ex.StackTrace}");
-                throw;
-            }
-
-            System.Diagnostics.Debug.WriteLine("[ProfileManager] InitializeComponents complete, calling LoadProfileList...");
-            LoadProfileList();
-
-            System.Diagnostics.Debug.WriteLine("[ProfileManager] LoadProfileList complete, calling RegisterEvents...");
-            RegisterEvents();
-
-            // Subscribe to profile change events
-            _manager.ProfileChanged += OnProfileChanged;
-            _manager.ProfileDeleted += OnProfileDeleted;
-
-            System.Diagnostics.Debug.WriteLine("[ProfileManager] Initialization complete!");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Initialization failed: {ex.Message}\n{ex.StackTrace}");
-            ThemedMessageBox.Show($"Failed to initialize Profile Manager: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}", "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            throw;
+            NativeThemed.ApplyDarkModeToWindow(Handle);
         }
     }
 
-    private void InitializeComponents()
+    private void BuildLayout()
     {
-        // Ensure theme is available
-        if (_theme.Background == Color.Empty)
-            throw new InvalidOperationException("Theme is not properly initialized");
+        SuspendLayout();
 
-        // === LEFT PANEL ===
+        var bottomBar = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 54,
+            BackColor = _theme.PanelBackground,
+            Padding = new Padding(12, 10, 12, 10)
+        };
+
+        var actionFlow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty
+        };
+
+        _activateButton = CreateButton("Activate", 92);
+        _saveButton = CreateButton("Save", 92);
+        _exportButton = CreateButton("Export", 92);
+        _importButton = CreateButton("Import", 92);
+        _closeButton = CreateButton("Close", 92);
+
+        actionFlow.Controls.AddRange(new Control[] { _activateButton, _saveButton, _exportButton, _importButton, _closeButton });
+        bottomBar.Controls.Add(actionFlow);
+
+        var contentHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12),
+            BackColor = _theme.Background
+        };
+
         _leftPanel = new Panel
         {
-            Location = new Point(12, 12),
-            Size = new Size(210, this.ClientSize.Height - 24),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left,
+            Dock = DockStyle.Left,
+            Width = 220,
             BackColor = _theme.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle
+            Padding = new Padding(12)
         };
 
-        // Compute layout metrics
-        const int buttonHeight = 26;
-        const int buttonRows = 2;
-        const int buttonGap = 4;
-        const int bottomMargin = 12;
-        int buttonAreaHeight = buttonRows * buttonHeight + (buttonRows - 1) * buttonGap; // 56
-        int topRowY = _leftPanel.Height - buttonAreaHeight - bottomMargin;
-        int bottomRowY = topRowY + buttonHeight + buttonGap;
-        int listHeight = topRowY - 36 - 8;
+        var searchLabel = CreateSectionLabel("Profiles");
+        searchLabel.Dock = DockStyle.Top;
 
-        // Search box
-        _searchBox = new TextBox
+        _searchBox = CreateTextBox();
+        _searchBox.PlaceholderText = "Search profiles";
+        var searchHost = WrapControl(_searchBox);
+        searchHost.Dock = DockStyle.Top;
+        searchHost.Height = _searchBox.PreferredHeight + 8;
+
+        var listHost = new Panel
         {
-            Location = new Point(8, 8),
-            Size = new Size(194, 23),
-            PlaceholderText = "Search profiles...",
+            Dock = DockStyle.Fill,
             BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.None
+            Padding = new Padding(1),
+            Margin = new Padding(0, 10, 0, 10)
         };
+        listHost.Paint += (s, e) => DrawBorder(e.Graphics, ((Control)s!).ClientRectangle);
 
-        // Profile list (owner-drawn)
         _profileList = new ListBox
         {
-            Location = new Point(8, 36),
-            Size = new Size(194, listHeight),
+            Dock = DockStyle.Fill,
             DrawMode = DrawMode.OwnerDrawFixed,
             ItemHeight = 24,
             IntegralHeight = false,
@@ -185,1626 +225,1839 @@ internal sealed class ProfileManagerDialog : Form
             BorderStyle = BorderStyle.None
         };
         _profileList.DrawItem += ProfileList_DrawItem;
-        // _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem; // Temporarily disabled
 
-        // New button with dropdown
-        _newButton = new Button
+        _profilePlaceholderLabel = new Label
         {
-            Text = "New",
-            Location = new Point(8, topRowY),
-            Size = new Size(60, buttonHeight),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        _newMenu = new ContextMenuStrip { RenderMode = ToolStripRenderMode.Professional };
-        _newMenu.Renderer = new ThemeAwareMenuRenderer(_theme);
-        _newBlankItem = new ToolStripMenuItem("Blank Profile");
-        _newFromWindowItem = new ToolStripMenuItem("From Current Window");
-        _newFromWorkspaceItem = new ToolStripMenuItem("From Current Workspace");
-        _newMenu.Items.AddRange(new ToolStripItem[] { _newBlankItem, _newFromWindowItem, _newFromWorkspaceItem });
-
-        _duplicateButton = new Button
-        {
-            Text = "Duplicate",
-            Location = new Point(74, topRowY),
-            Size = new Size(60, buttonHeight),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-
-        _renameButton = new Button
-        {
-            Text = "Rename",
-            Location = new Point(140, topRowY),
-            Size = new Size(60, buttonHeight),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-
-        _deleteButton = new Button
-        {
-            Text = "Delete",
-            Location = new Point(8, bottomRowY),
-            Size = new Size(60, buttonHeight),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-
-        _leftPanel.Controls.AddRange(new Control[] { _searchBox, _profileList, _newButton, _duplicateButton, _renameButton, _deleteButton });
-        Controls.Add(_leftPanel);
-
-        // === RIGHT PANEL ===
-        _rightPanel = new Panel
-        {
-            Location = new Point(230, 12),
-            Size = new Size(478, this.ClientSize.Height - 24),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
-            BackColor = _theme.Background,
-            AutoScroll = true
-        };
-
-        int y = 0;
-
-        // Title
-        var titleLbl = new Label
-        {
-            Text = "Profile Details",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Accent,
-            Font = new Font("Segoe UI", 12, FontStyle.Bold)
-        };
-        _rightPanel.Controls.Add(titleLbl);
-        y += 30;
-
-        // Name
-        var nameLbl = new Label { Text = "Name:", Location = new Point(0, y + 4), AutoSize = true, ForeColor = _theme.Text };
-        _rightPanel.Controls.Add(nameLbl);
-        _nameBox = new TextBox { Location = new Point(70, y), Width = 300, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
-        _rightPanel.Controls.Add(_nameBox);
-        y += 30;
-
-        // Description
-        var descLbl = new Label { Text = "Description:", Location = new Point(0, y + 4), AutoSize = true, ForeColor = _theme.Text };
-        _rightPanel.Controls.Add(descLbl);
-        _descriptionBox = new TextBox { Location = new Point(70, y), Width = 300, Height = 50, Multiline = true, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None, ScrollBars = ScrollBars.Vertical };
-        _rightPanel.Controls.Add(_descriptionBox);
-        y += 60;
-
-        // Appearance group
-        _appearanceGroup = new GroupBox
-        {
-            Text = "Appearance",
-            Location = new Point(0, y),
-            Size = new Size(380, 60),
-            ForeColor = _theme.Text,
-            BackColor = _theme.Background,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold)
-        };
-        int ax = 10, ay = 22;
-        _appearanceGroup.Controls.Add(new Label { Text = "Color:", Location = new Point(ax, ay), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent });
-        _colorPreviewBox = new PictureBox
-        {
-            Location = new Point(ax + 45, ay),
-            Size = new Size(24, 24),
-            BackColor = _theme.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        _colorLabel = new Label { Text = "#0078D4", Location = new Point(ax + 75, ay + 4), AutoSize = true, ForeColor = _theme.Muted, BackColor = Color.Transparent };
-        _colorButton = new Button
-        {
-            Text = "Change...",
-            Location = new Point(ax + 135, ay - 2),
-            Size = new Size(70, 24),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        _appearanceGroup.Controls.AddRange(new Control[] { _colorPreviewBox, _colorLabel, _colorButton });
-        _rightPanel.Controls.Add(_appearanceGroup);
-        y += 70;
-
-        // Show All Settings toggle button
-        _showAllButton = new Button
-        {
-            Text = "▼ Show All Settings",
-            Location = new Point(0, y),
-            Size = new Size(180, 24),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Accent,
-            Font = new Font("Segoe UI", 8.25f, FontStyle.Italic),
-            TextAlign = ContentAlignment.MiddleLeft,
-            FlatAppearance = { BorderColor = _theme.Border, BorderSize = 1 },
-            Cursor = Cursors.Hand
-        };
-        _showAllButton.Click += (s, e) => ToggleAllAdvancedSections();
-        _showAllButton.Margin = new Padding(0);
-        _rightPanel.Controls.Add(_showAllButton);
-        y += 28;
-
-        // Workspace collapsible section
-        _workspaceSection = new CollapsibleSection(_theme, "Workspace", startExpanded: false)
-        {
-            Location = new Point(0, y),
-            Width = 380
-        };
-        int wx = 10, wy = 22;
-
-        // Rich workspace display panel
-        var workspaceDisplayPanel = new Panel
-        {
-            Location = new Point(wx, wy),
-            Size = new Size(340, 70),
-            BackColor = _theme.PanelBackground,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-
-        // Workspace icon (colored circle based on project type)
-        var workspaceIconBox = new PictureBox
-        {
-            Location = new Point(15, 15),
-            Size = new Size(40, 40),
-            BackColor = _theme.Accent,
-            BorderStyle = BorderStyle.FixedSingle
-        };
-        workspaceDisplayPanel.Controls.Add(workspaceIconBox);
-
-        // Workspace name
-        var workspaceNameLabel = new Label
-        {
-            Text = "No workspace selected",
-            Location = new Point(70, 10),
-            Size = new Size(250, 20),
-            ForeColor = _theme.Text,
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
-            BackColor = Color.Transparent
-        };
-        workspaceDisplayPanel.Controls.Add(workspaceNameLabel);
-
-        // Workspace path
-        var workspacePathLabel = new Label
-        {
-            Text = "",
-            Location = new Point(70, 30),
-            Size = new Size(250, 16),
+            Dock = DockStyle.Fill,
+            Text = "No profiles available.",
+            TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = _theme.Muted,
-            Font = new Font("Segoe UI", 8),
+            BackColor = Color.Transparent,
+            Visible = false
+        };
+
+        listHost.Controls.Add(_profileList);
+        listHost.Controls.Add(_profilePlaceholderLabel);
+
+        var leftButtons = new TableLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 34,
+            ColumnCount = 3,
+            RowCount = 1,
             BackColor = Color.Transparent
         };
-        workspaceDisplayPanel.Controls.Add(workspacePathLabel);
+        leftButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+        leftButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+        leftButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
 
-        // Project type and trust status in bottom row
-        var projectTypeLabel = new Label
+        _newButton = CreateButton("+ New▼", 0);
+        _duplicateButton = CreateButton("Duplicate", 0);
+        _deleteButton = CreateButton("Delete", 0);
+
+        leftButtons.Controls.Add(_newButton, 0, 0);
+        leftButtons.Controls.Add(_duplicateButton, 1, 0);
+        leftButtons.Controls.Add(_deleteButton, 2, 0);
+
+        _newMenu = new ContextMenuStrip { Renderer = new ThemeAwareMenuRenderer(_theme) };
+        _newMenu.Items.Add("Blank Profile", null, (_, _) => CreateBlankProfile());
+        _newMenu.Items.Add("From Current Window", null, (_, _) => CreateFromCurrentWindow());
+        _newMenu.Items.Add("From Current Workspace", null, (_, _) => CreateFromCurrentWorkspace());
+
+        _leftPanel.Controls.Add(listHost);
+        _leftPanel.Controls.Add(leftButtons);
+        _leftPanel.Controls.Add(searchHost);
+        _leftPanel.Controls.Add(searchLabel);
+
+        var rightPanel = new Panel
         {
-            Text = "",
-            Location = new Point(70, 48),
-            AutoSize = true,
-            ForeColor = _theme.Accent,
-            Font = new Font("Segoe UI", 7),
-            BackColor = Color.Transparent
-        };
-        workspaceDisplayPanel.Controls.Add(projectTypeLabel);
-
-        var trustStatusLabel = new Label
-        {
-            Text = "",
-            Location = new Point(220, 48),
-            AutoSize = true,
-            ForeColor = FlatUiHelper.SuccessColor(_theme),
-            Font = new Font("Segoe UI", 7),
-            BackColor = Color.Transparent
-        };
-        workspaceDisplayPanel.Controls.Add(trustStatusLabel);
-
-        _workspaceSection.ContentPanel.Controls.Add(workspaceDisplayPanel);
-
-        wy += 85;
-
-        // Workspace controls panel (for editing)
-        var workspaceControlsPanel = new Panel
-        {
-            Location = new Point(wx, wy),
-            Size = new Size(340, 35),
-            BackColor = Color.Transparent
+            Dock = DockStyle.Fill,
+            BackColor = _theme.Background,
+            Padding = new Padding(12, 0, 0, 0)
         };
 
-        var pathLabel = new Label
+        var headerPanel = new Panel
         {
-            Text = "Path:",
-            Location = new Point(0, 8),
-            AutoSize = true,
-            ForeColor = _theme.Text,
-            BackColor = Color.Transparent
-        };
-        workspaceControlsPanel.Controls.Add(pathLabel);
-
-        _workspaceBox = new TextBox
-        {
-            Location = new Point(35, 5),
-            Size = new Size(240, 23),
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.None,
-            PlaceholderText = "Select workspace folder..."
-        };
-        workspaceControlsPanel.Controls.Add(_workspaceBox);
-
-        _browseButton = new Button
-        {
-            Text = "...",
-            Location = new Point(285, 2),
-            Size = new Size(35, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        workspaceControlsPanel.Controls.Add(_browseButton);
-
-        var setWorkspaceButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(325, 2),
-            Size = new Size(45, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.Accent,
-            ForeColor = Color.White,
-            FlatAppearance = { BorderColor = _theme.Accent }
-        };
-        setWorkspaceButton.Click += (s, e) => SetWorkspaceFromTextBox();
-        workspaceControlsPanel.Controls.Add(setWorkspaceButton);
-
-        _workspaceSection.ContentPanel.Controls.Add(workspaceControlsPanel);
-
-        wy += 40;
-
-        // Workspace input controls panel
-        var workspaceInputPanel = new Panel
-        {
-            Location = new Point(wx, wy),
-            Size = new Size(340, 30),
-            BackColor = Color.Transparent
-        };
-
-        _workspaceBox = new TextBox
-        {
-            Location = new Point(0, 3),
-            Size = new Size(240, 23),
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            BorderStyle = BorderStyle.None,
-            PlaceholderText = "Workspace path..."
-        };
-        workspaceInputPanel.Controls.Add(_workspaceBox);
-
-        _browseButton = new Button
-        {
-            Text = "...",
-            Location = new Point(240, 0),
-            Size = new Size(30, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        workspaceInputPanel.Controls.Add(_browseButton);
-
-        _loadWorkspaceFileButton = new Button
-        {
-            Text = "📁",
-            Location = new Point(275, 0),
-            Size = new Size(30, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        _loadWorkspaceFileButton.Click += LoadWorkspaceFileButton_Click;
-        workspaceInputPanel.Controls.Add(_loadWorkspaceFileButton);
-
-        var setWorkspaceInputButton = new Button
-        {
-            Text = "Set",
-            Location = new Point(310, 0),
-            Size = new Size(40, 26),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.Accent,
-            ForeColor = Color.White,
-            FlatAppearance = { BorderColor = _theme.Accent }
-        };
-        setWorkspaceInputButton.Click += (s, e) => SetWorkspaceFromTextBox();
-        workspaceInputPanel.Controls.Add(setWorkspaceInputButton);
-
-        _workspaceSection.ContentPanel.Controls.Add(workspaceInputPanel);
-
-        wy += 35;
-
-        // Project type selector
-        var projectTypeSelectorLabel = new Label
-        {
-            Text = "Project Type:",
-            Location = new Point(wx, wy),
-            AutoSize = true,
-            ForeColor = _theme.Text,
-            BackColor = Color.Transparent
-        };
-        _workspaceSection.ContentPanel.Controls.Add(projectTypeSelectorLabel);
-
-        wy += 18;
-
-        _projectTypeCombo = new ComboBox
-        {
-            Location = new Point(wx, wy),
-            Width = 200,
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            FlatStyle = FlatStyle.Flat,
-            DropDownStyle = ComboBoxStyle.DropDownList
-        };
-        _projectTypeCombo.Items.AddRange(new[] { "Auto-detect", "dotnet", "node", "python", "java", "go", "rust", "cpp", "web", "react", "angular", "vue" });
-        _projectTypeCombo.SelectedIndex = 0; // Auto-detect
-        _projectTypeCombo.SelectedIndexChanged += ProjectTypeCombo_SelectedIndexChanged;
-        _workspaceSection.ContentPanel.Controls.Add(_projectTypeCombo);
-
-        wy += 30;
-
-        // Recent workspaces (simple version)
-        var recentLbl = new Label { Text = "Recent Workspaces:", Location = new Point(wx, wy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _workspaceSection.ContentPanel.Controls.Add(recentLbl);
-        _recentWorkspacesList = new ListBox { Location = new Point(wx, wy + 18), Width = 340, Height = 40, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
-        _workspaceSection.ContentPanel.Controls.Add(_recentWorkspacesList);
-        var wsBtnPanel = new Panel { Location = new Point(wx + 280, wy + 20), Size = new Size(60, 18) };
-        _addWorkspaceButton = new Button { Text = "+", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
-        _removeWorkspaceButton = new Button { Text = "-", Width = 18, Height = 18, FlatStyle = FlatStyle.Flat, Location = new Point(22, 0), BackColor = _theme.PanelBackground, ForeColor = _theme.Text };
-        wsBtnPanel.Controls.Add(_addWorkspaceButton);
-        wsBtnPanel.Controls.Add(_removeWorkspaceButton);
-        _workspaceSection.ContentPanel.Controls.Add(wsBtnPanel);
-
-        _rightPanel.Controls.Add(_workspaceSection);
-        y += _workspaceSection.Height + 6;
-
-        // Commands collapsible section
-        _commandsSection = new CollapsibleSection(_theme, "Commands", startExpanded: false)
-        {
-            Location = new Point(0, y),
-            Width = 380
-        };
-        int cx = 10, cy = 22;
-        _commandsSection.ContentPanel.Controls.Add(new Label { Text = "Build:", Location = new Point(cx, cy), AutoSize = true, ForeColor = _theme.Text });
-        _buildBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
-        _commandsSection.ContentPanel.Controls.Add(_buildBox);
-        cy += 26;
-        _commandsSection.ContentPanel.Controls.Add(new Label { Text = "Run:", Location = new Point(cx, cy), AutoSize = true, ForeColor = _theme.Text });
-        _runBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
-        _commandsSection.ContentPanel.Controls.Add(_runBox);
-        cy += 26;
-        _commandsSection.ContentPanel.Controls.Add(new Label { Text = "Test:", Location = new Point(cx, cy), AutoSize = true, ForeColor = _theme.Text });
-        _testBox = new TextBox { Location = new Point(cx + 70, cy - 3), Width = 270, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, BorderStyle = BorderStyle.None };
-        _commandsSection.ContentPanel.Controls.Add(_testBox);
-        _rightPanel.Controls.Add(_commandsSection);
-        y += _commandsSection.Height + 6;
-
-        // Settings Overrides collapsible section
-        _overridesSection = new CollapsibleSection(_theme, "Settings Overrides", startExpanded: false)
-        {
-            Location = new Point(0, y),
-            Width = 380
-        };
-        int ox = 12, oy = 22;
-        _overridesSection.ContentPanel.Controls.Add(new Label { Text = "Tab Size:", Location = new Point(ox, oy), AutoSize = true, ForeColor = _theme.Text });
-        _overrideTabSizeCheck = new CheckBox { Location = new Point(ox + 120, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _overrideTabSizeVal = new NumericUpDown { Location = new Point(ox + 180, oy - 4), Width = 50, Minimum = 2, Maximum = 12, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, Enabled = false };
-        _overridesSection.ContentPanel.Controls.AddRange(new Control[] { _overrideTabSizeCheck, _overrideTabSizeVal });
-        oy += 26;
-
-        _overridesSection.ContentPanel.Controls.Add(new Label { Text = "Insert Spaces:", Location = new Point(ox, oy), AutoSize = true, ForeColor = _theme.Text });
-        _overrideInsertSpacesCheck = new CheckBox { Location = new Point(ox + 120, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _overrideInsertSpacesVal = new CheckBox { Location = new Point(ox + 180, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent, Enabled = false };
-        var insertLbl = new Label { Text = "Use spaces", Location = new Point(ox + 205, oy + 2), AutoSize = true, ForeColor = _theme.Muted, BackColor = Color.Transparent };
-        _overridesSection.ContentPanel.Controls.AddRange(new Control[] { _overrideInsertSpacesCheck, _overrideInsertSpacesVal, insertLbl });
-        oy += 26;
-
-        _overridesSection.ContentPanel.Controls.Add(new Label { Text = "Font Size:", Location = new Point(ox, oy), AutoSize = true, ForeColor = _theme.Text });
-        _overrideFontSizeCheck = new CheckBox { Location = new Point(ox + 120, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _overrideFontSizeVal = new NumericUpDown { Location = new Point(ox + 180, oy - 4), Width = 50, Minimum = 6, Maximum = 72, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, Enabled = false };
-        _overridesSection.ContentPanel.Controls.AddRange(new Control[] { _overrideFontSizeCheck, _overrideFontSizeVal });
-        oy += 26;
-
-        _overridesSection.ContentPanel.Controls.Add(new Label { Text = "Font:", Location = new Point(ox, oy), AutoSize = true, ForeColor = _theme.Text });
-        _overrideFontNameCheck = new CheckBox { Location = new Point(ox + 120, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _overrideFontNameVal = new ComboBox { Location = new Point(ox + 180, oy - 3), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, FlatStyle = FlatStyle.Flat, Enabled = false };
-        _overrideFontNameVal.Items.AddRange(new[] { "Consolas", "Courier New", "Lucida Console", "Menlo", "Monaco", "Source Code Pro", "Fira Code", "Cascadia Code", "JetBrains Mono" });
-        _overridesSection.ContentPanel.Controls.AddRange(new Control[] { _overrideFontNameCheck, _overrideFontNameVal });
-        oy += 26;
-
-        _overridesSection.ContentPanel.Controls.Add(new Label { Text = "Theme:", Location = new Point(ox, oy), AutoSize = true, ForeColor = _theme.Text });
-        _overrideThemeCheck = new CheckBox { Location = new Point(ox + 120, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _overrideThemeVal = new ComboBox { Location = new Point(ox + 180, oy - 3), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = _theme.EditorBackground, ForeColor = _theme.Text, FlatStyle = FlatStyle.Flat, Enabled = false };
-        _overrideThemeVal.Items.AddRange(ThemeManager.ThemeNames);
-        _overridesSection.ContentPanel.Controls.AddRange(new Control[] { _overrideThemeCheck, _overrideThemeVal });
-        oy += 26;
-
-        _overridesSection.ContentPanel.Controls.Add(new Label { Text = "Word Wrap:", Location = new Point(ox, oy), AutoSize = true, ForeColor = _theme.Text });
-        _overrideWordWrapCheck = new CheckBox { Location = new Point(ox + 120, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent };
-        _overrideWordWrapVal = new CheckBox { Location = new Point(ox + 180, oy), AutoSize = true, ForeColor = _theme.Text, BackColor = Color.Transparent, Enabled = false };
-        var wrapLbl = new Label { Text = "Wrap lines", Location = new Point(ox + 205, oy + 2), AutoSize = true, ForeColor = _theme.Muted, BackColor = Color.Transparent };
-        _overridesSection.ContentPanel.Controls.AddRange(new Control[] { _overrideWordWrapCheck, _overrideWordWrapVal, wrapLbl });
-        // oy += 26; // final row
-
-        _rightPanel.Controls.Add(_overridesSection);
-        y += _overridesSection.Height + 6;
-
-        // Default on startup checkbox
-        _defaultOnStartupCheck = new CheckBox
-        {
-            Text = "Set as default profile on startup",
-            Location = new Point(0, y),
-            AutoSize = true,
-            ForeColor = _theme.Text,
+            Dock = DockStyle.Top,
+            Height = 52,
             BackColor = _theme.Background
         };
-        _rightPanel.Controls.Add(_defaultOnStartupCheck);
-        y += 26;
 
-        // Usage info
-        _lastUsedLabel = new Label { Text = "Last used: Never", Location = new Point(0, y), AutoSize = true, ForeColor = _theme.Muted };
-        _usageLabel = new Label { Text = "Used 0 times", Location = new Point(120, y), AutoSize = true, ForeColor = _theme.Muted };
-        _rightPanel.Controls.Add(_lastUsedLabel);
-        _rightPanel.Controls.Add(_usageLabel);
-        y += 26;
+        _headerDot = new Panel
+        {
+            Location = new Point(0, 12),
+            Size = new Size(18, 18),
+            BackColor = Color.Transparent
+        };
+        _headerDot.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var brush = new SolidBrush(_selectedColor);
+            using var pen = new Pen(_theme.Border);
+            var rect = new Rectangle(1, 1, _headerDot.Width - 3, _headerDot.Height - 3);
+            e.Graphics.FillEllipse(brush, rect);
+            e.Graphics.DrawEllipse(pen, rect);
+        };
 
-        // Action buttons panel (horizontal layout)
-        _actionPanel = new Panel
+        _titleLabel = new Label
         {
-            Location = new Point(0, y),
-            Height = 28,
-            Width = 380,
-            BackColor = _theme.Background
-        };
-        _saveButton = new Button
-        {
-            Text = "Save",
-            Location = new Point(0, 0),
-            Size = new Size(80, 28),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(34, 139, 34), // Forest Green for good contrast
-            ForeColor = Color.White,
-            FlatAppearance = { BorderColor = Color.FromArgb(34, 139, 34) }
-        };
-        _exportButton = new Button
-        {
-            Text = "Export...",
-            Location = new Point(90, 0),
-            Size = new Size(80, 28),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
+            AutoSize = false,
+            Location = new Point(28, 8),
+            Size = new Size(360, 26),
+            Font = new Font(Font, FontStyle.Bold),
             ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
+            TextAlign = ContentAlignment.MiddleLeft,
+            Text = "No profile selected"
         };
-        _importButton = new Button
-        {
-            Text = "Import...",
-            Location = new Point(180, 0),
-            Size = new Size(80, 28),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = _theme.PanelBackground,
-            ForeColor = _theme.Text,
-            FlatAppearance = { BorderColor = _theme.Border }
-        };
-        _closeButton = new Button
-        {
-            Text = "Close",
-            Location = new Point(270, 0),
-            Size = new Size(80, 28),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(169, 169, 169), // Dark Gray for neutral appearance
-            ForeColor = Color.Black,
-            FlatAppearance = { BorderColor = Color.FromArgb(169, 169, 169) }
-        };
-        _actionPanel.Controls.AddRange(new Control[] { _saveButton, _exportButton, _importButton, _closeButton });
-        _rightPanel.Controls.Add(_actionPanel);
-        y += _actionPanel.Height + 6;
 
-        Controls.AddRange(new Control[] { _leftPanel, _rightPanel });
+        _dirtyBadgeLabel = new Label
+        {
+            AutoSize = true,
+            Visible = false,
+            Location = new Point(396, 12),
+            Padding = new Padding(8, 3, 8, 3),
+            BackColor = FlatUiHelper.WarningColor(_theme),
+            ForeColor = FlatUiHelper.BadgeForeground(_theme),
+            Text = "Unsaved"
+        };
+
+        headerPanel.Controls.AddRange(new Control[] { _headerDot, _titleLabel, _dirtyBadgeLabel });
+
+        _tabControl = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            DrawMode = TabDrawMode.OwnerDrawFixed,
+            ItemSize = new Size(120, 28),
+            SizeMode = TabSizeMode.Fixed,
+            Padding = new Point(14, 6)
+        };
+        _tabControl.DrawItem += TabControl_DrawItem;
+
+        _tabControl.TabPages.Add(CreateGeneralTab());
+        _tabControl.TabPages.Add(CreateWorkspaceTab());
+        _tabControl.TabPages.Add(CreateCommandsTab());
+        _tabControl.TabPages.Add(CreateOverridesTab());
+
+        rightPanel.Controls.Add(_tabControl);
+        rightPanel.Controls.Add(headerPanel);
+
+        contentHost.Controls.Add(rightPanel);
+        contentHost.Controls.Add(_leftPanel);
+
+        Controls.Add(contentHost);
+        Controls.Add(bottomBar);
+
+        ResumeLayout();
     }
 
-    private void UpdateWorkspaceDisplays()
+    private TabPage CreateGeneralTab()
     {
-        try
+        var page = CreateTabPage("General");
+        var content = CreateTabContentPanel();
+        var layout = CreateFormLayout();
+
+        AddRow(layout, "Name", CreateFieldPanel(out _nameBox));
+        _nameBox.PlaceholderText = "Profile name";
+
+        var descriptionHost = CreateFieldPanel(out _descriptionBox, true, 92);
+        _descriptionBox.PlaceholderText = "What is this profile for?";
+        AddRow(layout, "Description", descriptionHost);
+
+        var colorRow = new FlowLayoutPanel
         {
-            if (_currentProfile == null || _workspaceSection?.ContentPanel?.Controls == null) return;
-
-            var workspaces = _currentProfile.Workspaces;
-
-            // Find and update the workspace display panel
-            foreach (Control ctrl in _workspaceSection.ContentPanel.Controls)
-            {
-                if (ctrl is Panel panel && panel.BorderStyle == BorderStyle.FixedSingle && panel.Size.Height == 70)
-                {
-                    // This is the workspace display panel - update for primary workspace
-                    var primaryWorkspace = workspaces.Count > 0 ? workspaces[0] : null;
-
-                    foreach (Control child in panel.Controls)
-                    {
-                        if (child is Label label)
-                        {
-                            if (label.Location.X == 70 && label.Location.Y == 10) // workspace name
-                            {
-                                if (workspaces.Count == 0)
-                                {
-                                    label.Text = "No workspaces";
-                                }
-                                else if (workspaces.Count == 1)
-                                {
-                                    label.Text = primaryWorkspace?.DisplayName ?? "Unnamed Workspace";
-                                }
-                                else
-                                {
-                                    label.Text = $"Multi-root ({workspaces.Count} folders)";
-                                }
-                            }
-                            else if (label.Location.X == 70 && label.Location.Y == 30) // workspace path
-                            {
-                                if (workspaces.Count == 1)
-                                {
-                                    string path = primaryWorkspace?.Path ?? "";
-                                    if (path.Length > 40)
-                                    {
-                                        path = "..." + path.Substring(path.Length - 37);
-                                    }
-                                    label.Text = path;
-                                }
-                                else if (workspaces.Count > 1)
-                                {
-                                    label.Text = $"{workspaces.Count} workspace folders";
-                                }
-                                else
-                                {
-                                    label.Text = "";
-                                }
-                            }
-                            else if (label.Location.X == 70 && label.Location.Y == 48) // project type or workspace list
-                            {
-                                if (workspaces.Count == 1)
-                                {
-                                    try
-                                    {
-                                        label.Text = primaryWorkspace?.ProjectTypeDisplay ?? "";
-                                    }
-                                    catch
-                                    {
-                                        label.Text = "";
-                                    }
-                                }
-                                else if (workspaces.Count > 1)
-                                {
-                                    // Show first few workspace names
-                                    var names = workspaces.Take(3).Select(w => w.DisplayName).ToList();
-                                    if (workspaces.Count > 3)
-                                        names.Add("...");
-                                    label.Text = string.Join(", ", names);
-                                }
-                                else
-                                {
-                                    label.Text = "";
-                                }
-                            }
-                            else if (label.Location.X == 220 && label.Location.Y == 48) // trust status
-                            {
-                                if (workspaces.Count == 1)
-                                {
-                                    label.Text = primaryWorkspace?.IsTrusted == true ? "✓ Trusted" : "⚠️ Not Trusted";
-                                    label.ForeColor = primaryWorkspace?.IsTrusted == true ? FlatUiHelper.SuccessColor(_theme) : FlatUiHelper.WarningColor(_theme);
-                                }
-                                else if (workspaces.Count > 1)
-                                {
-                                    var trustedCount = workspaces.Count(w => w.IsTrusted);
-                                    if (trustedCount == workspaces.Count)
-                                        label.Text = "All ✓ Trusted";
-                                    else if (trustedCount == 0)
-                                        label.Text = "⚠️ Not Trusted";
-                                    else
-                                        label.Text = $"{trustedCount}/{workspaces.Count} ✓ Trusted";
-                                    label.ForeColor = trustedCount == workspaces.Count ? FlatUiHelper.SuccessColor(_theme) : FlatUiHelper.WarningColor(_theme);
-                                }
-                                else
-                                {
-                                    label.Text = "";
-                                }
-                            }
-                        }
-                        else if (child is PictureBox pictureBox && pictureBox.Location.X == 15)
-                        {
-                            // Update workspace icon color based on project type
-                            var projectType = primaryWorkspace?.ProjectType;
-                            pictureBox.BackColor = projectType switch
-                            {
-                                "dotnet" => Color.FromArgb(0, 120, 212),   // VS Code blue
-                                "node" => Color.FromArgb(67, 133, 61),     // Node green
-                                "python" => Color.FromArgb(52, 101, 164),  // Python blue
-                                "java" => Color.FromArgb(237, 145, 33),    // Java orange
-                                "go" => Color.FromArgb(0, 173, 216),       // Go cyan
-                                "rust" => Color.FromArgb(0, 0, 0),         // Rust black
-                                "cpp" => Color.FromArgb(68, 68, 68),       // C++ gray
-                                "web" => Color.FromArgb(241, 101, 41),     // Web orange
-                                "react" => Color.FromArgb(8, 126, 139),    // React teal
-                                "angular" => Color.FromArgb(221, 0, 49),   // Angular red
-                                "vue" => Color.FromArgb(65, 184, 131),     // Vue green
-                                _ => _theme.Accent
-                            };
-                        }
-                    }
-                    break;
-                }
-            }
-
-            // Update project type combo - disable for multi-workspace or set to primary
-            if (_projectTypeCombo != null)
-            {
-                _projectTypeCombo.Enabled = workspaces.Count <= 1;
-
-                if (workspaces.Count == 1 && workspaces[0].ProjectType != null && _projectTypeCombo.Items.Contains(workspaces[0].ProjectType))
-                {
-                    _projectTypeCombo.SelectedItem = workspaces[0].ProjectType;
-                }
-                else
-                {
-                    _projectTypeCombo.SelectedIndex = 0; // Auto-detect
-                }
-            }
-        }
-        catch (Exception ex)
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            Margin = Padding.Empty,
+            BackColor = Color.Transparent
+        };
+        var colorDot = new Panel { Size = new Size(24, 24), Margin = new Padding(0, 3, 8, 0) };
+        colorDot.Paint += (_, e) =>
         {
-            System.Diagnostics.Debug.WriteLine($"[ProfileManager] Error updating workspace displays: {ex.Message}");
-            // Don't crash the dialog for display issues
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var brush = new SolidBrush(_selectedColor);
+            using var pen = new Pen(_theme.Border);
+            e.Graphics.FillEllipse(brush, 1, 1, 21, 21);
+            e.Graphics.DrawEllipse(pen, 1, 1, 21, 21);
+        };
+        _colorHexLabel = new Label
+        {
+            AutoSize = true,
+            ForeColor = _theme.Muted,
+            Padding = new Padding(0, 5, 0, 0)
+        };
+        _colorButton = CreateButton("Change", 88);
+        _colorButton.Margin = new Padding(8, 0, 0, 0);
+        colorRow.Controls.AddRange(new Control[] { colorDot, _colorHexLabel, _colorButton });
+        AddRow(layout, "Color", colorRow);
+
+        _defaultOnStartupCheck = CreateCheckBox("Use this profile on startup");
+        AddRow(layout, "Startup", _defaultOnStartupCheck);
+
+        var statsSection = CreateSectionLabel("Usage");
+        statsSection.Margin = new Padding(0, 20, 0, 10);
+        layout.Controls.Add(statsSection, 0, layout.RowCount);
+        layout.SetColumnSpan(statsSection, 2);
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowCount++;
+
+        _lastUsedLabel = CreateMutedLabel();
+        _usageLabel = CreateMutedLabel();
+        _createdLabel = CreateMutedLabel();
+        AddRow(layout, "Last used", _lastUsedLabel);
+        AddRow(layout, "Usage count", _usageLabel);
+        AddRow(layout, "Created", _createdLabel);
+
+        content.Controls.Add(layout);
+        page.Controls.Add(content);
+        return page;
+    }
+
+    private TabPage CreateWorkspaceTab()
+    {
+        var page = CreateTabPage("Workspace");
+        var content = CreateTabContentPanel();
+        var layout = CreateFormLayout();
+
+        var workspaceRow = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 3
+        };
+        workspaceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        workspaceRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        workspaceRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var workspaceHost = CreateFieldPanel(out _workspaceBox);
+        workspaceHost.Dock = DockStyle.Fill;
+        _workspaceBox.PlaceholderText = "Primary workspace path";
+
+        _browseButton = CreateButton("Browse", 88);
+        _loadWorkspaceButton = CreateButton("Load .code-workspace", 150);
+
+        workspaceRow.Controls.Add(workspaceHost, 0, 0);
+        workspaceRow.Controls.Add(_browseButton, 1, 0);
+        workspaceRow.Controls.Add(_loadWorkspaceButton, 2, 0);
+
+        AddRow(layout, "Primary workspace", workspaceRow);
+
+        _projectTypeCombo = CreateComboBox();
+        foreach (var projectType in _projectTypes)
+        {
+            _projectTypeCombo.Items.Add(string.IsNullOrEmpty(projectType) ? "Auto detect" : projectType);
         }
+        AddRow(layout, "Project type", _projectTypeCombo);
+
+        var recentHeader = CreateSectionLabel("Recent workspaces");
+        recentHeader.Margin = new Padding(0, 20, 0, 10);
+        layout.Controls.Add(recentHeader, 0, layout.RowCount);
+        layout.SetColumnSpan(recentHeader, 2);
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowCount++;
+
+        var recentHost = new Panel
+        {
+            Height = 220,
+            Dock = DockStyle.Top,
+            BackColor = _theme.EditorBackground,
+            Padding = new Padding(1)
+        };
+        recentHost.Paint += (s, e) => DrawBorder(e.Graphics, ((Control)s!).ClientRectangle);
+
+        _recentWorkspacesList = new ListBox
+        {
+            Dock = DockStyle.Fill,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 40,
+            IntegralHeight = false,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.None
+        };
+        _recentWorkspacesList.DrawItem += RecentWorkspacesList_DrawItem;
+
+        _recentPlaceholderLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "No recent workspaces.",
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = _theme.Muted,
+            BackColor = Color.Transparent,
+            Visible = false
+        };
+
+        recentHost.Controls.Add(_recentWorkspacesList);
+        recentHost.Controls.Add(_recentPlaceholderLabel);
+
+        var recentRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 220,
+            ColumnCount = 2
+        };
+        recentRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        recentRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        _removeWorkspaceButton = CreateButton("Remove", 88);
+        recentRow.Controls.Add(recentHost, 0, 0);
+        recentRow.Controls.Add(_removeWorkspaceButton, 1, 0);
+
+        AddRow(layout, "Recent list", recentRow);
+
+        content.Controls.Add(layout);
+        page.Controls.Add(content);
+        return page;
+    }
+
+    private TabPage CreateCommandsTab()
+    {
+        var page = CreateTabPage("Commands");
+        var content = CreateTabContentPanel();
+        var layout = CreateFormLayout();
+
+        AddCommandRow(layout, "Build", out _buildBox, out _resetBuildButton);
+        AddCommandRow(layout, "Run", out _runBox, out _resetRunButton);
+        AddCommandRow(layout, "Test", out _testBox, out _resetTestButton);
+
+        content.Controls.Add(layout);
+        page.Controls.Add(content);
+        return page;
+    }
+
+    private TabPage CreateOverridesTab()
+    {
+        var page = CreateTabPage("Overrides");
+        var content = CreateTabContentPanel();
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 2,
+            Padding = new Padding(0, 6, 0, 0)
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+
+        var left = CreateOverrideColumn("Editor");
+        var right = CreateOverrideColumn("Workspace + UI");
+
+        AddNumericOverride(left, "Tab size", 2, 12, 1, out _overrideTabSizeCheck, out _overrideTabSizeValue);
+        AddBoolOverride(left, "Insert spaces", out _overrideInsertSpacesCheck, out _overrideInsertSpacesValue);
+        AddDecimalOverride(left, "Font size", 6, 36, 0.5m, 1, out _overrideFontSizeCheck, out _overrideFontSizeValue);
+        AddTextOverride(left, "Font family", out _overrideFontNameCheck, out _overrideFontNameBox, out _overrideFontNameButton, true);
+        AddComboOverride(left, "Theme", ThemeManager.Themes.Keys.OrderBy(x => x), out _overrideThemeCheck, out _overrideThemeCombo);
+        AddBoolOverride(left, "Word wrap", out _overrideWordWrapCheck, out _overrideWordWrapValue);
+        AddBoolOverride(left, "Vim mode", out _overrideVimModeCheck, out _overrideVimModeValue);
+        AddBoolOverride(left, "Auto save", out _overrideAutoSaveCheck, out _overrideAutoSaveValue);
+
+        AddBoolOverride(right, "Gutter", out _overrideGutterCheck, out _overrideGutterValue);
+        AddBoolOverride(right, "Status bar", out _overrideStatusBarCheck, out _overrideStatusBarValue);
+        AddBoolOverride(right, "Guide", out _overrideGuideCheck, out _overrideGuideValue);
+        AddNumericOverride(right, "Guide column", 40, 240, 1, out _overrideGuideColumnCheck, out _overrideGuideColumnValue);
+        AddBoolOverride(right, "Minimap", out _overrideMinimapCheck, out _overrideMinimapValue);
+        AddBoolOverride(right, "Rainbow brackets", out _overrideRainbowBracketsCheck, out _overrideRainbowBracketsValue);
+        AddBoolOverride(right, "Breadcrumbs", out _overrideBreadcrumbsCheck, out _overrideBreadcrumbsValue);
+        AddBoolOverride(right, "Hover highlight", out _overrideHoverHighlightCheck, out _overrideHoverHighlightValue);
+        AddBoolOverride(right, "Syntax highlighting", out _overrideSyntaxHighlightingCheck, out _overrideSyntaxHighlightingValue);
+        AddBoolOverride(right, "Analyzers", out _overrideAnalyzersCheck, out _overrideAnalyzersValue);
+        AddBoolOverride(right, "Sticky scroll", out _overrideStickyScrollCheck, out _overrideStickyScrollValue);
+        AddTextOverride(right, "Terminal shell", out _overrideTerminalShellCheck, out _overrideTerminalShellBox, out _, false);
+        AddNumericOverride(right, "Terminal height", 120, 600, 1, out _overrideTerminalHeightCheck, out _overrideTerminalHeightValue);
+
+        root.Controls.Add(left, 0, 0);
+        root.Controls.Add(right, 1, 0);
+
+        content.Controls.Add(root);
+        page.Controls.Add(content);
+        return page;
     }
 
     private void RegisterEvents()
     {
-        _searchBox.TextChanged += (s, e) => FilterProfiles(_searchBox.Text);
-        _profileList.SelectedIndexChanged += ProfileList_SelectedIndexChanged;
-        _newButton.Click += (s, e) => _newMenu.Show(_newButton, new Point(0, _newButton.Height));
-        _newBlankItem.Click += (s, e) => CreateBlankProfile();
-        _newFromWindowItem.Click += (s, e) => CreateFromCurrentWindow();
-        _newFromWorkspaceItem.Click += (s, e) => CreateFromCurrentWorkspace();
-        _duplicateButton.Click += (s, e) => DuplicateCurrentProfile();
-        _renameButton.Click += (s, e) => RenameCurrentProfile();
-        _deleteButton.Click += (s, e) => DeleteCurrentProfile();
-        _browseButton.Click += (s, e) => BrowseWorkspace();
-        // Note: SetWorkspaceButton is handled in InitializeComponents where it's created
-        _addWorkspaceButton.Click += (s, e) => AddCurrentWorkspace();
-        _removeWorkspaceButton.Click += (s, e) => RemoveSelectedWorkspace();
-        _colorButton.Click += (s, e) => ChooseColor();
-        _saveButton.Click += (s, e) => SaveCurrentProfile();
-        _exportButton.Click += (s, e) => ExportCurrentProfile();
-        _importButton.Click += (s, e) => ImportProfile();
-        _closeButton.Click += (s, e) => Close();
-
-        _overrideTabSizeCheck.CheckedChanged += (s, e) => _overrideTabSizeVal.Enabled = _overrideTabSizeCheck.Checked;
-        _overrideInsertSpacesCheck.CheckedChanged += (s, e) => _overrideInsertSpacesVal.Enabled = _overrideInsertSpacesCheck.Checked;
-        _overrideFontSizeCheck.CheckedChanged += (s, e) => _overrideFontSizeVal.Enabled = _overrideFontSizeCheck.Checked;
-        _overrideFontNameCheck.CheckedChanged += (s, e) => _overrideFontNameVal.Enabled = _overrideFontNameCheck.Checked;
-        _overrideThemeCheck.CheckedChanged += (s, e) => _overrideThemeVal.Enabled = _overrideThemeCheck.Checked;
-        _overrideWordWrapCheck.CheckedChanged += (s, e) => _overrideWordWrapVal.Enabled = _overrideWordWrapCheck.Checked;
-
-        // Collapsible section events
-        _workspaceSection!.ExpandedChanged += Section_ExpandedChanged;
-        _commandsSection!.ExpandedChanged += Section_ExpandedChanged;
-        _overridesSection!.ExpandedChanged += Section_ExpandedChanged;
-    }
-
-    // ========================================
-    // Profile List Management
-    // ========================================
-
-    private void LoadProfileList()
-    {
-        _profileList.Items.Clear();
-        foreach (string name in _manager.ProfileNames.OrderBy(n => n))
+        Load += (_, _) => NativeThemed.ApplyThemeToChildScrollbars(this, !_theme.IsLight);
+        FormClosing += ProfileManagerDialog_FormClosing;
+        FormClosed += (_, _) =>
         {
-            _profileList.Items.Add(name);
-        }
-        string active = _manager.ActiveProfileName ?? "Default";
-        if (_profileList.Items.Contains(active))
-            _profileList.SelectedItem = active;
+            _manager.ProfileChanged -= Manager_ProfileChanged;
+            _manager.ProfileDeleted -= Manager_ProfileDeleted;
+        };
+        KeyDown += ProfileManagerDialog_KeyDown;
+
+        _manager.ProfileChanged += Manager_ProfileChanged;
+        _manager.ProfileDeleted += Manager_ProfileDeleted;
+
+        _searchBox.TextChanged += (_, _) => RefreshProfileList(GetSelectedProfileName());
+        _profileList.SelectedIndexChanged += ProfileList_SelectedIndexChanged;
+        _newButton.Click += (_, _) => _newMenu.Show(_newButton, new Point(0, _newButton.Height));
+        _duplicateButton.Click += (_, _) => DuplicateCurrentProfile();
+        _deleteButton.Click += (_, _) => DeleteCurrentProfile();
+
+        _colorButton.Click += (_, _) => ChooseColor();
+        _browseButton.Click += (_, _) => BrowseWorkspace();
+        _loadWorkspaceButton.Click += (_, _) => LoadCodeWorkspace();
+        _removeWorkspaceButton.Click += (_, _) => RemoveSelectedRecentWorkspace();
+
+        _resetBuildButton.Click += (_, _) => ResetCommand(_buildBox, ResolveCommandsForCurrentProjectType().build);
+        _resetRunButton.Click += (_, _) => ResetCommand(_runBox, ResolveCommandsForCurrentProjectType().run);
+        _resetTestButton.Click += (_, _) => ResetCommand(_testBox, ResolveCommandsForCurrentProjectType().test);
+
+        _overrideFontNameButton.Click += (_, _) => ChooseOverrideFont();
+
+        _activateButton.Click += (_, _) => ActivateCurrentProfile();
+        _saveButton.Click += (_, _) => SaveCurrentProfile();
+        _exportButton.Click += (_, _) => ExportCurrentProfile();
+        _importButton.Click += (_, _) => ImportProfile();
+        _closeButton.Click += (_, _) => Close();
+
+        HookDirty(_nameBox, _descriptionBox, _workspaceBox, _buildBox, _runBox, _testBox,
+            _defaultOnStartupCheck, _projectTypeCombo,
+            _overrideTabSizeCheck, _overrideTabSizeValue,
+            _overrideInsertSpacesCheck, _overrideInsertSpacesValue,
+            _overrideFontSizeCheck, _overrideFontSizeValue,
+            _overrideFontNameCheck, _overrideFontNameBox,
+            _overrideThemeCheck, _overrideThemeCombo,
+            _overrideWordWrapCheck, _overrideWordWrapValue,
+            _overrideVimModeCheck, _overrideVimModeValue,
+            _overrideAutoSaveCheck, _overrideAutoSaveValue,
+            _overrideGutterCheck, _overrideGutterValue,
+            _overrideStatusBarCheck, _overrideStatusBarValue,
+            _overrideGuideCheck, _overrideGuideValue,
+            _overrideGuideColumnCheck, _overrideGuideColumnValue,
+            _overrideMinimapCheck, _overrideMinimapValue,
+            _overrideRainbowBracketsCheck, _overrideRainbowBracketsValue,
+            _overrideBreadcrumbsCheck, _overrideBreadcrumbsValue,
+            _overrideHoverHighlightCheck, _overrideHoverHighlightValue,
+            _overrideSyntaxHighlightingCheck, _overrideSyntaxHighlightingValue,
+            _overrideAnalyzersCheck, _overrideAnalyzersValue,
+            _overrideStickyScrollCheck, _overrideStickyScrollValue,
+            _overrideTerminalShellCheck, _overrideTerminalShellBox,
+            _overrideTerminalHeightCheck, _overrideTerminalHeightValue);
     }
 
-    private void FilterProfiles(string query)
+    private void ProfileManagerDialog_KeyDown(object? sender, KeyEventArgs e)
     {
-        string lower = query.Trim().ToLowerInvariant();
+        if (e.Control && e.KeyCode == Keys.S)
+        {
+            e.SuppressKeyPress = true;
+            SaveCurrentProfile();
+        }
+    }
+
+    private void ProfileManagerDialog_FormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (!EnsurePendingChangesHandled())
+        {
+            e.Cancel = true;
+        }
+    }
+
+    private void Manager_ProfileChanged(UserProfile profile)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action<UserProfile>(Manager_ProfileChanged), profile);
+            return;
+        }
+
+        var selectedName = GetSelectedProfileName() ?? _loadedProfile?.Name ?? profile.Name;
+        RefreshProfileList(selectedName);
+        if (!_isDirty && _loadedProfile?.Name == profile.Name)
+        {
+            LoadProfile(profile);
+        }
+    }
+
+    private void Manager_ProfileDeleted(string profileName)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action<string>(Manager_ProfileDeleted), profileName);
+            return;
+        }
+
+        if (string.Equals(_loadedProfile?.Name, profileName, StringComparison.OrdinalIgnoreCase))
+        {
+            _loadedProfile = null;
+            _primaryWorkspace = null;
+            _recentWorkspaces.Clear();
+            _isDirty = false;
+        }
+
+        RefreshProfileList(_manager.ActiveProfileName ?? _profiles.FirstOrDefault()?.Name);
+    }
+
+    private void RefreshProfileList(string? preferredSelectionName)
+    {
+        _profiles = _manager.GetAllProfiles()
+            .OrderBy(profile => profile.Name.Equals("Default", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(profile => profile.Name)
+            .ToList();
+
+        var filter = (_searchBox.Text ?? string.Empty).Trim();
+        var filtered = string.IsNullOrWhiteSpace(filter)
+            ? _profiles
+            : _profiles.Where(profile => profile.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || (profile.Description?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false))
+                .ToList();
+
+        _suppressSelectionChange = true;
         _profileList.BeginUpdate();
         _profileList.Items.Clear();
-        foreach (string name in _manager.ProfileNames)
+        foreach (var profile in filtered)
         {
-            if (string.IsNullOrEmpty(lower) || name.ToLowerInvariant().Contains(lower))
-                _profileList.Items.Add(name);
+            _profileList.Items.Add(profile);
         }
         _profileList.EndUpdate();
+        _suppressSelectionChange = false;
+
+        _profilePlaceholderLabel.Visible = filtered.Count == 0;
+        _profileList.Visible = filtered.Count > 0;
+
+        if (filtered.Count == 0)
+        {
+            ClearEditor();
+            return;
+        }
+
+        var selectionName = preferredSelectionName ?? _loadedProfile?.Name ?? _manager.ActiveProfileName ?? filtered[0].Name;
+        SelectProfileInList(selectionName);
+        if (_profileList.SelectedItem == null && _profileList.Items.Count > 0)
+        {
+            _profileList.SelectedIndex = 0;
+        }
     }
 
-    private void ProfileList_DrawItem(object? sender, DrawItemEventArgs e)
+    private void SelectProfileInList(string? profileName)
     {
-        if (e.Index < 0 || _profileList.Items[e.Index] is not string name) return;
-        var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var rect = e.Bounds;
-        var theme = ThemeManager.Instance.CurrentTheme;
-
-        // Background
-        if ((e.State & DrawItemState.Selected) == DrawItemState.Selected)
+        if (string.IsNullOrWhiteSpace(profileName))
         {
-            using var selBrush = new SolidBrush(Color.FromArgb(60, 60, 60));
-            g.FillRectangle(selBrush, rect);
-        }
-        else
-        {
-            using var backBrush = new SolidBrush(theme.EditorBackground);
-            g.FillRectangle(backBrush, rect);
+            return;
         }
 
-        // Draw colored circle + first letter
-        Color circleColor = theme.Accent;
-        var profile = _manager.LoadProfile(name);
-        if (profile?.ColorHex != null && profile.ColorHex.Length == 7)
+        _suppressSelectionChange = true;
+        for (var index = 0; index < _profileList.Items.Count; index++)
         {
-            try { circleColor = ColorTranslator.FromHtml(profile.ColorHex); } catch { }
-        }
-        int circleSize = 14;
-        int circlePad = 4;
-        Rectangle circleRect = new Rectangle(rect.X + circlePad, rect.Y + (rect.Height - circleSize) / 2, circleSize, circleSize);
-        using var brush = new SolidBrush(circleColor);
-        g.FillEllipse(brush, circleRect);
-        using var pen = new Pen(theme.Border);
-        g.DrawEllipse(pen, circleRect);
-
-        // Draw profile name (and maybe description? skip for now)
-        int textX = circleRect.Right + 6;
-        int textWidth = rect.Width - textX - 10;
-        using var textBrush = new SolidBrush(theme.Text);
-        using var fmt = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
-        var textRect = new Rectangle(textX, rect.Y, textWidth, rect.Height);
-        g.DrawString(name, Font, textBrush, textRect, fmt);
-    }
-
-    private void RecentWorkspacesList_DrawItem(object? sender, DrawItemEventArgs e)
-    {
-        if (e.Index < 0 || _recentWorkspacesList.Items[e.Index] is not string displayText || _theme.Background == Color.Empty) return;
-
-        var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        var rect = e.Bounds;
-
-        // Background
-        if ((e.State & DrawItemState.Selected) == DrawItemState.Selected)
-        {
-            using var selBrush = new SolidBrush(Color.FromArgb(60, 60, 60));
-            g.FillRectangle(selBrush, rect);
-        }
-        else
-        {
-            using var backBrush = new SolidBrush(_theme.EditorBackground);
-            g.FillRectangle(backBrush, rect);
-        }
-
-        // Parse workspace info from display text
-        // Format: "Name (Path)"
-        if (displayText.Contains(" (") && displayText.EndsWith(")"))
-        {
-            int start = displayText.LastIndexOf(" (");
-            string name = displayText.Substring(0, start);
-            string path = displayText.Substring(start + 2, displayText.Length - start - 3);
-
-            // Draw project type icon
-            string? projectType = DetectProjectType(path);
-            string iconText = projectType switch
+            if (_profileList.Items[index] is UserProfile profile
+                && string.Equals(profile.Name, profileName, StringComparison.OrdinalIgnoreCase))
             {
-                "dotnet" => "🔷",
-                "node" => "🟢",
-                "python" => "🐍",
-                "java" => "☕",
-                "go" => "🐹",
-                "rust" => "🦀",
-                "cpp" => "⚙️",
-                "web" => "🌐",
-                _ => "📁"
-            };
-
-            int iconSize = 16;
-            using var iconFont = new Font("Segoe UI", 10);
-            using var iconBrush = new SolidBrush(_theme.Text);
-            var iconRect = new Rectangle(rect.X + 4, rect.Y + (rect.Height - iconSize) / 2, iconSize, iconSize);
-            g.DrawString(iconText, iconFont, iconBrush, iconRect);
-
-            // Draw workspace name
-            int textX = iconRect.Right + 6;
-            int textWidth = rect.Width - textX - 10;
-            using var textBrush = new SolidBrush(_theme.Text);
-            using var fmt = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
-            var textRect = new Rectangle(textX, rect.Y, textWidth, rect.Height);
-            g.DrawString(name, Font, textBrush, textRect, fmt);
+                _profileList.SelectedIndex = index;
+                _suppressSelectionChange = false;
+                return;
+            }
         }
-        else
-        {
-            // Fallback for plain text
-            using var textBrush = new SolidBrush(_theme.Text);
-            using var fmt = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
-            g.DrawString(displayText, Font, textBrush, rect, fmt);
-        }
+        _suppressSelectionChange = false;
     }
+
+    private string? GetSelectedProfileName() => (_profileList.SelectedItem as UserProfile)?.Name;
 
     private void ProfileList_SelectedIndexChanged(object? sender, EventArgs e)
     {
-        if (_profileList.SelectedItem is not string name) return;
-        _currentProfile = _manager.LoadProfile(name);
-        if (_currentProfile == null) return;
-        PopulateDetails(_currentProfile);
-        UpdateButtonStates();
-    }
-
-    private void PopulateDetails(UserProfile profile)
-    {
-        _nameBox.Text = profile.Name;
-        _descriptionBox.Text = profile.Description ?? "";
-        _workspaceBox.Text = profile.PrimaryWorkspace?.Path ?? "";
-        _buildBox.Text = profile.BuildCommand;
-        _runBox.Text = profile.RunCommand;
-        _testBox.Text = profile.TestCommand;
-
-        // Overrides
-        _overrideTabSizeCheck.Checked = profile.OverrideTabSize.HasValue;
-        _overrideTabSizeVal.Value = profile.OverrideTabSize ?? 4;
-        _overrideTabSizeVal.Enabled = profile.OverrideTabSize.HasValue;
-
-        _overrideInsertSpacesCheck.Checked = profile.OverrideInsertSpaces.HasValue;
-        _overrideInsertSpacesVal.Checked = profile.OverrideInsertSpaces ?? true;
-        _overrideInsertSpacesVal.Enabled = profile.OverrideInsertSpaces.HasValue;
-
-        _overrideFontSizeCheck.Checked = profile.OverrideFontSize.HasValue;
-        _overrideFontSizeVal.Value = decimal.Parse((profile.OverrideFontSize ?? 12).ToString("0.##"));
-        _overrideFontSizeVal.Enabled = profile.OverrideFontSize.HasValue;
-
-        _overrideFontNameCheck.Checked = !string.IsNullOrEmpty(profile.OverrideFontName);
-        _overrideFontNameVal.Text = profile.OverrideFontName ?? "Consolas";
-        _overrideFontNameVal.Enabled = _overrideFontNameCheck.Checked;
-
-        _overrideThemeCheck.Checked = !string.IsNullOrEmpty(profile.OverrideThemeName);
-        _overrideThemeVal.Text = profile.OverrideThemeName ?? "Dark";
-        _overrideThemeVal.Enabled = _overrideThemeCheck.Checked;
-
-        _overrideWordWrapCheck.Checked = profile.OverrideWordWrap.HasValue;
-        _overrideWordWrapVal.Checked = profile.OverrideWordWrap ?? false;
-        _overrideWordWrapVal.Enabled = profile.OverrideWordWrap.HasValue;
-
-        // Color
-        _colorLabel.Text = profile.ColorHex ?? "#0078D4";
-        try { _colorPreviewBox.BackColor = ColorTranslator.FromHtml(_colorLabel.Text); } catch { _colorPreviewBox.BackColor = _theme.Accent; }
-
-        // Update rich workspace displays
-        UpdateWorkspaceDisplays();
-
-        // Update workspace path textbox
-        if (_workspaceBox != null)
+        if (_suppressSelectionChange || _profileList.SelectedItem is not UserProfile selectedProfile)
         {
-            _workspaceBox.Text = profile.PrimaryWorkspace?.Path ?? "";
+            return;
         }
 
-        // Recent workspaces
-        _recentWorkspacesList.Items.Clear();
-        if (profile.RecentWorkspaces != null)
+        if (_loadedProfile != null && string.Equals(_loadedProfile.Name, selectedProfile.Name, StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var workspace in profile.RecentWorkspaces)
-            {
-                _recentWorkspacesList.Items.Add($"{workspace.DisplayName} ({workspace.Path})");
-            }
+            return;
         }
 
-        // Default on startup
-        _defaultOnStartupCheck.Checked = _manager.ActiveProfileName == profile.Name;
-
-        // Usage
-        _lastUsedLabel.Text = $"Last used: {profile.LastUsedDisplay}";
-        _usageLabel.Text = $"Used {profile.UsageCount} times";
-    }
-
-    private void UpdateButtonStates()
-    {
-        bool isDefault = _currentProfile?.Name == "Default";
-        _deleteButton.Enabled = !isDefault;
-        _duplicateButton.Enabled = !isDefault;
-        _renameButton.Enabled = !isDefault;
-    }
-
-    // ========================================
-    // Actions
-    // ========================================
-
-    private void CreateBlankProfile()
-    {
-        string baseName = "New Profile"; string name = baseName; int count = 1;
-        while (_manager.ProfileNames.Any(n => n == name)) name = $"{baseName} {count++}";
-        var (build, run, test) = ResolveBuildCommandsForType(null); // blank profile → dotnet defaults
-        var profile = new UserProfile
+        if (!EnsurePendingChangesHandled())
         {
-            Name = name,
-            Workspaces = new List<WorkspaceInfo>(),
-            BuildCommand = build,
-            RunCommand = run,
-            TestCommand = test,
-            IconId = 0,
-            ColorHex = "#0078D4",
-            CreatedAt = DateTime.UtcNow,
-            LastUsed = DateTime.MinValue,
-            UsageCount = 0
+            SelectProfileInList(_loadedProfile?.Name);
+            return;
+        }
+
+        var freshProfile = _manager.LoadProfile(selectedProfile.Name) ?? selectedProfile;
+        LoadProfile(freshProfile);
+    }
+
+    private void LoadProfile(UserProfile profile)
+    {
+        _suppressDirtyTracking = true;
+        try
+        {
+            _loadedProfile = profile;
+            _primaryWorkspace = profile.PrimaryWorkspace != null ? CloneWorkspace(profile.PrimaryWorkspace) : null;
+            _recentWorkspaces = profile.RecentWorkspaces.Select(CloneWorkspace).ToList();
+            _selectedColor = profile.DisplayColor;
+
+            _nameBox.Text = profile.Name;
+            _descriptionBox.Text = profile.Description ?? string.Empty;
+            _workspaceBox.Text = _primaryWorkspace?.Path ?? string.Empty;
+            _projectTypeCombo.SelectedIndex = FindProjectTypeIndex(_primaryWorkspace?.ProjectType);
+            _buildBox.Text = profile.BuildCommand;
+            _runBox.Text = profile.RunCommand;
+            _testBox.Text = profile.TestCommand;
+            _defaultOnStartupCheck.Checked = profile.DefaultOnStartup || string.Equals(_manager.ActiveProfileName, profile.Name, StringComparison.OrdinalIgnoreCase);
+            _lastUsedLabel.Text = profile.LastUsedDisplay;
+            _usageLabel.Text = profile.UsageCount.ToString();
+            _createdLabel.Text = profile.CreatedAt == default ? "Unknown" : profile.CreatedAt.ToLocalTime().ToString("g");
+            _colorHexLabel.Text = profile.ColorHex ?? $"#{profile.DisplayColor.R:X2}{profile.DisplayColor.G:X2}{profile.DisplayColor.B:X2}";
+
+            SetNullableNumeric(_overrideTabSizeCheck, _overrideTabSizeValue, profile.OverrideTabSize, 4);
+            SetNullableBool(_overrideInsertSpacesCheck, _overrideInsertSpacesValue, profile.OverrideInsertSpaces, true);
+            SetNullableDecimal(_overrideFontSizeCheck, _overrideFontSizeValue, profile.OverrideFontSize, 10m);
+            SetNullableText(_overrideFontNameCheck, _overrideFontNameBox, profile.OverrideFontName);
+            SetNullableCombo(_overrideThemeCheck, _overrideThemeCombo, profile.OverrideThemeName, ThemeManager.Instance.CurrentTheme.Name);
+            SetNullableBool(_overrideWordWrapCheck, _overrideWordWrapValue, profile.OverrideWordWrap, false);
+            SetNullableBool(_overrideVimModeCheck, _overrideVimModeValue, profile.OverrideVimMode, false);
+            SetNullableBool(_overrideAutoSaveCheck, _overrideAutoSaveValue, profile.OverrideAutoSave, false);
+            SetNullableBool(_overrideGutterCheck, _overrideGutterValue, profile.OverrideGutterVisible, true);
+            SetNullableBool(_overrideStatusBarCheck, _overrideStatusBarValue, profile.OverrideStatusBarVisible, true);
+            SetNullableBool(_overrideGuideCheck, _overrideGuideValue, profile.OverrideShowGuide, false);
+            SetNullableNumeric(_overrideGuideColumnCheck, _overrideGuideColumnValue, profile.OverrideGuideColumn, 80);
+            SetNullableBool(_overrideMinimapCheck, _overrideMinimapValue, profile.OverrideMinimapVisible, false);
+            SetNullableBool(_overrideRainbowBracketsCheck, _overrideRainbowBracketsValue, profile.OverrideRainbowBrackets, false);
+            SetNullableBool(_overrideBreadcrumbsCheck, _overrideBreadcrumbsValue, profile.OverrideBreadcrumbs, false);
+            SetNullableBool(_overrideHoverHighlightCheck, _overrideHoverHighlightValue, profile.OverrideHoverLineHighlight, false);
+            SetNullableBool(_overrideSyntaxHighlightingCheck, _overrideSyntaxHighlightingValue, profile.OverrideSyntaxHighlighting, true);
+            SetNullableBool(_overrideAnalyzersCheck, _overrideAnalyzersValue, profile.OverrideAnalyzersEnabled, true);
+            SetNullableBool(_overrideStickyScrollCheck, _overrideStickyScrollValue, profile.OverrideStickyScroll, true);
+            SetNullableText(_overrideTerminalShellCheck, _overrideTerminalShellBox, profile.OverrideTerminalShell);
+            SetNullableNumeric(_overrideTerminalHeightCheck, _overrideTerminalHeightValue, profile.OverrideTerminalHeight, _mainForm.CurrentTerminalHeight);
+
+            RefreshRecentWorkspaceList();
+            _isDirty = false;
+        }
+        finally
+        {
+            _suppressDirtyTracking = false;
+        }
+
+        UpdateHeader();
+        UpdateActionStates();
+        InvalidatePreviewDots();
+    }
+
+    private void ClearEditor()
+    {
+        _loadedProfile = null;
+        _primaryWorkspace = null;
+        _recentWorkspaces.Clear();
+        _selectedColor = _theme.Accent;
+        _isDirty = false;
+        _tabControl.Enabled = false;
+        UpdateHeader();
+        UpdateActionStates();
+        RefreshRecentWorkspaceList();
+    }
+
+    private void UpdateHeader()
+    {
+        _headerDot.Visible = _loadedProfile != null;
+        _titleLabel.Text = _loadedProfile?.Name ?? "No profile selected";
+        _dirtyBadgeLabel.Visible = _isDirty && _loadedProfile != null;
+        _tabControl.Enabled = _loadedProfile != null;
+        _headerDot.Invalidate();
+        InvalidatePreviewDots();
+    }
+
+    private void UpdateActionStates()
+    {
+        var hasProfile = _loadedProfile != null;
+        var isDefault = string.Equals(_loadedProfile?.Name, "Default", StringComparison.OrdinalIgnoreCase);
+
+        _duplicateButton.Enabled = hasProfile;
+        _deleteButton.Enabled = hasProfile && !isDefault;
+        _activateButton.Enabled = hasProfile;
+        _saveButton.Enabled = hasProfile && !isDefault;
+        _exportButton.Enabled = hasProfile;
+    }
+
+    private void MarkDirty()
+    {
+        if (_suppressDirtyTracking || _loadedProfile == null)
+        {
+            return;
+        }
+
+        _isDirty = true;
+        UpdateHeader();
+    }
+
+    private bool EnsurePendingChangesHandled()
+    {
+        if (!_isDirty || _loadedProfile == null)
+        {
+            return true;
+        }
+
+        if (string.Equals(_loadedProfile.Name, "Default", StringComparison.OrdinalIgnoreCase))
+        {
+            _isDirty = false;
+            UpdateHeader();
+            return true;
+        }
+
+        var result = ThemedMessageBox.Show(this,
+            $"Save changes to \"{_loadedProfile.Name}\" before continuing?",
+            "Unsaved Changes",
+            MessageBoxButtons.YesNoCancel,
+            MessageBoxIcon.Question);
+
+        return result switch
+        {
+            DialogResult.Yes => SaveCurrentProfile(),
+            DialogResult.No => true,
+            _ => false
         };
-        _manager.SaveProfile(profile);
-        LoadProfileList();
-        _profileList.SelectedItem = name;
     }
 
-    private void CreateFromCurrentWindow()
-    {
-        string baseName = "Profile " + DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-        string name = baseName; int count = 1;
-        while (_manager.ProfileNames.Any(n => n == name)) name = $"{baseName} ({count++})";
+    private void CreateBlankProfile() => CreateProfileFromSeed(BuildProfileSeedFromWorkspace(null, false), "New Profile");
 
-        // Create primary workspace from current workspace
-        WorkspaceInfo? primaryWorkspace = null;
-        if (!string.IsNullOrEmpty(_mainForm.WorkspaceRoot))
+    private void CreateFromCurrentWindow() => CreateProfileFromSeed(BuildProfileSeedFromWorkspace(_mainForm.WorkspaceRoot, true), "Current Window");
+
+    private void CreateFromCurrentWorkspace() => CreateProfileFromSeed(BuildProfileSeedFromWorkspace(_mainForm.WorkspaceRoot, false), "Workspace Profile");
+
+    private void CreateProfileFromSeed(UserProfile seed, string baseName)
+    {
+        if (!EnsurePendingChangesHandled())
         {
-            primaryWorkspace = new WorkspaceInfo
-            {
-                Name = Path.GetFileName(_mainForm.WorkspaceRoot) ?? "Workspace",
-                Path = _mainForm.WorkspaceRoot,
-                LastOpened = DateTime.UtcNow,
-                IsTrusted = true,
-                ProjectType = DetectProjectType(_mainForm.WorkspaceRoot)
-            };
+            return;
         }
 
-        var detectedType = primaryWorkspace?.ProjectType;
-        var (build, run, test) = ResolveBuildCommandsForType(detectedType);
-        var profile = new UserProfile
+        var suggestedName = GetUniqueProfileName(baseName);
+        var name = SimpleInputDialog.Show(this, "Enter a name for the new profile.", "New Profile", suggestedName)?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
         {
-            Name = name,
-            Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
-            BuildCommand = build,
-            RunCommand = run,
-            TestCommand = test,
-            OverrideTabSize = _mainForm.CurrentTabSize,
-            OverrideInsertSpaces = _mainForm.CurrentInsertSpaces,
-            OverrideFontSize = _mainForm.CurrentFontSize,
-            OverrideFontName = _mainForm.CurrentFontName,
-            OverrideThemeName = _mainForm.CurrentThemeName,
-            OverrideWordWrap = _mainForm.CurrentWordWrap,
-            ColorHex = "#0078D4",
-            CreatedAt = DateTime.UtcNow,
-            LastUsed = DateTime.MinValue,
-            UsageCount = 0
-        };
-
-        _manager.SaveProfile(profile);
-        LoadProfileList();
-        _profileList.SelectedItem = name;
-        ThemedMessageBox.Show($"Created profile \"{name}\" from current window settings.", "Profile Created",
-            MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-
-    private void CreateFromCurrentWorkspace()
-    {
-        string wsRoot = _mainForm.WorkspaceRoot ?? "";
-        string baseName = "Workspace " + (string.IsNullOrEmpty(wsRoot) ? "Unknown" : Path.GetFileName(wsRoot));
-        string name = baseName; int count = 1;
-        while (_manager.ProfileNames.Any(n => n == name)) name = $"{baseName} ({count++})";
-
-        // Create primary workspace from current workspace
-        WorkspaceInfo? primaryWorkspace = null;
-        if (!string.IsNullOrEmpty(wsRoot))
-        {
-            primaryWorkspace = new WorkspaceInfo
-            {
-                Name = Path.GetFileName(wsRoot) ?? "Workspace",
-                Path = wsRoot,
-                LastOpened = DateTime.UtcNow,
-                IsTrusted = true,
-                ProjectType = DetectProjectType(wsRoot)
-            };
+            return;
         }
 
-        var detectedType2 = primaryWorkspace?.ProjectType;
-        var (build2, run2, test2) = ResolveBuildCommandsForType(detectedType2);
-        var profile = new UserProfile
+        if (_manager.ProfileNames.Any(existing => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            ThemedMessageBox.Show(this, $"A profile named \"{name}\" already exists.", "Profile Exists", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var profile = seed with
         {
             Name = name,
-            Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
-            BuildCommand = build2,
-            RunCommand = run2,
-            TestCommand = test2,
-            ColorHex = "#0078D4",
             CreatedAt = DateTime.UtcNow,
-            LastUsed = DateTime.MinValue,
+            LastUsed = default,
             UsageCount = 0
         };
 
         _manager.SaveProfile(profile);
-        LoadProfileList();
-        _profileList.SelectedItem = name;
+        RefreshProfileList(profile.Name);
+        LoadProfile(profile);
+        SelectProfileInList(profile.Name);
+        _isDirty = true;
+        UpdateHeader();
+    }
+
+    private UserProfile BuildProfileSeedFromWorkspace(string? workspacePath, bool captureCurrentWindowOverrides)
+    {
+        var workspace = BuildWorkspaceInfo(workspacePath, DetectProjectType(workspacePath));
+        var commands = ResolveBuildCommandsForType(workspace?.ProjectType);
+
+        return new UserProfile
+        {
+            Name = string.Empty,
+            Description = string.Empty,
+            Workspaces = workspace != null ? new List<WorkspaceInfo> { workspace } : new List<WorkspaceInfo>(),
+            RecentWorkspaces = new List<WorkspaceInfo>(),
+            BuildCommand = commands.build,
+            RunCommand = commands.run,
+            TestCommand = commands.test,
+            ColorHex = $"#{_theme.Accent.R:X2}{_theme.Accent.G:X2}{_theme.Accent.B:X2}",
+            OverrideTabSize = captureCurrentWindowOverrides ? _mainForm.CurrentTabSize : null,
+            OverrideInsertSpaces = captureCurrentWindowOverrides ? _mainForm.CurrentInsertSpaces : null,
+            OverrideFontSize = captureCurrentWindowOverrides ? _mainForm.CurrentFontSize : null,
+            OverrideFontName = captureCurrentWindowOverrides ? _mainForm.CurrentFontName : null,
+            OverrideThemeName = captureCurrentWindowOverrides ? _mainForm.CurrentThemeName : null,
+            OverrideWordWrap = captureCurrentWindowOverrides ? _mainForm.CurrentWordWrap : null,
+            OverrideGutterVisible = captureCurrentWindowOverrides ? _mainForm.CurrentGutterVisible : null,
+            OverrideStatusBarVisible = captureCurrentWindowOverrides ? _mainForm.CurrentStatusBarVisible : null,
+            OverrideShowGuide = captureCurrentWindowOverrides ? _mainForm.CurrentShowGuide : null,
+            OverrideGuideColumn = captureCurrentWindowOverrides ? _mainForm.CurrentGuideColumn : null,
+            OverrideMinimapVisible = captureCurrentWindowOverrides ? _mainForm.CurrentMinimapVisible : null,
+            OverrideRainbowBrackets = captureCurrentWindowOverrides ? _mainForm.CurrentRainbowBrackets : null,
+            OverrideBreadcrumbs = captureCurrentWindowOverrides ? _mainForm.CurrentBreadcrumbs : null,
+            OverrideHoverLineHighlight = captureCurrentWindowOverrides ? _mainForm.CurrentHoverLineHighlight : null,
+            OverrideAutoSave = captureCurrentWindowOverrides ? _mainForm.CurrentAutoSave : null,
+            OverrideAnalyzersEnabled = captureCurrentWindowOverrides ? _mainForm.CurrentAnalyzersEnabled : null,
+            OverrideTerminalShell = captureCurrentWindowOverrides ? _mainForm.CurrentTerminalShell : null,
+            OverrideTerminalHeight = captureCurrentWindowOverrides ? _mainForm.CurrentTerminalHeight : null,
+            OverrideVimMode = captureCurrentWindowOverrides ? _mainForm.CurrentVimMode : null,
+            OverrideStickyScroll = captureCurrentWindowOverrides ? _mainForm.CurrentStickyScroll : null,
+            OverrideSyntaxHighlighting = captureCurrentWindowOverrides ? _mainForm.CurrentSyntaxHighlighting : null
+        };
     }
 
     private void DuplicateCurrentProfile()
     {
-        if (_currentProfile == null || _currentProfile.Name == "Default") return;
-        string newName = _currentProfile.Name + " Copy"; int count = 1;
-        while (_manager.ProfileNames.Any(n => n == newName)) newName = $"{_currentProfile.Name} Copy ({count++})";
-        var dup = _manager.DuplicateProfile(_currentProfile.Name, newName);
-        if (dup != null)
+        if (_loadedProfile == null)
         {
-            LoadProfileList();
-            _profileList.SelectedItem = newName;
+            return;
         }
-    }
 
-    private void RenameCurrentProfile()
-    {
-        if (_currentProfile == null || _currentProfile.Name == "Default") return;
-        string? newName = SimpleInputDialog.Show(this, "Rename Profile", "New name:", _currentProfile.Name);
-        if (!string.IsNullOrWhiteSpace(newName))
+        if (!EnsurePendingChangesHandled())
         {
-            newName = newName.Trim();
-            if (_manager.ProfileNames.Contains(newName))
-            {
-                ThemedMessageBox.Show($"A profile named \"{newName}\" already exists.", "Rename Failed",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (_manager.RenameProfile(_currentProfile.Name, newName))
-            {
-                LoadProfileList();
-                _profileList.SelectedItem = newName;
-            }
+            return;
         }
+
+        var suggestedName = GetUniqueCopyName(_loadedProfile.Name);
+        var name = SimpleInputDialog.Show(this, "Enter a name for the duplicated profile.", "Duplicate Profile", suggestedName)?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        if (_manager.ProfileNames.Any(existing => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            ThemedMessageBox.Show(this, $"A profile named \"{name}\" already exists.", "Profile Exists", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var duplicate = _manager.DuplicateProfile(_loadedProfile.Name, name);
+        if (duplicate == null)
+        {
+            ThemedMessageBox.Show(this, "The profile could not be duplicated.", "Duplicate Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        RefreshProfileList(duplicate.Name);
+        LoadProfile(duplicate);
+        SelectProfileInList(duplicate.Name);
     }
 
     private void DeleteCurrentProfile()
     {
-        if (_currentProfile == null || _currentProfile.Name == "Default") return;
-        var result = ThemedMessageBox.Show($"Delete profile \"{_currentProfile.Name}\"? This cannot be undone.", "Confirm Delete",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-        if (result == DialogResult.Yes)
+        if (_loadedProfile == null || string.Equals(_loadedProfile.Name, "Default", StringComparison.OrdinalIgnoreCase))
         {
-            _manager.DeleteProfile(_currentProfile.Name);
-            _profileList.SelectedIndex = -1;
-            LoadProfileList();
+            return;
+        }
+
+        var result = ThemedMessageBox.Show(this,
+            $"Delete \"{_loadedProfile.Name}\"? This cannot be undone.",
+            "Delete Profile",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (result != DialogResult.Yes)
+        {
+            return;
+        }
+
+        var deletedName = _loadedProfile.Name;
+        _manager.DeleteProfile(deletedName);
+        _isDirty = false;
+        RefreshProfileList(_manager.ActiveProfileName ?? _profiles.FirstOrDefault(profile => !string.Equals(profile.Name, deletedName, StringComparison.OrdinalIgnoreCase))?.Name);
+    }
+
+    private void ChooseColor()
+    {
+        using var dialog = new ColorDialog
+        {
+            AllowFullOpen = true,
+            FullOpen = true,
+            Color = _selectedColor
+        };
+
+        if (NativeThemed.ShowDialogThemed(() => dialog.ShowDialog(this)) == DialogResult.OK)
+        {
+            _selectedColor = dialog.Color;
+            _colorHexLabel.Text = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+            MarkDirty();
         }
     }
 
     private void BrowseWorkspace()
     {
-        using var dlg = new FolderBrowserDialog { Description = "Select Workspace Root Folder" };
-        if (dlg.ShowDialog() == DialogResult.OK)
-            _workspaceBox.Text = dlg.SelectedPath;
-    }
-
-    private void AddCurrentWorkspace()
-    {
-        string? ws = _workspaceBox.Text?.Trim();
-        if (!string.IsNullOrEmpty(ws) && !_recentWorkspacesList.Items.Contains(ws))
+        using var dialog = new FolderBrowserDialog
         {
-            _recentWorkspacesList.Items.Add(ws);
-        }
-    }
-
-    private void RemoveSelectedWorkspace()
-    {
-        if (_recentWorkspacesList.SelectedItem != null)
-            _recentWorkspacesList.Items.Remove(_recentWorkspacesList.SelectedItem);
-    }
-
-    private void SetWorkspaceFromTextBox()
-    {
-        string path = _workspaceBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            ThemedMessageBox.Show("Please enter a workspace path.", "Invalid Path", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
-        if (!Directory.Exists(path))
-        {
-            var result = ThemedMessageBox.Show($"Directory '{path}' does not exist. Create it?", "Create Directory",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (result == DialogResult.Yes)
-            {
-                try
-                {
-                    Directory.CreateDirectory(path);
-                }
-                catch (Exception ex)
-                {
-                    ThemedMessageBox.Show($"Failed to create directory: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-            }
-            else
-            {
-                return;
-            }
-        }
-
-            // Update the current profile's workspaces
-            if (_currentProfile != null)
-            {
-                var workspaceInfo = new WorkspaceInfo
-                {
-                    Name = Path.GetFileName(path) ?? "Workspace",
-                    Path = path,
-                    LastOpened = _currentProfile.Workspaces.Count > 0 ? _currentProfile.Workspaces[0].LastOpened : DateTime.UtcNow,
-                    IsTrusted = _currentProfile.Workspaces.Count > 0 ? _currentProfile.Workspaces[0].IsTrusted : true,
-                    ProjectType = DetectProjectType(path)
-                };
-
-                // Replace workspaces with this single workspace (for now - will be enhanced for multi-root)
-                _currentProfile = _currentProfile with { Workspaces = new List<WorkspaceInfo> { workspaceInfo } };
-
-                // Update the UI immediately
-                UpdateWorkspaceDisplays();
-                _workspaceBox.Text = path;
-            }
-    }
-
-    private void ClearRecentWorkspaces()
-    {
-        if (_recentWorkspacesList.Items.Count == 0)
-            return;
-
-        var result = ThemedMessageBox.Show("Clear all recent workspaces?", "Confirm Clear",
-            MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        if (result == DialogResult.Yes)
-        {
-            _recentWorkspacesList.Items.Clear();
-        }
-    }
-
-    private void ChooseColor()
-    {
-        // Expanded color palette - cycles through 16 vibrant, professional colors
-        Color[] vibrantColors = new[]
-        {
-            // Warm colors
-            Color.FromArgb(220, 38, 38),    // Crimson Red
-            Color.FromArgb(255, 59, 48),    // Bright Red
-            Color.FromArgb(255, 149, 0),    // Orange
-            Color.FromArgb(255, 179, 64),   // Light Orange
-            Color.FromArgb(255, 204, 0),    // Golden Yellow
-            Color.FromArgb(255, 214, 10),   // Bright Yellow
-
-            // Cool colors
-            Color.FromArgb(52, 199, 89),    // Apple Green
-            Color.FromArgb(48, 209, 88),    // Mint Green
-            Color.FromArgb(0, 184, 148),    // Teal
-            Color.FromArgb(0, 122, 255),    // Ocean Blue
-            Color.FromArgb(0, 64, 221),     // Royal Blue
-            Color.FromArgb(88, 86, 214),    // Indigo
-            Color.FromArgb(175, 82, 222),   // Purple
-            Color.FromArgb(191, 90, 242),   // Lavender
-            Color.FromArgb(255, 45, 85),    // Hot Pink
-            Color.FromArgb(255, 100, 130),  // Coral Pink
-
-            // Repeat first color for smooth cycling
-            Color.FromArgb(220, 38, 38),    // Crimson Red (repeat)
+            Description = "Select the primary workspace folder.",
+            SelectedPath = Directory.Exists(_workspaceBox.Text) ? _workspaceBox.Text : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
         };
 
-        // Get current color index
-        Color currentColor = _colorPreviewBox.BackColor;
-        int currentIndex = -1;
-
-        for (int i = 0; i < vibrantColors.Length - 1; i++) // -1 to avoid the repeat
+        if (NativeThemed.ShowDialogThemed(() => dialog.ShowDialog(this)) == DialogResult.OK)
         {
-            if (ColorsAreSimilar(currentColor, vibrantColors[i]))
-            {
-                currentIndex = i;
-                break;
-            }
+            SetPrimaryWorkspace(dialog.SelectedPath);
         }
-
-        // Move to next color
-        int nextIndex = (currentIndex + 1) % (vibrantColors.Length - 1);
-        Color newColor = vibrantColors[nextIndex];
-
-        // Apply the color
-        _colorPreviewBox.BackColor = newColor;
-        _colorLabel.Text = $"#{newColor.R:X2}{newColor.G:X2}{newColor.B:X2}";
-
-        // Force UI update
-        _colorPreviewBox.Invalidate();
-        _colorLabel.Invalidate();
-
-        // Show simple feedback
-        _colorButton.Text = $"Change... ({nextIndex + 1}/{vibrantColors.Length - 1})";
     }
 
-    private static bool ColorsAreSimilar(Color c1, Color c2, int tolerance = 10)
+    private void LoadCodeWorkspace()
     {
-        return Math.Abs(c1.R - c2.R) <= tolerance &&
-               Math.Abs(c1.G - c2.G) <= tolerance &&
-               Math.Abs(c1.B - c2.B) <= tolerance;
-    }
-
-    private void SaveCurrentProfile()
-    {
-        if (_currentProfile == null) return;
-        string newName = _nameBox.Text.Trim();
-        if (string.IsNullOrEmpty(newName))
+        using var dialog = new OpenFileDialog
         {
-            ThemedMessageBox.Show("Profile name cannot be empty.", "Validation Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Title = "Load .code-workspace file",
+            Filter = "VS Code workspace (*.code-workspace)|*.code-workspace|JSON files (*.json)|*.json|All files (*.*)|*.*"
+        };
+
+        if (dialog.ShowThemed() != DialogResult.OK)
+        {
             return;
         }
 
-        if (newName != _currentProfile.Name && _manager.ProfileNames.Contains(newName))
+        var workspaces = UserProfile.LoadFromCodeWorkspace(dialog.FileName);
+        if (workspaces.Count == 0)
         {
-            ThemedMessageBox.Show($"A profile named \"{newName}\" already exists.", "Validation Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            ThemedMessageBox.Show(this, "No workspace folders were found in the selected file.", "Workspace Import", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
 
-        // Build primary workspace
-        WorkspaceInfo? primaryWorkspace = null;
-        string workspacePath = _workspaceBox.Text.Trim();
-        if (!string.IsNullOrWhiteSpace(workspacePath))
+        _primaryWorkspace = CloneWorkspace(workspaces[0]);
+        _workspaceBox.Text = _primaryWorkspace.Path;
+        _projectTypeCombo.SelectedIndex = FindProjectTypeIndex(_primaryWorkspace.ProjectType);
+        _recentWorkspaces = workspaces.Skip(1).Select(CloneWorkspace).ToList();
+        RefreshRecentWorkspaceList();
+        MarkDirty();
+    }
+
+    private void RemoveSelectedRecentWorkspace()
+    {
+        if (_recentWorkspacesList.SelectedItem is not WorkspaceInfo workspace)
         {
-            primaryWorkspace = new WorkspaceInfo
-            {
-                Name = Path.GetFileName(workspacePath) ?? "Workspace",
-                Path = workspacePath,
-                LastOpened = _currentProfile?.PrimaryWorkspace?.LastOpened ?? DateTime.UtcNow,
-                IsTrusted = _currentProfile?.PrimaryWorkspace?.IsTrusted ?? true,
-                ProjectType = DetectProjectType(workspacePath)
-            };
+            return;
         }
 
-        // Build recent workspaces list
-        var recentWorkspaces = new List<WorkspaceInfo>();
-        foreach (var item in _recentWorkspacesList.Items)
+        _recentWorkspaces.RemoveAll(item => string.Equals(item.Path, workspace.Path, StringComparison.OrdinalIgnoreCase));
+        RefreshRecentWorkspaceList();
+        MarkDirty();
+    }
+
+    private void ResetCommand(TextBox target, string value)
+    {
+        target.Text = value;
+        target.SelectionStart = target.TextLength;
+        MarkDirty();
+    }
+
+    private void ChooseOverrideFont()
+    {
+        using var dialog = new FontDialog
         {
-            string itemText = item.ToString() ?? "";
-            // For now, parse the display text to extract path
-            // TODO: Improve this to store WorkspaceInfo objects properly
-            if (itemText.Contains(" (") && itemText.EndsWith(")"))
+            Font = new Font(string.IsNullOrWhiteSpace(_overrideFontNameBox.Text) ? _mainForm.CurrentFontName : _overrideFontNameBox.Text, _mainForm.CurrentFontSize)
+        };
+
+        if (NativeThemed.ShowDialogThemed(() => dialog.ShowDialog(this)) == DialogResult.OK)
+        {
+            _overrideFontNameCheck.Checked = true;
+            _overrideFontNameBox.Text = dialog.Font.Name;
+            _overrideFontNameBox.Enabled = true;
+            MarkDirty();
+        }
+    }
+
+    private bool SaveCurrentProfile()
+    {
+        if (_loadedProfile == null)
+        {
+            return true;
+        }
+
+        if (string.Equals(_loadedProfile.Name, "Default", StringComparison.OrdinalIgnoreCase))
+        {
+            ThemedMessageBox.Show(this, "The built-in Default profile cannot be edited. Duplicate it to make changes.", "Read-only Profile", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return false;
+        }
+
+        try
+        {
+            var updated = BuildProfileFromEditor();
+            if (updated == null)
             {
-                int start = itemText.LastIndexOf(" (");
-                string path = itemText.Substring(start + 2, itemText.Length - start - 3);
-                string name = itemText.Substring(0, start);
-                recentWorkspaces.Add(new WorkspaceInfo
-                {
-                    Name = name,
-                    Path = path,
-                    LastOpened = DateTime.UtcNow,
-                    IsTrusted = true,
-                    ProjectType = DetectProjectType(path)
-                });
+                return false;
             }
+
+            var previousName = _loadedProfile.Name;
+            var renamed = !string.Equals(previousName, updated.Name, StringComparison.OrdinalIgnoreCase);
+
+            _manager.SaveProfile(updated);
+            if (renamed)
+            {
+                _manager.DeleteProfile(previousName);
+            }
+
+            SynchronizeStartupDefault(updated);
+            _loadedProfile = updated;
+            _isDirty = false;
+            RefreshProfileList(updated.Name);
+            LoadProfile(updated);
+            SelectProfileInList(updated.Name);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show(this, $"Unable to save the profile: {ex.Message}", "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+    }
+
+    private UserProfile? BuildProfileFromEditor()
+    {
+        if (_loadedProfile == null)
+        {
+            return null;
         }
 
-        var profile = new UserProfile
+        var name = (_nameBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name))
         {
-            Name = newName,
-            Description = _descriptionBox.Text.Trim(),
+            ThemedMessageBox.Show(this, "Profile name is required.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _tabControl.SelectedIndex = 0;
+            _nameBox.Focus();
+            return null;
+        }
+
+        if (!string.Equals(name, _loadedProfile.Name, StringComparison.OrdinalIgnoreCase)
+            && _manager.ProfileNames.Any(existing => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            ThemedMessageBox.Show(this, $"A profile named \"{name}\" already exists.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _tabControl.SelectedIndex = 0;
+            _nameBox.Focus();
+            return null;
+        }
+
+        var primaryWorkspace = ResolvePrimaryWorkspaceFromEditor();
+        var recent = DeduplicateWorkspaces(_recentWorkspaces.Where(item => primaryWorkspace == null || !PathsEqual(item.Path, primaryWorkspace.Path)));
+        var projectType = GetSelectedProjectType();
+        if (primaryWorkspace != null && !string.IsNullOrWhiteSpace(projectType))
+        {
+            primaryWorkspace = primaryWorkspace with { ProjectType = projectType };
+        }
+
+        return _loadedProfile with
+        {
+            Name = name,
+            Description = string.IsNullOrWhiteSpace(_descriptionBox.Text) ? null : _descriptionBox.Text.Trim(),
             Workspaces = primaryWorkspace != null ? new List<WorkspaceInfo> { primaryWorkspace } : new List<WorkspaceInfo>(),
-            RecentWorkspaces = recentWorkspaces,
-            BuildCommand = string.IsNullOrWhiteSpace(_buildBox.Text) ? "dotnet build" : _buildBox.Text.Trim(),
-            RunCommand = string.IsNullOrWhiteSpace(_runBox.Text) ? "dotnet run" : _runBox.Text.Trim(),
-            TestCommand = string.IsNullOrWhiteSpace(_testBox.Text) ? "dotnet test" : _testBox.Text.Trim(),
-            IconId = _currentProfile!.IconId,
-            ColorHex = _colorLabel.Text,
-            CreatedAt = _currentProfile!.CreatedAt,
-            LastUsed = _currentProfile!.LastUsed,
-            UsageCount = _currentProfile!.UsageCount,
-            OverrideTabSize = _overrideTabSizeCheck.Checked ? (int)_overrideTabSizeVal.Value : null,
-            OverrideInsertSpaces = _overrideInsertSpacesCheck.Checked ? _overrideInsertSpacesVal.Checked : null,
-            OverrideFontSize = _overrideFontSizeCheck.Checked ? (float)_overrideFontSizeVal.Value : null,
-            OverrideFontName = _overrideFontNameCheck.Checked ? _overrideFontNameVal.Text : null,
-            OverrideThemeName = _overrideThemeCheck.Checked ? _overrideThemeVal.Text : null,
-            OverrideWordWrap = _overrideWordWrapCheck.Checked ? _overrideWordWrapVal.Checked : null
+            RecentWorkspaces = recent,
+            BuildCommand = NormalizeCommand(_buildBox.Text, ResolveCommandsForCurrentProjectType().build),
+            RunCommand = NormalizeCommand(_runBox.Text, ResolveCommandsForCurrentProjectType().run),
+            TestCommand = NormalizeCommand(_testBox.Text, ResolveCommandsForCurrentProjectType().test),
+            ColorHex = _colorHexLabel.Text,
+            OverrideTabSize = _overrideTabSizeCheck.Checked ? (int)_overrideTabSizeValue.Value : null,
+            OverrideInsertSpaces = _overrideInsertSpacesCheck.Checked ? _overrideInsertSpacesValue.Checked : null,
+            OverrideFontSize = _overrideFontSizeCheck.Checked ? (float)_overrideFontSizeValue.Value : null,
+            OverrideFontName = _overrideFontNameCheck.Checked ? NormalizeNullableText(_overrideFontNameBox.Text) : null,
+            OverrideThemeName = _overrideThemeCheck.Checked ? NormalizeNullableText(_overrideThemeCombo.Text) : null,
+            OverrideWordWrap = _overrideWordWrapCheck.Checked ? _overrideWordWrapValue.Checked : null,
+            OverrideGutterVisible = _overrideGutterCheck.Checked ? _overrideGutterValue.Checked : null,
+            OverrideStatusBarVisible = _overrideStatusBarCheck.Checked ? _overrideStatusBarValue.Checked : null,
+            OverrideShowGuide = _overrideGuideCheck.Checked ? _overrideGuideValue.Checked : null,
+            OverrideGuideColumn = _overrideGuideColumnCheck.Checked ? (int)_overrideGuideColumnValue.Value : null,
+            OverrideMinimapVisible = _overrideMinimapCheck.Checked ? _overrideMinimapValue.Checked : null,
+            OverrideRainbowBrackets = _overrideRainbowBracketsCheck.Checked ? _overrideRainbowBracketsValue.Checked : null,
+            OverrideBreadcrumbs = _overrideBreadcrumbsCheck.Checked ? _overrideBreadcrumbsValue.Checked : null,
+            OverrideHoverLineHighlight = _overrideHoverHighlightCheck.Checked ? _overrideHoverHighlightValue.Checked : null,
+            OverrideAutoSave = _overrideAutoSaveCheck.Checked ? _overrideAutoSaveValue.Checked : null,
+            OverrideAnalyzersEnabled = _overrideAnalyzersCheck.Checked ? _overrideAnalyzersValue.Checked : null,
+            OverrideTerminalShell = _overrideTerminalShellCheck.Checked ? NormalizeNullableText(_overrideTerminalShellBox.Text) : null,
+            OverrideTerminalHeight = _overrideTerminalHeightCheck.Checked ? (int)_overrideTerminalHeightValue.Value : null,
+            OverrideVimMode = _overrideVimModeCheck.Checked ? _overrideVimModeValue.Checked : null,
+            OverrideStickyScroll = _overrideStickyScrollCheck.Checked ? _overrideStickyScrollValue.Checked : null,
+            OverrideSyntaxHighlighting = _overrideSyntaxHighlightingCheck.Checked ? _overrideSyntaxHighlightingValue.Checked : null,
+            DefaultOnStartup = _defaultOnStartupCheck.Checked
         };
+    }
 
-        // Save
-        _manager.SaveProfile(profile);
-        _mainForm.ApplyProfile(profile);
-        if (_defaultOnStartupCheck.Checked)
+    private void SynchronizeStartupDefault(UserProfile profile)
+    {
+        foreach (var otherProfile in _manager.GetAllProfiles()
+                     .Where(item => !string.Equals(item.Name, profile.Name, StringComparison.OrdinalIgnoreCase) && item.DefaultOnStartup))
+        {
+            _manager.SaveProfile(otherProfile with { DefaultOnStartup = false });
+        }
+
+        if (profile.DefaultOnStartup)
+        {
             _manager.ActiveProfileName = profile.Name;
+        }
+        else if (string.Equals(_manager.ActiveProfileName, profile.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            _manager.ActiveProfileName = null;
+        }
+    }
 
-        LoadProfileList();
-        _profileList.SelectedItem = profile.Name;
-        ThemedMessageBox.Show($"Profile \"{profile.Name}\" saved.", "Save Complete",
-            MessageBoxButtons.OK, MessageBoxIcon.Information);
+    private void ActivateCurrentProfile()
+    {
+        if (_loadedProfile == null)
+        {
+            return;
+        }
+
+        if (_isDirty && !SaveCurrentProfile())
+        {
+            return;
+        }
+
+        var profile = _manager.LoadProfile(_loadedProfile.Name) ?? _loadedProfile;
+        _mainForm.ApplyProfile(profile);
+        _manager.IncrementUsage(profile.Name);
+        RefreshProfileList(profile.Name);
+        LoadProfile(_manager.LoadProfile(profile.Name) ?? profile);
+        SelectProfileInList(profile.Name);
     }
 
     private void ExportCurrentProfile()
     {
-        if (_currentProfile == null) return;
-        using var dlg = new SaveFileDialog
+        var profile = _loadedProfile;
+        if (profile == null)
+        {
+            return;
+        }
+
+        var exportProfile = _isDirty && !string.Equals(profile.Name, "Default", StringComparison.OrdinalIgnoreCase)
+            ? BuildProfileFromEditor() ?? profile
+            : profile;
+
+        using var dialog = new SaveFileDialog
         {
             Title = "Export Profile",
             Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
             DefaultExt = "json",
-            FileName = $"{_currentProfile.Name}.json"
+            FileName = $"{exportProfile.Name}.json"
         };
-        if (dlg.ShowDialog() == DialogResult.OK)
+
+        if (dialog.ShowThemed() != DialogResult.OK)
         {
-            try
-            {
-                string json = System.Text.Json.JsonSerializer.Serialize(_currentProfile, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(dlg.FileName, json);
-                ThemedMessageBox.Show($"Profile exported to {dlg.FileName}", "Export Complete",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                ThemedMessageBox.Show($"Export failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            return;
+        }
+
+        try
+        {
+            File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(exportProfile, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex)
+        {
+            ThemedMessageBox.Show(this, $"Unable to export the profile: {ex.Message}", "Export Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
     private void ImportProfile()
     {
-        using var dlg = new OpenFileDialog
+        using var dialog = new OpenFileDialog
         {
             Title = "Import Profile",
             Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*"
         };
-        if (dlg.ShowDialog() == DialogResult.OK)
+
+        if (dialog.ShowThemed() != DialogResult.OK)
         {
-            try
-            {
-                string json = File.ReadAllText(dlg.FileName);
-                var profile = System.Text.Json.JsonSerializer.Deserialize<UserProfile>(json);
-                if (profile == null) throw new Exception("Invalid profile format.");
-
-                string originalName = profile.Name;
-                string newName = originalName;
-                int count = 1;
-                while (_manager.ProfileNames.Any(n => n == newName))
-                    newName = $"{originalName} (imported {count++})";
-                if (newName != originalName)
-                {
-                    profile = profile with { Name = newName };
-                }
-
-                _manager.SaveProfile(profile);
-                LoadProfileList();
-                _profileList.SelectedItem = newName;
-                ThemedMessageBox.Show($"Profile \"{newName}\" imported.", "Import Complete",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            catch (Exception ex)
-            {
-                ThemedMessageBox.Show($"Import failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            return;
         }
-    }
 
-    private void OnProfileChanged(UserProfile profile)
-    {
-        if (InvokeRequired) { Invoke(new Action(() => OnProfileChanged(profile))); return; }
-        LoadProfileList();
-        if (_currentProfile != null && profile.Name == _currentProfile.Name)
-            PopulateDetails(profile);
-    }
-
-    private void OnProfileDeleted(string name)
-    {
-        if (InvokeRequired) { Invoke(new Action(() => OnProfileDeleted(name))); return; }
-        _currentProfile = null;
-        LoadProfileList();
-    }
-
-    private void Section_ExpandedChanged(object? sender, EventArgs e)
-    {
-        LayoutRightPanel();
-        UpdateShowAllButtonText();
-    }
-
-    private void ToggleAllAdvancedSections()
-    {
-        bool allExpanded = _workspaceSection!.Expanded && _commandsSection!.Expanded && _overridesSection!.Expanded;
-        bool newState = !allExpanded; // toggle
-        _workspaceSection.Expanded = newState;
-        _commandsSection!.Expanded = newState;
-        _overridesSection!.Expanded = newState;
-    }
-
-    private void UpdateShowAllButtonText()
-    {
-        bool allExpanded = _workspaceSection!.Expanded && _commandsSection!.Expanded && _overridesSection!.Expanded;
-        _showAllButton.Text = allExpanded ? "▲ Hide Advanced Settings" : "▼ Show All Settings";
-    }
-
-private void LayoutRightPanel()
-{
-    // Controls that should move when sections expand/collapse.
-    // Static detail fields (title, name, description, appearance) stay at their designed positions.
-    Control[] repositionable = new Control[] { _showAllButton, _workspaceSection!, _commandsSection!, _overridesSection!, _defaultOnStartupCheck, _lastUsedLabel, _usageLabel };
-
-    // Start after the appearance group
-    int y = _appearanceGroup!.Bottom + 6;
-
-    foreach (Control ctrl in repositionable)
-    {
-        if (ctrl != null)
-        {
-            ctrl.Location = new Point(ctrl.Location.X, y);
-            y = ctrl.Bottom + 6;
-        }
-    }
-    _rightPanel.AutoScrollMinSize = new Size(0, y);
-}
-
-    /// <summary>
-    /// Auto-detects project type from workspace contents.
-    /// </summary>
-    private static string? DetectProjectType(string path)
-    {
         try
         {
-            if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return null;
-
-            // Check for specific project files
-            string[] files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly);
-            var fileNames = files.Select(f => Path.GetFileName(f)?.ToLowerInvariant() ?? "").ToArray();
-
-            if (fileNames.Contains("package.json"))
+            var imported = JsonSerializer.Deserialize<UserProfile>(File.ReadAllText(dialog.FileName));
+            if (imported == null)
             {
-                // TypeScript takes priority over plain node if tsconfig.json is present
-                if (fileNames.Contains("tsconfig.json") || fileNames.Any(f => f.EndsWith(".ts") || f.EndsWith(".tsx"))) return "typescript";
-                return "node";
-            }
-            if (fileNames.Contains("tsconfig.json") || fileNames.Any(f => f.EndsWith(".ts") || f.EndsWith(".tsx"))) return "typescript";
-            if (fileNames.Contains("requirements.txt") || fileNames.Contains("setup.py") || fileNames.Contains("pyproject.toml")) return "python";
-            if (fileNames.Contains("gemfile") || fileNames.Contains("gemfile.lock") || fileNames.Any(f => f.EndsWith(".gemspec"))) return "ruby";
-            if (fileNames.Contains("pom.xml") || fileNames.Contains("build.gradle")) return "java";
-            if (fileNames.Contains("go.mod")) return "go";
-            if (fileNames.Contains("cargo.toml")) return "rust";
-            if (fileNames.Any(f => f.EndsWith(".ps1") || f.EndsWith(".psm1") || f.EndsWith(".psd1"))) return "powershell";
-            if (fileNames.Any(f => f.EndsWith(".sh") || f.EndsWith(".bash"))) return "bash";
-            if (fileNames.Any(f => f.EndsWith(".sql"))) return "sql";
-            // IaC: check before generic C/C++ so main.bicep is not confused with C headers
-            if (fileNames.Any(f => f.EndsWith(".bicep"))) return "bicep";
-            if (fileNames.Any(f => f.EndsWith(".tf") || f.EndsWith(".tfvars"))) return "terraform";
-            if (fileNames.Contains("CMakeLists.txt") || fileNames.Any(f => f.EndsWith(".cpp") || f.EndsWith(".cc") || f.EndsWith(".cxx"))) return "cpp";
-            // Makefile-only C projects (no CMakeLists.txt, no .cpp)
-            if (fileNames.Contains("makefile") || fileNames.Contains("GNUmakefile") || fileNames.Any(f => f == "makefile")) return "make";
-            if (fileNames.Any(f => f.EndsWith(".c") || f.EndsWith(".h"))) return "c";
-            if (fileNames.Contains(".csproj") || fileNames.Contains(".sln") || fileNames.Contains("project.json")) return "dotnet";
-            if (fileNames.Any(f => f.EndsWith(".csproj") || f.EndsWith(".sln"))) return "dotnet";
-            if (fileNames.Contains("index.html") || fileNames.Contains("index.htm")) return "web";
-
-            // Check for common directories
-            string[] dirs = Directory.GetDirectories(path, "*", SearchOption.TopDirectoryOnly);
-            var dirNames = dirs.Select(d => Path.GetFileName(d)?.ToLowerInvariant() ?? "").ToArray();
-
-            if (dirNames.Contains("node_modules")) return "node";
-            if (dirNames.Contains("venv") || dirNames.Contains("__pycache__")) return "python";
-            // Terraform modules dir or .terraform cache dir
-            if (dirNames.Contains(".terraform") || dirNames.Contains("modules")) {
-                if (files.Any(f => f.EndsWith(".tf"))) return "terraform";
+                throw new InvalidOperationException("The selected file is not a valid profile.");
             }
 
-            return null; // Unknown
+            if (_manager.ProfileNames.Any(existing => string.Equals(existing, imported.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                imported = imported with { Name = GetUniqueCopyName(imported.Name) };
+            }
+
+            _manager.SaveProfile(imported);
+            if (imported.DefaultOnStartup)
+            {
+                SynchronizeStartupDefault(imported);
+            }
+
+            RefreshProfileList(imported.Name);
+            LoadProfile(imported);
+            SelectProfileInList(imported.Name);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[DetectProjectType] Error detecting project type for {path}: {ex.Message}");
+            ThemedMessageBox.Show(this, $"Unable to import the profile: {ex.Message}", "Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void RefreshRecentWorkspaceList()
+    {
+        _recentWorkspacesList.BeginUpdate();
+        _recentWorkspacesList.Items.Clear();
+        foreach (var workspace in _recentWorkspaces)
+        {
+            _recentWorkspacesList.Items.Add(workspace);
+        }
+        _recentWorkspacesList.EndUpdate();
+        UpdateRecentWorkspacePlaceholder();
+    }
+
+    private void UpdateRecentWorkspacePlaceholder()
+    {
+        var hasItems = _recentWorkspacesList.Items.Count > 0;
+        _recentWorkspacesList.Visible = hasItems;
+        _recentPlaceholderLabel.Visible = !hasItems;
+        _removeWorkspaceButton.Enabled = hasItems;
+    }
+
+    private void SetPrimaryWorkspace(string path)
+    {
+        var detectedProjectType = DetectProjectType(path);
+        _primaryWorkspace = BuildWorkspaceInfo(path, detectedProjectType);
+        _workspaceBox.Text = path;
+        _projectTypeCombo.SelectedIndex = FindProjectTypeIndex(detectedProjectType);
+        MarkDirty();
+    }
+
+    private WorkspaceInfo? ResolvePrimaryWorkspaceFromEditor()
+    {
+        var path = (_workspaceBox.Text ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            _primaryWorkspace = null;
             return null;
         }
-    }
 
-    /// <summary>
-    /// Returns (build, run, test) commands appropriate for the given project type string.
-    /// Detects Makefile-only C projects (type "make") as well as cmake-based C/C++ projects.
-    /// </summary>
-    private static (string Build, string Run, string Test) ResolveBuildCommandsForType(string? projectType)
-        => projectType switch
+        if (!Directory.Exists(path))
         {
-            "cpp"        => ("cmake --build build", "./build/app", "ctest --test-dir build"),
-                "make"       => ("make", "./app", "make test"),
-                "c"          => ("make", "./app", "make test"),
-                "node"       => ("npm run build", "npm start", "npm test"),
-                "typescript" => ("npx tsc", "node dist/index.js", "npm test"),
-                "python"     => ("python -m compileall .", "python main.py", "python -m pytest"),
-                "ruby"       => ("bundle install", "ruby main.rb", "bundle exec rspec"),
-                "bash"       => ("bash -n *.sh", "bash main.sh", "bats tests/"),
-                "powershell" => ("pwsh -NonInteractive -Command \"Get-ChildItem *.ps1 | ForEach-Object { . $_.FullName }\"", "pwsh -File main.ps1", "pwsh -Command \"Invoke-Pester\""),
-                "sql"        => ("sqlfluff lint .", "sqlite3 < schema.sql", "sqlfluff lint ."),
-                "rust"       => ("cargo build", "cargo run", "cargo test"),
-                "java"       => ("mvn package", "java -jar target/*.jar", "mvn test"),
-                "go"         => ("go build ./...", "go run .", "go test ./..."),
-                "bicep"      => ("az bicep build --file main.bicep", "az deployment group create --template-file main.bicep --parameters @parameters.json", "az bicep lint --file main.bicep"),
-                "terraform"  => ("terraform validate", "terraform plan", "terraform validate && tflint"),
-                _            => ("dotnet build", "dotnet run", "dotnet test")   // dotnet or unknown
-        };
-
-
-    protected override void OnFormClosed(FormClosedEventArgs e)
-    {
-        _manager.ProfileChanged -= OnProfileChanged;
-        _manager.ProfileDeleted -= OnProfileDeleted;
-        base.OnFormClosed(e);
-    }
-
-    private void ProjectTypeCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        if (_currentProfile != null && _projectTypeCombo?.SelectedItem is string type)
-        {
-            if (_currentProfile.Workspaces.Count > 0)
+            var result = ThemedMessageBox.Show(this,
+                $"The folder \"{path}\" does not exist. Create it now?",
+                "Create Folder",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (result != DialogResult.Yes)
             {
-                var primaryWorkspace = _currentProfile.Workspaces[0];
-                string newProjectType;
-
-                if (type == "Auto-detect")
-                {
-                    // Re-detect from path
-                    newProjectType = DetectProjectType(primaryWorkspace.Path) ?? primaryWorkspace.ProjectType ?? "";
-                }
-                else
-                {
-                    newProjectType = type;
-                }
-
-                // Update the primary workspace in the list
-                var updatedWorkspaces = new List<WorkspaceInfo>(_currentProfile.Workspaces)
-                {
-                    [0] = primaryWorkspace with { ProjectType = newProjectType }
-                };
-
-                _currentProfile = _currentProfile with { Workspaces = updatedWorkspaces };
+                throw new InvalidOperationException("Choose an existing workspace folder or create a new one.");
             }
-            UpdateWorkspaceDisplays();
+
+            Directory.CreateDirectory(path);
+        }
+
+        var projectType = GetSelectedProjectType();
+        _primaryWorkspace = BuildWorkspaceInfo(path, projectType ?? DetectProjectType(path));
+        return _primaryWorkspace;
+    }
+
+    private string NormalizeCommand(string value, string fallback) => string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static string? NormalizeNullableText(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static bool PathsEqual(string left, string right) =>
+        string.Equals(Path.GetFullPath(left).TrimEnd('\\'), Path.GetFullPath(right).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+
+    private List<WorkspaceInfo> DeduplicateWorkspaces(IEnumerable<WorkspaceInfo> workspaces)
+    {
+        var result = new List<WorkspaceInfo>();
+        foreach (var workspace in workspaces)
+        {
+            if (!result.Any(existing => PathsEqual(existing.Path, workspace.Path)))
+            {
+                result.Add(CloneWorkspace(workspace));
+            }
+        }
+        return result;
+    }
+
+    private static WorkspaceInfo CloneWorkspace(WorkspaceInfo workspace) => workspace with { };
+
+    private WorkspaceInfo? BuildWorkspaceInfo(string? path, string? projectType)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        return new WorkspaceInfo
+        {
+            Name = Path.GetFileName(path.TrimEnd('\\')),
+            Path = path,
+            LastOpened = DateTime.UtcNow,
+            IsTrusted = true,
+            ProjectType = projectType
+        };
+    }
+
+    private (string build, string run, string test) ResolveCommandsForCurrentProjectType() => ResolveBuildCommandsForType(GetSelectedProjectType() ?? DetectProjectType(_workspaceBox.Text));
+
+    private static (string build, string run, string test) ResolveBuildCommandsForType(string? projectType) => projectType?.ToLowerInvariant() switch
+    {
+        "node" => ("npm run build", "npm start", "npm test"),
+        "python" => ("python -m build", "python main.py", "pytest"),
+        "java" => ("mvn package", "mvn exec:java", "mvn test"),
+        "go" => ("go build ./...", "go run .", "go test ./..."),
+        "rust" => ("cargo build", "cargo run", "cargo test"),
+        "cpp" => ("cmake --build .", ".\\bin\\app.exe", "ctest"),
+        "web" => ("npm run build", "npm run dev", "npm test"),
+        _ => ("dotnet build", "dotnet run", "dotnet test")
+    };
+
+    private static string? DetectProjectType(string? path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+            {
+                return null;
+            }
+
+            var files = Directory.GetFiles(path, "*.*", SearchOption.TopDirectoryOnly)
+                .Select(file => Path.GetFileName(file).ToLowerInvariant())
+                .ToArray();
+
+            if (files.Any(file => file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)) || files.Contains("global.json") || files.Contains("project.json") || files.Any(file => file.EndsWith(".sln", StringComparison.OrdinalIgnoreCase))) return "dotnet";
+            if (files.Contains("package.json")) return "node";
+            if (files.Contains("requirements.txt") || files.Contains("pyproject.toml") || files.Contains("setup.py")) return "python";
+            if (files.Contains("pom.xml") || files.Contains("build.gradle")) return "java";
+            if (files.Contains("go.mod")) return "go";
+            if (files.Contains("cargo.toml")) return "rust";
+            if (files.Contains("cmakelists.txt") || files.Any(file => file.EndsWith(".cpp", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".h", StringComparison.OrdinalIgnoreCase))) return "cpp";
+            if (files.Contains("index.html") || files.Contains("vite.config.js") || files.Contains("vite.config.ts")) return "web";
+        }
+        catch
+        {
+        }
+
+        return null;
+    }
+
+    private string? GetSelectedProjectType()
+    {
+        if (_projectTypeCombo.SelectedIndex <= 0)
+        {
+            return null;
+        }
+
+        return _projectTypes[_projectTypeCombo.SelectedIndex];
+    }
+
+    private int FindProjectTypeIndex(string? projectType)
+    {
+        if (string.IsNullOrWhiteSpace(projectType))
+        {
+            return 0;
+        }
+
+        var index = _projectTypes.FindIndex(value => string.Equals(value, projectType, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 ? index : 0;
+    }
+
+    private string GetUniqueProfileName(string baseName)
+    {
+        var candidate = baseName;
+        var suffix = 2;
+        while (_manager.ProfileNames.Any(existing => string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            candidate = $"{baseName} {suffix++}";
+        }
+        return candidate;
+    }
+
+    private string GetUniqueCopyName(string sourceName)
+    {
+        var baseName = $"{sourceName} (Copy)";
+        var candidate = baseName;
+        var suffix = 2;
+        while (_manager.ProfileNames.Any(existing => string.Equals(existing, candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            candidate = $"{baseName} {suffix++}";
+        }
+        return candidate;
+    }
+
+    private void ProfileList_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0 || _profileList.Items[e.Index] is not UserProfile profile)
+        {
+            return;
+        }
+
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        using var backBrush = new SolidBrush(selected ? Color.FromArgb(_theme.IsLight ? 225 : 50, _theme.Accent) : _theme.EditorBackground);
+        e.Graphics.FillRectangle(backBrush, e.Bounds);
+
+        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var avatarRect = new Rectangle(e.Bounds.X + 6, e.Bounds.Y + 5, 14, 14);
+        using var avatarBrush = new SolidBrush(profile.DisplayColor);
+        using var avatarPen = new Pen(_theme.Border);
+        e.Graphics.FillEllipse(avatarBrush, avatarRect);
+        e.Graphics.DrawEllipse(avatarPen, avatarRect);
+
+        using var textBrush = new SolidBrush(_theme.Text);
+        using var textFormat = new StringFormat { LineAlignment = StringAlignment.Center, Trimming = StringTrimming.EllipsisCharacter };
+        var textRect = new Rectangle(e.Bounds.X + 28, e.Bounds.Y, e.Bounds.Width - 48, e.Bounds.Height);
+        e.Graphics.DrawString(profile.Name, Font, textBrush, textRect, textFormat);
+
+        if (string.Equals(_manager.ActiveProfileName, profile.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            using var activeBrush = new SolidBrush(_theme.Accent);
+            e.Graphics.FillEllipse(activeBrush, e.Bounds.Right - 16, e.Bounds.Y + 8, 8, 8);
+        }
+
+        if (_isDirty && string.Equals(_loadedProfile?.Name, profile.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            using var dirtyBrush = new SolidBrush(FlatUiHelper.WarningColor(_theme));
+            e.Graphics.FillEllipse(dirtyBrush, e.Bounds.Right - 28, e.Bounds.Y + 8, 8, 8);
         }
     }
 
-    private void LoadWorkspaceFileButton_Click(object? sender, EventArgs e)
+    private void RecentWorkspacesList_DrawItem(object? sender, DrawItemEventArgs e)
     {
-        using var dlg = new OpenFileDialog
+        if (e.Index < 0 || _recentWorkspacesList.Items[e.Index] is not WorkspaceInfo workspace)
         {
-            Title = "Load VS Code Workspace File",
-            Filter = "VS Code Workspace Files (*.code-workspace)|*.code-workspace|All Files (*.*)|*.*",
-            DefaultExt = ".code-workspace"
-        };
+            return;
+        }
 
-        if (dlg.ShowDialog() == DialogResult.OK && _currentProfile != null)
+        var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        using var backBrush = new SolidBrush(selected ? Color.FromArgb(_theme.IsLight ? 225 : 50, _theme.Accent) : _theme.EditorBackground);
+        e.Graphics.FillRectangle(backBrush, e.Bounds);
+
+        using var titleBrush = new SolidBrush(_theme.Text);
+        using var metaBrush = new SolidBrush(_theme.Muted);
+        using var titleFont = new Font(Font, FontStyle.Bold);
+        var titleRect = new Rectangle(e.Bounds.X + 8, e.Bounds.Y + 4, e.Bounds.Width - 16, 16);
+        var metaRect = new Rectangle(e.Bounds.X + 8, e.Bounds.Y + 20, e.Bounds.Width - 16, 16);
+        e.Graphics.DrawString(workspace.DisplayName, titleFont, titleBrush, titleRect);
+        e.Graphics.DrawString(workspace.Path, Font, metaBrush, metaRect);
+    }
+
+    private void TabControl_DrawItem(object? sender, DrawItemEventArgs e)
+    {
+        var tabPage = _tabControl.TabPages[e.Index];
+        var selected = e.Index == _tabControl.SelectedIndex;
+        var rect = e.Bounds;
+
+        using var backBrush = new SolidBrush(selected ? _theme.PanelBackground : _theme.Background);
+        e.Graphics.FillRectangle(backBrush, rect);
+        using var pen = new Pen(_theme.Border);
+        e.Graphics.DrawRectangle(pen, rect.X, rect.Y, rect.Width - 1, rect.Height - 1);
+        if (selected)
         {
-            try
-            {
-                var workspaces = UserProfile.LoadFromCodeWorkspace(dlg.FileName);
-                if (workspaces.Count > 0)
-                {
-                    _currentProfile = _currentProfile with { Workspaces = workspaces };
-                    UpdateWorkspaceDisplays();
+            using var accentBrush = new SolidBrush(_theme.Accent);
+            e.Graphics.FillRectangle(accentBrush, rect.X + 1, rect.Bottom - 3, rect.Width - 2, 3);
+        }
 
-                    // Clear the input box since we're loading from file
-                    _workspaceBox.Text = "";
-                    ThemedMessageBox.Show($"Loaded {workspaces.Count} workspace folders from {Path.GetFileName(dlg.FileName)}", "Workspace Loaded", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                else
-                {
-                    ThemedMessageBox.Show("No valid workspace folders found in the file.", "No Workspaces", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-            }
-            catch (Exception ex)
+        TextRenderer.DrawText(e.Graphics, tabPage.Text, Font, rect, selected ? _theme.Text : _theme.Muted,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+    }
+
+    private void HookDirty(params Control[] controls)
+    {
+        foreach (var control in controls)
+        {
+            switch (control)
             {
-                ThemedMessageBox.Show($"Error loading workspace file: {ex.Message}", "Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                case TextBox textBox:
+                    textBox.TextChanged += (_, _) =>
+                    {
+                        if (ReferenceEquals(textBox, _workspaceBox) && !_suppressDirtyTracking)
+                        {
+                            _projectTypeCombo.SelectedIndex = FindProjectTypeIndex(DetectProjectType(_workspaceBox.Text));
+                        }
+                        MarkDirty();
+                    };
+                    break;
+                case CheckBox checkBox:
+                    checkBox.CheckedChanged += (_, _) =>
+                    {
+                        SyncEnabledState(checkBox);
+                        MarkDirty();
+                    };
+                    break;
+                case ComboBox comboBox:
+                    comboBox.SelectedIndexChanged += (_, _) => MarkDirty();
+                    comboBox.TextChanged += (_, _) => MarkDirty();
+                    break;
+                case NumericUpDown numericUpDown:
+                    numericUpDown.ValueChanged += (_, _) => MarkDirty();
+                    break;
             }
         }
+    }
+
+    private void SyncEnabledState(CheckBox overrideCheck)
+    {
+        if (ReferenceEquals(overrideCheck, _overrideTabSizeCheck)) _overrideTabSizeValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideInsertSpacesCheck)) _overrideInsertSpacesValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideFontSizeCheck)) _overrideFontSizeValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideFontNameCheck)) { _overrideFontNameBox.Enabled = overrideCheck.Checked; _overrideFontNameButton.Enabled = overrideCheck.Checked; }
+        else if (ReferenceEquals(overrideCheck, _overrideThemeCheck)) _overrideThemeCombo.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideWordWrapCheck)) _overrideWordWrapValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideVimModeCheck)) _overrideVimModeValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideAutoSaveCheck)) _overrideAutoSaveValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideGutterCheck)) _overrideGutterValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideStatusBarCheck)) _overrideStatusBarValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideGuideCheck)) _overrideGuideValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideGuideColumnCheck)) _overrideGuideColumnValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideMinimapCheck)) _overrideMinimapValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideRainbowBracketsCheck)) _overrideRainbowBracketsValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideBreadcrumbsCheck)) _overrideBreadcrumbsValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideHoverHighlightCheck)) _overrideHoverHighlightValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideSyntaxHighlightingCheck)) _overrideSyntaxHighlightingValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideAnalyzersCheck)) _overrideAnalyzersValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideStickyScrollCheck)) _overrideStickyScrollValue.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideTerminalShellCheck)) _overrideTerminalShellBox.Enabled = overrideCheck.Checked;
+        else if (ReferenceEquals(overrideCheck, _overrideTerminalHeightCheck)) _overrideTerminalHeightValue.Enabled = overrideCheck.Checked;
+    }
+
+    private void SetNullableNumeric(CheckBox overrideCheck, NumericUpDown valueControl, int? value, int defaultValue)
+    {
+        overrideCheck.Checked = value.HasValue;
+        valueControl.Value = Math.Max(valueControl.Minimum, Math.Min(valueControl.Maximum, value ?? defaultValue));
+        valueControl.Enabled = value.HasValue;
+    }
+
+    private void SetNullableDecimal(CheckBox overrideCheck, NumericUpDown valueControl, float? value, decimal defaultValue)
+    {
+        overrideCheck.Checked = value.HasValue;
+        var effective = value.HasValue ? (decimal)value.Value : defaultValue;
+        valueControl.Value = Math.Max(valueControl.Minimum, Math.Min(valueControl.Maximum, effective));
+        valueControl.Enabled = value.HasValue;
+    }
+
+    private void SetNullableBool(CheckBox overrideCheck, CheckBox valueControl, bool? value, bool defaultValue)
+    {
+        overrideCheck.Checked = value.HasValue;
+        valueControl.Checked = value ?? defaultValue;
+        valueControl.Enabled = value.HasValue;
+    }
+
+    private void SetNullableText(CheckBox overrideCheck, TextBox valueControl, string? value)
+    {
+        overrideCheck.Checked = !string.IsNullOrWhiteSpace(value);
+        valueControl.Text = value ?? string.Empty;
+        valueControl.Enabled = overrideCheck.Checked;
+        if (ReferenceEquals(valueControl, _overrideFontNameBox))
+        {
+            _overrideFontNameButton.Enabled = overrideCheck.Checked;
+        }
+    }
+
+    private void SetNullableCombo(CheckBox overrideCheck, ComboBox valueControl, string? value, string fallback)
+    {
+        overrideCheck.Checked = !string.IsNullOrWhiteSpace(value);
+        valueControl.Text = value ?? fallback;
+        valueControl.Enabled = overrideCheck.Checked;
+    }
+
+    private void InvalidatePreviewDots()
+    {
+        _profileList.Invalidate();
+        _headerDot.Invalidate();
+    }
+
+    private Button CreateButton(string text, int width)
+    {
+        var button = new Button
+        {
+            Text = text,
+            AutoSize = width == 0,
+            Width = width == 0 ? 0 : width,
+            Height = 30,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.PanelBackground,
+            ForeColor = _theme.Text,
+            Margin = new Padding(0, 0, 8, 0),
+            UseVisualStyleBackColor = false
+        };
+        button.FlatAppearance.BorderColor = _theme.Border;
+        button.FlatAppearance.MouseOverBackColor = _theme.ButtonHoverBackground;
+        button.FlatAppearance.MouseDownBackColor = _theme.ButtonHoverBackground;
+        return button;
+    }
+
+    private CheckBox CreateCheckBox(string text) => new()
+    {
+        AutoSize = true,
+        Text = text,
+        ForeColor = _theme.Text,
+        BackColor = Color.Transparent,
+        Margin = new Padding(0, 6, 0, 0)
+    };
+
+    private Label CreateSectionLabel(string text) => new()
+    {
+        AutoSize = true,
+        Text = text,
+        Font = new Font(Font, FontStyle.Bold),
+        ForeColor = _theme.Text,
+        BackColor = Color.Transparent,
+        Margin = new Padding(0, 0, 0, 8)
+    };
+
+    private Label CreateMutedLabel() => new()
+    {
+        AutoSize = true,
+        ForeColor = _theme.Muted,
+        BackColor = Color.Transparent
+    };
+
+    private TextBox CreateTextBox(bool multiline = false)
+    {
+        return new TextBox
+        {
+            BorderStyle = BorderStyle.None,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            Multiline = multiline,
+            AcceptsReturn = multiline,
+            ScrollBars = multiline ? ScrollBars.Vertical : ScrollBars.None,
+            Dock = DockStyle.Fill
+        };
+    }
+
+    private ComboBox CreateComboBox()
+    {
+        return new ComboBox
+        {
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 240
+        };
+    }
+
+    private NumericUpDown CreateNumeric(decimal minimum, decimal maximum, decimal increment, int decimalPlaces)
+    {
+        return new NumericUpDown
+        {
+            Minimum = minimum,
+            Maximum = maximum,
+            Increment = increment,
+            DecimalPlaces = decimalPlaces,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            BorderStyle = BorderStyle.FixedSingle,
+            Width = 100
+        };
+    }
+
+    private Panel WrapControl(Control control, Padding? padding = null)
+    {
+        var wrapper = FlatUiHelper.WrapFlat(control, _theme, padding ?? new Padding(4));
+        wrapper.BackColor = _theme.EditorBackground;
+        return wrapper;
+    }
+
+    private Control CreateFieldPanel(out TextBox textBox, bool multiline = false, int height = 30)
+    {
+        textBox = CreateTextBox(multiline);
+        var wrapper = WrapControl(textBox, new Padding(6, multiline ? 6 : 4, 6, 4));
+        wrapper.Height = height;
+        wrapper.Width = 340;
+        return wrapper;
+    }
+
+    private TabPage CreateTabPage(string title) => new()
+    {
+        Text = title,
+        BackColor = _theme.Background,
+        ForeColor = _theme.Text
+    };
+
+    private Panel CreateTabContentPanel() => new()
+    {
+        Dock = DockStyle.Fill,
+        AutoScroll = true,
+        BackColor = _theme.Background,
+        Padding = new Padding(18)
+    };
+
+    private TableLayoutPanel CreateFormLayout()
+    {
+        return new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 2
+        };
+    }
+
+    private void AddRow(TableLayoutPanel layout, string labelText, Control control)
+    {
+        var rowIndex = layout.RowCount;
+        layout.RowCount++;
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        if (layout.ColumnStyles.Count == 0)
+        {
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        }
+
+        var label = new Label
+        {
+            AutoSize = true,
+            Text = labelText,
+            ForeColor = _theme.Muted,
+            Margin = new Padding(0, 8, 12, 0)
+        };
+
+        control.Margin = new Padding(0, 4, 0, 4);
+        layout.Controls.Add(label, 0, rowIndex);
+        layout.Controls.Add(control, 1, rowIndex);
+    }
+
+    private void AddCommandRow(TableLayoutPanel layout, string labelText, out TextBox textBox, out Button resetButton)
+    {
+        var row = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Top,
+            ColumnCount = 2
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var textHost = CreateFieldPanel(out textBox);
+        textHost.Dock = DockStyle.Fill;
+        resetButton = CreateButton("Reset to default", 126);
+        row.Controls.Add(textHost, 0, 0);
+        row.Controls.Add(resetButton, 1, 0);
+
+        AddRow(layout, labelText, row);
+    }
+
+    private Panel CreateOverrideColumn(string title)
+    {
+        var container = new Panel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            Padding = new Padding(0, 0, 12, 0),
+            BackColor = Color.Transparent
+        };
+
+        var header = CreateSectionLabel(title);
+        header.Dock = DockStyle.Top;
+        container.Controls.Add(header);
+
+        var stack = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            BackColor = Color.Transparent
+        };
+        container.Controls.Add(stack);
+        container.Tag = stack;
+        return container;
+    }
+
+    private FlowLayoutPanel GetOverrideStack(Panel panel) => (FlowLayoutPanel)panel.Tag!;
+
+    private void AddBoolOverride(Panel container, string labelText, out CheckBox overrideCheck, out CheckBox valueCheck)
+    {
+        var row = CreateOverrideRow(container, labelText, out overrideCheck);
+        valueCheck = CreateCheckBox("Enabled");
+        valueCheck.Margin = new Padding(0, 6, 0, 0);
+        valueCheck.Enabled = false;
+        row.Controls.Add(valueCheck);
+    }
+
+    private void AddNumericOverride(Panel container, string labelText, decimal minimum, decimal maximum, decimal increment, out CheckBox overrideCheck, out NumericUpDown valueControl)
+    {
+        var row = CreateOverrideRow(container, labelText, out overrideCheck);
+        valueControl = CreateNumeric(minimum, maximum, increment, 0);
+        valueControl.Enabled = false;
+        row.Controls.Add(valueControl);
+    }
+
+    private void AddDecimalOverride(Panel container, string labelText, decimal minimum, decimal maximum, decimal increment, int decimalPlaces, out CheckBox overrideCheck, out NumericUpDown valueControl)
+    {
+        var row = CreateOverrideRow(container, labelText, out overrideCheck);
+        valueControl = CreateNumeric(minimum, maximum, increment, decimalPlaces);
+        valueControl.Enabled = false;
+        row.Controls.Add(valueControl);
+    }
+
+    private void AddTextOverride(Panel container, string labelText, out CheckBox overrideCheck, out TextBox textBox, out Button actionButton, bool chooseButton)
+    {
+        var row = CreateOverrideRow(container, labelText, out overrideCheck);
+        var inputHost = CreateFieldPanel(out textBox);
+        inputHost.Width = chooseButton ? 170 : 230;
+        inputHost.Height = 28;
+        textBox.Enabled = false;
+        row.Controls.Add(inputHost);
+
+        if (chooseButton)
+        {
+            actionButton = CreateButton("Choose", 78);
+            actionButton.Enabled = false;
+            actionButton.Margin = new Padding(8, 0, 0, 0);
+            row.Controls.Add(actionButton);
+        }
+        else
+        {
+            actionButton = CreateButton(string.Empty, 0);
+            actionButton.Visible = false;
+        }
+    }
+
+    private void AddComboOverride(Panel container, string labelText, IEnumerable<string> items, out CheckBox overrideCheck, out ComboBox comboBox)
+    {
+        var row = CreateOverrideRow(container, labelText, out overrideCheck);
+        comboBox = CreateComboBox();
+        comboBox.Enabled = false;
+        comboBox.Width = 190;
+        foreach (var item in items)
+        {
+            comboBox.Items.Add(item);
+        }
+        row.Controls.Add(comboBox);
+    }
+
+    private FlowLayoutPanel CreateOverrideRow(Panel container, string labelText, out CheckBox overrideCheck)
+    {
+        var stack = GetOverrideStack(container);
+        var rowContainer = new Panel
+        {
+            Width = 340,
+            Height = 54,
+            Margin = new Padding(0, 0, 0, 8),
+            BackColor = _theme.PanelBackground,
+            Padding = new Padding(10, 8, 10, 8)
+        };
+        rowContainer.Paint += (s, e) => DrawBorder(e.Graphics, ((Control)s!).ClientRectangle);
+
+        var title = new Label
+        {
+            AutoSize = true,
+            Text = labelText,
+            Font = new Font(Font, FontStyle.Bold),
+            ForeColor = _theme.Text,
+            Location = new Point(10, 8)
+        };
+
+        overrideCheck = CreateCheckBox("Override");
+        overrideCheck.Location = new Point(10, 26);
+        overrideCheck.Margin = Padding.Empty;
+
+        var valueRow = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            Location = new Point(102, 22),
+            BackColor = Color.Transparent
+        };
+
+        rowContainer.Controls.Add(title);
+        rowContainer.Controls.Add(overrideCheck);
+        rowContainer.Controls.Add(valueRow);
+        stack.Controls.Add(rowContainer);
+        return valueRow;
+    }
+
+    private void DrawBorder(Graphics graphics, Rectangle bounds)
+    {
+        var rect = bounds;
+        rect.Width -= 1;
+        rect.Height -= 1;
+        using var pen = new Pen(_theme.Border);
+        graphics.DrawRectangle(pen, rect);
     }
 }
