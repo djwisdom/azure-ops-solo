@@ -706,7 +706,7 @@ internal sealed class BrowserPanel : UserControl
         ContentFilterService.Instance.ListsReady += _ =>
         {
             if (!IsHandleCreated) return;
-            BeginInvoke(UpdateBlockedLabel);
+            BeginInvoke(() => UpdateBlockedLabel());
         };
 
         UpdateBlockedLabel();
