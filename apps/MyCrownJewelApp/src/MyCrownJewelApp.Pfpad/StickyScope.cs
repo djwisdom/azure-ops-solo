@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace MyCrownJewelApp.Pfpad;
 
@@ -7,6 +8,8 @@ public sealed class StickyScope
     public int OpenLine { get; init; }
     public int CloseLine { get; init; }
     public string HeaderText { get; init; } = "";
+    /// <summary>Clean identifier name for breadcrumb display (e.g. "ByteSpan" not "public void ByteSpan(string data)").</summary>
+    public string SymbolName { get; init; } = "";
     public string ScopeKind { get; init; } = "Block";
 }
 
@@ -30,17 +33,16 @@ public sealed class StickyScrollService
             if (r.CloseLine - r.OpenLine < 1) continue;
 
             string openLineText = lines[r.OpenLine].TrimEnd('\r');
-            string headerText;
-            string kind;
 
-            if (IsMeaningfulScope(openLineText, out headerText, out kind))
+            if (IsMeaningfulScope(openLineText, out string headerText, out string symbolName, out string kind))
             {
                 _scopes.Add(new StickyScope
                 {
-                    OpenLine = r.OpenLine,
-                    CloseLine = r.CloseLine,
+                    OpenLine   = r.OpenLine,
+                    CloseLine  = r.CloseLine,
                     HeaderText = headerText,
-                    ScopeKind = kind
+                    SymbolName = symbolName,
+                    ScopeKind  = kind
                 });
             }
         }
@@ -59,15 +61,19 @@ public sealed class StickyScrollService
         return result;
     }
 
-    private static bool IsMeaningfulScope(string openLineText, out string headerText, out string kind)
+    private static bool IsMeaningfulScope(string openLineText, out string headerText, out string symbolName, out string kind)
     {
-        headerText = "";
-        kind = "Block";
+        headerText  = "";
+        symbolName  = "";
+        kind        = "Block";
         string trimmed = openLineText.Trim();
 
+        // ── #region ──────────────────────────────────────────────────────────
         if (trimmed.StartsWith("#region"))
         {
+            string label = trimmed.Length > 7 ? trimmed[7..].Trim() : "#region";
             headerText = trimmed;
+            symbolName = string.IsNullOrEmpty(label) ? "#region" : label;
             kind = "Region";
             return true;
         }
@@ -76,54 +82,82 @@ public sealed class StickyScrollService
         if (braceIdx < 0) return false;
 
         string declPart = braceIdx > 0 ? trimmed[..braceIdx].Trim() : "";
-
         if (declPart.Length == 0) return false;
 
-        if (ContainsKeyword(declPart, "class "))
+        // ── Named type keywords (C# + JS/TS) ─────────────────────────────────
+        string[][] typeKeywords = [
+            ["class",     "Class"],
+            ["struct",    "Struct"],
+            ["interface", "Interface"],
+            ["enum",      "Enum"],
+            ["record",    "Record"],
+            ["namespace", "Namespace"],
+        ];
+        foreach (var kw in typeKeywords)
         {
-            headerText = ExtractHeader(declPart, "class");
-            kind = "Class";
-            return true;
+            if (ContainsKeyword(declPart, kw[0] + " "))
+            {
+                headerText = ExtractHeader(declPart, kw[0]);
+                symbolName = ExtractIdentifier(declPart, kw[0]);
+                kind = kw[1];
+                return true;
+            }
         }
-        if (ContainsKeyword(declPart, "struct "))
+
+        // ── JS: named function declaration — function foo( ────────────────────
+        var namedFuncM = Regex.Match(declPart, @"\bfunction\s+(\w+)\s*\(");
+        if (namedFuncM.Success)
         {
-            headerText = ExtractHeader(declPart, "struct");
-            kind = "Struct";
-            return true;
-        }
-        if (ContainsKeyword(declPart, "interface "))
-        {
-            headerText = ExtractHeader(declPart, "interface");
-            kind = "Interface";
-            return true;
-        }
-        if (ContainsKeyword(declPart, "enum "))
-        {
-            headerText = ExtractHeader(declPart, "enum");
-            kind = "Enum";
-            return true;
-        }
-        if (ContainsKeyword(declPart, "record "))
-        {
-            headerText = ExtractHeader(declPart, "record");
-            kind = "Record";
-            return true;
-        }
-        if (ContainsKeyword(declPart, "namespace "))
-        {
-            headerText = ExtractHeader(declPart, "namespace");
-            kind = "Namespace";
+            symbolName  = namedFuncM.Groups[1].Value;
+            headerText  = symbolName + "()";
+            kind        = "Method";
             return true;
         }
 
+        // ── JS: assignment to function — const/let/var foo = function( ────────
+        var anonAssignM = Regex.Match(declPart, @"\b(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?function\s*\(");
+        if (anonAssignM.Success)
+        {
+            symbolName  = anonAssignM.Groups[1].Value;
+            headerText  = symbolName + "()";
+            kind        = "Method";
+            return true;
+        }
+
+        // ── constructor ───────────────────────────────────────────────────────
+        if (Regex.IsMatch(declPart, @"(?:^|[\s;])constructor\s*\("))
+        {
+            symbolName  = "constructor";
+            headerText  = "constructor";
+            kind        = "Constructor";
+            return true;
+        }
+
+        // ── Arrow function: const foo = (...) => ─────────────────────────────
+        if (declPart.Contains('(') && declPart.Contains(')') &&
+            declPart.Contains('=') && declPart.Contains('>'))
+        {
+            var lambdaM = Regex.Match(declPart, @"\b(?:const|let|var)?\s*(\w+)\s*=");
+            symbolName  = lambdaM.Success ? lambdaM.Groups[1].Value : "⟨function⟩";
+            headerText  = declPart;
+            kind        = "Lambda";
+            return true;
+        }
+
+        // ── Generic method/function with ( ) ─────────────────────────────────
         if (declPart.Contains('(') && declPart.Contains(')'))
         {
-            headerText = declPart;
-            if (declPart.Contains('=') && declPart.Contains('>'))
-                kind = "Lambda";
-            else
-                kind = "Method";
-            return true;
+            // Extract last \w+ before the first (
+            int parenIdx = declPart.IndexOf('(');
+            string beforeParen = declPart[..parenIdx];
+            var methodM = Regex.Match(beforeParen, @"(\w+)\s*$");
+            if (methodM.Success)
+            {
+                symbolName = methodM.Groups[1].Value + "()";
+                headerText = declPart;
+                kind       = "Method";
+                return true;
+            }
         }
 
         return false;
@@ -144,5 +178,15 @@ public sealed class StickyScrollService
         int idx = text.IndexOf(keyword, System.StringComparison.Ordinal);
         if (idx < 0) return text;
         return text[idx..].Trim();
+    }
+
+    /// <summary>Returns just the identifier immediately following the keyword (stops at space, &lt;, (, {, :, =).</summary>
+    private static string ExtractIdentifier(string text, string keyword)
+    {
+        int idx = text.IndexOf(keyword, System.StringComparison.Ordinal);
+        if (idx < 0) return text;
+        string after = text[(idx + keyword.Length)..].TrimStart();
+        var m = Regex.Match(after, @"^(\w+)");
+        return m.Success ? m.Groups[1].Value : after;
     }
 }

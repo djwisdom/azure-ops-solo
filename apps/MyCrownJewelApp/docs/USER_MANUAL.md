@@ -6,7 +6,7 @@
 
 ## Question
 
-I've just started using Personal Flip Pad (Pfpad) **v1.0.46**, a professional WinForms code editor written in C# targeting .NET 10. What features does it have, including its advanced Git workflow, multi-platform CI connectors, AIOps dashboard, browser, security hardening, Vim mode, and performance engine?
+I've just started using Personal Flip Pad (Pfpad) **v1.0.47**, a professional WinForms code editor written in C# targeting .NET 10. What features does it have, including its advanced Git workflow, multi-platform CI connectors, AIOps dashboard, browser, security hardening, Vim mode, and performance engine?
 
 ---
 
@@ -63,6 +63,7 @@ Each file opens in its own tab. If no files are specified, you get a single unti
 
 | Version | Highlights |
 |---------|-----------|
+| **v1.0.47** | File location indicator: menu bar shows `💻 Local` (green) or `🐧 WSL` (orange) immediately left of the 🔒 Hardening badge — identifies whether the active file is on the Windows filesystem or a WSL mount (`\\wsl$\` / `\\wsl.localhost\`); hidden on untitled tabs |
 | **v1.0.46** | Consistency release: installer/output naming aligned to `pfpad-Setup-*`, install/log paths standardized under `%LOCALAPPDATA%\Personal Flip Pad\`, and stale docs/comments cleaned up |
 | **v1.0.45** | Feature audit release: comprehensive About dialog, README and manual update; all connector and Git workflow features documented |
 | **v1.0.44** | `GitLabConnector` (API v4) + `BitbucketConnector` (REST 2.0); `AzureDevOpsConnector` gains `IPullRequestCapable`; CI badge covers all 4 platforms; ADO branch-policy warning bar |

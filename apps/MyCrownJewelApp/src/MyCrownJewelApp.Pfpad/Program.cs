@@ -57,6 +57,47 @@ static class Program
 
             var form = new Form1(skipInitialDocument: false, services: sp);
             logger.LogInformation("Form created");
+            WslIntegrationService.SaveShimToInstallDir();
+
+            using var wslService = new WslIntegrationService();
+            wslService.OpenRequested += req =>
+            {
+                if (form.IsDisposed)
+                    return;
+
+                void OpenRequest()
+                {
+                    if (form.WindowState == FormWindowState.Minimized)
+                        form.WindowState = FormWindowState.Normal;
+
+                    form.BringToFront();
+                    form.Activate();
+
+                    foreach (string path in req.Paths)
+                    {
+                        if (Directory.Exists(path))
+                            form.OpenWorkspaceFolder(path);
+                        else if (File.Exists(path))
+                            form.OpenFileInNewTab(path);
+                    }
+                }
+
+                if (form.IsHandleCreated)
+                {
+                    form.BeginInvoke((Action)OpenRequest);
+                    return;
+                }
+
+                void OnShown(object? sender, EventArgs args)
+                {
+                    form.Shown -= OnShown;
+                    if (!form.IsDisposed)
+                        OpenRequest();
+                }
+
+                form.Shown += OnShown;
+            };
+            wslService.StartServer();
 
             Application.Run(form);
             logger.LogInformation("Application exited normally");

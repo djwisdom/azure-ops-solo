@@ -56,7 +56,7 @@ terraform apply -var="environment=dev"
 
 ### Using Pfpad Code Editor
 
-The repository includes Pfpad **v1.0.46**, a professional C# code editor built with .NET 10 and WinForms:
+The repository includes Pfpad **v1.0.47**, a professional C# code editor built with .NET 10 and WinForms:
 
 ```bash
 cd apps/MyCrownJewelApp
@@ -86,6 +86,7 @@ dotnet build --configuration Release
 - **ADO branch-policy warning:** Dismissable info bar after push to Azure DevOps repos (auto-hides 12 s)
 - **Minimap scroll (v1.0.46):** Mouse wheel over the minimap scrolls the minimap viewport independently — pan the code map without moving the editor cursor; click to jump
 - **Vim `:version` (v1.0.46):** Reports Pfpad version, git commit hash (short), build date, and .NET runtime instead of a stub string
+- **File location indicator (v1.0.47):** Menu bar shows `💻 Local` (green) or `🐧 WSL` (orange) immediately left of the 🔒 Hardening badge — instantly tells you whether the active file lives on the Windows filesystem or a WSL mount (`\\wsl$\` / `\\wsl.localhost\`); hidden when no file is open
 
 See `apps/MyCrownJewelApp/docs/USER_MANUAL.md` for comprehensive documentation.
 

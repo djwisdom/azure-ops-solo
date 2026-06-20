@@ -11,7 +11,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public record SecuritySettings(bool ConfirmUrlOpen, bool AllowHttpUrls);
 
     private const string DARK_MODE_SCROLLBAR = "DarkMode_Explorer";
-    private const int EM_SETLINKCOLOR = 0x0423;
     private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     private const uint INFINITE = 0xFFFFFFFF;
     private static readonly IntPtr PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE = (IntPtr)0x00020016;
@@ -141,14 +140,23 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private const uint SEM_NOGPFAULTERRORBOX = 0x0002;
     private const uint SEM_NOOPENFILEERRORBOX = 0x8000;
 
-    private readonly RichTextBox _outputBox;
-    private readonly TextBox _inputBox;
-    private readonly Panel _inputContainer;
-    private Process? _legacyProcess;
-    private StreamWriter? _legacyStdin;
-    private FileStream? _ptyIn;
-    private FileStream? _ptyOut;
-    private Thread? _ptyReadThread;
+    // ── New TUI renderer ─────────────────────────────────────────────────────────
+    private TerminalView    _view   = null!;
+    private TerminalBuffer  _buf    = null!;
+    private VtParser        _parser = null!;
+
+    // Pre-handle output buffer — chars that arrive before the window handle exists
+    private readonly List<string> _preHandleOutputBuffer = new();
+    private readonly object       _preHandleBufferLock   = new();
+
+    // ── Process / pipe state ─────────────────────────────────────────────────────
+    private Process?       _legacyProcess;
+    private StreamWriter?  _legacyStdin;
+    private LegacyReadline? _readline;      // GNU readline-style editor (legacy pipe mode only)
+    private bool           _suppressingClearError; // true while swallowing a Clear-Host console-handle error block
+    private FileStream?   _ptyIn;
+    private FileStream?   _ptyOut;
+    private Thread?       _ptyReadThread;
     private IntPtr _hPC;
     private IntPtr _hProcess;
     private IntPtr _hThread;
@@ -156,23 +164,20 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     private bool _conPtyMode;
     private bool _disposed;
     private bool _shellStarted;
-    private bool _explicitFontSet;   // true once we've applied our own font (safe to dispose old one)
     private DateTime _conPtyLaunchTime;
     private bool _isDark = true;
-    private Color _inputBg;
-    private Color _inputBgFocused;
     private readonly string _shellPath;
-    private readonly List<string> _commandHistory = new();
-    private int _historyIndex = -1;
     private int _maxScrollback = 5000;
     private SecuritySettings _securitySettings = new(ConfirmUrlOpen: false, AllowHttpUrls: true);
-    // Output that arrives before the window handle is created (early-init terminal) is buffered
-    // here and flushed once the handle becomes available.
-    private readonly List<string> _preHandleOutputBuffer = new();
-    private readonly object _preHandleBufferLock = new();
 
     public event Action? ProcessExited;
     public event Action? HideTerminalRequested;
+    /// <summary>Fires when the shell updates the terminal/tab title via OSC (or when <see cref="CustomTabTitle"/> is set).</summary>
+    public event Action<string>? TabTitleChanged;
+    /// <summary>Relayed from the view's Ctrl+Shift+N shortcut — request to open a new terminal tab.</summary>
+    public event Action? NewTabRequested;
+    /// <summary>Relayed from the view's Ctrl+F4 shortcut — request to close this terminal tab.</summary>
+    public event Action? CloseTabRequested;
 
     public bool IsRunning => _conPtyMode ? (_hProcess != IntPtr.Zero && !_processExited) : (_legacyProcess is { HasExited: false });
 
@@ -186,124 +191,99 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public void ChangeDirectory(string path)
     {
         if (!IsRunning || string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
-        string nl = _conPtyMode ? "\r" : "\n";
-        // cmd.exe needs /d for cross-drive navigation; PowerShell and bash accept plain cd
+        string nl = _conPtyMode ? "\r" : "\r\n";
         string cmd = ShellName.Equals("cmd", StringComparison.OrdinalIgnoreCase)
             ? $"cd /d \"{path}\""
             : $"cd \"{path}\"";
+        // Programmatic navigation bypasses readline; update readline's WD directly.
+        if (_readline != null) _readline.WorkingDirectory = path;
         SendInput(cmd + nl);
     }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public string StartingDirectory { get; set; } = "";
+    public string? StartingDirectory { get; set; } = "";
+
+    private string? _customTabTitle;
+
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public string? CustomTabTitle { get; set; }
+    public string? CustomTabTitle
+    {
+        get => _customTabTitle;
+        set
+        {
+            if (_customTabTitle == value) return;
+            _customTabTitle = value;
+            TabTitleChanged?.Invoke(value ?? "");
+        }
+    }
 
     public TerminalPanel(string? shellPath = null)
     {
-        _shellPath = ResolveShell(shellPath);
-
-        Padding = new Padding(0);
+        _shellPath  = ResolveShell(shellPath);
+        Padding     = new Padding(0);
         MinimumSize = new Size(200, 60);
 
-        _outputBox = new RichTextBox
+        // Screen buffer + VT parser
+        _buf    = new TerminalBuffer(24, 80, Color.FromArgb(204, 204, 204), Color.FromArgb(12, 12, 12));
+        _parser = new VtParser(_buf);
+        _parser.TitleChanged    += title  => { if (IsHandleCreated) BeginInvoke(() => CustomTabTitle = title); };
+
+        // TerminalView — full-screen cell renderer + keyboard handler
+        _view = new TerminalView { Dock = DockStyle.Fill };
+        _view.Attach(_buf, _parser);
+        _view.DataToSend += SendRawBytes;
+        _view.PasteRequested      += SendPaste;
+        _view.NewTabRequested     += () => NewTabRequested?.Invoke();
+        _view.CloseTabRequested   += () => CloseTabRequested?.Invoke();
+        _view.HandleCreated += (_, _) =>
         {
-            Dock = DockStyle.Fill,
-            Font = GetMonospaceFont(),
-            ReadOnly = true,
-            BorderStyle = BorderStyle.None,
-            WordWrap = true,
-            ScrollBars = RichTextBoxScrollBars.Vertical,
-            TabStop = false,
-            Margin = new Padding(0),
-            Padding = new Padding(4),
-            DetectUrls = true
-        };
-        _outputBox.LinkClicked += (s, e) => OpenUrl(e.LinkText);
-        _outputBox.HandleCreated += (s, e) =>
-        {
-            _outputBox.SetLinkColor(Color.FromArgb(80, 140, 255));
-            SetWindowTheme(_outputBox.Handle, _isDark ? DARK_MODE_SCROLLBAR : "", null);
+            SetWindowTheme(_view.Handle, _isDark ? DARK_MODE_SCROLLBAR : "", null);
         };
 
-        _inputBox = new TextBox
+        // Right-click context menu
+        var viewMenu          = new ContextMenuStrip();
+        var menuCopySelection    = new ToolStripMenuItem("Copy Selection\tCtrl+Shift+C");
+        var menuCopyAll          = new ToolStripMenuItem("Copy All");
+        var menuSelectAll        = new ToolStripMenuItem("Select All");
+        var menuClear            = new ToolStripMenuItem("Clear Terminal");
+        var menuResetConPty      = new ToolStripMenuItem("🔄 Reset to ConPTY Mode");
+        var menuOpenExternal     = new ToolStripMenuItem("🚀 Open in Windows Terminal");
+        menuCopySelection.Click += (_, _) => _view.CopySelectionToClipboard();
+        menuCopyAll.Click       += (_, _) => _view.CopyAllToClipboard();
+        menuSelectAll.Click     += (_, _) => _view.SelectAll();
+        menuClear.Click         += (_, _) => ClearOutput();
+        menuResetConPty.Click   += (_, _) => RestartWithConPty();
+        menuOpenExternal.Click  += (_, _) => OpenInWindowsTerminal();
+        viewMenu.Items.AddRange(new ToolStripItem[]
         {
-            Dock = DockStyle.Fill,
-            Font = GetMonospaceFont(),
-            BorderStyle = BorderStyle.None,
-            Margin = new Padding(0),
-            Padding = new Padding(4, 1, 4, 1),
-            TabStop = true
-        };
-        _inputBox.KeyDown += InputBox_KeyDown;
-        _inputBox.GotFocus += (s, e) => _inputBox.BackColor = _inputBgFocused;
-        _inputBox.LostFocus += (s, e) => _inputBox.BackColor = _inputBg;
-
-        _inputContainer = new Panel
+            menuCopySelection, menuCopyAll,
+            new ToolStripSeparator(), menuSelectAll,
+            new ToolStripSeparator(), menuClear,
+            new ToolStripSeparator(), menuOpenExternal,
+            new ToolStripSeparator(), menuResetConPty
+        });
+        viewMenu.Opening += (_, _) =>
         {
-            Dock = DockStyle.Bottom,
-            Height = 26,
-            Padding = new Padding(2, 1, 2, 2),
-            Margin = new Padding(0)
+            menuCopySelection.Enabled = _view.HasSelection;
+            menuResetConPty.Visible   = !_conPtyMode;
         };
-        _inputContainer.Controls.Add(_inputBox);
+        _view.ContextMenuStrip = viewMenu;
 
-        // Right-click context menu on the output box
-        var outputMenu = new ContextMenuStrip();
-        var menuCopySelection = new ToolStripMenuItem("Copy Selection\tCtrl+Shift+C");
-        var menuCopyAll = new ToolStripMenuItem("Copy All");
-        var menuSelectAll = new ToolStripMenuItem("Select All\tCtrl+A");
-        var menuClear = new ToolStripMenuItem("Clear Terminal");
-        var menuResetConPty = new ToolStripMenuItem("🔄 Reset to ConPTY Mode");
-        menuCopySelection.Click += (_, _) => { if (_outputBox.SelectionLength > 0) Clipboard.SetText(_outputBox.SelectedText); };
-        menuCopyAll.Click += (_, _) => { if (_outputBox.TextLength > 0) Clipboard.SetText(_outputBox.Text); };
-        menuSelectAll.Click += (_, _) => _outputBox.SelectAll();
-        menuClear.Click += (_, _) => ClearOutput();
-        menuResetConPty.Click += (_, _) => RestartWithConPty();
-        outputMenu.Items.AddRange(new ToolStripItem[] { menuCopySelection, menuCopyAll, new ToolStripSeparator(), menuSelectAll, new ToolStripSeparator(), menuClear, new ToolStripSeparator(), menuResetConPty });
-        outputMenu.Opening += (_, _) =>
-        {
-            menuCopySelection.Enabled = _outputBox.SelectionLength > 0;
-            menuResetConPty.Visible = !_conPtyMode;
-        };
-        _outputBox.ContextMenuStrip = outputMenu;
+        Controls.Add(_view);
 
-        // Ctrl+Shift+C when input box is focused copies selected output text
-        _inputBox.KeyDown += InputBox_CopyShortcut;
-
-        Controls.Add(_outputBox);
-        Controls.Add(_inputContainer);
-
-        // Flush any output buffered before the window handle was available.
         HandleCreated += (_, _) => FlushPreHandleOutputBuffer();
 
         SetTheme(Theme.Dark);
     }
 
-    public void ApplyTerminalSettings(string fontFace, float fontSize, bool fontBold, bool wordWrap, bool scrollbarVisible, int padding)
+    public void ApplyTerminalSettings(string fontFace, float fontSize, bool fontBold,
+        bool wordWrap, bool scrollbarVisible, int padding)
     {
-        // Track whether we previously set an explicit font so we only dispose fonts WE created.
-        Font terminalFont = CreateTerminalFont(fontFace, fontSize, fontBold);
-        Font? oldOutput = _explicitFontSet ? _outputBox.Font : null;
-        Font? oldInput  = _explicitFontSet ? _inputBox.Font  : null;
-        _explicitFontSet = true;
-
-        _outputBox.Font = terminalFont;
-        _inputBox.Font  = (Font)terminalFont.Clone();
-
-        oldOutput?.Dispose();
-        oldInput?.Dispose();
-
-        _outputBox.WordWrap = wordWrap;
-        _outputBox.ScrollBars = scrollbarVisible ? RichTextBoxScrollBars.Vertical : RichTextBoxScrollBars.None;
-        _outputBox.Padding = new Padding(Math.Clamp(padding, 0, 20));
+        _view.SetFont(fontFace, fontSize, fontBold);
+        _view.Padding = new Padding(Math.Clamp(padding, 0, 20));
 
         if (_conPtyMode && _hPC != IntPtr.Zero)
         {
-            try
-            {
-                ResizePseudoConsole(_hPC, GetTerminalSize());
-            }
-            catch { }
+            try { ResizePseudoConsole(_hPC, GetTerminalSize()); } catch { }
         }
     }
 
@@ -315,7 +295,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public void SetMaxScrollback(int lines)
     {
         _maxScrollback = Math.Clamp(lines, 500, 50000);
-        TrimScrollback();
+        _buf.SetMaxScrollback(_maxScrollback);
     }
 
     public void Start()
@@ -328,28 +308,14 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     public void SetTheme(Theme theme)
     {
         _isDark = !theme.IsLight;
-
         Color bg = theme.TerminalBackground;
         Color fg = theme.TerminalForeground;
-        _inputBg = theme.TerminalInputBackground;
-        _inputBgFocused = theme.IsLight ? ControlPaint.Light(theme.TerminalInputBackground) : ControlPaint.LightLight(theme.TerminalInputBackground);
 
         BackColor = bg;
+        _buf.UpdateDefaultColors(fg, bg);
+        _view.SetTheme(bg, fg);
 
-        _outputBox.BackColor = bg;
-        _outputBox.ForeColor = fg;
-        if (_outputBox.IsHandleCreated)
-        {
-            _outputBox.SetLinkColor(Color.FromArgb(80, 140, 255));
-            SetWindowTheme(_outputBox.Handle, _isDark ? DARK_MODE_SCROLLBAR : "", null);
-        }
-
-        _inputBox.BackColor = _inputBox.Focused ? _inputBgFocused : _inputBg;
-        _inputBox.ForeColor = fg;
-
-        _inputContainer.BackColor = bg;
-
-        if (_outputBox.ContextMenuStrip is { } menu)
+        if (_view.ContextMenuStrip is { } menu)
         {
             menu.BackColor = theme.MenuBackground;
             menu.ForeColor = fg;
@@ -367,13 +333,13 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             }
             catch (Exception ex)
             {
-                AppendAnsiText($"\x1B[93m[Terminal] ConPTY unavailable, falling back to pipes: {ex.Message}\x1B[0m\n");
+                FeedText($"\x1B[93m[Terminal] ConPTY unavailable, falling back to pipes: {ex.Message}\x1B[0m\r\n");
                 KillConPty();
             }
         }
         else if (s_conPtyBlocked && _conPtyAvailable)
         {
-            AppendAnsiText("\x1B[90m[Terminal] Running in compatibility mode (ConPTY was previously blocked). Right-click → Reset to ConPTY Mode to retry.\x1B[0m\n");
+            FeedText("\x1B[90m[Terminal] Running in compatibility mode (ConPTY was previously blocked). Right-click → Reset to ConPTY Mode to retry.\x1B[0m\r\n");
         }
 
         StartLegacyShell();
@@ -387,33 +353,73 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             {
                 FileName = _shellPath,
                 UseShellExecute = false,
-                RedirectStandardInput = true,
+                RedirectStandardInput  = true,
                 RedirectStandardOutput = true,
-                RedirectStandardError = true,
+                RedirectStandardError  = true,
                 CreateNoWindow = true,
                 WorkingDirectory = GetWorkingDirectory(),
                 StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8
+                StandardErrorEncoding  = Encoding.UTF8
             };
 
             psi.Environment["TERM"] = "xterm-256color";
 
             _legacyProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            _legacyProcess.OutputDataReceived += OnLegacyOutputData;
             _legacyProcess.ErrorDataReceived += OnLegacyErrorData;
             _legacyProcess.Exited += OnLegacyProcessExited;
             _legacyProcess.Start();
 
             _legacyStdin = _legacyProcess.StandardInput;
-            _legacyProcess.BeginOutputReadLine();
+
+            // Create readline once; preserve history across shell restarts.
+            _readline ??= new LegacyReadline(
+                feedVt:    vt  => { _parser.Feed(vt.AsSpan()); _view?.Refresh(false); },
+                execute:   cmd =>
+                {
+                    try { _legacyStdin?.Write(cmd); _legacyStdin?.Flush(); }
+                    catch { }
+                    TrackCdCommand(cmd);
+                },
+                completer: GetFileSystemCompletions
+            );
+            _readline.Reset();
+            _readline.WorkingDirectory = GetWorkingDirectory();
+
+            // Read stdout as a raw byte stream so the prompt (no trailing \n) arrives
+            // immediately and the cursor stays on the same line as the prompt.
+            var stdoutStream = _legacyProcess.StandardOutput.BaseStream;
+            new Thread(() => ReadLegacyStream(stdoutStream))
+                { IsBackground = true, Name = "LegacyStdout" }.Start();
+
             _legacyProcess.BeginErrorReadLine();
             _conPtyMode = false;
             _processExited = false;
+            // Enable ONLCR: legacy pipe has no PTY to translate \n → \r\n for us
+            _parser.AutoLineFeedMode = true;
         }
         catch (Exception ex)
         {
-            AppendAnsiText($"\x1B[90m[Terminal] Failed to start {_shellPath}: {ex.Message}\x1B[0m");
+            FeedText($"\x1B[90m[Terminal] Failed to start {_shellPath}: {ex.Message}\x1B[0m\r\n");
         }
+    }
+
+    private void ReadLegacyStream(Stream stream)
+    {
+        byte[] buf     = new byte[4096];
+        char[] chars   = new char[Encoding.UTF8.GetMaxCharCount(buf.Length)];
+        var    decoder = Encoding.UTF8.GetDecoder();
+        try
+        {
+            while (true)
+            {
+                int read = stream.Read(buf, 0, buf.Length);
+                if (read <= 0) break;
+                int n = decoder.GetChars(buf, 0, read, chars, 0, flush: false);
+                if (n > 0) FeedText(new string(chars, 0, n));
+            }
+        }
+        catch (ObjectDisposedException) { }
+        catch (IOException) { }
     }
 
     private void StartConPtyShell()
@@ -477,6 +483,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             _processExited = false;
             _conPtyMode = true;
             _conPtyLaunchTime = DateTime.UtcNow;
+            _parser.AutoLineFeedMode = false;  // PTY driver performs NL→CRLF natively
 
             StartConPtyReader();
             StartConPtyExitWatcher();
@@ -517,8 +524,8 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void ReadConPtyOutput(FileStream stream)
     {
-        byte[] buffer = new byte[4096];
-        char[] chars = new char[Encoding.UTF8.GetMaxCharCount(buffer.Length)];
+        byte[] buffer  = new byte[4096];
+        char[] chars   = new char[Encoding.UTF8.GetMaxCharCount(buffer.Length)];
         Decoder decoder = Encoding.UTF8.GetDecoder();
 
         try
@@ -526,16 +533,13 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             while (true)
             {
                 int read = stream.Read(buffer, 0, buffer.Length);
-                if (read <= 0)
-                    break;
+                if (read <= 0) break;
 
                 int charCount = decoder.GetChars(buffer, 0, read, chars, 0, flush: false);
-                if (charCount <= 0)
-                    continue;
+                if (charCount <= 0) continue;
 
                 string text = new(chars, 0, charCount);
-                if (IsHandleCreated && !_disposed)
-                    BeginInvoke(() => AppendAnsiText(text));
+                FeedText(text);
             }
         }
         catch (ObjectDisposedException) { }
@@ -599,7 +603,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
             BeginInvoke(() =>
             {
-                AppendAnsiText($"\x1B[90m[Process exited (code: {exitCode})]\x1B[0m");
+                FeedText($"\x1B[90m[Process exited (code: {exitCode})]\x1B[0m\r\n");
                 ProcessExited?.Invoke();
             });
         });
@@ -614,47 +618,73 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private void FallbackToLegacy()
     {
-        AppendAnsiText("\x1B[93m[Terminal] ConPTY blocked by security software on this system.\x1B[0m\n");
-        AppendAnsiText("\x1B[93m[Terminal] Switching to compatibility mode (some interactive CLIs may open in a separate window).\x1B[0m\n");
+        FeedText("\x1B[93m[Terminal] ConPTY blocked by security software on this system.\x1B[0m\r\n");
+        FeedText("\x1B[93m[Terminal] Switching to compatibility mode — interactive CLIs (e.g. copilot) need a real terminal.\x1B[0m\r\n");
+        FeedText("\x1B[90m           Right-click → Open in Windows Terminal  to launch a full terminal.\x1B[0m\r\n");
         KillConPty();
         _shellStarted = false;
         StartLegacyShell();
     }
 
-    private void OnLegacyOutputData(object? sender, DataReceivedEventArgs e)
-    {
-        if (e.Data == null) return;
-        BufferOrAppend(e.Data + "\n");
-    }
-
     private void OnLegacyErrorData(object? sender, DataReceivedEventArgs e)
     {
         if (e.Data == null) return;
-        BufferOrAppend($"\x1B[91m{e.Data}\x1B[0m\n");
-    }
 
-    private void BufferOrAppend(string text)
-    {
-        if (IsHandleCreated && !_disposed)
+        // PowerShell's Clear-Host/cls tries to set Console cursor position via Win32 API,
+        // which fails without a real console handle. The error line reads:
+        //   "Set-ConsoleCursorPosition : The handle is invalid."
+        // Detect that specific combination, suppress the whole PS error block (terminated by
+        // a blank line), and instead apply a VT clear-screen so cls works visually.
+        if (!_suppressingClearError &&
+            e.Data.Contains("CursorPosition", StringComparison.OrdinalIgnoreCase) &&
+            e.Data.Contains("handle is invalid", StringComparison.OrdinalIgnoreCase))
         {
-            BeginInvoke(() => AppendAnsiText(text));
+            _suppressingClearError = true;
+            FeedText("\x1B[2J\x1B[H");  // clear screen + cursor home
+        }
+
+        if (_suppressingClearError)
+        {
+            if (string.IsNullOrWhiteSpace(e.Data))   // blank line = end of PS error block
+                _suppressingClearError = false;
             return;
         }
 
+        FeedText($"\x1B[91m{e.Data}\x1B[0m\r\n");
+    }
+
+    // ── Text feed pipeline ────────────────────────────────────────────────────────
+
+    /// <summary>Routes decoded text through the VT parser and schedules a view refresh.</summary>
+    private void FeedText(string text)
+    {
+        if (IsHandleCreated && !_disposed)
+        {
+            BeginInvoke(() =>
+            {
+                _parser.Feed(text.AsSpan());
+                _view.Refresh(true);
+            });
+            return;
+        }
         lock (_preHandleBufferLock)
             _preHandleOutputBuffer.Add(text);
     }
 
     private void FlushPreHandleOutputBuffer()
     {
-        string[] lines;
+        string[] pending;
         lock (_preHandleBufferLock)
         {
             if (_preHandleOutputBuffer.Count == 0) return;
-            lines = _preHandleOutputBuffer.ToArray();
+            pending = _preHandleOutputBuffer.ToArray();
             _preHandleOutputBuffer.Clear();
         }
-        BeginInvoke(() => { foreach (var line in lines) AppendAnsiText(line); });
+        BeginInvoke(() =>
+        {
+            foreach (string chunk in pending) _parser.Feed(chunk.AsSpan());
+            _view.Refresh(true);
+        });
     }
 
     private void OnLegacyProcessExited(object? sender, EventArgs e)
@@ -662,572 +692,98 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         if (!IsHandleCreated) return;
         BeginInvoke(() =>
         {
-            AppendAnsiText($"\x1B[90m[Process exited (code: {(_legacyProcess?.ExitCode.ToString() ?? "unknown")})]\x1B[0m");
+            FeedText($"\x1B[90m[Process exited (code: {(_legacyProcess?.ExitCode.ToString() ?? "unknown")})]\x1B[0m\r\n");
             _legacyStdin = null;
             ProcessExited?.Invoke();
         });
     }
 
-    private static readonly Color[] _ansiColors = new[]
-    {
-        Color.FromArgb(0, 0, 0),       // 0 Black
-        Color.FromArgb(230, 60, 60),   // 1 Red
-        Color.FromArgb(60, 230, 60),   // 2 Green
-        Color.FromArgb(230, 200, 40),  // 3 Yellow
-        Color.FromArgb(80, 140, 255),  // 4 Blue
-        Color.FromArgb(230, 100, 230), // 5 Magenta
-        Color.FromArgb(60, 210, 210),  // 6 Cyan
-        Color.FromArgb(210, 210, 210), // 7 White
-        Color.FromArgb(80, 80, 80),    // 8 Bright Black
-        Color.FromArgb(255, 100, 100), // 9 Bright Red
-        Color.FromArgb(100, 255, 100), // 10 Bright Green
-        Color.FromArgb(255, 255, 80),  // 11 Bright Yellow
-        Color.FromArgb(120, 170, 255), // 12 Bright Blue
-        Color.FromArgb(255, 140, 255), // 13 Bright Magenta
-        Color.FromArgb(100, 255, 255), // 14 Bright Cyan
-        Color.FromArgb(255, 255, 255), // 15 Bright White
-    };
-
-    private int _ansiFg = -1;
-    private int _ansiBg = -1;
-    private bool _ansiBold;
-
-    private void AppendAnsiText(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-
-        int crPos = text.IndexOf('\r');
-        if (crPos >= 0)
-        {
-            int searchStart = 0;
-            while (true)
-            {
-                crPos = text.IndexOf('\r', searchStart);
-                if (crPos < 0)
-                {
-                    AppendAnsiParsed(text.Substring(searchStart));
-                    break;
-                }
-                if (crPos > searchStart)
-                    AppendAnsiParsed(text.Substring(searchStart, crPos - searchStart));
-                GoToLineStart();
-                searchStart = crPos + 1;
-            }
-            TrimScrollback();
-            ScrollToBottom();
-            return;
-        }
-
-        AppendAnsiParsed(text);
-        TrimScrollback();
-        ScrollToBottom();
-    }
-
-    private void TrimScrollback()
-    {
-        if (_outputBox.IsDisposed)
-            return;
-
-        int lineCount = _outputBox.Lines.Length;
-        if (lineCount <= _maxScrollback)
-            return;
-
-        int firstCharToKeep = _outputBox.GetFirstCharIndexFromLine(lineCount - _maxScrollback);
-        if (firstCharToKeep <= 0)
-            return;
-
-        _outputBox.Select(0, firstCharToKeep);
-        _outputBox.SelectedText = string.Empty;
-        _outputBox.SelectionStart = _outputBox.TextLength;
-        _outputBox.SelectionLength = 0;
-    }
-
-    private void AppendAnsiParsed(string text)
-    {
-        _outputBox.SelectionStart = _outputBox.TextLength;
-        _outputBox.SelectionLength = 0;
-
-        int pos = 0;
-        while (pos < text.Length)
-        {
-            if (text[pos] == '\x1B')
-            {
-                if (TryHandleAnsiEscape(text, ref pos))
-                    continue;
-
-                pos++;
-                continue;
-            }
-
-            if (text[pos] == '\b' && _outputBox.TextLength > 0)
-            {
-                _outputBox.SelectionStart = _outputBox.TextLength - 1;
-                _outputBox.SelectionLength = 1;
-                _outputBox.SelectedText = "";
-                pos++;
-                continue;
-            }
-
-            int nextSpecial = FindNextSpecial(text, pos);
-            int len = nextSpecial - pos;
-            if (len > 0)
-            {
-                string segment = text.Substring(pos, len);
-                ApplyAnsiFormatting();
-                _outputBox.AppendText(segment);
-            }
-
-            pos = nextSpecial;
-        }
-
-        _outputBox.SelectionColor = _outputBox.ForeColor;
-        _outputBox.SelectionBackColor = _outputBox.BackColor;
-    }
-
-    private bool TryHandleAnsiEscape(string text, ref int pos)
-    {
-        if (pos + 1 >= text.Length)
-            return false;
-
-        char kind = text[pos + 1];
-        switch (kind)
-        {
-            case '[':
-                return TryHandleCsi(text, ref pos);
-            case ']':
-                return TrySkipOsc(text, ref pos);
-            case 'O':
-                pos = Math.Min(text.Length, pos + 3);
-                return true;
-            case '(':
-            case ')':
-                pos = Math.Min(text.Length, pos + 3);
-                return true;
-            case 'J':
-                ClearOutput();
-                pos += 2;
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private bool TryHandleCsi(string text, ref int pos)
-    {
-        int end = pos + 2;
-        while (end < text.Length && !IsCsiFinalByte(text[end]))
-            end++;
-
-        if (end >= text.Length)
-        {
-            pos = text.Length;
-            return true;
-        }
-
-        string param = text.Substring(pos + 2, end - pos - 2);
-        char cmd = text[end];
-        pos = end + 1;
-
-        if (param.Length > 0 && param[0] == '?')
-            return true;
-
-        if (cmd == 'm')
-        {
-            ProcessAnsiSgr(param);
-            return true;
-        }
-
-        if (cmd == 'K')
-        {
-            HandleAnsiEraseLine();
-            return true;
-        }
-
-        if (cmd == 'J')
-        {
-            if (string.IsNullOrEmpty(param) || param == "0")
-                return true;
-
-            if (param == "2")
-                ClearOutput();
-
-            return true;
-        }
-
-        return true;
-    }
-
-    private bool TrySkipOsc(string text, ref int pos)
-    {
-        int i = pos + 2;
-        while (i < text.Length)
-        {
-            if (text[i] == '\a')
-            {
-                pos = i + 1;
-                return true;
-            }
-
-            if (text[i] == '\x1B' && i + 1 < text.Length && text[i + 1] == '\\')
-            {
-                pos = i + 2;
-                return true;
-            }
-
-            i++;
-        }
-
-        pos = text.Length;
-        return true;
-    }
-
-    private static int FindNextSpecial(string text, int start)
-    {
-        int nextEsc = text.IndexOf('\x1B', start);
-        int nextBackspace = text.IndexOf('\b', start);
-
-        if (nextEsc < 0) return nextBackspace < 0 ? text.Length : nextBackspace;
-        if (nextBackspace < 0) return nextEsc;
-        return Math.Min(nextEsc, nextBackspace);
-    }
-
-    private static bool IsCsiFinalByte(char ch) => ch >= 0x40 && ch <= 0x7E;
-
-    private void GoToLineStart()
-    {
-        int pos = _outputBox.TextLength;
-        if (pos == 0) return;
-        int lineStart = _outputBox.Text.LastIndexOf('\n', pos - 1);
-        if (lineStart < 0) lineStart = 0;
-        else lineStart++;
-        _outputBox.SelectionStart = lineStart;
-        _outputBox.SelectionLength = pos - lineStart;
-        _outputBox.SelectedText = "";
-    }
-
-    private void ProcessAnsiSgr(string param)
-    {
-        if (string.IsNullOrEmpty(param))
-        {
-            ResetAnsiState();
-            return;
-        }
-
-        var codes = param.Split(';');
-        for (int i = 0; i < codes.Length; i++)
-        {
-            if (!int.TryParse(codes[i], out int code))
-                continue;
-
-            if (code == 0) ResetAnsiState();
-            else if (code == 1) _ansiBold = true;
-            else if (code == 22) _ansiBold = false;
-            else if (code >= 30 && code <= 37) _ansiFg = code - 30;
-            else if (code == 38 && i + 2 < codes.Length && codes[i + 1] == "5") { _ansiFg = int.TryParse(codes[i + 2], out int c256) ? ClampAnsi(c256) : _ansiFg; i += 2; }
-            else if (code == 38) { }
-            else if (code == 39) _ansiFg = -1;
-            else if (code >= 40 && code <= 47) _ansiBg = code - 40;
-            else if (code == 48) { }
-            else if (code == 49) _ansiBg = -1;
-            else if (code >= 90 && code <= 97) _ansiFg = code - 90 + 8;
-            else if (code >= 100 && code <= 107) _ansiBg = code - 100 + 8;
-        }
-    }
-
-    private void HandleAnsiEraseLine()
-    {
-        int pos = _outputBox.TextLength;
-        if (pos == 0) return;
-        _outputBox.SelectionStart = pos;
-        _outputBox.SelectionLength = 0;
-    }
-
-    private void ResetAnsiState()
-    {
-        _ansiFg = -1;
-        _ansiBg = -1;
-        _ansiBold = false;
-    }
-
-    private static int ClampAnsi(int c) => c < 0 ? 0 : c >= _ansiColors.Length ? _ansiColors.Length - 1 : c;
-
-    private void ApplyAnsiFormatting()
-    {
-        if (_ansiFg >= 0)
-        {
-            Color c = _ansiColors[ClampAnsi(_ansiFg)];
-            if (_ansiBold) c = ControlPaint.Light(c);
-            _outputBox.SelectionColor = c;
-        }
-        else
-        {
-            _outputBox.SelectionColor = _outputBox.ForeColor;
-        }
-
-        if (_ansiBg >= 0)
-        {
-            Color raw = _ansiColors[ClampAnsi(_ansiBg)];
-            _outputBox.SelectionBackColor = BlendWithBg(raw);
-        }
-        else
-        {
-            _outputBox.SelectionBackColor = _outputBox.BackColor;
-        }
-    }
-
-    private Color BlendWithBg(Color fg)
-    {
-        Color bg = _outputBox.BackColor;
-        int alpha = 70;
-        int r = Math.Clamp((fg.R * alpha + bg.R * (255 - alpha)) / 255, 0, 255);
-        int g = Math.Clamp((fg.G * alpha + bg.G * (255 - alpha)) / 255, 0, 255);
-        int b = Math.Clamp((fg.B * alpha + bg.B * (255 - alpha)) / 255, 0, 255);
-        return Color.FromArgb(r, g, b);
-    }
-
-    private void ScrollToBottom()
-    {
-        _outputBox.SelectionStart = _outputBox.TextLength;
-        _outputBox.ScrollToCaret();
-    }
+    // ── Output / input public API ─────────────────────────────────────────────────
 
     public void ClearOutput()
     {
-        _outputBox.Clear();
-        ResetAnsiState();
+        _buf.EraseInDisplay(2);
+        _buf.SetCursor(0, 0);
+        _view.Refresh(true);
     }
 
     public void CopyOutputSelection()
     {
-        if (_outputBox.SelectionLength > 0)
-            Clipboard.SetText(_outputBox.SelectedText);
-        else if (_outputBox.TextLength > 0)
-            Clipboard.SetText(_outputBox.Text);
-    }
-
-    private void InputBox_CopyShortcut(object? sender, KeyEventArgs e)
-    {
-        if (e.Control && e.Shift && e.KeyCode == Keys.C)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            CopyOutputSelection();
-        }
+        if (_view.HasSelection)
+            _view.CopySelectionToClipboard();
+        else
+            _view.CopyAllToClipboard();
     }
 
     public void SendInput(string text)
     {
         if (!IsRunning)
         {
-            AppendAnsiText("\x1B[93m[Terminal] Not running.\x1B[0m");
+            FeedText("\x1B[93m[Terminal] Not running.\x1B[0m\r\n");
             return;
         }
-
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
         try
         {
-            if (_conPtyMode)
+            if (_conPtyMode && _ptyIn != null)
             {
-                if (_ptyIn == null)
-                {
-                    AppendAnsiText("\x1B[93m[Terminal] Not running.\x1B[0m");
-                    return;
-                }
-
-                byte[] bytes = Encoding.UTF8.GetBytes(text);
                 _ptyIn.Write(bytes, 0, bytes.Length);
                 _ptyIn.Flush();
-                return;
             }
-
-            if (_legacyStdin == null)
+            else if (_legacyStdin != null)
             {
-                AppendAnsiText("\x1B[93m[Terminal] Not running.\x1B[0m");
-                return;
+                // Programmatic send (ChangeDirectory, KillLegacy exit, etc.) bypasses
+                // readline so it does not pollute the line buffer or history.
+                _legacyStdin.Write(text);
+                _legacyStdin.Flush();
             }
-
-            _legacyStdin.Write(text);
-            _legacyStdin.Flush();
         }
         catch (Exception ex)
         {
-            AppendAnsiText($"\x1B[91m[Terminal] Write error: {ex.Message}\x1B[0m");
+            if (IsHandleCreated)
+                BeginInvoke(() => FeedText($"\x1B[91m[Terminal] Write error: {ex.Message}\x1B[0m\r\n"));
         }
     }
 
-    private void InputBox_KeyDown(object? sender, KeyEventArgs e)
+    private void SendRawBytes(byte[] bytes)
     {
-        if (e.Control && e.KeyCode == Keys.C)
+        // Called exclusively from TerminalView keyboard events (UI thread).
+        if (!IsRunning) return;
+        try
         {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\x03");
-            return;
-        }
-
-        if (e.Control && e.KeyCode == Keys.D)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\x04");
-            return;
-        }
-
-        if (e.Control && e.KeyCode == Keys.L)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\x0C");
-            return;
-        }
-
-        if (e.KeyCode == Keys.Tab && !e.Shift)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\t");
-            return;
-        }
-
-        if (e.KeyCode == Keys.Escape)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\x1B");
-            return;
-        }
-
-        if (e.KeyCode == Keys.Left && _inputBox.TextLength == 0 && IsRunning)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\x1B[D");
-            return;
-        }
-
-        if (e.KeyCode == Keys.Right && _inputBox.TextLength == 0 && IsRunning)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-            SendInput("\x1B[C");
-            return;
-        }
-
-        if (e.KeyCode == Keys.Enter)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-
-            // PTY mode: \r is correct (line discipline translates to \r\n).
-            // Pipe mode: stdin is a raw pipe; .NET ReadLine() requires \n or \r\n.
-            string nl = _conPtyMode ? "\r" : "\n";
-
-            string cmd = _inputBox.Text;
-            _inputBox.Clear();
-
-            if (string.IsNullOrEmpty(cmd))
+            if (_conPtyMode && _ptyIn != null)
             {
-                SendInput(nl);
-                return;
+                _ptyIn.Write(bytes, 0, bytes.Length);
+                _ptyIn.Flush();
             }
-
-            cmd = cmd.TrimEnd();
-
-            if (cmd.Equals("clear", StringComparison.OrdinalIgnoreCase) ||
-                cmd.Equals("cls", StringComparison.OrdinalIgnoreCase))
+            else if (_legacyStdin != null && _readline != null)
             {
-                ClearOutput();
-                return;
+                // All keyboard input flows through the readline line-editor.
+                // It echoes locally via VtParser, then sends the complete line on Enter.
+                _readline.Feed(bytes);
             }
-
-            if (cmd.Equals("exit", StringComparison.OrdinalIgnoreCase))
-            {
-                SendInput("exit" + nl);
-                HideTerminalRequested?.Invoke();
-                return;
-            }
-
-            _commandHistory.Add(cmd);
-            _historyIndex = _commandHistory.Count;
-            SendInput(cmd + nl);
-            return;
         }
-
-        if (e.KeyCode == Keys.Up)
+        catch (Exception ex)
         {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-
-            if (_inputBox.TextLength > 0)
-            {
-                NavigateHistoryUp();
-                return;
-            }
-
-            if (_conPtyMode && IsRunning)
-            {
-                SendInput("\x1B[A");
-                return;
-            }
-
-            NavigateHistoryUp();
-            return;
-        }
-
-        if (e.KeyCode == Keys.Down)
-        {
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-
-            if (_inputBox.TextLength > 0)
-            {
-                NavigateHistoryDown();
-                return;
-            }
-
-            if (_conPtyMode && IsRunning)
-            {
-                SendInput("\x1B[B");
-                return;
-            }
-
-            NavigateHistoryDown();
-        }
-    }
-
-    private void NavigateHistoryUp()
-    {
-        if (_commandHistory.Count > 0 && _historyIndex > 0)
-        {
-            _historyIndex--;
-            _inputBox.Text = _commandHistory[_historyIndex];
-            _inputBox.SelectionStart = _inputBox.TextLength;
-        }
-    }
-
-    private void NavigateHistoryDown()
-    {
-        if (_commandHistory.Count > 0 && _historyIndex < _commandHistory.Count - 1)
-        {
-            _historyIndex++;
-            _inputBox.Text = _commandHistory[_historyIndex];
-            _inputBox.SelectionStart = _inputBox.TextLength;
-        }
-        else
-        {
-            _historyIndex = _commandHistory.Count;
-            _inputBox.Clear();
+            if (IsHandleCreated)
+                BeginInvoke(() => FeedText($"\x1B[91m[Terminal] Write error: {ex.Message}\x1B[0m\r\n"));
         }
     }
 
     public void SendCtrlC()
     {
-        SendInput("\x03");
+        // In legacy mode route through readline so it displays "^C", clears the line,
+        // and then sends the interrupt byte to the shell.
+        if (!_conPtyMode && _readline != null)
+            _readline.Feed(new byte[] { 0x03 });
+        else
+            SendInput("\x03");
     }
 
     public void FocusInput()
     {
-        _inputBox?.Select();
-        _inputBox?.Focus();
+        _view?.Select();
+        _view?.Focus();
     }
 
     public void RestartShell()
@@ -1254,6 +810,40 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         ClearOutput();
         _shellStarted = false;
         Start();
+    }
+
+    /// <summary>
+    /// Opens Windows Terminal (wt.exe) at the current working directory.
+    /// Falls back to a plain pwsh.exe / cmd.exe window if wt.exe is not installed.
+    /// Useful when ConPTY is blocked and the user needs to run an interactive CLI (e.g. copilot).
+    /// </summary>
+    public void OpenInWindowsTerminal()
+    {
+        string dir = GetWorkingDirectory() ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        try
+        {
+            // Prefer Windows Terminal; fall back to pwsh then cmd
+            string[] candidates = ["wt.exe", "pwsh.exe", "cmd.exe"];
+            foreach (string exe in candidates)
+            {
+                try
+                {
+                    string args = exe switch
+                    {
+                        "wt.exe"   => $"-d \"{dir}\"",
+                        "pwsh.exe" => $"-NoExit -Command \"Set-Location '{dir}'\"",
+                        _          => $"/K cd /d \"{dir}\""
+                    };
+                    Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = true });
+                    return;
+                }
+                catch (System.ComponentModel.Win32Exception) { }
+            }
+        }
+        catch (Exception ex)
+        {
+            FeedText($"\x1B[91m[Terminal] Could not open external terminal: {ex.Message}\x1B[0m\r\n");
+        }
     }
 
     public void Kill()
@@ -1289,6 +879,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         }
 
         _legacyStdin = null;
+        _readline?.Reset();
     }
 
     private void KillConPty()
@@ -1344,13 +935,24 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
     {
         base.OnResize(e);
 
+        // Resize the screen buffer to match the new view dimensions
+        if (_view != null && _buf != null)
+        {
+            int cw = Math.Max(1, _view.CellWidth);
+            int ch = Math.Max(1, _view.CellHeight);
+            Size vSize = _view.ClientSize;
+            if (vSize.Width > 0 && vSize.Height > 0)
+            {
+                int newCols = Math.Max(1, vSize.Width  / cw);
+                int newRows = Math.Max(1, vSize.Height / ch);
+                if (newCols != _buf.Cols || newRows != _buf.Rows)
+                    _buf.Resize(newRows, newCols);
+            }
+        }
+
         if (_conPtyMode && _hPC != IntPtr.Zero)
         {
-            try
-            {
-                ResizePseudoConsole(_hPC, GetTerminalSize());
-            }
-            catch { }
+            try { ResizePseudoConsole(_hPC, GetTerminalSize()); } catch { }
         }
     }
 
@@ -1362,9 +964,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
             if (disposing)
             {
                 Kill();
-                _outputBox?.Dispose();
-                _inputBox?.Dispose();
-                _inputContainer?.Dispose();
+                _view?.Dispose();
             }
         }
         base.Dispose(disposing);
@@ -1372,21 +972,106 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
 
     private COORD GetTerminalSize()
     {
-        Size size = _outputBox.ClientSize;
+        if (_view == null) return new COORD { X = 120, Y = 30 };
+        Size size = _view.ClientSize;
         if (size.Width <= 0 || size.Height <= 0)
             return new COORD { X = 120, Y = 30 };
 
-        Size charSize = TextRenderer.MeasureText("W", _outputBox.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding);
-        int charWidth = Math.Max(1, charSize.Width);
-        int charHeight = Math.Max(1, _outputBox.Font.Height);
-        int columns = Math.Max(1, size.Width / charWidth);
-        int rows = Math.Max(1, size.Height / charHeight);
-        return new COORD { X = (short)columns, Y = (short)rows };
+        int cw = Math.Max(1, _view.CellWidth);
+        int ch = Math.Max(1, _view.CellHeight);
+        return new COORD
+        {
+            X = (short)Math.Max(1, size.Width  / cw),
+            Y = (short)Math.Max(1, size.Height / ch)
+        };
     }
 
     private static void ThrowLastWin32Exception(string operation)
     {
         throw new Win32Exception(Marshal.GetLastWin32Error(), operation);
+    }
+
+    // ── Readline helpers (legacy mode) ────────────────────────────────────────────
+
+    /// <summary>
+    /// Tab-completion provider passed to <see cref="LegacyReadline"/>.
+    /// Returns file-system entries in <paramref name="workDir"/> whose names
+    /// start with <paramref name="word"/> (case-insensitive on Windows).
+    /// Directories are listed first and get a trailing backslash so a second
+    /// Tab press descends into them naturally.
+    /// </summary>
+    private static string[] GetFileSystemCompletions(string word, string workDir)
+    {
+        if (string.IsNullOrEmpty(word)) return [];
+        try
+        {
+            string dir  = Path.GetDirectoryName(word) ?? "";
+            string file = Path.GetFileName(word);
+            string root = string.IsNullOrEmpty(dir)
+                ? workDir
+                : Path.IsPathRooted(dir) ? dir : Path.Combine(workDir, dir);
+
+            if (!Directory.Exists(root)) return [];
+
+            var results = new List<string>();
+            string prefix = string.IsNullOrEmpty(dir) ? "" : dir.TrimEnd('\\', '/') + "\\";
+
+            foreach (string d in Directory.GetDirectories(root, file + "*"))
+                results.Add(prefix + Path.GetFileName(d) + "\\");
+
+            foreach (string f in Directory.GetFiles(root, file + "*"))
+                results.Add(prefix + Path.GetFileName(f));
+
+            return [.. results];
+        }
+        catch { return []; }
+    }
+
+    /// <summary>
+    /// Parses a submitted command for <c>cd</c> / <c>Set-Location</c> so the
+    /// readline's working directory stays in sync for file-completion.
+    /// </summary>
+    /// <summary>
+    /// Sends clipboard text to the shell, wrapping in bracketed-paste sequences
+    /// when the active process has enabled that mode (CSI ? 2004 h).
+    /// </summary>
+    private void SendPaste(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        bool bracketed = _parser?.BracketedPaste ?? false;
+        if (_conPtyMode)
+        {
+            string payload = bracketed ? $"\x1B[200~{text}\x1B[201~" : text;
+            SendInput(payload);
+        }
+        else
+        {
+            // Legacy readline mode — feed each char through readline so it echoes correctly
+            // For paste bypass readline and send raw: bracketed sequences confuse legacy shells
+            _readline?.PasteText(text);
+        }
+    }
+
+
+    private void TrackCdCommand(string cmdLine)
+    {
+        if (_readline == null) return;
+        string trimmed = cmdLine.Trim().TrimEnd('\r', '\n');
+        if (!trimmed.StartsWith("cd ", StringComparison.OrdinalIgnoreCase) &&
+            !trimmed.StartsWith("Set-Location ", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        string arg = trimmed[(trimmed.IndexOf(' ') + 1)..].Trim(' ', '"', '\'');
+        if (string.IsNullOrEmpty(arg)) return;
+        try
+        {
+            string newDir = Path.IsPathRooted(arg)
+                ? arg
+                : Path.GetFullPath(Path.Combine(_readline.WorkingDirectory, arg));
+            if (Directory.Exists(newDir))
+                _readline.WorkingDirectory = newDir;
+        }
+        catch { }
     }
 
     private void OpenUrl(string? url)
@@ -1396,7 +1081,7 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         if (!_securitySettings.AllowHttpUrls &&
             url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
         {
-            AppendAnsiText($"\x1B[93m[Security] Blocked http:// URL (allow http disabled): {url}\x1B[0m\n");
+            FeedText($"\x1B[93m[Security] Blocked http:// URL (allow http disabled): {url}\x1B[0m\r\n");
             return;
         }
 
@@ -1455,58 +1140,6 @@ internal sealed partial class TerminalPanel : UserControl, IDisposable
         }
 
         return RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "/bin/zsh" : "/bin/bash";
-    }
-
-    private static Font CreateTerminalFont(string? fontFace, float fontSize, bool fontBold)
-    {
-        float resolvedFontSize = fontSize > 0f ? fontSize : 10f;
-        FontStyle style = fontBold ? FontStyle.Bold : FontStyle.Regular;
-
-        if (!string.IsNullOrWhiteSpace(fontFace))
-        {
-            try
-            {
-                var customFont = new Font(fontFace, resolvedFontSize, style);
-                if (string.Equals(customFont.Name, fontFace, StringComparison.OrdinalIgnoreCase))
-                    return customFont;
-                customFont.Dispose();
-            }
-            catch { }
-        }
-
-        return GetMonospaceFont(resolvedFontSize, fontBold);
-    }
-
-    private static Font GetMonospaceFont(float fontSize = 10f, bool fontBold = false)
-    {
-        string[] preferred = { "Cascadia Code", "Cascadia Mono", "Consolas", "Source Code Pro", "Courier New" };
-        FontStyle style = fontBold ? FontStyle.Bold : FontStyle.Regular;
-        foreach (var name in preferred)
-        {
-            try
-            {
-                var f = new Font(name, fontSize, style);
-                if (f.Name == name) return f;
-                f.Dispose();
-            }
-            catch { }
-        }
-        return new Font("Consolas", fontSize, style);
-    }
-}
-
-internal static partial class RichTextBoxExtensions
-{
-    private const int EM_SETLINKCOLOR = 0x0423;
-
-    [LibraryImport("user32.dll", EntryPoint = "SendMessageW")]
-    private static partial IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
-    public static void SetLinkColor(this RichTextBox rtb, Color color)
-    {
-        if (!rtb.IsHandleCreated) return;
-        int c = ColorTranslator.ToWin32(color);
-        SendMessage(rtb.Handle, EM_SETLINKCOLOR, IntPtr.Zero, (IntPtr)c);
     }
 }
 

@@ -71,6 +71,43 @@ public sealed class ThemeAwareMenuRenderer : ToolStripProfessionalRenderer
         base.OnRenderArrow(e);
     }
 
+    /// <summary>
+    /// WinForms ignores <see cref="ToolStripItem.ForeColor"/> for <c>IsLink = true</c> items
+    /// and draws text in the system link colour (blue), which is invisible on dark themes.
+    /// Override here to force all status-strip labels to use the theme text colour, with
+    /// the theme accent colour used on hover for clickable (IsLink) items.
+    /// </summary>
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+    {
+        if (e.Item.Owner is StatusStrip && e.Item is ToolStripStatusLabel lbl)
+        {
+            bool isHot = lbl.Selected || lbl.Pressed;
+            e.TextColor = isHot && lbl.IsLink
+                ? _theme.Accent   // hovered clickable → accent colour
+                : _theme.Text;    // default: always readable on current background
+        }
+        base.OnRenderItemText(e);
+    }
+
+    /// <summary>
+    /// Draws a subtle highlight behind hovered/pressed IsLink status labels
+    /// (replaces the invisible default hover state in dark themes).
+    /// </summary>
+    protected override void OnRenderLabelBackground(ToolStripItemRenderEventArgs e)
+    {
+        if (e.Item.Owner is StatusStrip
+            && e.Item is ToolStripStatusLabel { IsLink: true } lbl
+            && (lbl.Selected || lbl.Pressed))
+        {
+            var rect = new Rectangle(1, 1, e.Item.Width - 2, e.Item.Height - 2);
+            int alpha = lbl.Pressed ? 70 : 35;
+            using var brush = new SolidBrush(Color.FromArgb(alpha, _theme.Highlight));
+            e.Graphics.FillRectangle(brush, rect);
+            return;
+        }
+        base.OnRenderLabelBackground(e);
+    }
+
     private sealed class ThemeColorTable : ProfessionalColorTable
     {
         private readonly Theme _theme;

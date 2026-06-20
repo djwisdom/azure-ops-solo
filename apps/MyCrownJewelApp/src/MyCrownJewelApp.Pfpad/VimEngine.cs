@@ -771,6 +771,7 @@ namespace MyCrownJewelApp.Pfpad
 
         public event Action? TerminalRequested;
         public event Action<string>? CommandFeedback;
+        public event Action<int>? GoToLineRequested;
 
         public bool ShowLineNumbers { get; set; } = true;
         public bool RelativeNumbers { get; set; } = false;
@@ -1680,6 +1681,13 @@ namespace MyCrownJewelApp.Pfpad
                     FileOpenRequested?.Invoke(filename);
                     return;
                 }
+            }
+
+            // :<number> — go to line (e.g. :55 jumps to line 55)
+            if (int.TryParse(cmd, out int targetLine) && targetLine > 0)
+            {
+                GoToLineRequested?.Invoke(targetLine);
+                return;
             }
 
             if (!handled)

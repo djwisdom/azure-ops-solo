@@ -36,6 +36,7 @@ public partial class GutterPanel : Panel
     private int  _hoveredGlyphLine    = -1;    // 1-based: line with hovered QA icon
     private int  _hoveredBpLine       = -1;    // 1-based: line hovered in BP column (no QA)
     private int  _hoveredBookmarkLine = -1;    // 1-based: line hovered in bookmark column
+    private int  _cursorLine          = -1;    // 0-based: current editor cursor line
 
     private List<(int line, string title, Func<string, string>? apply)> _quickActions = new();
     private Dictionary<int, int>?  _coverageHits;
@@ -120,6 +121,23 @@ public partial class GutterPanel : Panel
         MouseClick += GutterPanel_MouseClick;
         MouseMove  += GutterPanel_MouseMove;
         MouseLeave += GutterPanel_MouseLeave;
+
+        // Track cursor line so active fold scope lines can be highlighted.
+        if (form.textEditor != null)
+        {
+            form.textEditor.SelectionChanged += (s, e) =>
+            {
+                var ed = form.textEditor;
+                if (ed == null) return;
+                int newLine = ed.GetLineFromCharIndex(ed.SelectionStart);
+                if (newLine != _cursorLine)
+                {
+                    _cursorLine = newLine;
+                    _gutterDataDirty = true;
+                    Invalidate();
+                }
+            };
+        }
     }
 
     // ── Public helpers ───────────────────────────────────────────────────────
@@ -303,7 +321,8 @@ public partial class GutterPanel : Panel
         if (e.X >= foldHitX && mainForm?.FoldingManager != null)
         {
             var region = mainForm.FoldingManager.GetRegionAtLine(lineIndex);
-            if (region.HasValue)
+            bool isSnapshotOnly = region == null && mainForm.FoldingManager.IsCollapsed(lineIndex);
+            if (region.HasValue || isSnapshotOnly)
             {
                 mainForm.ToggleFold(lineIndex);
                 _showFoldMarkers = true;
@@ -424,6 +443,28 @@ public partial class GutterPanel : Panel
     private int _lastFirstLine   = -1;
     private int _lastVisibleCount = -1;
 
+    /// <summary>
+    /// Measures the actual rendered line height by querying the pixel delta between
+    /// the first two visible lines.  Needed because <c>Font.GetHeight() * ZoomFactor</c>
+    /// can diverge from the RichTextBox's true line spacing at non-round zoom levels,
+    /// causing gutter icons to drift off their corresponding text rows.
+    /// </summary>
+    private int ComputeActualLineH(RichTextBox editor, int firstVisibleLine, int fallback, int anchorY)
+    {
+        int nextLine = firstVisibleLine + 1;
+        if (nextLine < GetTotalLineCount())
+        {
+            int nextChar = SendMessage(editor.Handle, EM_LINEINDEX, nextLine, 0);
+            if (nextChar >= 0)
+            {
+                Point nextPos = editor.GetPositionFromCharIndex(nextChar);
+                int delta = (nextPos.Y + TopOffset) - anchorY;
+                if (delta > 0) return delta;
+            }
+        }
+        return fallback;
+    }
+
     private void DrawGutter(Graphics g)
     {
         if (mainForm?.textEditor == null) return;
@@ -436,23 +477,26 @@ public partial class GutterPanel : Panel
         int lineH      = Math.Max(1, (int)Math.Ceiling(editor.Font.GetHeight() * editor.ZoomFactor));
         int totalLines = GetTotalLineCount();
 
-        // Compute the Y position of the first visible line ONCE via a single EM_POSFROMCHAR call.
-        // All other line positions are derived as anchorY + (offset * lineH), avoiding one
-        // GetPositionFromCharIndex call per visible line on every scroll-driven repaint.
+        // Measure the actual row height from lines 0→1 so element sizing (glyph centering,
+        // bookmark rectangles, fold boxes) stays accurate at any zoom level.
         int anchorY = ComputeAnchorY(editor, firstVisibleLine, lineH);
+        lineH = ComputeActualLineH(editor, firstVisibleLine, lineH, anchorY);
 
         // Pass 1: fold scope guide lines (drawn under per-line markers)
         if (ShowCodeFolds)
-            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineH, anchorY);
+            DrawFoldScopeLines(g, editor, firstVisibleLine, firstVisibleLine + visibleLines - 1, lineH);
 
-        // Pass 2: per-line elements
+        // Pass 2: per-line elements.
+        // Each line's Y is obtained via GetPositionFromCharIndex (one EM_POSFROMCHAR call per
+        // visible row).  This eliminates the accumulated rounding error that occurs when
+        // lineH is fractional (e.g., 19.1 px at 100% zoom makes line 19 drift by ~2 px).
         for (int i = 0; i < visibleLines; i++)
         {
             int lineIndex = firstVisibleLine + i;
             if (lineIndex >= totalLines) break;
 
-            // Anchor-based Y: single EM_POSFROMCHAR per frame rather than one per line.
-            int lineY = anchorY + i * lineH;
+            int lineY = GetLineY(editor, lineIndex);
+            if (lineY < 0) continue;
             if (lineY + lineH <= TopOffset)                           continue;
             if (lineY > editor.ClientSize.Height + TopOffset + 2)     break;
 
@@ -511,8 +555,9 @@ public partial class GutterPanel : Panel
         if (nativeFirst < 0) nativeFirst = 0;
         firstLine = nativeFirst;
 
-        int lineH      = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
-        int clientH    = editor.ClientSize.Height;
+        // Use estimated lineH for visible count (a few extra rows does no harm)
+        int lineH   = Math.Max(1, (int)Math.Round(editor.Font.Height * editor.ZoomFactor));
+        int clientH = editor.ClientSize.Height;
         lineCount = (int)Math.Ceiling((clientH - TopOffset) / (double)lineH) + 3;
         if (lineCount < 1) lineCount = 1;
     }
@@ -713,7 +758,7 @@ public partial class GutterPanel : Panel
     /// Drawn before per-line markers so the box (+/−) covers the line at intersections.
     /// </summary>
     private void DrawFoldScopeLines(Graphics g, RichTextBox editor,
-                                    int firstLine, int lastLine, int lineH, int anchorY)
+                                    int firstLine, int lastLine, int lineH)
     {
         if (mainForm?.FoldingManager == null) return;
 
@@ -722,31 +767,58 @@ public partial class GutterPanel : Panel
         int areaTop = TopOffset;
         int areaBot = editor.ClientSize.Height + TopOffset;
 
-        Color lineCol = mainForm.IsDarkTheme
-            ? Color.FromArgb(80, 160, 160, 160)
-            : Color.FromArgb(80, 90, 90, 90);
-
-        using var pen = new Pen(lineCol, 1f);
+        // Find innermost region containing the cursor (VS Code style: only innermost is active).
+        int cursorLine         = _cursorLine;
+        int innermostNestLevel = -1;
+        int innermostOpenLine  = -1;
 
         foreach (var region in mainForm.FoldingManager.GetAllRegions())
         {
-            if (region.IsCollapsed)             continue;
+            if (region.IsCollapsed) continue;
+            if (cursorLine >= region.OpenLine && cursorLine <= region.CloseLine)
+            {
+                if (region.NestLevel > innermostNestLevel)
+                {
+                    innermostNestLevel = region.NestLevel;
+                    innermostOpenLine  = region.OpenLine;
+                }
+            }
+        }
+
+        // Muted: barely visible — same as VS Code's resting indent guides
+        Color mutedCol = mainForm.IsDarkTheme
+            ? Color.FromArgb(22, 200, 200, 200)
+            : Color.FromArgb(22, 60, 60, 60);
+
+        // Active (innermost): use theme accent at full opacity so it clearly pops
+        Color accent = ThemeManager.Instance.CurrentTheme.Accent;
+        Color activeCol = Color.FromArgb(220, accent.R, accent.G, accent.B);
+
+        using var mutedPen  = new Pen(mutedCol,  1f);
+        using var activePen = new Pen(activeCol, 1f);
+
+        foreach (var region in mainForm.FoldingManager.GetAllRegions())
+        {
+            if (region.IsCollapsed)                      continue;
             if (region.CloseLine <= region.OpenLine + 1) continue;
-            if (region.OpenLine  > lastLine)    continue;
-            if (region.CloseLine < firstLine)   continue;
+            if (region.OpenLine  > lastLine)             continue;
+            if (region.CloseLine < firstLine)            continue;
 
             int yStart = region.OpenLine >= firstLine
-                ? anchorY + (region.OpenLine - firstLine) * lineH + lineH
+                ? Math.Max(areaTop, GetLineY(editor, region.OpenLine) + lineH)
                 : areaTop;
 
             int yEnd = region.CloseLine <= lastLine
-                ? anchorY + (region.CloseLine - firstLine) * lineH
+                ? GetLineY(editor, region.CloseLine)
                 : areaBot;
+
+            if (yEnd < areaTop) yEnd = areaBot;
 
             yStart = Math.Max(areaTop, yStart);
             yEnd   = Math.Min(areaBot, yEnd);
             if (yEnd <= yStart + 1) continue;
 
+            Pen pen = region.OpenLine == innermostOpenLine ? activePen : mutedPen;
             g.DrawLine(pen, lineX, yStart, lineX, yEnd);
         }
     }

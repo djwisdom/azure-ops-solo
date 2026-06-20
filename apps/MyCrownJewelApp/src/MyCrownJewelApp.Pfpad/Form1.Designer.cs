@@ -5,6 +5,7 @@ partial class Form1
     private System.ComponentModel.IContainer components = null;
 
     private MenuStrip menuStrip;
+    private ToolStripLabel _fileLocationLabel;
     private ToolStripLabel _hardeningLabel;
     private ToolStripMenuItem fileMenu;
     private ToolStripMenuItem newTabMenuItem;
@@ -171,6 +172,9 @@ partial class Form1
     private ToolStripDropDownButton _buildConfigCombo;
     internal ToolStripStatusLabel linePositionLabel;
     internal ToolStripStatusLabel zoomLabel;
+    internal ToolStripStatusLabel _zoomDecBtn;
+    internal ToolStripStatusLabel _zoomIncBtn;
+    internal ToolStripStatusLabel _zoomResetBtn;
     private ToolStripStatusLabel lineEndingsLabel;
     private ToolStripStatusLabel encodingLabel;
     private ToolStripDropDownButton themeDropDown;
@@ -600,6 +604,14 @@ partial class Form1
         helpMenu.DropDownItems.Add(aboutMenuItem);
         menuStrip.Items.Add(helpMenu);
 
+        // File location indicator — right-aligned, shows Local vs WSL for the active file
+        _fileLocationLabel = new ToolStripLabel();
+        _fileLocationLabel.Alignment = ToolStripItemAlignment.Right;
+        _fileLocationLabel.Font = new Font("Segoe UI", 9f);
+        _fileLocationLabel.Margin = new Padding(0, 0, 8, 0);
+        _fileLocationLabel.Visible = false;
+        menuStrip.Items.Add(_fileLocationLabel);
+
         // Hardening level indicator — right-aligned, bold, color-coded, click opens Settings
         _hardeningLabel = new ToolStripLabel("🔒 Hardening: Low");
         _hardeningLabel.Alignment = ToolStripItemAlignment.Right;
@@ -768,6 +780,37 @@ partial class Form1
         // Profile selector dropdown
         linePositionLabel = new ToolStripStatusLabel("1 / 1");
         zoomLabel = new ToolStripStatusLabel("100%");
+
+        // Zoom control buttons: − + ↺
+        _zoomDecBtn = new ToolStripStatusLabel("−")
+        {
+            AutoSize = true,
+            IsLink   = true,
+            LinkBehavior = LinkBehavior.NeverUnderline,
+            Padding  = new Padding(2, 1, 2, 1),
+            ToolTipText = "Zoom out (Ctrl+−)"
+        };
+        _zoomIncBtn = new ToolStripStatusLabel("+")
+        {
+            AutoSize = true,
+            IsLink   = true,
+            LinkBehavior = LinkBehavior.NeverUnderline,
+            Padding  = new Padding(2, 1, 2, 1),
+            ToolTipText = "Zoom in (Ctrl++)"
+        };
+        _zoomResetBtn = new ToolStripStatusLabel("↺")
+        {
+            AutoSize = true,
+            IsLink   = true,
+            LinkBehavior = LinkBehavior.NeverUnderline,
+            Padding  = new Padding(2, 1, 6, 1),
+            ToolTipText = "Reset zoom to 100%"
+        };
+
+        _zoomDecBtn.Click   += ZoomOut_Click;
+        _zoomIncBtn.Click   += ZoomIn_Click;
+        _zoomResetBtn.Click += RestoreDefaultZoom_Click;
+
         lineEndingsLabel = new ToolStripStatusLabel("Windows (CRLF)");
         encodingLabel = new ToolStripStatusLabel("No File");
 
@@ -833,6 +876,9 @@ partial class Form1
         statusStrip.Items.Add(new ToolStripStatusLabel() { Spring = true, Padding = new Padding(0, 1, 0, 1) });
         statusStrip.Items.Add(linePositionLabel);
         statusStrip.Items.Add(zoomLabel);
+        statusStrip.Items.Add(_zoomDecBtn);
+        statusStrip.Items.Add(_zoomIncBtn);
+        statusStrip.Items.Add(_zoomResetBtn);
         statusStrip.Items.Add(lineEndingsLabel);
         statusStrip.Items.Add(encodingLabel);
         statusStrip.Items.Add(roslynDropDown);

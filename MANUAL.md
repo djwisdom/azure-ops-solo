@@ -182,6 +182,23 @@ The status bar gives you quick-access information and controls, including:
 - build configuration dropdown (**Debug/Release**)
 - theme dropdown
 
+## 3.3 Menu bar indicators
+
+The right side of the menu bar shows two persistent status badges:
+
+### File location badge (v1.0.47)
+When a file is open, pfpad shows one of two badges immediately to the left of the Hardening indicator:
+
+| Badge | Meaning |
+|---|---|
+| `💻 Local` (green) | File is on the Windows local filesystem |
+| `🐧 WSL` (orange) | File is on a WSL mount (`\\wsl$\...` or `\\wsl.localhost\...`) |
+
+The badge is hidden when no file is open (new/untitled tab). It updates automatically on every tab switch, file open, and Save As.
+
+### Hardening badge
+Shows the active security profile. Click it to open Security Settings. See [Section 13](#13-security-hardening) for full details.
+
 ## 3.2 Helpful visual features
 
 ### Gutter

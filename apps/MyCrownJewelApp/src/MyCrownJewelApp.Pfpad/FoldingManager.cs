@@ -59,6 +59,10 @@ public sealed partial class FoldingManager
 
     public void ScanRegions(string? fileExtension = null)
     {
+        // Don't wipe active collapsed folds — debounce timers call this after a fold
+        // collapses text, which would reset IsCollapsed=false and make the + disappear.
+        if (_snapshots.Count > 0) return;
+
         _regions.Clear();
         string text = _editor.Text;
         if (string.IsNullOrEmpty(text)) return;
@@ -303,9 +307,11 @@ public sealed partial class FoldingManager
 
     public IEnumerable<FoldRegion> GetAllRegions() => _regions;
 
-    public bool IsFoldStart(int lineIndex) => _regions.Any(r => r.OpenLine == lineIndex);
+    public bool IsFoldStart(int lineIndex) => _regions.Any(r => r.OpenLine == lineIndex)
+                                           || _snapshots.ContainsKey(lineIndex);
 
-    public bool IsCollapsed(int lineIndex) => _regions.Any(r => r.OpenLine == lineIndex && r.IsCollapsed);
+    public bool IsCollapsed(int lineIndex) => _regions.Any(r => r.OpenLine == lineIndex && r.IsCollapsed)
+                                           || _snapshots.ContainsKey(lineIndex);
 
     public bool ToggleFold(int lineIndex)
     {
@@ -320,6 +326,24 @@ public sealed partial class FoldingManager
                 CollapseFold(i);
             return true;
         }
+
+        // Snapshot exists but region metadata was lost (e.g. a rescan ran before the guard
+        // was in place). Expand using the snapshot directly.
+        if (_snapshots.ContainsKey(lineIndex))
+        {
+            var syntheticRegion = new FoldRegion
+            {
+                OpenLine = lineIndex,
+                CloseLine = lineIndex,
+                IsCollapsed = true,
+                NestLevel = 0,
+                OpenText = string.Empty
+            };
+            _regions.Add(syntheticRegion);
+            ExpandFold(_regions.Count - 1);
+            return true;
+        }
+
         return false;
     }
 

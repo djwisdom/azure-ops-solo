@@ -540,7 +540,7 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• ADO branch policy warning: dismissable info bar after push on Azure DevOps repos reminding of required reviewers / build validation policies");
         featuresText.AppendLine();
         featuresText.AppendLine("═══════════════════════════════════════════════");
-        featuresText.AppendLine($"  Personal Flip Pad  v1.0.46  — Feature Audit");
+        featuresText.AppendLine($"  Personal Flip Pad  v1.0.47  — Feature Audit");
         featuresText.AppendLine("═══════════════════════════════════════════════");
         featuresText.AppendLine();
         featuresText.AppendLine("Editor core:");
@@ -594,6 +594,14 @@ public sealed partial class AboutDialog : Form
         featuresText.AppendLine("• Minimap: mouse-wheel scrolls the minimap viewport independently from the editor — pan the code map without moving the cursor; click to jump. Handled via both OnMouseWheel and WndProc(WM_MOUSEWHEEL) so the minimap receives scroll events reliably regardless of focus (TabStop=false).");
         featuresText.AppendLine("• Vim mode :version — outputs Pfpad build info: version number, git commit hash (short), build date, and .NET runtime. Reads AssemblyFileVersionAttribute + AssemblyMetadataAttribute(CommitHash/BuildDate) injected by GenerateBuildMetadata.ps1. Duplicate :version handler also removed.");
         featuresText.AppendLine("• AIOps documentation — comprehensive AIOPS_MANUAL.md in docs/ covering all 10 UI panels, 13 engine components, 9 connectors, inline annotations, DPAPI secret management, AI safety model, and architecture diagram. Completes the AIOps v2 redesign checklist.");
+        featuresText.AppendLine();
+        featuresText.AppendLine("v1.0.47 — File location indicator:");
+        featuresText.AppendLine("• Menu bar now shows a file location badge immediately to the left of the 🔒 Hardening indicator");
+        featuresText.AppendLine("  — 💻 Local (green): file resides on the Windows local filesystem");
+        featuresText.AppendLine("  — 🐧 WSL (orange): file is on a WSL mount (\\\\wsl$\\ or \\\\wsl.localhost\\)");
+        featuresText.AppendLine("  — Badge is hidden when no file is open (new/untitled tab)");
+        featuresText.AppendLine("  — Updates on every tab switch, file open, and Save As; thread-safe via InvokeRequired");
+        featuresText.AppendLine("  — BackColor follows the active theme (re-applied on ThemeChanged event)");
         featuresText.AppendLine();
         featuresText.AppendLine("NuGet dependencies:");
 

@@ -557,6 +557,7 @@ namespace MyCrownJewelApp.Pfpad
             RefreshGitRepo();
             UpdateMarkdownPreview();
             UpdateStatusBarVisibility();
+            UpdateFileLocationLabel();   // always refresh badge regardless of which tab type
         }
 
         private void TabControl_DoubleClick(object? sender, EventArgs e)

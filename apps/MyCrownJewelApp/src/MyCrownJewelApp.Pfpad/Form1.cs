@@ -1023,6 +1023,7 @@ using Microsoft.Extensions.DependencyInjection;
         public string CurrentGitBranchSwitchBehavior => _gitBranchSwitchBehavior;
         public bool CurrentGitCommitLengthWarning => _gitCommitLengthWarning;
         public SecurityProfile CurrentSecurityProfile => _securityProfile;
+        public UserProfile? CurrentProfile => _profileManager?.ActiveProfile;
         internal SettingsService SettingsService => _settingsService;
         public bool CurrentSecPromptUntrustedWorkspace => _secPromptUntrustedWorkspace;
         public string CurrentSecTrustedWorkspacePaths => _secTrustedWorkspacePaths;
@@ -1602,6 +1603,15 @@ using Microsoft.Extensions.DependencyInjection;
               vimEngine.OnGutterVisibilityChanged += value => { if (value) { gutterVisible = true; gutterPanel!.ShowLineNumbers = vimEngine.ShowLineNumbers; gutterPanel!.RelativeNumbers = vimEngine.RelativeNumbers; gutterPanel!.UpdateLineNumberWidth(); mainTable!.ColumnStyles[0].SizeType = SizeType.Absolute; mainTable!.ColumnStyles[0].Width = gutterPanel!.Width; mainTable!.PerformLayout(); mainTable!.Refresh(); this.PerformLayout(); this.Refresh(); gutterPanel!.MarkDataDirty(); gutterPanel!.Visible = true; } else { gutterPanel!.Visible = false; gutterVisible = false; gutterPanel!.Width = 0; mainTable!.ColumnStyles[0].SizeType = SizeType.Absolute; mainTable!.ColumnStyles[0].Width = 0; mainTable!.PerformLayout(); mainTable!.Refresh(); this.PerformLayout(); this.Refresh(); gutterPanel!.MarkDataDirty(); } if (!value) { gutterPanel!.ShowLineNumbers = false; gutterPanel!.RelativeNumbers = false; } if (gutterMenuItem != null) gutterMenuItem.Checked = value; };
               LoadVimrc();
 
+              // Sync VimEngine.Enabled with the persisted setting.  LoadSettings() runs before
+              // vimEngine is constructed, so we must apply the saved state here.
+              if (vimModeEnabled)
+              {
+                  vimEngine.Enabled = true;
+                  vimEngine.EnterMode(VimMode.Normal);
+              }
+              if (vimModeMenuItem != null) vimModeMenuItem.Checked = vimModeEnabled;
+
               // Sync menu checked states with VimEngine after loading .vimrc
               lineNumberToolStripMenuItem.Checked = vimEngine.ShowLineNumbers && !vimEngine.RelativeNumbers;
               relativeLineNumberToolStripMenuItem.Checked = vimEngine.RelativeNumbers;
@@ -1750,6 +1760,7 @@ using Microsoft.Extensions.DependencyInjection;
                   }
               };
               vimEngine.CommandFeedback += (msg) => ShowNotification("Vim", msg);
+              vimEngine.GoToLineRequested += (lineNum) => { GoToLine(lineNum); ShowNotification("Vim", $":{lineNum}"); };
               vimEngine.TerminalRequested += () => { ToggleTerminal(); ShowNotification("Vim", "Terminal toggled"); };
               vimEngine.SplitCloseRequested += () => { CloseSplit(); ShowNotification("Vim", "Split closed"); };
               vimEngine.SplitNextRequested += () =>
@@ -1877,9 +1888,9 @@ using Microsoft.Extensions.DependencyInjection;
                   _symbolPanel.CloseRequested += () => ToggleSymbolPanel();
                   _symbolIndex.OnIndexUpdated += () => BeginInvoke(_symbolPanel.RefreshSymbols);
 
-                  // Problems panel
-                  _problemsPanel = new ProblemsPanel();
-                  _problemsPanel.ProblemSelected += (file, line) =>
+                  // Problems panel is now hosted in the bottom terminal panel.
+                  _problemsPanel = _terminalHost!.ProblemsContent;
+                  _terminalHost.ProblemNavigationRequested += (file, line) =>
                   {
                       if (!string.IsNullOrEmpty(file) && File.Exists(file))
                       {
@@ -1887,7 +1898,11 @@ using Microsoft.Extensions.DependencyInjection;
                           GoToLine(line);
                       }
                   };
-                  _problemsPanel.CloseRequested += () => ToggleProblemsPanel();
+                  _problemsPanel.CloseRequested += () =>
+                  {
+                      _problemsPanelVisible = false;
+                      problemsMenuItem.Checked = false;
+                  };
 
                   _problemsSplit = new SplitContainer
                   {
@@ -1898,12 +1913,10 @@ using Microsoft.Extensions.DependencyInjection;
                       SplitterWidth = 4,
                       SplitterIncrement = 8,
                       BorderStyle = BorderStyle.None,
-                      Panel2Collapsed = !_problemsPanelVisible
+                      Panel2Collapsed = true
                   };
                   _problemsSplit.Panel1.Controls.Add(_symbolPanel);
                   _symbolPanel.Dock = DockStyle.Fill;
-                  _problemsSplit.Panel2.Controls.Add(_problemsPanel);
-                  _problemsPanel.Dock = DockStyle.Fill;
                   _problemsSplit.Panel1.BackColor = _themeManager.CurrentTheme.MenuBackground;
                   _problemsSplit.Panel2.BackColor = _themeManager.CurrentTheme.MenuBackground;
 
@@ -1916,7 +1929,7 @@ using Microsoft.Extensions.DependencyInjection;
                       SplitterWidth = 4,
                       SplitterIncrement = 8,
                       BorderStyle = BorderStyle.None,
-                      Panel2Collapsed = !_symbolPanelVisible && !_problemsPanelVisible
+                      Panel2Collapsed = !_symbolPanelVisible
                   };
                   _botSidebarSplit.Panel1.Controls.Add(_gitPanel);
                   _gitPanel.Dock = DockStyle.Fill;
@@ -1953,7 +1966,16 @@ using Microsoft.Extensions.DependencyInjection;
                   {
                       BuildOutput?.ShowResult(result);
                       if (!result.Success && _problemsPanel != null)
-                          BeginInvoke(() => _problemsPanelVisible = true);
+                      {
+                          BeginInvoke(() =>
+                          {
+                              _problemsPanelVisible = true;
+                              problemsMenuItem.Checked = true;
+                              ShowTerminal();
+                              _terminalHost?.ShowProblems();
+                              RefreshProblemsTabBadge();
+                          });
+                      }
                   };
                   _solutionExplorerPanel.SetTheme(_themeManager.CurrentTheme);
 
@@ -2062,6 +2084,13 @@ using Microsoft.Extensions.DependencyInjection;
              if (_terminalVisible)
              {
                  ShowTerminal();
+             }
+
+             if (_problemsPanelVisible)
+             {
+                 ShowTerminal();
+                 _terminalHost?.ShowProblems();
+                 RefreshProblemsTabBadge();
              }
 
               // Apply terminal theme to match editor
@@ -2572,6 +2601,8 @@ using Microsoft.Extensions.DependencyInjection;
                 menuStrip.ForeColor = theme.Text;
                 if (_hardeningLabel != null)
                     _hardeningLabel.BackColor = theme.MenuBackground;
+                if (_fileLocationLabel != null)
+                    _fileLocationLabel.BackColor = theme.MenuBackground;
             }
             if (textEditor != null)
             {
@@ -3459,6 +3490,12 @@ using Microsoft.Extensions.DependencyInjection;
             ApplyEditorRenderingSettings();
 
             vimModeEnabled = settings.VimModeEnabled;
+            if (vimEngine != null)
+            {
+                vimEngine.Enabled = settings.VimModeEnabled;
+                if (settings.VimModeEnabled) vimEngine.EnterMode(VimMode.Normal);
+            }
+            if (vimModeMenuItem != null) vimModeMenuItem.Checked = settings.VimModeEnabled;
             vimModeLabel.Visible = settings.VimModeEnabled;
             if (!settings.VimModeEnabled) vimModeLabel.Text = "";
 
@@ -3720,13 +3757,70 @@ internal void ToggleGutter()
             }
             breadcrumbPanel.Visible = true;
             breadcrumbPanel.FilePath = currentFilePath ?? "";
+
+            var segments = new List<BreadcrumbSegment>();
+
+            // ── Path segments (relative to workspace root when possible) ──────
+            string filePath = currentFilePath ?? "";
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                string displayPath = filePath;
+                string root = !string.IsNullOrEmpty(_workspaceRoot)
+                    ? _workspaceRoot.TrimEnd('\\', '/')
+                    : "";
+
+                if (!string.IsNullOrEmpty(root) &&
+                    displayPath.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Relative: show only the sub-path components
+                    displayPath = displayPath[(root.Length)..].TrimStart('\\', '/');
+                }
+                else
+                {
+                    // Absolute but no workspace: show just the file name
+                    displayPath = Path.GetFileName(filePath);
+                }
+
+                string[] parts = displayPath.Split(new[] { '\\', '/' },
+                    StringSplitOptions.RemoveEmptyEntries);
+                foreach (var part in parts)
+                {
+                    bool isFile = part == parts[^1];
+                    segments.Add(new BreadcrumbSegment
+                    {
+                        Label    = part,
+                        IsPath   = !isFile,   // folders are muted; file name is normal
+                        KindHint = ""
+                    });
+                }
+            }
+            else
+            {
+                segments.Add(new BreadcrumbSegment { Label = "Untitled", IsPath = false });
+            }
+
+            // ── Symbol segments (all enclosing scopes, outermost → innermost) ─
             if (_stickyScroll != null)
             {
-                int pos = textEditor.SelectionStart;
-                int line = textEditor.GetLineFromCharIndex(pos);
+                int pos   = textEditor.SelectionStart;
+                int line  = textEditor.GetLineFromCharIndex(pos);
                 var scopes = _stickyScroll.GetEnclosingScopes(line);
-                breadcrumbPanel.CurrentScope = scopes.Count > 0 ? scopes[^1].HeaderText : "";
+                foreach (var scope in scopes)
+                {
+                    string name = string.IsNullOrEmpty(scope.SymbolName)
+                        ? scope.HeaderText
+                        : scope.SymbolName;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    segments.Add(new BreadcrumbSegment
+                    {
+                        Label    = name,
+                        IsPath   = false,
+                        KindHint = scope.ScopeKind
+                    });
+                }
             }
+
+            breadcrumbPanel.Segments = segments;
         }
 
         private void ToggleTerminal_Click(object? sender, EventArgs e)
@@ -3974,6 +4068,57 @@ internal void ToggleGutter()
                 PurgeOldLogs(_secLogRetentionDays);
 
             UpdateHardeningLabel();
+        }
+
+        private void UpdateFileLocationLabel()
+        {
+            if (_fileLocationLabel == null) return;
+
+            // Prefer the active document's path, fall back to the last-opened path.
+            // Never hide a previously-shown label just because a background callback
+            // reads a transient null — only hide when we have no path at all.
+            string? path = GetCurrentDocument()?.FilePath ?? currentFilePath;
+
+            // If this call produced a non-empty path, cache it.
+            if (!string.IsNullOrEmpty(path))
+                _lastLocationPath = path;
+
+            // Use the cached path so brief null reads don't blank the label.
+            string? effectivePath = path ?? _lastLocationPath;
+
+            string text;
+            Color color;
+            if (string.IsNullOrEmpty(effectivePath))
+            {
+                if (InvokeRequired) { BeginInvoke(() => _fileLocationLabel.Visible = false); return; }
+                _fileLocationLabel.Visible = false;
+                return;
+            }
+            else if (effectivePath.StartsWith(@"\\wsl$\", StringComparison.OrdinalIgnoreCase) ||
+                     effectivePath.StartsWith(@"\\wsl.localhost\", StringComparison.OrdinalIgnoreCase))
+            {
+                text = "🐧 WSL";
+                color = Color.FromArgb(255, 165, 0);
+            }
+            else
+            {
+                text = "💻 Local";
+                color = Color.FromArgb(100, 180, 100);
+            }
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(() =>
+                {
+                    _fileLocationLabel.Text = text;
+                    _fileLocationLabel.ForeColor = color;
+                    _fileLocationLabel.Visible = true;
+                });
+                return;
+            }
+            _fileLocationLabel.Text = text;
+            _fileLocationLabel.ForeColor = color;
+            _fileLocationLabel.Visible = true;
         }
 
         private void UpdateHardeningLabel()
@@ -5333,6 +5478,7 @@ internal void ToggleGutter()
 
         private int _lastStatusLine = -1;
         private int _lastStatusCol = -1;
+        private string? _lastLocationPath;    // cached so transient null calls don't hide the label
 
         internal void UpdateLockKeysLabel()
         {
@@ -5368,18 +5514,8 @@ internal void ToggleGutter()
             int totalLines = (int)SendMessage(textEditor.Handle, EM_GETLINECOUNT, 0, 0);
             linePositionLabel.Text = $"{currentLineNum} / {totalLines}";
 
-            // Scroll percentage (current line / total lines)
-            int total = totalLines;
-            if (total > 0)
-            {
-                int current = textEditor.GetLineFromCharIndex(textEditor.SelectionStart) + 1;
-                int percent = (int)((double)current / total * 100);
-                zoomLabel.Text = $"{percent}%";
-            }
-            else
-            {
-                zoomLabel.Text = "100%";
-            }
+            // Zoom level
+            zoomLabel.Text = $"{(int)(zoomFactor * 100)}%";
 
             // Line endings (Windows)
             lineEndingsLabel.Text = "Windows (CRLF)";
@@ -5428,6 +5564,7 @@ internal void ToggleGutter()
             fileTypeLabel.Text = fileType;
 
             // File type icon removed - text only
+            UpdateFileLocationLabel();
             statusStrip.Refresh();
         }
 
@@ -6336,6 +6473,36 @@ internal void ToggleGutter()
                     _splitEditor.Focus();
                 }
                 return true;
+            }
+
+            // ── Terminal keyboard shortcuts (active only when terminal host is focused) ──
+
+            bool terminalFocused = _terminalHost != null
+                && _terminalHost.ActiveTerminal != null
+                && ContainsFocus
+                && (_terminalHost.ActiveTerminal.ContainsFocus || _terminalHost.ContainsFocus);
+
+            if (_terminalHost != null && terminalFocused)
+            {
+                // Ctrl+Shift+N: new terminal tab
+                if (keyData == (Keys.Control | Keys.Shift | Keys.N))
+                {
+                    _terminalHost.RequestNewTerminalTab();
+                    return true;
+                }
+                // Ctrl+F4: close active terminal tab
+                if (keyData == (Keys.Control | Keys.F4))
+                {
+                    if (_terminalHost.ActiveTerminal != null)
+                        _terminalHost.CloseTerminalTab(_terminalHost.ActiveTerminal);
+                    return true;
+                }
+                // Ctrl+Tab: cycle terminal tabs (overrides split-editor cycle when terminal focused)
+                if (keyData == (Keys.Control | Keys.Tab))
+                {
+                    _terminalHost.CycleToNextTab();
+                    return true;
+                }
             }
 
             // Close split: Ctrl+Shift+W

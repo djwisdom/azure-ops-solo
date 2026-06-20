@@ -88,61 +88,145 @@ namespace MyCrownJewelApp.Pfpad
 
         internal List<CommandPaletteForm.CommandEntry> GetCommandPaletteCommands()
         {
-            return new List<CommandPaletteForm.CommandEntry>
+            var cmds = new List<CommandPaletteForm.CommandEntry>();
+
+            // ── File ──────────────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("New File",                    "Ctrl+N",            () => NewFile()),
+                new("New Browser Tab",             "Ctrl+Shift+T",      () => OpenNewBrowserTab()),
+                new("Open File",                   "Ctrl+O",            () => OpenFile()),
+                new("Open Folder",                 "",                  () => OpenFolder_Click(null, EventArgs.Empty)),
+                new("Save",                        "Ctrl+S",            () => SaveCurrentDocument()),
+                new("Save All",                    "Ctrl+Shift+S",      () => SaveAllFiles()),
+                new("Close Tab",                   "Ctrl+W",            () => CloseCurrentTab()),
+                new("Close All Tabs",              "",                  () => CloseAllTabs()),
+                new("Reopen Closed Tab",           "Ctrl+Alt+Shift+T",  () => ReopenLastClosedTab()),
+                new("Toggle Header/Source",        "Alt+O",             () => ToggleHeaderSource()),
+                new("Exit",                        "Alt+F4",            () => Close()),
+            ]);
+
+            // ── Edit ──────────────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Undo",                        "Ctrl+Z",            () => textEditor?.Undo()),
+                new("Redo",                        "Ctrl+Y",            () => textEditor?.Redo()),
+                new("Cut",                         "Ctrl+X",            () => Cut_Click(null, EventArgs.Empty)),
+                new("Copy",                        "Ctrl+C",            () => Copy_Click(null, EventArgs.Empty)),
+                new("Paste",                       "Ctrl+V",            () => Paste_Click(null, EventArgs.Empty)),
+                new("Select All",                  "Ctrl+A",            () => SelectAll_Click(null, EventArgs.Empty)),
+                new("Insert Time / Date",          "",                  () => TimeDate_Click(null, EventArgs.Empty)),
+                new("Find",                        "Ctrl+F",            () => { using var dlg = new FindReplaceDialog(this, false, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
+                new("Replace",                     "Ctrl+H",            () => { using var dlg = new FindReplaceDialog(this, true, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
+                new("Find in Files",               "Ctrl+Shift+F",      () => { using var dlg = new GlobalSearchDialog(this); dlg.ShowDialog(this); }),
+                new("Go to Line",                  "Ctrl+G",            () => { using var dlg = new GoToDialog(this); dlg.ShowDialog(this); }),
+                new("Go to Definition",            "F12",               () => GoToDefinition()),
+                new("Rename Symbol",               "F2",                () => RenameSymbol()),
+                new("Format Document",             "Ctrl+Shift+I",      () => FormatDocumentAsync()),
+            ]);
+
+            // ── View: panels ──────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Toggle Terminal",             "Ctrl+`",            () => ToggleTerminal()),
+                new("Toggle Workspace",            "",                  () => ToggleWorkspace()),
+                new("Toggle Git Panel",            "",                  () => ToggleGitPanel()),
+                new("Toggle Symbols Panel",        "",                  () => ToggleSymbolPanel()),
+                new("Toggle Problems Panel",       "",                  () => ToggleProblemsPanel()),
+                new("Toggle Minimap",              "",                  () => ToggleMinimap()),
+                new("Toggle Status Bar",           "",                  () => ToggleStatusBar()),
+                new("Toggle Full Screen",          "F11",               () => ToggleFullScreen()),
+                new("Toggle Menu Bar",             "Ctrl+Shift+M",      () => ToggleMenuVisibility()),
+            ]);
+
+            // ── View: editor options ──────────────────────────────────────────────
+            cmds.AddRange([
+                new("Toggle Word Wrap",            "",                  () => ToggleWordWrap()),
+                new("Toggle Syntax Highlighting",  "",                  () => ToggleSyntaxHighlighting()),
+                new("Toggle Ruler",                "",                  () => ToggleRuler_Click(null, EventArgs.Empty)),
+                new("Toggle Breadcrumbs",          "",                  () => ToggleBreadcrumbs_Click(null, EventArgs.Empty)),
+                new("Toggle Sticky Scroll",        "",                  () => ToggleStickyScroll_Click(null, EventArgs.Empty)),
+                new("Toggle Rainbow Brackets",     "",                  () => ToggleRainbowBrackets_Click(null, EventArgs.Empty)),
+                new("Toggle Column Guide",         "",                  () => ToggleColumnGuide(null, EventArgs.Empty)),
+                new("Toggle Whitespace Display",   "",                  () => ToggleWhitespace_Click(null, EventArgs.Empty)),
+                new("Toggle Vim Mode",             "",                  () => ToggleVimMode(null, EventArgs.Empty)),
+                new("Toggle Gutter",               "",                  () => ToggleGutter()),
+                new("Toggle Insert Spaces",        "",                  () => ToggleInsertSpaces()),
+            ]);
+
+            // ── View: zoom ────────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Zoom In",                     "Ctrl++",            () => ZoomIn_Click(null, EventArgs.Empty)),
+                new("Zoom Out",                    "Ctrl+-",            () => ZoomOut_Click(null, EventArgs.Empty)),
+                new("Reset Zoom",                  "Ctrl+0",            () => RestoreDefaultZoom_Click(null, EventArgs.Empty)),
+            ]);
+
+            // ── View: split editor ────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Split Editor Vertical",       "",                  () => SplitVertical_Click(null, EventArgs.Empty)),
+                new("Split Editor Horizontal",     "",                  () => SplitHorizontal_Click(null, EventArgs.Empty)),
+                new("Close Split",                 "Ctrl+Shift+W",      () => CloseSplit()),
+            ]);
+
+            // ── Bookmarks ─────────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Toggle Bookmark",             "Ctrl+F2",           () => ToggleBookmark_Click(null, EventArgs.Empty)),
+                new("Next Bookmark",               "F2",                () => NextBookmark_Click(null, EventArgs.Empty)),
+                new("Previous Bookmark",           "Shift+F2",          () => PrevBookmark_Click(null, EventArgs.Empty)),
+                new("Clear All Bookmarks",         "",                  () => ClearAllBookmarks_Click(null, EventArgs.Empty)),
+            ]);
+
+            // ── Code folding ──────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Toggle Fold",                 "",                  () => ToggleFold_Click(null, EventArgs.Empty)),
+                new("Toggle All Folds",            "",                  () => ToggleAllFolds_Click(null, EventArgs.Empty)),
+            ]);
+
+            // ── Tab / indentation ─────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Tab Size: 2",                 "",                  () => SetTabSize(2)),
+                new("Tab Size: 4",                 "",                  () => SetTabSize(4)),
+                new("Tab Size: 6",                 "",                  () => SetTabSize(6)),
+                new("Tab Size: 8",                 "",                  () => SetTabSize(8)),
+            ]);
+
+            // ── Themes — one entry per theme for direct fuzzy search ──────────────
+            foreach (string name in ThemeManager.Themes.Keys.OrderBy(n => n))
             {
-                // File operations
-                new("New File", "Ctrl+N", () => NewFile()),
-                new("New Browser Tab", "Ctrl+Shift+T", () => OpenNewBrowserTab()),
-                new("Open File", "Ctrl+O", () => OpenFile()),
-                new("Save", "Ctrl+S", () => SaveCurrentDocument()),
-                new("Save All", "Ctrl+Shift+S", () => SaveAllFiles()),
-                new("Close Tab", "Ctrl+W", () => CloseCurrentTab()),
-                new("Close Split", "Ctrl+Shift+W", () => CloseSplit()),
-                new("Reopen Closed Tab", "Ctrl+Alt+Shift+T", () => ReopenLastClosedTab()),
-                new("Close All Tabs", "", () => CloseAllTabs()),
-                new("Toggle Header/Source", "Alt+O", () => ToggleHeaderSource()),
-                new("Exit", "Alt+F4", () => Close()),
+                string capture = name;
+                cmds.Add(new($"Theme: {capture}", "", () => ApplyThemeByName(capture)));
+            }
 
-                // Edit operations
-                new("Find", "Ctrl+F", () => { using var dlg = new FindReplaceDialog(this, false, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
-                new("Replace", "Ctrl+H", () => { using var dlg = new FindReplaceDialog(this, true, _lastFindText, _lastFindCaseSensitive, _lastUseRegex); dlg.ShowDialog(this); }),
-                new("Find in Files", "Ctrl+Shift+F", () => { using var dlg = new GlobalSearchDialog(this); dlg.ShowDialog(this); }),
-                new("Go to Line", "Ctrl+G", () => { using var dlg = new GoToDialog(this); dlg.ShowDialog(this); }),
-                new("Go to Definition", "F12", () => GoToDefinition()),
-                new("Rename Symbol", "F2", () => RenameSymbol()),
-                new("Format EditorDocument", "Ctrl+Shift+I", () => FormatDocumentAsync()),
+            // ── Terminal ──────────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("New Terminal Tab",            "Ctrl+Shift+N",      () => _terminalHost?.RequestNewTerminalTab()),
+                new("Open in Windows Terminal",    "",                  () => ActiveTerminal?.OpenInWindowsTerminal()),
+                new("Clear Terminal",              "",                  () => ActiveTerminal?.ClearOutput()),
+                new("Reset to ConPTY Mode",        "",                  () => ActiveTerminal?.RestartWithConPty()),
+            ]);
 
-                // View operations
-                new("Toggle Terminal", "Ctrl+`", () => ToggleTerminal()),
-                new("Toggle Workspace", "", () => ToggleWorkspace()),
-                new("Toggle Git Panel", "", () => ToggleGitPanel()),
-                new("Toggle Symbols", "", () => ToggleSymbols()),
-                new("Toggle Problems", "", () => ToggleProblems()),
-                new("Toggle Minimap", "", () => ToggleMinimap()),
-                new("Toggle Word Wrap", "", () => ToggleWordWrap()),
-                new("Toggle Status Bar", "", () => ToggleStatusBar()),
-                new("Toggle Syntax Highlighting", "", () => ToggleSyntaxHighlighting()),
+            // ── Run / Debug ───────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Start Debugging",             "F5",                () => StartDebug_Click(null, EventArgs.Empty)),
+                new("Run Without Debugging",       "Ctrl+F5",           () => RunWithoutDebug_Click(null, EventArgs.Empty)),
+                new("Stop Debugging",              "Shift+F5",          () => StopDebug_Click(null, EventArgs.Empty)),
+                new("Restart Debugging",           "Ctrl+Shift+F5",     () => RestartDebug_Click(null, EventArgs.Empty)),
+                new("Run Tests",                   "Ctrl+R, T",         () => RunTests()),
+                new("Run Tests with Coverage",     "",                  () => RunTestsWithCoverage()),
+                new("Build Project",               "",                  () => { string? projDir = GetProjectDirectory(); if (projDir != null) RunDotnetBuild(projDir); }),
+            ]);
 
-                // Run/Debug operations
-                new("Start Debugging", "F5", () => StartDebug_Click(null, EventArgs.Empty)),
-                new("Run Without Debugging", "Ctrl+F5", () => RunWithoutDebug_Click(null, EventArgs.Empty)),
-                new("Stop Debugging", "Shift+F5", () => StopDebug_Click(null, EventArgs.Empty)),
-                new("Restart Debugging", "Ctrl+Shift+F5", () => RestartDebug_Click(null, EventArgs.Empty)),
-                new("Run Tests", "Ctrl+R, T", () => RunTests()),
-                new("Run Tests with Coverage", "", () => RunTestsWithCoverage()),
-                new("Build Project", "", () => { string? projDir = GetProjectDirectory(); if (projDir != null) RunDotnetBuild(projDir); }),
+            // ── Tools ─────────────────────────────────────────────────────────────
+            cmds.AddRange([
+                new("Settings",                    "Ctrl+,",            () => { using var dlg = new SettingsDialog(this); dlg.ShowDialog(this); }),
+                new("Configure External Tools",    "Ctrl+Alt+T",        () => ConfigureTools()),
+                new("Performance Profiler",        "",                  () => ShowPerformanceProfiler()),
+                new("Restart Roslyn Analyzers",    "Ctrl+Shift+R",      () => RestartRoslynAnalyzers()),
+                new("Toggle Roslyn Analyzers",     "Ctrl+Alt+A",        () => ToggleRoslynAnalyzers()),
+                new("Open Roslyn Visualizer",      "Ctrl+Alt+V",        () => OpenRoslynVisualizer()),
+            ]);
 
-                // Tools operations
-                new("Settings", "Ctrl+,", () => { using var dlg = new SettingsDialog(this); dlg.ShowDialog(this); }),
-                new("Configure External Tools", "Ctrl+Alt+T", () => ConfigureTools()),
-                new("Performance Profiler", "", () => ShowPerformanceProfiler()),
-                new("Restart Roslyn Analyzers", "Ctrl+Shift+R", () => RestartRoslynAnalyzers()),
-                new("Toggle Roslyn Analyzers", "Ctrl+Alt+A", () => ToggleRoslynAnalyzers()),
-                new("Open Roslyn Visualizer", "Ctrl+Alt+V", () => OpenRoslynVisualizer()),
+            // ── Help ──────────────────────────────────────────────────────────────
+            cmds.Add(new("About", "", () => { using var dlg = new AboutDialog(openFileCount: documents.Count, workspaceRoot: _workspaceRoot); dlg.ShowDialog(this); }));
 
-                // Help operations
-                new("About", "", () => { using var dlg = new AboutDialog(openFileCount: documents.Count, workspaceRoot: _workspaceRoot); dlg.ShowDialog(this); }),
-            };
+            return cmds;
         }
 
         public record OpenTabInfo(string Title, string FilePath, Action Switch);
@@ -244,6 +328,7 @@ namespace MyCrownJewelApp.Pfpad
                             var allActions = _quickActionProvider.GetActions("", merged);
                             var gutterActions = allActions.Select(a => (a.Line, a.Title, a.Apply)).ToList();
                             _problemsPanel?.SetDiagnostics(merged);
+                            RefreshProblemsTabBadge(merged);
                             gutterPanel?.SetQuickActions(gutterActions);
 
                             double pct = merged.Count > 0 ? (double)todos.Count / merged.Count * 100 : 0;

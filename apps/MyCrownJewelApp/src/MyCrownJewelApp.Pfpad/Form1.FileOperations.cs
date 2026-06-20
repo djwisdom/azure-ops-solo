@@ -26,6 +26,7 @@ namespace MyCrownJewelApp.Pfpad
 
         internal void NewFile()
         {
+            _lastLocationPath = null;   // clear cached path — untitled has no location
             NewFile(false);
         }
 
@@ -241,6 +242,7 @@ namespace MyCrownJewelApp.Pfpad
                 if (!_browserShowInTitlebar)
                 {
                     Text = "Personal Flip Pad";
+                    UpdateFileLocationLabel();
                     return;
                 }
 
@@ -253,6 +255,7 @@ namespace MyCrownJewelApp.Pfpad
                 Text = string.IsNullOrWhiteSpace(browserTitle) || browserTitle is "New Tab" or "Browser"
                     ? "Personal Flip Pad"
                     : $"{browserTitle} — Personal Flip Pad";
+                UpdateFileLocationLabel();
                 return;
             }
 
@@ -260,6 +263,7 @@ namespace MyCrownJewelApp.Pfpad
                 ? $"Personal Flip Pad - {Path.GetFileName(currentFilePath)}"
                 : "Personal Flip Pad - Untitled";
             this.Text = isModified ? "*" + baseTitle : baseTitle;
+            UpdateFileLocationLabel();
         }
 
         private DialogResult PromptSaveChanges()

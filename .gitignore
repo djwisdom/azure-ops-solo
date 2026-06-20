@@ -8,10 +8,8 @@ dist/
 apps/MyCrownJewelApp/deploy/*.exe
 apps/MyCrownJewelApp/deploy/app/
 
-# Installer build output (published app binaries, packaged setup EXEs)
-apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/installer/InstallerFiles/
-apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/installer/*.exe
-apps/MyCrownJewelApp/src/MyCrownJewelApp.Pfpad/installer/workspace_favorites.json
+# Installer build output
+apps/MyCrownJewelApp/installer/output/*.exe
 
 # NuGet
 packages/

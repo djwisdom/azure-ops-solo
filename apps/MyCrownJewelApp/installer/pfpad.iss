@@ -1,9 +1,9 @@
 ; pfpad Installer Script
 ; Inno Setup 6 — per-current-user installation (no admin rights required)
-; Version: 1.0.46.0
+; Version: 1.0.47.0
 
 #define AppName      "Personal Flip Pad"
-#define AppVersion   "1.0.46.0"
+#define AppVersion   "1.0.48.0"
 #define AppPublisher "Personal Flip Pad"
 #define AppExeName   "MyCrownJewelApp.Pfpad.exe"
 #define AppId        "{{B4F2C1A3-8E7D-4F56-9C2A-D1E3F7B9A042}"

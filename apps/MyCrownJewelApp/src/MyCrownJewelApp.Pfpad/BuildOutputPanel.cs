@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -13,11 +14,20 @@ namespace MyCrownJewelApp.Pfpad;
 /// </summary>
 internal sealed class BuildOutputPanel : UserControl
 {
+    public enum OutputChannel
+    {
+        Build,
+        Git,
+        Roslyn,
+        Lint
+    }
+
     // ── Controls ─────────────────────────────────────────────────────────────
 
     private readonly Panel _header;
     private readonly Label _titleLabel;
     private readonly Label _statusLabel;
+    private readonly Button _channelBtn;
     private readonly Button _buildBtn;
     private readonly Button _cancelBtn;
     private readonly Button _clearBtn;
@@ -25,6 +35,8 @@ internal sealed class BuildOutputPanel : UserControl
 
     // ── State ─────────────────────────────────────────────────────────────────
 
+    private readonly Dictionary<OutputChannel, RichTextBox> _channelBoxes = new();
+    private OutputChannel _currentChannel = OutputChannel.Build;
     private Theme _theme;
     private bool _isBusy;
 
@@ -60,7 +72,7 @@ internal sealed class BuildOutputPanel : UserControl
 
         _titleLabel = new Label
         {
-            Text = "Build Output",
+            Text = "Output",
             AutoSize = false,
             TextAlign = ContentAlignment.MiddleLeft,
             Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
@@ -79,6 +91,12 @@ internal sealed class BuildOutputPanel : UserControl
             Dock = DockStyle.Fill
         };
 
+        _channelBtn = MakeHeaderButton("Build ▾", "Choose output channel");
+        _channelBtn.AutoSize = false;
+        _channelBtn.Dock = DockStyle.Left;
+        _channelBtn.Width = 96;
+        _channelBtn.Click += (_, __) => ShowChannelMenu();
+
         _clearBtn = MakeHeaderButton("⌫", "Clear output");
         _cancelBtn = MakeHeaderButton("■ Cancel", "Cancel build");
         _buildBtn = MakeHeaderButton("▶ Build", "Build solution (Ctrl+Shift+B)");
@@ -92,37 +110,37 @@ internal sealed class BuildOutputPanel : UserControl
         _header.Controls.Add(_cancelBtn);
         _header.Controls.Add(_buildBtn);
         _header.Controls.Add(_clearBtn);
+        _header.Controls.Add(_channelBtn);
         _header.Controls.Add(_titleLabel);
 
         // Output box
-        _output = new RichTextBox
+        _output = CreateChannelBox(visible: true);
+        _channelBoxes[OutputChannel.Build] = _output;
+        foreach (OutputChannel channel in new[] { OutputChannel.Git, OutputChannel.Roslyn, OutputChannel.Lint })
         {
-            Dock = DockStyle.Fill,
-            ReadOnly = true,
-            BackColor = _theme.EditorBackground,
-            ForeColor = _theme.Text,
-            Font = new Font("Consolas", 9f),
-            ScrollBars = RichTextBoxScrollBars.Both,
-            WordWrap = false,
-            Multiline = true,
-            BorderStyle = BorderStyle.None,
-            Margin = Padding.Empty
-        };
-        _output.MouseClick += Output_MouseClick;
+            var box = CreateChannelBox();
+            _channelBoxes[channel] = box;
+            Controls.Add(box);
+        }
 
         Controls.Add(_output);
         Controls.Add(_header);
+        UpdateChannelButton();
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
     /// <summary>Appends a line of build output, colour-coded by content.</summary>
     public void AppendLine(string line, bool isStdErr)
+        => AppendToChannel(OutputChannel.Build, line, isStdErr);
+
+    public void AppendToChannel(OutputChannel channel, string line, bool isStdErr)
     {
         if (IsDisposed) return;
-        if (InvokeRequired) { BeginInvoke(() => AppendLine(line, isStdErr)); return; }
+        if (InvokeRequired) { BeginInvoke(() => AppendToChannel(channel, line, isStdErr)); return; }
+        if (!_channelBoxes.TryGetValue(channel, out var box)) return;
 
-        var diag = BuildService.ParseDiagnostic(line);
+        var diag = channel == OutputChannel.Build ? BuildService.ParseDiagnostic(line) : null;
         Color color = diag?.Severity switch
         {
             DiagnosticSeverity.Error => Color.FromArgb(255, 100, 100),
@@ -130,14 +148,14 @@ internal sealed class BuildOutputPanel : UserControl
             _ => isStdErr ? Color.FromArgb(220, 140, 100) : _theme.Text
         };
 
-        _output.SuspendLayout();
-        _output.SelectionStart = _output.TextLength;
-        _output.SelectionLength = 0;
-        _output.SelectionColor = color;
-        _output.AppendText(line + "\n");
-        _output.SelectionColor = _theme.Text;
-        _output.ScrollToCaret();
-        _output.ResumeLayout();
+        box.SuspendLayout();
+        box.SelectionStart = box.TextLength;
+        box.SelectionLength = 0;
+        box.SelectionColor = color;
+        box.AppendText(line + Environment.NewLine);
+        box.SelectionColor = _theme.Text;
+        box.ScrollToCaret();
+        box.ResumeLayout();
     }
 
     /// <summary>Clears all output text and resets the status label.</summary>
@@ -145,8 +163,10 @@ internal sealed class BuildOutputPanel : UserControl
     {
         if (IsDisposed) return;
         if (InvokeRequired) { BeginInvoke(Clear); return; }
-        _output.Clear();
-        _statusLabel.Text = "";
+        if (_channelBoxes.TryGetValue(_currentChannel, out var box))
+            box.Clear();
+        if (_currentChannel == OutputChannel.Build)
+            _statusLabel.Text = "";
     }
 
     /// <summary>Marks the panel as busy (build running) or idle.</summary>
@@ -184,17 +204,55 @@ internal sealed class BuildOutputPanel : UserControl
         BackColor = theme.MenuBackground;
         _header.BackColor = theme.TerminalHeaderBackground;
         _titleLabel.ForeColor = theme.Text;
-        _statusLabel.ForeColor = theme.Muted;
-        _output.BackColor = theme.EditorBackground;
-        _output.ForeColor = theme.Text;
-        foreach (Button b in new[] { _buildBtn, _cancelBtn, _clearBtn })
+        _statusLabel.ForeColor = _isBusy ? theme.Muted : _statusLabel.ForeColor;
+        foreach (var box in _channelBoxes.Values)
+        {
+            box.BackColor = theme.EditorBackground;
+            box.ForeColor = theme.Text;
+        }
+        foreach (Button b in new[] { _channelBtn, _buildBtn, _cancelBtn, _clearBtn })
         {
             b.BackColor = theme.TerminalHeaderBackground;
             b.ForeColor = theme.Text;
         }
     }
 
+    public void SwitchChannel(OutputChannel channel)
+    {
+        if (!_channelBoxes.TryGetValue(channel, out var box))
+            return;
+
+        if (_channelBoxes.TryGetValue(_currentChannel, out var current))
+            current.Visible = false;
+
+        _currentChannel = channel;
+        box.Visible = true;
+        box.BringToFront();
+        _header.BringToFront();
+        UpdateChannelButton();
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    private RichTextBox CreateChannelBox(bool visible = false)
+    {
+        var box = new RichTextBox
+        {
+            Dock = DockStyle.Fill,
+            ReadOnly = true,
+            BackColor = _theme.EditorBackground,
+            ForeColor = _theme.Text,
+            Font = new Font("Consolas", 9f),
+            ScrollBars = RichTextBoxScrollBars.Both,
+            WordWrap = false,
+            Multiline = true,
+            BorderStyle = BorderStyle.None,
+            Margin = Padding.Empty,
+            Visible = visible
+        };
+        box.MouseClick += Output_MouseClick;
+        return box;
+    }
 
     private Button MakeHeaderButton(string text, string tooltip)
     {
@@ -217,13 +275,41 @@ internal sealed class BuildOutputPanel : UserControl
         return btn;
     }
 
+    private void ShowChannelMenu()
+    {
+        var menu = new ContextMenuStrip();
+        menu.BackColor = _theme.MenuBackground;
+        menu.ForeColor = _theme.Text;
+        menu.Closed += (_, _) => menu.Dispose();
+
+        foreach (OutputChannel channel in Enum.GetValues<OutputChannel>())
+        {
+            var item = new ToolStripMenuItem(channel.ToString())
+            {
+                Checked = channel == _currentChannel
+            };
+            item.Click += (_, _) => SwitchChannel(channel);
+            menu.Items.Add(item);
+        }
+
+        menu.Show(_channelBtn, new Point(0, _channelBtn.Height));
+    }
+
+    private void UpdateChannelButton()
+    {
+        _channelBtn.Text = $"{_currentChannel} ▾";
+    }
+
     private void Output_MouseClick(object? sender, MouseEventArgs e)
     {
-        int charIndex = _output.GetCharIndexFromPosition(e.Location);
-        int lineIndex = _output.GetLineFromCharIndex(charIndex);
-        if (lineIndex < 0 || lineIndex >= _output.Lines.Length) return;
+        if (sender is not RichTextBox output)
+            return;
 
-        string line = _output.Lines[lineIndex];
+        int charIndex = output.GetCharIndexFromPosition(e.Location);
+        int lineIndex = output.GetLineFromCharIndex(charIndex);
+        if (lineIndex < 0 || lineIndex >= output.Lines.Length) return;
+
+        string line = output.Lines[lineIndex];
         var diag = BuildService.ParseDiagnostic(line);
         if (diag?.FilePath != null && File.Exists(diag.FilePath))
             DiagnosticNavigated?.Invoke(diag.FilePath, diag.Line);

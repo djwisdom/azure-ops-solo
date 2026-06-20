@@ -785,8 +785,6 @@ namespace MyCrownJewelApp.Pfpad
             int selLen = SelectionLength;
 
             using var fillBrush = new SolidBrush(_occurrenceHighlightColor);
-            using var borderPen = new Pen(Color.FromArgb(Math.Min(255, _occurrenceHighlightColor.A + 80),
-                _occurrenceHighlightColor.R, _occurrenceHighlightColor.G, _occurrenceHighlightColor.B), 1);
 
             foreach (var (start, length) in _wordOccurrenceRanges)
             {
@@ -797,11 +795,26 @@ namespace MyCrownJewelApp.Pfpad
                 int charW = length > 0 && start + length <= TextLength
                     ? Math.Max(1, GetPositionFromCharIndex(start + length).X - pt.X)
                     : GetCharWidth(start);
-                g.FillRectangle(fillBrush, pt.X, pt.Y, charW, lineH);
-                g.DrawRectangle(borderPen, pt.X, pt.Y, Math.Max(0, charW - 1), Math.Max(0, lineH - 1));
+                var rect = new Rectangle(pt.X, pt.Y, charW, lineH);
+                using var path = BuildRoundedPath(rect, 3);
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.FillPath(fillBrush, path);
+                g.SmoothingMode = SmoothingMode.Default;
             }
         }
         catch { }
+    }
+
+    private static GraphicsPath BuildRoundedPath(Rectangle r, int radius)
+    {
+        int d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+        var path = new GraphicsPath();
+        path.AddArc(r.X, r.Y, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private void DrawIndentGuides(Graphics g)

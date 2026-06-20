@@ -32,6 +32,16 @@ public sealed class GitService : IDisposable
         var dir = FindRepoRoot(filePath);
         if (dir is null) return false;
 
+        // WSL-mounted paths (\\wsl.localhost\*, \\wsl\) are owned by the Linux distro
+        // user, not the Windows user. LibGit2Sharp rejects these with
+        // "repository path is not owned by current user". Skip Git integration
+        // gracefully for WSL paths.
+        if (IsWslPath(dir))
+        {
+            OnError?.Invoke("Git is not available for WSL-mounted paths. Use the WSL terminal or a Windows-side copy of the repo.");
+            return false;
+        }
+
         try
         {
             _repo = new Repository(dir);
@@ -81,6 +91,13 @@ public sealed class GitService : IDisposable
             d = d.Parent;
         }
         return null;
+    }
+
+    private static bool IsWslPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        var lower = path.ToLowerInvariant();
+        return lower.StartsWith(@"\\wsl.localhost\") || lower.StartsWith(@"\\wsl\");
     }
 
     public void Refresh()

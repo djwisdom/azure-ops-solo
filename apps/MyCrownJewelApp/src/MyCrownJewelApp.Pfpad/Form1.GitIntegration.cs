@@ -155,11 +155,7 @@ namespace MyCrownJewelApp.Pfpad
             NewFile();
         }
 
-        private void ConfigureTools()
-        {
-            // TODO: Implement ConfigureTools dialog
-            ShowNotification("Tools", "Configure External Tools - Coming Soon");
-        }
+        private void ConfigureTools() => ConfigureTools_Click(null, EventArgs.Empty);
 
         private async void AnalyzeCurrentRepository()
         {
@@ -236,12 +232,22 @@ namespace MyCrownJewelApp.Pfpad
 
         private void ToggleProblemsPanel()
         {
-            if (_problemsPanel == null) return;
+            if (_terminalHost == null || _problemsPanel == null) return;
 
             _problemsPanelVisible = !_problemsPanelVisible;
-            _problemsPanel.Visible = _problemsPanelVisible;
             problemsMenuItem.Checked = _problemsPanelVisible;
-            UpdateSidebarLayout();
+            if (_problemsPanelVisible)
+            {
+                ShowTerminal();
+                _terminalHost.ShowProblems();
+                RefreshProblemsTabBadge();
+                if (_terminalSplitContainer != null)
+                    _terminalSplitContainer.Panel2Collapsed = false;
+            }
+            else
+            {
+                _terminalHost.HideProblems();
+            }
         }
 
         private void ToggleProblemsPanel(object? sender, EventArgs e)
@@ -312,6 +318,7 @@ namespace MyCrownJewelApp.Pfpad
             }
 
             _problemsPanel?.SetDiagnostics(diagnostics);
+            RefreshProblemsTabBadge(diagnostics);
 
             // Convert diagnostics to squiggly positions
             var squiggles = new List<(int start, int length, Color color)>();
@@ -349,13 +356,13 @@ namespace MyCrownJewelApp.Pfpad
                 || _problemsSplit is null) return;
 
             bool aiopsAny = AnyAIOpsPanelVisible;
-            bool botAny = _gitPanelVisible || _symbolPanelVisible || _problemsPanelVisible || aiopsAny;
-            bool innerAny = _symbolPanelVisible || _problemsPanelVisible || aiopsAny;
+            bool botAny = _gitPanelVisible || _symbolPanelVisible || aiopsAny;
+            bool innerAny = _symbolPanelVisible || aiopsAny;
 
             // Collapse each sub-panel when its content is not visible.
             _botSidebarSplit.Panel1Collapsed = !_gitPanelVisible;
             _botSidebarSplit.Panel2Collapsed = !innerAny;
-            _problemsSplit.Panel2Collapsed = !_problemsPanelVisible;
+            _problemsSplit.Panel2Collapsed = true;
             _sidebarSplit.Panel2Collapsed = !botAny;
 
             // Collapse the workspace/explorer pane whenever workspace is not explicitly open.
@@ -380,6 +387,31 @@ namespace MyCrownJewelApp.Pfpad
             _workspaceSplitContainer.Panel1Collapsed = !anyVisible;
             if (anyVisible)
                 _workspaceSplitContainer.SplitterDistance = _workspaceWidth;
+        }
+
+        private void RefreshProblemsTabBadge(IReadOnlyList<Diagnostic>? diagnostics = null)
+        {
+            if (_terminalHost == null)
+                return;
+
+            var items = diagnostics ?? _problemsPanel?.GetDiagnostics();
+            if (items == null)
+            {
+                _terminalHost.UpdateProblemsTabBadge(0, 0);
+                return;
+            }
+
+            int errors = 0;
+            int warnings = 0;
+            foreach (var diagnostic in items)
+            {
+                if (diagnostic.Severity == DiagnosticSeverity.Error)
+                    errors++;
+                else if (diagnostic.Severity == DiagnosticSeverity.Warning)
+                    warnings++;
+            }
+
+            _terminalHost.UpdateProblemsTabBadge(errors, warnings);
         }
 
         private void OpenGitForm(object? sender, EventArgs e)

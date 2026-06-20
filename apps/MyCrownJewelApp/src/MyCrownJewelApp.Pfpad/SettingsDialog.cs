@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace MyCrownJewelApp.Pfpad;
@@ -287,7 +289,8 @@ internal sealed class SettingsDialog : Form
             new TreeNode("Browser") { Tag = "features.browser" },
             new TreeNode("Git") { Tag = "features.git" },
             new TreeNode("Keyboard Shortcuts") { Tag = "features.keyboard" },
-            new TreeNode("Extensions") { Tag = "features.extensions" }
+            new TreeNode("Extensions") { Tag = "features.extensions" },
+            new TreeNode("WSL Integration") { Tag = "features.wsl" }
         });
 
         // Application category
@@ -381,6 +384,10 @@ internal sealed class SettingsDialog : Form
         else if (category == "features.git")
         {
             y = AddGitSettingsUI(_contentPanel, y);
+        }
+        else if (category == "features.wsl")
+        {
+            y = AddWslSettingsUI(_contentPanel, y);
         }
         else if (category == "features.browser")
         {
@@ -1133,9 +1140,32 @@ internal sealed class SettingsDialog : Form
             _settingScopes[key] = SettingScope.User;
         }
 
-        // Profile overrides - Note: In a full implementation, Form1 would expose current profile
-        // For now, we'll show all settings as User scope
-        // TODO: Add public CurrentProfile property to Form1 or pass profile info to SettingsDialog
+        // Mark settings that are overridden by the active user profile as Profile scope.
+        // These show a purple "Profile" badge in the settings UI instead of the default blue "User" badge.
+        var profile = _mainForm.CurrentProfile;
+        if (profile != null)
+        {
+            if (profile.OverrideTabSize.HasValue)          _settingScopes["editor.formatting.tabSize"] = SettingScope.Profile;
+            if (profile.OverrideInsertSpaces.HasValue)     _settingScopes["editor.formatting.insertSpaces"] = SettingScope.Profile;
+            if (profile.OverrideFontSize.HasValue)         _settingScopes["editor.font.size"] = SettingScope.Profile;
+            if (profile.OverrideFontName != null)          _settingScopes["editor.font.name"] = SettingScope.Profile;
+            if (profile.OverrideThemeName != null)         _settingScopes["workbench.appearance.theme"] = SettingScope.Profile;
+            if (profile.OverrideWordWrap.HasValue)         _settingScopes["editor.text.wordWrap"] = SettingScope.Profile;
+            if (profile.OverrideGutterVisible.HasValue)    _settingScopes["editor.text.gutter"] = SettingScope.Profile;
+            if (profile.OverrideStatusBarVisible.HasValue) _settingScopes["workbench.appearance.statusBar"] = SettingScope.Profile;
+            if (profile.OverrideShowGuide.HasValue)        _settingScopes["editor.text.columnGuide"] = SettingScope.Profile;
+            if (profile.OverrideGuideColumn.HasValue)      _settingScopes["editor.text.guideColumn"] = SettingScope.Profile;
+            if (profile.OverrideMinimapVisible.HasValue)   _settingScopes["editor.appearance.minimap"] = SettingScope.Profile;
+            if (profile.OverrideRainbowBrackets.HasValue)  _settingScopes["editor.appearance.rainbowBrackets"] = SettingScope.Profile;
+            if (profile.OverrideBreadcrumbs.HasValue)      _settingScopes["editor.appearance.breadcrumbs"] = SettingScope.Profile;
+            if (profile.OverrideHoverLineHighlight.HasValue) _settingScopes["editor.cursor.hoverLineHighlight"] = SettingScope.Profile;
+            if (profile.OverrideAutoSave.HasValue)         _settingScopes["features.behavior.autoSave"] = SettingScope.Profile;
+            if (profile.OverrideAnalyzersEnabled.HasValue) _settingScopes["features.behavior.analyzers"] = SettingScope.Profile;
+            if (profile.OverrideTerminalShell != null)     _settingScopes["features.terminal.shell"] = SettingScope.Profile;
+            if (profile.OverrideVimMode.HasValue)          _settingScopes["features.behavior.vimMode"] = SettingScope.Profile;
+            if (profile.OverrideStickyScroll.HasValue)     _settingScopes["editor.appearance.stickyScroll"] = SettingScope.Profile;
+            if (profile.OverrideSyntaxHighlighting.HasValue) _settingScopes["editor.text.syntaxHighlighting"] = SettingScope.Profile;
+        }
 
         // Workspace overrides would be loaded from .pfpad/settings.json
         // For now, we'll assume no workspace overrides
@@ -1231,6 +1261,7 @@ internal sealed class SettingsDialog : Form
             "features.browser" => "Browser",
             "features.git" => "Git",
             "features.extensions" => "Extensions",
+            "features.wsl" => "WSL Integration",
             "features.behavior" => "Behavior",
             "application" => "Application",
             "application.window" => "Window",
@@ -1759,6 +1790,362 @@ internal sealed class SettingsDialog : Form
         };
         parent.Controls.Add(lbl);
         return y + 30;
+    }
+
+    private int AddWslSettingsUI(Panel parent, int y)
+    {
+        y = AddGitSectionHeader(parent, y, "WSL Integration");
+
+        int introBottom = AddWrappedLabel(
+            parent,
+            y,
+            "Open files and folders from inside Windows Subsystem for Linux (WSL) directly in pfpad — just like typing 'code .' opens VS Code. pfpad translates Linux paths to Windows paths automatically.",
+            _theme.Muted,
+            56);
+        y = introBottom + 12;
+
+        bool wslAvail = WslIntegrationService.IsWslAvailable();
+        string statusIcon = wslAvail ? "✓" : "✗";
+        string statusText = wslAvail
+            ? "WSL is available on this system."
+            : "WSL is NOT installed. Install it first: open PowerShell as Administrator and run: wsl --install";
+        Color statusColor = wslAvail ? Color.FromArgb(100, 200, 100) : Color.FromArgb(220, 80, 80);
+
+        var statusLbl = new Label
+        {
+            Text = $"{statusIcon}  {statusText}",
+            Location = new Point(0, y),
+            AutoSize = false,
+            Width = parent.ClientSize.Width - 20,
+            Height = wslAvail ? 22 : 44,
+            ForeColor = statusColor,
+            Font = new Font("Segoe UI", 9f, wslAvail ? FontStyle.Regular : FontStyle.Bold),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(statusLbl);
+        y += statusLbl.Height + 8;
+
+        if (!wslAvail)
+        {
+            var installWslLink = new LinkLabel
+            {
+                Text = "→ How to install WSL on Windows 11",
+                Location = new Point(0, y),
+                AutoSize = true,
+                ForeColor = _theme.Accent,
+                BackColor = Color.Transparent
+            };
+            installWslLink.LinkClicked += (_, _) =>
+                Process.Start(new ProcessStartInfo("https://learn.microsoft.com/en-us/windows/wsl/install") { UseShellExecute = true });
+            parent.Controls.Add(installWslLink);
+            return y + 28;
+        }
+
+        y += 8;
+        y = AddGitSectionHeader(parent, y, "Installed Distros");
+
+        List<string> distros = WslIntegrationService.GetInstalledDistros();
+        if (distros.Count == 0)
+        {
+            var noDistroLbl = new Label
+            {
+                Text = "⚠  No WSL distros found. Install a distro from the Microsoft Store (for example Ubuntu).",
+                Location = new Point(0, y),
+                AutoSize = false,
+                Width = parent.ClientSize.Width - 20,
+                Height = 44,
+                ForeColor = Color.FromArgb(220, 160, 60),
+                BackColor = Color.Transparent
+            };
+            parent.Controls.Add(noDistroLbl);
+            return y + 52;
+        }
+
+        var distroLbl = new Label
+        {
+            Text = "Target distro:",
+            Location = new Point(0, y),
+            AutoSize = true,
+            ForeColor = _theme.Text,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 9f)
+        };
+        parent.Controls.Add(distroLbl);
+
+        var distroCombo = new ComboBox
+        {
+            Location = new Point(110, y - 3),
+            Width = 240,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.MenuBackground,
+            ForeColor = _theme.Text
+        };
+        distroCombo.Items.AddRange(distros.Cast<object>().ToArray());
+        distroCombo.SelectedIndex = 0;
+        parent.Controls.Add(distroCombo);
+        y += 32;
+
+        var shimStatusLbl = new Label
+        {
+            Text = "Checking shim status...",
+            Location = new Point(0, y),
+            AutoSize = false,
+            Width = parent.ClientSize.Width - 20,
+            Height = 22,
+            ForeColor = _theme.Muted,
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(shimStatusLbl);
+        y += 28;
+
+        void RefreshShimStatus()
+        {
+            string selectedDistro = distroCombo.SelectedItem?.ToString() ?? string.Empty;
+            shimStatusLbl.Text = "Checking…";
+            shimStatusLbl.ForeColor = _theme.Muted;
+
+            Task.Run(() =>
+            {
+                bool installed = WslIntegrationService.IsShimInstalled(selectedDistro);
+                if (!parent.IsHandleCreated || parent.IsDisposed)
+                    return;
+
+                parent.BeginInvoke((Action)(() =>
+                {
+                    if (parent.IsDisposed)
+                        return;
+
+                    shimStatusLbl.Text = installed
+                        ? $"✓  pfpad shim is installed in {selectedDistro}  (type 'pfpad .' in your Linux terminal)"
+                        : $"⚠  pfpad shim is not installed in {selectedDistro}";
+                    shimStatusLbl.ForeColor = installed
+                        ? Color.FromArgb(100, 200, 100)
+                        : Color.FromArgb(220, 160, 60);
+                }));
+            });
+        }
+
+        distroCombo.SelectedIndexChanged += (_, _) => RefreshShimStatus();
+        RefreshShimStatus();
+
+        y += 4;
+        var installBtn = new Button
+        {
+            Text = "⬇  Install pfpad CLI in this distro",
+            Location = new Point(0, y),
+            AutoSize = true,
+            Padding = new Padding(12, 6, 12, 6),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.Accent,
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            Cursor = Cursors.Hand
+        };
+        installBtn.FlatAppearance.BorderSize = 0;
+        parent.Controls.Add(installBtn);
+
+        var uninstallBtn = new Button
+        {
+            Text = "✕  Uninstall",
+            Location = new Point(installBtn.Right + 12, y),
+            AutoSize = true,
+            Padding = new Padding(8, 6, 8, 6),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.MenuBackground,
+            ForeColor = _theme.Muted,
+            Font = new Font("Segoe UI", 9f),
+            Cursor = Cursors.Hand
+        };
+        uninstallBtn.FlatAppearance.BorderSize = 1;
+        uninstallBtn.FlatAppearance.BorderColor = _theme.Border;
+        parent.Controls.Add(uninstallBtn);
+        y += 44;
+
+        var resultLbl = new Label
+        {
+            Text = string.Empty,
+            Location = new Point(0, y),
+            AutoSize = false,
+            Width = parent.ClientSize.Width - 20,
+            Height = 70,
+            BackColor = Color.Transparent,
+            ForeColor = _theme.Text,
+            Font = new Font("Segoe UI", 8.5f)
+        };
+        parent.Controls.Add(resultLbl);
+        y += 78;
+
+        installBtn.Click += (_, _) =>
+        {
+            installBtn.Enabled = false;
+            installBtn.Text = "Installing…";
+            resultLbl.Text = string.Empty;
+            string distro = distroCombo.SelectedItem?.ToString() ?? string.Empty;
+
+            Task.Run(() =>
+            {
+                var (ok, msg) = WslIntegrationService.InstallShim(distro);
+                if (!parent.IsHandleCreated || parent.IsDisposed)
+                    return;
+
+                parent.BeginInvoke((Action)(() =>
+                {
+                    if (parent.IsDisposed)
+                        return;
+
+                    installBtn.Enabled = true;
+                    installBtn.Text = "⬇  Install pfpad CLI in this distro";
+                    resultLbl.Text = msg;
+                    resultLbl.ForeColor = ok ? Color.FromArgb(100, 200, 100) : Color.FromArgb(220, 80, 80);
+                    RefreshShimStatus();
+                }));
+            });
+        };
+
+        uninstallBtn.Click += (_, _) =>
+        {
+            string distro = distroCombo.SelectedItem?.ToString() ?? string.Empty;
+            var (ok, msg) = WslIntegrationService.UninstallShim(distro);
+            resultLbl.Text = msg;
+            resultLbl.ForeColor = ok ? _theme.Muted : Color.FromArgb(220, 80, 80);
+            RefreshShimStatus();
+        };
+
+        y += 8;
+        y = AddGitSectionHeader(parent, y, "How It Works");
+
+        string howText =
+            "1. Click \"Install pfpad CLI\" above — this writes a small bash script to\n" +
+            "   ~/.local/bin/pfpad inside the selected Linux distro.\n\n" +
+            "2. Open your WSL terminal and navigate to any folder:\n" +
+            "   cd ~/projects/myapp\n\n" +
+            "3. Type:  pfpad .\n" +
+            "   → pfpad opens on Windows and loads the folder via the translated path.\n\n" +
+            "4. You can open specific files too:\n" +
+            "   pfpad main.rs\n" +
+            "   pfpad src/lib.rs tests/mod.rs\n\n" +
+            "5. To run the shim without restarting your terminal:\n" +
+            "   source ~/.bashrc";
+
+        var howLbl = new Label
+        {
+            Text = howText,
+            Location = new Point(0, y),
+            AutoSize = false,
+            Width = parent.ClientSize.Width - 24,
+            Height = 200,
+            ForeColor = _theme.Text,
+            Font = new Font("Cascadia Code", 8.5f),
+            BackColor = Color.FromArgb(15, _theme.Accent.R, _theme.Accent.G, _theme.Accent.B)
+        };
+        parent.Controls.Add(howLbl);
+        y += howLbl.Height + 16;
+
+        y = AddGitSectionHeader(parent, y, "Manual Installation (if auto-install fails)");
+
+        string manualText =
+            "Run these commands inside your WSL terminal:\n\n" +
+            "  mkdir -p ~/.local/bin\n" +
+            "  cp /mnt/c/Program\\ Files/Personal\\ Flip\\ Pad/pfpad-wsl.sh ~/.local/bin/pfpad\n" +
+            "  chmod +x ~/.local/bin/pfpad\n\n" +
+            "  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc\n" +
+            "  source ~/.bashrc";
+
+        var manualLbl = new Label
+        {
+            Text = manualText,
+            Location = new Point(0, y),
+            AutoSize = false,
+            Width = parent.ClientSize.Width - 24,
+            Height = 150,
+            ForeColor = _theme.Muted,
+            Font = new Font("Cascadia Code", 8.5f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(manualLbl);
+
+        var copyManualBtn = new Button
+        {
+            Text = "⎘ Copy commands",
+            Location = new Point(0, y + manualLbl.Height + 4),
+            AutoSize = true,
+            Padding = new Padding(8, 4, 8, 4),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _theme.MenuBackground,
+            ForeColor = _theme.Text,
+            Cursor = Cursors.Hand
+        };
+        copyManualBtn.FlatAppearance.BorderSize = 1;
+        copyManualBtn.FlatAppearance.BorderColor = _theme.Border;
+        copyManualBtn.Click += (_, _) =>
+        {
+            Clipboard.SetText(
+                "mkdir -p ~/.local/bin\n" +
+                "cp /mnt/c/Program\\ Files/Personal\\ Flip\\ Pad/pfpad-wsl.sh ~/.local/bin/pfpad\n" +
+                "chmod +x ~/.local/bin/pfpad\n" +
+                "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc\n" +
+                "source ~/.bashrc");
+            copyManualBtn.Text = "✓ Copied!";
+            var timer = new System.Windows.Forms.Timer { Interval = 2000 };
+            timer.Tick += (_, _) =>
+            {
+                copyManualBtn.Text = "⎘ Copy commands";
+                timer.Stop();
+                timer.Dispose();
+            };
+            timer.Start();
+        };
+        parent.Controls.Add(copyManualBtn);
+        y += manualLbl.Height + 36;
+
+        y += 8;
+        y = AddGitSectionHeader(parent, y, "Troubleshooting");
+
+        string[] tips =
+        {
+            "\"pfpad: command not found\"  →  ~/.local/bin is not in your PATH. Run: source ~/.bashrc",
+            "\"pfpad.exe not found\"       →  Reinstall the shim after updating pfpad.",
+            "Slow to open                 →  Normal on first launch. pfpad may need to start first.",
+            "Wrong file path              →  pfpad translates paths with wslpath and \\\\wsl.localhost when needed.",
+            "Permissions error            →  Run: chmod +x ~/.local/bin/pfpad"
+        };
+
+        foreach (string tip in tips)
+        {
+            var tipLbl = new Label
+            {
+                Text = "•  " + tip,
+                Location = new Point(0, y),
+                AutoSize = false,
+                Width = parent.ClientSize.Width - 24,
+                Height = 22,
+                ForeColor = _theme.Muted,
+                Font = new Font("Segoe UI", 8.5f),
+                BackColor = Color.Transparent
+            };
+            parent.Controls.Add(tipLbl);
+            y += 24;
+        }
+
+        return y + 16;
+    }
+
+    private int AddWrappedLabel(Panel parent, int y, string text, Color color, int height = 52)
+    {
+        var label = new Label
+        {
+            Text = text,
+            Location = new Point(0, y),
+            AutoSize = false,
+            Width = parent.ClientSize.Width - 24,
+            Height = height,
+            ForeColor = color,
+            Font = new Font("Segoe UI", 9f),
+            BackColor = Color.Transparent
+        };
+        parent.Controls.Add(label);
+        return y + height;
     }
 
     private int AddAccountRow(Panel parent, int y, string providerName, string authUrl)
