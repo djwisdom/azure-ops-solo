@@ -35,12 +35,9 @@ public sealed class GitService : IDisposable
         // WSL-mounted paths (\\wsl.localhost\*, \\wsl\) are owned by the Linux distro
         // user, not the Windows user. LibGit2Sharp rejects these with
         // "repository path is not owned by current user". Skip Git integration
-        // gracefully for WSL paths.
+        // gracefully for WSL paths — no error, just no repo.
         if (IsWslPath(dir))
-        {
-            OnError?.Invoke("Git is not available for WSL-mounted paths. Use the WSL terminal or a Windows-side copy of the repo.");
             return false;
-        }
 
         try
         {
